@@ -9,11 +9,9 @@ const geminiApiKey = defineSecret("GEMINI_API_KEY");
 exports.bookEnrichment = onCall(
     {
         secrets: [geminiApiKey],
-        cors: true,
-        region: "us-central1"
+        region: "us-central1",
     },
     async (request) => {
-        // Wrap EVERYTHING in try/catch to prevent Internal errors
         try {
             // Validate input
             const userPrompt = request.data?.prompt;
@@ -33,15 +31,12 @@ exports.bookEnrichment = onCall(
 
             // Return success response
             return { success: true, message: text };
-
         } catch (error) {
-            // Log error server-side for debugging
             console.error("Cloud Function Error:", error);
 
-            // Return error as JSON (prevents CORS issues)
             return {
                 success: false,
-                error: error.message || "An error occurred in the AI service."
+                error: error.message || "An error occurred in the AI service.",
             };
         }
     }
