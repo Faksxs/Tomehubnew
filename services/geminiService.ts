@@ -1,6 +1,4 @@
 import { ResourceType, LibraryItem } from "../types";
-import { functions } from "./firebaseClient";
-import { httpsCallable } from "firebase/functions";
 
 export interface ItemDraft {
   title: string;
@@ -189,9 +187,6 @@ export const searchResourcesAI = async (
 
   // 3) Fallback: Gemini ile arama (Backend üzerinden)
   try {
-    const bookEnrichment = httpsCallable(functions, 'bookEnrichment');
-
-    // Construct prompt for search
     const prompt = `
       I need to find book or article recommendations based on this query: "${trimmed}".
       Type: ${type}
@@ -208,10 +203,19 @@ export const searchResourcesAI = async (
       Return ONLY valid JSON. No markdown formatting.
     `;
 
-    const result = await bookEnrichment({ prompt });
-    const data = result.data as any;
+    const response = await fetch('https://us-central1-tomehub.cloudfunctions.net/bookEnrichmentHttp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt })
+    });
 
-    if (!data.success || !data.message) return [];
+    const data = await response.json();
+
+    if (!data.success) {
+      throw new Error(data.error || 'Unknown error');
+    }
+
+    if (!data.message) return [];
 
     // Parse JSON from the text response
     let parsedItems = [];
@@ -243,8 +247,6 @@ export const analyzeHighlightsAI = async (
   if (highlightsText.length === 0) return null;
 
   try {
-    const bookEnrichment = httpsCallable(functions, 'bookEnrichment');
-
     const prompt = `
       Analyze these book highlights and provide a concise summary of the key themes and insights:
       
@@ -253,10 +255,19 @@ export const analyzeHighlightsAI = async (
       Return ONLY the summary text.
     `;
 
-    const result = await bookEnrichment({ prompt });
-    const data = result.data as any;
+    const response = await fetch('https://us-central1-tomehub.cloudfunctions.net/bookEnrichmentHttp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt })
+    });
 
-    return data.success ? data.message : null;
+    const data = await response.json();
+
+    if (!data.success) {
+      throw new Error(data.error || 'Unknown error');
+    }
+
+    return data.message || null;
 
   } catch (error) {
     console.error("Gemini error (Cloud Function):", error);
@@ -273,18 +284,25 @@ export const generateTagsForNote = async (
   if (!noteContent) return [];
 
   try {
-    const bookEnrichment = httpsCallable(functions, 'bookEnrichment');
-
     const prompt = `
       Generate 3-5 relevant tags for this note. Return ONLY a JSON array of strings.
       
       Note: "${noteContent}"
     `;
 
-    const result = await bookEnrichment({ prompt });
-    const data = result.data as any;
+    const response = await fetch('https://us-central1-tomehub.cloudfunctions.net/bookEnrichmentHttp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt })
+    });
 
-    if (!data.success || !data.message) return [];
+    const data = await response.json();
+
+    if (!data.success) {
+      throw new Error(data.error || 'Unknown error');
+    }
+
+    if (!data.message) return [];
 
     try {
       const cleanJson = data.message.replace(/```json|```/g, '').trim();
@@ -324,7 +342,7 @@ const fetchCoverFromOpenLibrary = async (
   }
 };
 
-// Step 2: Try to fetch cover from Google Books API
+// Step 2: Try to fetch cover from Google Books API with OpenLibrary Fallback
 const fetchCoverFromGoogleBooks = async (
   title: string,
   author: string,
@@ -339,25 +357,81 @@ const fetchCoverFromGoogleBooks = async (
 
     const apiUrl = `https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=1`;
     const response = await fetch(apiUrl);
-    if (!response.ok) return null;
+
+    // Check for service unavailable or other errors
+    if (!response.ok) {
+      if (response.status === 503) {
+        console.warn('Google Books returned 503 (Service Unavailable) for cover fetch');
+      }
+      // Try OpenLibrary fallback
+      return await tryOpenLibraryCover(title, author, isbn);
+    }
 
     const data = await response.json();
-    if (!data.items || !data.items.length) return null;
+    if (!data.items || !data.items.length) {
+      // No results from Google Books, try OpenLibrary
+      return await tryOpenLibraryCover(title, author, isbn);
+    }
 
     const volumeInfo = data.items[0].volumeInfo || {};
     const links = volumeInfo.imageLinks || {};
 
-    return (
-      links.extraLarge ||
+    const coverUrl = links.extraLarge ||
       links.large ||
       links.medium ||
       links.thumbnail ||
-      null
-    );
+      null;
+
+    if (coverUrl) {
+      return coverUrl;
+    }
+
+    // Google Books has no cover, try OpenLibrary
+    return await tryOpenLibraryCover(title, author, isbn);
   } catch (error) {
-    console.error("Google Books cover fetch error:", error);
-    return null;
+    console.warn("Google Books cover fetch error:", error);
+    // Try OpenLibrary as fallback
+    return await tryOpenLibraryCover(title, author, isbn);
   }
+};
+
+// Helper function to try OpenLibrary cover fetch
+const tryOpenLibraryCover = async (
+  title: string,
+  author?: string,
+  isbn?: string
+): Promise<string | null> => {
+  try {
+    // Try ISBN first if available
+    if (isbn) {
+      const cleanIsbn = isbn.replace(/[^0-9X]/gi, '');
+      const coverUrl = `https://covers.openlibrary.org/b/isbn/${cleanIsbn}-L.jpg`;
+      const response = await fetch(coverUrl, { method: 'HEAD' });
+      if (response.ok) {
+        console.log('✓ Cover found via OpenLibrary ISBN (fallback)');
+        return coverUrl;
+      }
+    }
+
+    // Try search if ISBN didn't work
+    const query = author ? `${title} ${author}` : title;
+    const searchUrl = `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=1`;
+    const response = await fetch(searchUrl);
+
+    if (response.ok) {
+      const data = await response.json();
+      const doc = data.docs?.[0];
+      if (doc?.cover_i) {
+        const coverUrl = `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`;
+        console.log('✓ Cover found via OpenLibrary search (fallback)');
+        return coverUrl;
+      }
+    }
+  } catch (error) {
+    console.warn('OpenLibrary cover fetch also failed:', error);
+  }
+
+  return null;
 };
 
 // Step 3: AI-based cover verification (last resort - Backend)
@@ -367,8 +441,6 @@ const verifyCoverWithAI = async (
   isbn?: string
 ): Promise<string | null> => {
   try {
-    const bookEnrichment = httpsCallable(functions, 'bookEnrichment');
-
     const prompt = `
       Find a valid high-quality book cover image URL for:
       Title: ${title}
@@ -378,10 +450,19 @@ const verifyCoverWithAI = async (
       Return ONLY the URL string. If not found, return "null".
     `;
 
-    const result = await bookEnrichment({ prompt });
-    const data = result.data as any;
+    const response = await fetch('https://us-central1-tomehub.cloudfunctions.net/bookEnrichmentHttp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt })
+    });
 
-    if (data.success && data.message && data.message !== 'null') {
+    const data = await response.json();
+
+    if (!data.success) {
+      throw new Error(data.error || 'Unknown error');
+    }
+
+    if (data.message && data.message !== 'null') {
       return data.message.trim();
     }
     return null;
@@ -432,8 +513,6 @@ export const enrichBookWithAI = async (item: ItemDraft): Promise<ItemDraft> => {
   if (!needsBookEnrichment(item)) return item; // Keep the check
 
   try {
-    const bookEnrichment = httpsCallable(functions, 'bookEnrichment');
-
     const prompt = `
       Enrich this book data with missing details (summary, tags, publisher, publication year).
       
@@ -448,10 +527,19 @@ export const enrichBookWithAI = async (item: ItemDraft): Promise<ItemDraft> => {
       Return ONLY valid JSON. No markdown.
     `;
 
-    const result = await bookEnrichment({ prompt });
-    const data = result.data as any;
+    const response = await fetch('https://us-central1-tomehub.cloudfunctions.net/bookEnrichmentHttp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt })
+    });
 
-    if (!data.success || !data.message) return item;
+    const data = await response.json();
+
+    if (!data.success) {
+      throw new Error(data.error || 'Unknown error');
+    }
+
+    if (!data.message) return item;
 
     try {
       const cleanJson = data.message.replace(/```json|```/g, '').trim();

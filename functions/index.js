@@ -1,43 +1,66 @@
-const { onCall } = require("firebase-functions/v2/https");
+const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-// Define the secret for Gemini API Key
+// Gemini API key secret
 const geminiApiKey = defineSecret("GEMINI_API_KEY");
 
-// Cloud Function: bookEnrichment
-exports.bookEnrichment = onCall(
+// Allowed origins for CORS
+const ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "https://faksxs.github.io",
+];
+
+// HTTP endpoint: bookEnrichmentHttp
+exports.bookEnrichmentHttp = onRequest(
     {
-        secrets: [geminiApiKey],
         region: "us-central1",
+        secrets: [geminiApiKey],
     },
-    async (request) => {
+    async (req, res) => {
+        const origin = req.headers.origin;
+
+        // Eğer istek gelen origin listede varsa CORS header ekle
+        if (ALLOWED_ORIGINS.includes(origin)) {
+            res.set("Access-Control-Allow-Origin", origin);
+            res.set("Vary", "Origin");
+        }
+
+        // Preflight (OPTIONS) isteğini yönet
+        if (req.method === "OPTIONS") {
+            res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+            res.set("Access-Control-Allow-Headers", "Content-Type");
+            return res.status(204).send("");
+        }
+
         try {
-            // Validate input
-            const userPrompt = request.data?.prompt;
+            const userPrompt = req.body?.prompt;
 
             if (!userPrompt) {
-                return { success: false, error: "Prompt is required." };
+                return res.status(400).json({
+                    success: false,
+                    error: "Prompt is required.",
+                });
             }
 
-            // Initialize Gemini AI
             const genAI = new GoogleGenerativeAI(geminiApiKey.value());
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-            // Generate content
             const result = await model.generateContent(userPrompt);
             const response = await result.response;
             const text = response.text();
 
-            // Return success response
-            return { success: true, message: text };
+            return res.status(200).json({
+                success: true,
+                message: text,
+            });
         } catch (error) {
-            console.error("Cloud Function Error:", error);
+            console.error("Cloud Function Error (HTTP):", error);
 
-            return {
+            return res.status(500).json({
                 success: false,
                 error: error.message || "An error occurred in the AI service.",
-            };
+            });
         }
     }
 );

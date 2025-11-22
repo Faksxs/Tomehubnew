@@ -107,7 +107,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
     setIsGeneratingTags(false);
   };
 
-  // Robust Cover Finder Logic
+  // Robust Cover Finder Logic with Fallback Strategy
   const findBestCover = async (title: string, author: string, isbn: string): Promise<string | null> => {
     const cleanIsbn = isbn ? isbn.replace(/[^0-9X]/gi, '') : '';
 
@@ -115,6 +115,15 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
     const searchGoogle = async (query: string) => {
       try {
         const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=1`);
+
+        // Check for service unavailable or other errors
+        if (!res.ok) {
+          if (res.status === 503) {
+            console.warn('Google Books returned 503 (Service Unavailable)');
+          }
+          return null;
+        }
+
         const data = await res.json();
         const item = data.items?.[0];
         const links = item?.volumeInfo?.imageLinks;
@@ -125,7 +134,8 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
           return url;
         }
       } catch (e) {
-        // Silent fail
+        console.warn('Google Books fetch error:', e);
+        // Continue to fallback
       }
       return null;
     };
@@ -151,9 +161,40 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
 
     // 4. Fallback to OpenLibrary ISBN (Direct URL)
     if (cleanIsbn) {
-      return `https://covers.openlibrary.org/b/isbn/${cleanIsbn}-L.jpg?default=false`;
+      try {
+        const coverUrl = `https://covers.openlibrary.org/b/isbn/${cleanIsbn}-L.jpg`;
+        const response = await fetch(coverUrl, { method: 'HEAD' });
+        if (response.ok) {
+          console.log('✓ Cover found via OpenLibrary ISBN (fallback)');
+          return coverUrl;
+        }
+      } catch (e) {
+        console.warn('OpenLibrary cover fetch failed:', e);
+      }
     }
 
+    // 5. Try OpenLibrary search as last resort
+    if (title) {
+      try {
+        const query = author ? `${title} ${author}` : title;
+        const apiUrl = `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=1`;
+        const response = await fetch(apiUrl);
+
+        if (response.ok) {
+          const data = await response.json();
+          const doc = data.docs?.[0];
+          if (doc?.cover_i) {
+            const coverUrl = `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`;
+            console.log('✓ Cover found via OpenLibrary search (fallback)');
+            return coverUrl;
+          }
+        }
+      } catch (e) {
+        console.warn('OpenLibrary search failed:', e);
+      }
+    }
+
+    console.warn('All cover lookup sources failed');
     return null;
   };
 

@@ -125,39 +125,82 @@ function deduplicateResults(items: BookItem[]): BookItem[] {
     return unique;
 }
 
-// API: Google Books
+// API: Google Books with OpenLibrary Fallback
 async function searchGoogleBooks(query: string): Promise<BookItem[]> {
     try {
         const variants = generateCharacterVariants(query);
         const results: BookItem[] = [];
+        let googleBooksWorked = false;
 
         for (const variant of variants) {
             const apiUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(variant)}&maxResults=10`;
-            const response = await fetch(apiUrl);
-            if (!response.ok) continue;
 
-            const data = await response.json();
-            if (!data.items) continue;
+            try {
+                const response = await fetch(apiUrl);
 
-            const books = data.items.map((item: any) => ({
-                title: item.volumeInfo.title || '',
-                author: item.volumeInfo.authors?.[0] || 'Unknown',
-                publisher: item.volumeInfo.publisher || '',
-                isbn: item.volumeInfo.industryIdentifiers?.[0]?.identifier || '',
-                translator: '',
-                tags: item.volumeInfo.categories || [],
-                summary: item.volumeInfo.description || '',
-                publishedDate: item.volumeInfo.publishedDate || '',
-                url: item.volumeInfo.infoLink || '',
-                coverUrl: item.volumeInfo.imageLinks?.thumbnail || null,
-            } as BookItem));
+                // Check for service unavailable or other errors
+                if (!response.ok) {
+                    if (response.status === 503) {
+                        console.warn('Google Books returned 503 (Service Unavailable)');
+                    }
+                    continue;
+                }
 
-            results.push(...books);
-            if (results.length >= 3) break;
+                const data = await response.json();
+                if (!data.items) continue;
+
+                const books = data.items.map((item: any) => ({
+                    title: item.volumeInfo.title || '',
+                    author: item.volumeInfo.authors?.[0] || 'Unknown',
+                    publisher: item.volumeInfo.publisher || '',
+                    isbn: item.volumeInfo.industryIdentifiers?.[0]?.identifier || '',
+                    translator: '',
+                    tags: item.volumeInfo.categories || [],
+                    summary: item.volumeInfo.description || '',
+                    publishedDate: item.volumeInfo.publishedDate || '',
+                    url: item.volumeInfo.infoLink || '',
+                    coverUrl: item.volumeInfo.imageLinks?.thumbnail || null,
+                } as BookItem));
+
+                results.push(...books);
+                googleBooksWorked = true;
+                if (results.length >= 3) break;
+            } catch (error) {
+                console.warn(`Google Books fetch failed for variant "${variant}":`, error);
+                // Continue to next variant or fallback
+            }
         }
-        return results;
+
+        // If Google Books worked, return results
+        if (googleBooksWorked && results.length > 0) {
+            return results;
+        }
+
+        // Fallback to OpenLibrary if Google Books failed or returned no results
+        console.warn('Google Books failed or returned no results, trying OpenLibrary fallback...');
+        const openLibraryResults = await searchOpenLibrary(query);
+
+        if (openLibraryResults.length > 0) {
+            console.log('✓ Successfully fetched from OpenLibrary (fallback)');
+            return openLibraryResults;
+        }
+
+        return results; // Return whatever we got, even if empty
     } catch (error) {
         console.error('Google Books error:', error);
+
+        // Try OpenLibrary as fallback
+        try {
+            console.warn('Attempting OpenLibrary fallback after Google Books error...');
+            const openLibraryResults = await searchOpenLibrary(query);
+            if (openLibraryResults.length > 0) {
+                console.log('✓ Successfully fetched from OpenLibrary (fallback)');
+                return openLibraryResults;
+            }
+        } catch (fallbackError) {
+            console.error('OpenLibrary fallback also failed:', fallbackError);
+        }
+
         return [];
     }
 }
