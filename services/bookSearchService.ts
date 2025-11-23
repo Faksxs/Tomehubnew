@@ -242,55 +242,6 @@ async function searchOpenLibrary(query: string): Promise<BookItem[]> {
     }
 }
 
-// API: LLM Correction (Backend)
-async function correctQueryWithLLM(query: string): Promise<CorrectedQuery | null> {
-    if (queryCache.has(query)) return queryCache.get(query)!;
-
-    // DISABLED: Vercel backend removed
-    console.log("⚠️ LLM query correction disabled - Vercel backend removed");
-    return null;
-
-    /*
-    try {
-        const response = await fetch('/api/ai-utils', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'correct_query', payload: { query } }),
-        });
-
-        if (!response.ok) return null;
-        const result = await response.json();
-        queryCache.set(query, result);
-        return result;
-    } catch (error) {
-        console.error("LLM Correction Error (Backend):", error);
-        return null;
-    }
-    */
-}
-
-// Logic: Search with LLM Correction
-async function searchWithLLMCorrection(query: string): Promise<BookItem[]> {
-    const corrected = await correctQueryWithLLM(query);
-    if (!corrected) return [];
-
-    let searchQuery = corrected.standardized_query;
-    if (!searchQuery) {
-        const title = corrected.title || '';
-        const author = corrected.author || '';
-        searchQuery = author ? `${title} ${author}` : (title || query);
-    }
-
-    const [googleResults, openLibResults] = await Promise.all([
-        searchGoogleBooks(searchQuery),
-        searchOpenLibrary(searchQuery),
-    ]);
-
-    const combined = [...googleResults, ...openLibResults];
-    const unique = deduplicateResults(combined);
-    return rankResults(query, unique).slice(0, 10);
-}
-
 // MAIN EXPORT
 export async function searchBooks(query: string): Promise<SearchResult> {
     if (!query.trim()) return { results: [], source: 'google-books', cached: false };
@@ -315,35 +266,10 @@ export async function searchBooks(query: string): Promise<SearchResult> {
     const uniqueResults = deduplicateResults(allResults);
     const rankedResults = rankResults(query, uniqueResults);
 
-    // 2. If good results, return
-    if (rankedResults.length >= 3) {
-        const result: SearchResult = {
-            results: rankedResults.slice(0, 10),
-            source: googleResults.length > 0 ? 'google-books' : 'open-library',
-            cached: false,
-        };
-        searchCache.set(cacheKey, result);
-        return result;
-    }
-
-    // 3. If poor results, try LLM correction
-    console.log('⚠ Poor results, trying LLM correction...');
-    const llmResults = await searchWithLLMCorrection(normalized);
-
-    if (llmResults.length > 0) {
-        const result: SearchResult = {
-            results: llmResults,
-            source: 'llm-corrected',
-            cached: false,
-        };
-        searchCache.set(cacheKey, result);
-        return result;
-    }
-
-    // 4. Fallback
+    // 2. Return results
     const result: SearchResult = {
-        results: rankedResults,
-        source: 'google-books',
+        results: rankedResults.slice(0, 10),
+        source: googleResults.length > 0 ? 'google-books' : 'open-library',
         cached: false,
     };
     searchCache.set(cacheKey, result);

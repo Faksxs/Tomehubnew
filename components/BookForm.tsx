@@ -77,21 +77,19 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
     setIsSearching(true);
     setSearchResults([]);
 
-    // Use optimized search for books
-    if (initialType === 'BOOK') {
-      const { searchBooks } = await import('../services/bookSearchService');
-      const result = await searchBooks(searchQuery);
-      setSearchResults(result.results);
-
-      // Log search performance
-      console.log(`📚 Search source: ${result.source}, cached: ${result.cached}`);
-    } else {
-      // Use existing service for articles/websites
+    try {
+      // Unified search via geminiService (handles books, articles, etc.)
       const results = await searchResourcesAI(searchQuery, initialType);
       setSearchResults(results);
-    }
 
-    setIsSearching(false);
+      if (initialType === 'BOOK') {
+        console.log(`📚 Search completed for book: "${searchQuery}"`);
+      }
+    } catch (error) {
+      console.error("Search failed:", error);
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   const handleGenerateTags = async () => {
@@ -107,105 +105,21 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
     setIsGeneratingTags(false);
   };
 
-  // Robust Cover Finder Logic with Fallback Strategy
-  const findBestCover = async (title: string, author: string, isbn: string): Promise<string | null> => {
-    const cleanIsbn = isbn ? isbn.replace(/[^0-9X]/gi, '') : '';
-
-    // Helper to fetch from Google Books
-    const searchGoogle = async (query: string) => {
-      try {
-        const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=1`);
-
-        // Check for service unavailable or other errors
-        if (!res.ok) {
-          if (res.status === 503) {
-            console.warn('Google Books returned 503 (Service Unavailable)');
-          }
-          return null;
-        }
-
-        const data = await res.json();
-        const item = data.items?.[0];
-        const links = item?.volumeInfo?.imageLinks;
-        if (links?.thumbnail || links?.smallThumbnail) {
-          let url = links.thumbnail || links.smallThumbnail;
-          // Force HTTPS and remove curling effect
-          url = url.replace(/^http:\/\//i, 'https://').replace('&edge=curl', '');
-          return url;
-        }
-      } catch (e) {
-        console.warn('Google Books fetch error:', e);
-        // Continue to fallback
-      }
-      return null;
-    };
-
-    // 1. Try Google Books by ISBN (Highest Accuracy)
-    if (cleanIsbn) {
-      const url = await searchGoogle(`isbn:${cleanIsbn}`);
-      if (url) return url;
-    }
-
-    // 2. Try Google Books by Title + Author
-    if (title && author) {
-      const query = `intitle:${encodeURIComponent(title)}+inauthor:${encodeURIComponent(author)}`;
-      const url = await searchGoogle(query);
-      if (url) return url;
-    }
-
-    // 3. Try Google Books by just Title (Broad search)
-    if (title) {
-      const url = await searchGoogle(`intitle:${encodeURIComponent(title)}`);
-      if (url) return url;
-    }
-
-    // 4. Fallback to OpenLibrary ISBN (Direct URL)
-    if (cleanIsbn) {
-      try {
-        const coverUrl = `https://covers.openlibrary.org/b/isbn/${cleanIsbn}-L.jpg`;
-        const response = await fetch(coverUrl, { method: 'HEAD' });
-        if (response.ok) {
-          console.log('✓ Cover found via OpenLibrary ISBN (fallback)');
-          return coverUrl;
-        }
-      } catch (e) {
-        console.warn('OpenLibrary cover fetch failed:', e);
-      }
-    }
-
-    // 5. Try OpenLibrary search as last resort
-    if (title) {
-      try {
-        const query = author ? `${title} ${author}` : title;
-        const apiUrl = `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=1`;
-        const response = await fetch(apiUrl);
-
-        if (response.ok) {
-          const data = await response.json();
-          const doc = data.docs?.[0];
-          if (doc?.cover_i) {
-            const coverUrl = `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`;
-            console.log('✓ Cover found via OpenLibrary search (fallback)');
-            return coverUrl;
-          }
-        }
-      } catch (e) {
-        console.warn('OpenLibrary search failed:', e);
-      }
-    }
-
-    console.warn('All cover lookup sources failed');
-    return null;
-  };
-
   // Triggered manually or on select
   const triggerCoverFetch = async (title: string, author: string, isbn: string) => {
     setIsFetchingCover(true);
-    const cover = await findBestCover(title, author, isbn);
-    if (cover) {
-      setFormData(prev => ({ ...prev, coverUrl: cover }));
+    try {
+      // Use centralized robust cover fetcher
+      const { fetchBookCover } = await import('../services/geminiService');
+      const cover = await fetchBookCover(title, author, isbn);
+      if (cover) {
+        setFormData(prev => ({ ...prev, coverUrl: cover }));
+      }
+    } catch (error) {
+      console.error("Cover fetch failed:", error);
+    } finally {
+      setIsFetchingCover(false);
     }
-    setIsFetchingCover(false);
   };
 
   const selectItem = async (draft: ItemDraft) => {

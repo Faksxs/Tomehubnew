@@ -60,7 +60,7 @@ export const mergeEnrichedDraftIntoItem = (
 };
 
 /* ----------------------------------------------------
- *  HIZLI MAKALE ARAMA: CROSSREF + ARXIV (AUTH GEREKMEZ)
+ *  HIZLI MAKALE ARAMA: CROSSREF (AUTH GEREKMEZ)
  * --------------------------------------------------*/
 const searchArticlesFromAPIs = async (query: string): Promise<ItemDraft[]> => {
   if (!query.trim()) return [];
@@ -71,7 +71,7 @@ const searchArticlesFromAPIs = async (query: string): Promise<ItemDraft[]> => {
     // 1. CrossRef API - Academic papers and journals (fast, no auth needed)
     const crossrefUrl = `https://api.crossref.org/works?query=${encodeURIComponent(
       query
-    )}&rows=3&select=title,author,publisher,published,DOI,abstract,URL`;
+    )}&rows=5&select=title,author,publisher,published,DOI,abstract,URL`;
 
     const crossrefPromise = fetch(crossrefUrl)
       .then(res => res.ok ? res.json() : null)
@@ -96,57 +96,11 @@ const searchArticlesFromAPIs = async (query: string): Promise<ItemDraft[]> => {
       })
       .catch(() => []);
 
-    // 2. arXiv API - Preprints and research papers (via proxy to avoid CORS)
-    const proxyUrl = import.meta.env.VITE_PROXY_URL || 'http://localhost:3001';
-    const arxivUrl = `${proxyUrl}/api/arxiv?search_query=all:${encodeURIComponent(
-      query
-    )}&start=0&max_results=3`;
+    // Execute API call
+    const crossrefResults = await crossrefPromise;
+    results.push(...crossrefResults);
 
-    const arxivPromise = fetch(arxivUrl)
-      .then(res => res.ok ? res.text() : null)
-      .then(xmlText => {
-        if (!xmlText) return [];
-
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(xmlText, "text/xml");
-        const entries = xmlDoc.querySelectorAll("entry");
-
-        return Array.from(entries).map(entry => {
-          const title = entry.querySelector("title")?.textContent?.trim() || "";
-          const authors = Array.from(entry.querySelectorAll("author name")).map(
-            a => a.textContent?.trim() || ""
-          );
-          const summary = entry.querySelector("summary")?.textContent?.trim() || "";
-          const published = entry.querySelector("published")?.textContent?.split("T")[0] || "";
-          const link = entry.querySelector("id")?.textContent?.trim() || "";
-
-          return {
-            title,
-            author: authors[0] || "Unknown",
-            publisher: "arXiv",
-            isbn: "",
-            translator: "",
-            tags: ["preprint", "arxiv"],
-            summary,
-            publishedDate: published,
-            url: link,
-            coverUrl: null,
-          } as ItemDraft;
-        });
-      })
-      .catch(() => []);
-
-    // Execute both API calls in parallel for speed
-    const [crossrefResults, arxivResults] = await Promise.all([
-      crossrefPromise,
-      arxivPromise,
-    ]);
-
-    // Combine results, prioritizing CrossRef (more reliable for published papers)
-    results.push(...crossrefResults, ...arxivResults);
-
-    // Limit to 5 total results
-    return results.slice(0, 5);
+    return results;
   } catch (error) {
     console.error("Article search error:", error);
     return [];
@@ -176,11 +130,11 @@ export const searchResourcesAI = async (
     }
   }
 
-  // 2) Hızlı yol: ARTICLE için önce CrossRef + arXiv
+  // 2) Hızlı yol: ARTICLE için önce CrossRef
   if (type === "ARTICLE") {
     const fastResults = await searchArticlesFromAPIs(trimmed);
     if (fastResults.length > 0) {
-      console.log("✓ Results from CrossRef/arXiv (fast)");
+      console.log("✓ Results from CrossRef (fast)");
       return fastResults;
     }
   }
@@ -319,80 +273,40 @@ export const generateTagsForNote = async (
 };
 
 /* ----------------------------------------------------
- *  COVER IMAGE FETCHING (senin mevcut zincirin)
- *  1) OpenLibrary (ISBN)
- *  2) Google Books
- *  3) Gemini ile son çare doğrulama (Backend)
+ *  COVER IMAGE FETCHING
+ *  Consolidated Logic:
+ *  1) Google Books (ISBN) - Highest accuracy
+ *  2) Google Books (Title + Author)
+ *  3) OpenLibrary (ISBN)
+ *  4) OpenLibrary (Search)
+ *  5) AI Verification (Last resort)
  * --------------------------------------------------*/
 
-// Step 1: Try to fetch cover from OpenLibrary using ISBN
-const fetchCoverFromOpenLibrary = async (
-  isbn: string
-): Promise<string | null> => {
-  if (!isbn) return null;
-
+// Helper to fetch from Google Books
+const searchGoogleBooksCover = async (query: string): Promise<string | null> => {
   try {
-    const coverUrl = `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
-    const response = await fetch(coverUrl, { method: "HEAD" });
-    if (response.ok) return coverUrl;
-    return null;
-  } catch (error) {
-    console.error("OpenLibrary cover fetch error:", error);
-    return null;
-  }
-};
+    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=1`);
 
-// Step 2: Try to fetch cover from Google Books API with OpenLibrary Fallback
-const fetchCoverFromGoogleBooks = async (
-  title: string,
-  author: string,
-  isbn?: string
-): Promise<string | null> => {
-  if (!title) return null;
-
-  try {
-    let query = `intitle:${encodeURIComponent(title)}`;
-    if (author) query += `+inauthor:${encodeURIComponent(author)}`;
-    if (isbn) query += `+isbn:${encodeURIComponent(isbn)}`;
-
-    const apiUrl = `https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=1`;
-    const response = await fetch(apiUrl);
-
-    // Check for service unavailable or other errors
-    if (!response.ok) {
-      if (response.status === 503) {
-        console.warn('Google Books returned 503 (Service Unavailable) for cover fetch');
+    if (!res.ok) {
+      if (res.status === 503) {
+        console.warn('Google Books returned 503 (Service Unavailable)');
       }
-      // Try OpenLibrary fallback
-      return await tryOpenLibraryCover(title, author, isbn);
+      return null;
     }
 
-    const data = await response.json();
-    if (!data.items || !data.items.length) {
-      // No results from Google Books, try OpenLibrary
-      return await tryOpenLibraryCover(title, author, isbn);
+    const data = await res.json();
+    const item = data.items?.[0];
+    const links = item?.volumeInfo?.imageLinks;
+    if (links?.thumbnail || links?.smallThumbnail) {
+      let url = links.thumbnail || links.smallThumbnail;
+      // Force HTTPS and remove curling effect
+      url = url.replace(/^http:\/\//i, 'https://').replace('&edge=curl', '');
+      return url;
     }
-
-    const volumeInfo = data.items[0].volumeInfo || {};
-    const links = volumeInfo.imageLinks || {};
-
-    const coverUrl = links.extraLarge ||
-      links.large ||
-      links.medium ||
-      links.thumbnail ||
-      null;
-
-    if (coverUrl) {
-      return coverUrl;
-    }
-
-    // Google Books has no cover, try OpenLibrary
-    return await tryOpenLibraryCover(title, author, isbn);
-  } catch (error) {
-    console.warn("Google Books cover fetch error:", error);
-    // Try OpenLibrary as fallback
-    return await tryOpenLibraryCover(title, author, isbn);
+  } catch (e) {
+    console.warn('Google Books fetch error:', e);
   }
+  return null;
 };
 
 // Helper function to try OpenLibrary cover fetch
@@ -408,7 +322,7 @@ const tryOpenLibraryCover = async (
       const coverUrl = `https://covers.openlibrary.org/b/isbn/${cleanIsbn}-L.jpg`;
       const response = await fetch(coverUrl, { method: 'HEAD' });
       if (response.ok) {
-        console.log('✓ Cover found via OpenLibrary ISBN (fallback)');
+        console.log('✓ Cover found via OpenLibrary ISBN');
         return coverUrl;
       }
     }
@@ -423,12 +337,12 @@ const tryOpenLibraryCover = async (
       const doc = data.docs?.[0];
       if (doc?.cover_i) {
         const coverUrl = `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`;
-        console.log('✓ Cover found via OpenLibrary search (fallback)');
+        console.log('✓ Cover found via OpenLibrary search');
         return coverUrl;
       }
     }
   } catch (error) {
-    console.warn('OpenLibrary cover fetch also failed:', error);
+    console.warn('OpenLibrary cover fetch failed:', error);
   }
 
   return null;
@@ -474,30 +388,39 @@ const verifyCoverWithAI = async (
 };
 
 /**
- * Dışarıdan kullanacağın ana fonksiyon:
- * 1) ISBN → OpenLibrary
- * 2) Google Books
- * 3) AI doğrulama
+ * Main Cover Fetch Function
  */
 export const fetchBookCover = async (
   title: string,
   author: string,
   isbn?: string
 ): Promise<string | null> => {
-  if (isbn) {
-    const openLib = await fetchCoverFromOpenLibrary(isbn);
-    if (openLib) {
-      console.log("✓ Cover found via OpenLibrary");
-      return openLib;
-    }
+  const cleanIsbn = isbn ? isbn.replace(/[^0-9X]/gi, '') : '';
+
+  // 1. Google Books by ISBN
+  if (cleanIsbn) {
+    const url = await searchGoogleBooksCover(`isbn:${cleanIsbn}`);
+    if (url) return url;
   }
 
-  const gBooks = await fetchCoverFromGoogleBooks(title, author, isbn);
-  if (gBooks) {
-    console.log("✓ Cover found via Google Books API");
-    return gBooks;
+  // 2. Google Books by Title + Author
+  if (title && author) {
+    const query = `intitle:${encodeURIComponent(title)}+inauthor:${encodeURIComponent(author)}`;
+    const url = await searchGoogleBooksCover(query);
+    if (url) return url;
   }
 
+  // 3. Google Books by Title only (Broad)
+  if (title) {
+    const url = await searchGoogleBooksCover(`intitle:${encodeURIComponent(title)}`);
+    if (url) return url;
+  }
+
+  // 4. OpenLibrary (ISBN & Search)
+  const olUrl = await tryOpenLibraryCover(title, author, cleanIsbn);
+  if (olUrl) return olUrl;
+
+  // 5. AI Verification (Last Resort)
   const aiCover = await verifyCoverWithAI(title, author, isbn);
   if (aiCover) {
     console.log("✓ Cover found via AI verification");

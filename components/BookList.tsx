@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { LibraryItem, ReadingStatus, ResourceType, PhysicalStatus } from '../types';
-import { Search, Plus, Book as BookIcon, Filter, FileText, Globe, ExternalLink, StickyNote, Quote, ArrowRight, PenTool, BarChart2, AlertTriangle, Library, ArrowUpDown, Calendar, Hash, Menu, Trash2, ChevronDown, Loader2 } from 'lucide-react';
+import { Search, Plus, Book as BookIcon, Filter, FileText, Globe, ExternalLink, StickyNote, Quote, ArrowRight, PenTool, BarChart2, AlertTriangle, Library, ArrowUpDown, Calendar, Hash, Menu, Trash2, ChevronDown, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 // import { StatisticsView } from './StatisticsView'; // Lazy loaded below
 const StatisticsView = React.lazy(() => import('./StatisticsView').then(module => ({ default: module.StatisticsView })));
 
@@ -25,8 +25,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
     const [publisherFilter, setPublisherFilter] = useState('');
 
     // Pagination State
-    const [visibleCount, setVisibleCount] = useState(600);
-    const ITEMS_PER_PAGE = 600;
+    const [currentPage, setCurrentPage] = useState(1);
 
     const statusColors = {
         'To Read': 'bg-slate-100 text-slate-800',
@@ -38,6 +37,18 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
     const isNotesTab = activeTab === 'NOTES';
     const isPersonalNotes = activeTab === 'PERSONAL_NOTE';
 
+    // --- PAGE SIZE CONFIGURATION ---
+    const itemsPerPage = useMemo(() => {
+        switch (activeTab) {
+            case 'BOOK': return 24;
+            case 'ARTICLE': return 24;
+            case 'WEBSITE': return 24;
+            case 'PERSONAL_NOTE': return 30;
+            case 'NOTES': return 50;
+            default: return 24;
+        }
+    }, [activeTab]);
+
     // --- PERFORMANCE OPTIMIZATION: DEBOUNCING ---
     // Updates the actual search query 300ms after the user STOPS typing.
     // This prevents the heavy filtering logic from running on every keystroke.
@@ -46,13 +57,18 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
             setIsTyping(true);
             const timer = setTimeout(() => {
                 setDebouncedSearch(inputValue);
-                setVisibleCount(ITEMS_PER_PAGE); // Reset pagination on new search
+                setCurrentPage(1); // Reset pagination on new search
                 setIsTyping(false);
             }, 300);
 
             return () => clearTimeout(timer);
         }
     }, [inputValue, debouncedSearch]);
+
+    // Reset pagination when filters or tab change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [activeTab, statusFilter, publisherFilter, sortOption]);
 
     // --- FILTER LOGIC ---
     const filteredBooks = useMemo(() => {
@@ -177,16 +193,80 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
     };
 
     // --- RENDER LOGIC: PAGINATION ---
-    // We slice the array to only render what is visible. This mimics SQL "LIMIT".
-    const displayedBooks = filteredBooks.slice(0, visibleCount);
-    const displayedHighlights = filteredHighlights.slice(0, visibleCount);
+    const totalItems = isNotesTab ? filteredHighlights.length : filteredBooks.length;
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
 
-    const hasMore = isNotesTab
-        ? filteredHighlights.length > visibleCount
-        : filteredBooks.length > visibleCount;
+    const displayedBooks = useMemo(() => {
+        const start = (currentPage - 1) * itemsPerPage;
+        return filteredBooks.slice(start, start + itemsPerPage);
+    }, [filteredBooks, currentPage, itemsPerPage]);
 
-    const handleLoadMore = () => {
-        setVisibleCount(prev => prev + ITEMS_PER_PAGE);
+    const displayedHighlights = useMemo(() => {
+        const start = (currentPage - 1) * itemsPerPage;
+        return filteredHighlights.slice(start, start + itemsPerPage);
+    }, [filteredHighlights, currentPage, itemsPerPage]);
+
+    // --- PAGINATION CONTROLS ---
+    const renderPagination = () => {
+        if (totalPages <= 1) return null;
+
+        const getPageNumbers = () => {
+            const pages = [];
+            const maxVisiblePages = 5;
+
+            if (totalPages <= maxVisiblePages) {
+                for (let i = 1; i <= totalPages; i++) pages.push(i);
+            } else {
+                if (currentPage <= 3) {
+                    pages.push(1, 2, 3, 4, '...', totalPages);
+                } else if (currentPage >= totalPages - 2) {
+                    pages.push(1, '...', totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+                } else {
+                    pages.push(1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages);
+                }
+            }
+            return pages;
+        };
+
+        return (
+            <div className="flex justify-center items-center gap-2 mt-8 md:mt-12 select-none">
+                <button
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                    className="p-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                    <ChevronLeft size={20} />
+                </button>
+
+                <div className="flex items-center gap-1">
+                    {getPageNumbers().map((page, idx) => (
+                        <React.Fragment key={idx}>
+                            {page === '...' ? (
+                                <span className="px-2 text-slate-400">...</span>
+                            ) : (
+                                <button
+                                    onClick={() => setCurrentPage(page as number)}
+                                    className={`w-8 h-8 md:w-10 md:h-10 rounded-lg text-sm font-medium transition-colors ${currentPage === page
+                                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
+                                        : 'text-slate-600 hover:bg-slate-50 hover:text-indigo-600'
+                                        }`}
+                                >
+                                    {page}
+                                </button>
+                            )}
+                        </React.Fragment>
+                    ))}
+                </div>
+
+                <button
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    disabled={currentPage === totalPages}
+                    className="p-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                    <ChevronRight size={20} />
+                </button>
+            </div>
+        );
     };
 
     const renderContent = () => {
@@ -248,7 +328,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                                             <Quote className="text-yellow-400 fill-yellow-200 w-4 h-4 md:w-6 md:h-6" />
                                         )}
                                     </div>
-                                    <p className={`text-xs md:text-lg leading-relaxed mb-2 md:mb-4 whitespace-pre-wrap line-clamp-[8] md:line-clamp-none font-lora ${isNote ? 'text-slate-700' : 'text-slate-900'}`}>
+                                    <p className={`text-[10px] md:text-base leading-relaxed mb-2 md:mb-4 whitespace-pre-wrap line-clamp-[8] md:line-clamp-none font-lora ${isNote ? 'text-slate-700' : 'text-slate-900'}`}>
                                         {highlight.text}
                                     </p>
 
@@ -274,6 +354,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                             );
                         })}
                     </div>
+                    {renderPagination()}
                 </div>
             );
         }
@@ -372,12 +453,13 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                                                 <Globe className="w-8 h-8 md:w-16 md:h-16" strokeWidth={1} />}
                                     </div>
 
-                                    {/* Cover Image */}
+                                    {/* Cover Image with Lazy Loading */}
                                     {book.type === 'BOOK' && book.coverUrl && (
                                         <>
                                             <img
                                                 src={book.coverUrl}
                                                 alt={book.title}
+                                                loading="lazy"
                                                 className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 z-10"
                                                 onError={(e) => {
                                                     e.currentTarget.style.display = 'none';
@@ -451,18 +533,8 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                     </div>
                 )}
 
-                {/* Load More Button (Pagination) */}
-                {hasMore && (
-                    <div className="flex justify-center mt-8 md:mt-12">
-                        <button
-                            onClick={handleLoadMore}
-                            className="bg-white border border-slate-200 hover:border-indigo-300 text-slate-600 hover:text-indigo-600 px-6 py-3 rounded-full shadow-sm hover:shadow-md transition-all flex items-center gap-2 font-medium text-sm"
-                        >
-                            <ChevronDown size={16} />
-                            Load More ({isNotesTab ? filteredHighlights.length - visibleCount : filteredBooks.length - visibleCount} remaining)
-                        </button>
-                    </div>
-                )}
+                {/* Pagination Controls */}
+                {renderPagination()}
             </div>
         );
     };
