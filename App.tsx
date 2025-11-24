@@ -12,10 +12,12 @@ import { BookDetail } from "./components/BookDetail";
 import { Sidebar } from "./components/Sidebar";
 import { ProfileView } from "./components/ProfileView";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { ThemeProvider } from "./contexts/ThemeContext";
 import {
   fetchItemsForUser,
   saveItemForUser,
   deleteItemForUser,
+  deleteMultipleItemsForUser,
 } from "./services/firestoreService";
 
 import {
@@ -24,6 +26,7 @@ import {
   libraryItemToDraft,
   mergeEnrichedDraftIntoItem,
 } from "./services/geminiService";
+import { useBatchEnrichment } from "./hooks/useBatchEnrichment";
 
 
 
@@ -197,6 +200,23 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     }
   }, [selectedBookId, userId]);
 
+  const handleBulkDelete = useCallback(async (ids: string[]) => {
+    if (!window.confirm(`Are you sure you want to delete ${ids.length} items?`)) return;
+
+    setBooks((prev) => prev.filter((b) => !ids.includes(b.id)));
+
+    if (selectedBookId && ids.includes(selectedBookId)) {
+      setSelectedBookId(null);
+      setView("list");
+    }
+
+    try {
+      await deleteMultipleItemsForUser(userId, ids);
+    } catch (err) {
+      console.error("Failed to delete items from Firestore:", err);
+    }
+  }, [selectedBookId, userId]);
+
   const handleUpdateHighlights = useCallback(async (highlights: Highlight[]) => {
     if (!selectedBookId) return;
 
@@ -219,7 +239,20 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
         console.error("Failed to update highlights in Firestore:", err);
       }
     }
-  }, [selectedBookId, userId]);
+  }
+    , [selectedBookId, userId]);
+
+  // --- BATCH ENRICHMENT ---
+  const handleUpdateBookForEnrichment = useCallback((updatedBook: LibraryItem) => {
+    setBooks(prev => prev.map(b => b.id === updatedBook.id ? updatedBook : b));
+  }, []);
+
+  const {
+    isEnriching,
+    stats: enrichmentStats,
+    startEnrichment,
+    stopEnrichment
+  } = useBatchEnrichment(userId, handleUpdateBookForEnrichment);
 
   const selectedBook = books.find((b) => b.id === selectedBookId);
   const editingBook = books.find((b) => b.id === editingBookId);
@@ -252,7 +285,8 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   }
 
   return (
-    <div className="flex h-screen bg-slate-50 text-slate-900 font-sans overflow-hidden">
+    <div className="flex h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden">
+      {/* Sidebar */}
       <Sidebar
         activeTab={activeTab}
         onTabChange={handleTabChange}
@@ -260,12 +294,18 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
         onClose={() => setIsSidebarOpen(false)}
       />
 
-      <main className="flex-1 overflow-y-auto h-full w-full">
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col h-full w-full relative overflow-y-auto transition-all duration-300">
         {activeTab === "PROFILE" ? (
           <ProfileView
             email={userEmail}
             onLogout={onLogout}
             onBack={() => handleTabChange("DASHBOARD")}
+            books={books}
+            onStartEnrichment={startEnrichment}
+            onStopEnrichment={stopEnrichment}
+            isEnriching={isEnriching}
+            enrichmentStats={enrichmentStats}
           />
         ) : view === "list" ? (
           <BookList
@@ -280,7 +320,8 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
               setIsFormOpen(true);
             }}
             onMobileMenuClick={() => setIsSidebarOpen(true)}
-            onDeleteBook={handleDeleteBook} // 🔥 BookList kartındaki delete butonu buraya bağlı
+            onDeleteBook={handleDeleteBook}
+            onDeleteMultiple={handleBulkDelete}
             onLoadMore={handleLoadMore}
             hasMore={hasMore}
           />
@@ -339,16 +380,16 @@ const AppContent: React.FC = () => {
 
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="bg-white shadow-lg rounded-2xl px-8 py-10 flex flex-col items-center gap-4">
-          <h1 className="text-xl font-bold text-slate-900 mb-2">TomeHub</h1>
-          <p className="text-sm text-slate-600 text-center max-w-xs">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
+        <div className="bg-white dark:bg-slate-900 shadow-lg rounded-2xl px-8 py-10 flex flex-col items-center gap-4 border border-slate-100 dark:border-slate-800">
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white mb-2">TomeHub</h1>
+          <p className="text-sm text-slate-600 dark:text-slate-400 text-center max-w-xs">
             Sign in with your Google account to access your library across all
             devices.
           </p>
           <button
             onClick={loginWithGoogle}
-            className="mt-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-medium shadow-md"
+            className="mt-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-medium shadow-md transition-colors"
           >
             Continue with Google
           </button>
@@ -367,7 +408,9 @@ const AppContent: React.FC = () => {
 const App: React.FC = () => {
   return (
     <AuthProvider>
-      <AppContent />
+      <ThemeProvider>
+        <AppContent />
+      </ThemeProvider>
     </AuthProvider>
   );
 };

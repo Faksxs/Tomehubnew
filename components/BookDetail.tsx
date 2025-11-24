@@ -20,25 +20,25 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
   const getReadingStatusConfig = (status: ReadingStatus) => {
     switch (status) {
       case 'Reading':
-        return { icon: BookOpen, color: 'text-indigo-600', bg: 'bg-indigo-50', border: 'border-indigo-200' };
+        return { icon: BookOpen, color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-900/30', border: 'border-indigo-200 dark:border-indigo-800' };
       case 'Finished':
-        return { icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200' };
+        return { icon: CheckCircle, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/30', border: 'border-emerald-200 dark:border-emerald-800' };
       case 'To Read':
-        return { icon: Clock, color: 'text-slate-500', bg: 'bg-slate-50', border: 'border-slate-200' };
+        return { icon: Clock, color: 'text-slate-500 dark:text-slate-400', bg: 'bg-slate-50 dark:bg-slate-800', border: 'border-slate-200 dark:border-slate-700' };
       default:
-        return { icon: BookOpen, color: 'text-slate-500', bg: 'bg-slate-50', border: 'border-slate-200' };
+        return { icon: BookOpen, color: 'text-slate-500 dark:text-slate-400', bg: 'bg-slate-50 dark:bg-slate-800', border: 'border-slate-200 dark:border-slate-700' };
     }
   };
 
   const getPhysicalStatusConfig = (status: PhysicalStatus) => {
     switch (status) {
       case 'Lent Out':
-        return { icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-200' };
+        return { icon: AlertTriangle, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/30', border: 'border-amber-200 dark:border-amber-800' };
       case 'Lost':
-        return { icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200' };
+        return { icon: AlertTriangle, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-900/30', border: 'border-red-200 dark:border-red-800' };
       case 'On Shelf':
       default:
-        return { icon: Library, color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200' };
+        return { icon: Library, color: 'text-slate-600 dark:text-slate-400', bg: 'bg-slate-50 dark:bg-slate-800', border: 'border-slate-200 dark:border-slate-700' };
     }
   }
 
@@ -58,7 +58,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
   // Helper to render status cards compactly
   const renderStatusCard = (config: any, label: string, value: string) => (
     <div className={`p-2 md:p-4 rounded-lg md:rounded-xl border-2 ${config.bg} ${config.border} flex items-center gap-2 md:gap-3 shadow-sm h-full`}>
-      <div className={`p-1.5 md:p-2 rounded-full bg-white/50 ${config.color} flex-shrink-0`}>
+      <div className={`p-1.5 md:p-2 rounded-full bg-white/50 dark:bg-black/20 ${config.color} flex-shrink-0`}>
         <config.icon size={16} className="md:w-5 md:h-5" />
       </div>
       <div className="min-w-0 flex-1">
@@ -71,33 +71,33 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
   return (
     <div className="max-w-5xl mx-auto p-3 md:p-4 pb-20 animate-in fade-in duration-300">
       {/* Header Navigation */}
-      <button onClick={onBack} className="mb-2 md:mb-6 flex items-center text-slate-500 hover:text-indigo-600 transition-colors group text-sm md:text-base">
+      <button onClick={onBack} className="mb-2 md:mb-6 flex items-center text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors group text-sm md:text-base">
         <ArrowLeft size={16} className="mr-1 md:mr-1 md:w-5 md:h-5 group-hover:-translate-x-1 transition-transform" />
         Back to {isNote ? 'Notes' : 'Library'}
       </button>
 
-      <div className="bg-white rounded-xl md:rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-xl md:rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
 
         {/* Book Header Content */}
-        <div className="p-4 md:p-8 border-b border-slate-100">
+        <div className="p-4 md:p-8 border-b border-slate-100 dark:border-slate-800">
           {isNote ? (
             // --- SIMPLIFIED HEADER FOR NOTES ---
             <div className="flex justify-between items-start">
               <div className="flex-1">
-                <div className="flex items-center gap-2 md:gap-3 mb-2 md:mb-4 text-indigo-500">
+                <div className="flex items-center gap-2 md:gap-3 mb-2 md:mb-4 text-indigo-500 dark:text-indigo-400">
                   <PenTool size={18} className="md:w-6 md:h-6" />
-                  <span className="text-xs md:text-sm font-bold tracking-wide uppercase text-indigo-500/80">Personal Note</span>
+                  <span className="text-xs md:text-sm font-bold tracking-wide uppercase text-indigo-500/80 dark:text-indigo-400/80">Personal Note</span>
                 </div>
-                <h1 className="text-xl md:text-4xl font-bold text-slate-900 mb-2 md:mb-4 leading-tight">{book.title}</h1>
+                <h1 className="text-xl md:text-4xl font-bold text-slate-900 dark:text-white mb-2 md:mb-4 leading-tight">{book.title}</h1>
 
                 {/* Tags */}
                 <div className="flex flex-wrap gap-1.5 md:gap-2 mb-2">
                   {book.tags.map((tag, idx) => (
-                    <span key={idx} className="px-1.5 py-0.5 md:px-2 md:py-1 bg-slate-50 text-slate-600 text-[10px] md:text-xs rounded border border-slate-100">
+                    <span key={idx} className="px-1.5 py-0.5 md:px-2 md:py-1 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] md:text-xs rounded border border-slate-100 dark:border-slate-700">
                       #{tag}
                     </span>
                   ))}
-                  <span className="px-1.5 py-0.5 md:px-2 md:py-1 text-slate-400 text-[10px] md:text-xs flex items-center gap-1">
+                  <span className="px-1.5 py-0.5 md:px-2 md:py-1 text-slate-400 dark:text-slate-500 text-[10px] md:text-xs flex items-center gap-1">
                     <Calendar size={10} className="md:w-3 md:h-3" />
                     {new Date(book.addedAt).toLocaleDateString()}
                   </span>
@@ -107,7 +107,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); onEdit(); }}
-                  className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
+                  className="p-2 text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-full transition-colors"
                   title="Edit Note"
                 >
                   <Edit2 size={18} className="md:w-5 md:h-5" />
@@ -115,7 +115,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                  className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
+                  className="p-2 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition-colors"
                   title="Delete Note"
                 >
                   <Trash2 size={18} className="md:w-5 md:h-5" />
@@ -129,7 +129,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
               {/* Top Section (Mobile: Side-by-side Cover & Info | Desktop: Just Cover) */}
               <div className="flex gap-4 md:block md:shrink-0">
                 {/* Cover Placeholder */}
-                <div className="w-20 h-32 md:w-34 md:h-52 bg-slate-200 rounded-lg shadow-inner flex-shrink-0 flex items-center justify-center text-slate-400 self-center md:self-start overflow-hidden relative border border-slate-100">
+                <div className="w-20 h-32 md:w-34 md:h-52 bg-slate-200 dark:bg-slate-800 rounded-lg shadow-inner flex-shrink-0 flex items-center justify-center text-slate-400 dark:text-slate-600 self-center md:self-start overflow-hidden relative border border-slate-100 dark:border-slate-700">
                   {book.type === 'BOOK' && book.coverUrl ? (
                     <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover" />
                   ) : (
@@ -141,10 +141,10 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
 
                 {/* Mobile-Only Info Column (Right of Cover) */}
                 <div className="md:hidden flex-1 flex flex-col justify-center min-w-0 py-1">
-                  <h1 className="text-lg font-bold text-slate-900 mb-1 leading-snug line-clamp-3">{book.title}</h1>
-                  <p className="text-sm text-slate-600 mb-2 line-clamp-2">{book.author}</p>
+                  <h1 className="text-lg font-bold text-slate-900 dark:text-white mb-1 leading-snug line-clamp-3">{book.title}</h1>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-2 line-clamp-2">{book.author}</p>
                   {book.url && book.type !== 'BOOK' && (
-                    <a href={book.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-indigo-600 hover:underline max-w-full">
+                    <a href={book.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 hover:underline max-w-full">
                       <LinkIcon size={12} />
                       <span className="text-xs truncate">{new URL(book.url).hostname}</span>
                     </a>
@@ -154,13 +154,13 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
 
               {/* Desktop-Only Info Column (Middle) */}
               <div className="hidden md:block flex-1 min-w-0">
-                <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2 leading-tight">{book.title}</h1>
-                <p className="text-xl text-slate-600 mb-4">{book.author}</p>
+                <h1 className="text-3xl md:text-4xl font-bold text-slate-900 dark:text-white mb-2 leading-tight">{book.title}</h1>
+                <p className="text-xl text-slate-600 dark:text-slate-400 mb-4">{book.author}</p>
 
                 {/* Tags */}
                 <div className="flex flex-wrap gap-2 mb-6">
                   {book.tags.map((tag, idx) => (
-                    <span key={idx} className="px-2 py-1 bg-slate-50 text-slate-600 text-xs rounded border border-slate-100">
+                    <span key={idx} className="px-2 py-1 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs rounded border border-slate-100 dark:border-slate-700">
                       #{tag}
                     </span>
                   ))}
@@ -169,7 +169,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                 {/* Links */}
                 {book.url && book.type !== 'BOOK' && (
                   <div className="mb-6">
-                    <a href={book.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-indigo-600 hover:underline">
+                    <a href={book.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-indigo-600 dark:text-indigo-400 hover:underline">
                       <LinkIcon size={16} />
                       <span className="text-sm">{book.url}</span>
                     </a>
@@ -180,7 +180,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
               {/* Mobile-Only Tags Row (Below Cover/Info) */}
               <div className="md:hidden flex flex-wrap gap-1.5 -mt-1 mb-1">
                 {book.tags.map((tag, idx) => (
-                  <span key={idx} className="px-1.5 py-0.5 bg-slate-50 text-slate-600 text-[10px] rounded border border-slate-100">
+                  <span key={idx} className="px-1.5 py-0.5 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] rounded border border-slate-100 dark:border-slate-700">
                     #{tag}
                   </span>
                 ))}
@@ -211,14 +211,14 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); onEdit(); }}
-                    className="flex items-center justify-center gap-2 px-3 py-2 md:px-4 bg-white border border-slate-200 hover:border-indigo-300 hover:text-indigo-600 rounded-lg text-slate-600 transition-colors text-xs md:text-sm font-medium"
+                    className="flex items-center justify-center gap-2 px-3 py-2 md:px-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg text-slate-600 dark:text-slate-400 transition-colors text-xs md:text-sm font-medium"
                   >
                     <Edit2 size={14} className="md:w-4 md:h-4" /> Edit
                   </button>
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                    className="flex items-center justify-center gap-2 px-3 py-2 md:px-4 bg-white border border-slate-200 hover:border-red-300 hover:text-red-600 rounded-lg text-slate-600 transition-colors text-xs md:text-sm font-medium"
+                    className="flex items-center justify-center gap-2 px-3 py-2 md:px-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-red-300 dark:hover:border-red-500 hover:text-red-600 dark:hover:text-red-400 rounded-lg text-slate-600 dark:text-slate-400 transition-colors text-xs md:text-sm font-medium"
                   >
                     <Trash2 size={14} className="md:w-4 md:h-4" /> Delete
                   </button>
@@ -230,17 +230,17 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
 
         {/* Tabs - Hidden for Personal Notes */}
         {!isNote && (
-          <div className="flex border-b border-slate-100">
+          <div className="flex border-b border-slate-100 dark:border-slate-800">
             <button
               onClick={() => setActiveTab('info')}
-              className={`flex-1 py-3 md:py-4 text-xs md:text-sm font-medium text-center border-b-2 transition-colors ${activeTab === 'info' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'
+              className={`flex-1 py-3 md:py-4 text-xs md:text-sm font-medium text-center border-b-2 transition-colors ${activeTab === 'info' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                 }`}
             >
               Details & Notes
             </button>
             <button
               onClick={() => setActiveTab('highlights')}
-              className={`flex-1 py-3 md:py-4 text-xs md:text-sm font-medium text-center border-b-2 transition-colors ${activeTab === 'highlights' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'
+              className={`flex-1 py-3 md:py-4 text-xs md:text-sm font-medium text-center border-b-2 transition-colors ${activeTab === 'highlights' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                 }`}
             >
               Highlights ({book.highlights.length})
@@ -249,22 +249,22 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
         )}
 
         {/* Tab Content */}
-        <div className="p-4 md:p-8 bg-slate-50/50 min-h-[400px]">
+        <div className="p-4 md:p-8 bg-slate-50/50 dark:bg-slate-900/50 min-h-[400px]">
           {(activeTab === 'info' || isNote) && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
               <div className={isNote ? "md:col-span-3" : "md:col-span-2 space-y-6"}>
                 {/* General Notes / Content */}
-                <div className={`bg-white p-4 md:p-6 rounded-xl border border-slate-100 shadow-sm ${isNote ? 'min-h-[300px]' : ''}`}>
+                <div className={`bg-white dark:bg-slate-900 p-4 md:p-6 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm ${isNote ? 'min-h-[300px]' : ''}`}>
                   {!isNote && (
-                    <h3 className="text-base md:text-lg font-semibold text-slate-800 mb-3 md:mb-4 flex items-center gap-2">
-                      <StickyNote size={18} className="text-indigo-500 md:w-5 md:h-5" />
+                    <h3 className="text-base md:text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3 md:mb-4 flex items-center gap-2">
+                      <StickyNote size={18} className="text-indigo-500 dark:text-indigo-400 md:w-5 md:h-5" />
                       General Notes
                     </h3>
                   )}
                   {book.generalNotes ? (
-                    <p className="text-slate-600 whitespace-pre-wrap leading-relaxed text-sm md:text-lg">{book.generalNotes}</p>
+                    <p className="text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed text-sm md:text-lg">{book.generalNotes}</p>
                   ) : (
-                    <p className="text-slate-400 italic text-sm">No content added.</p>
+                    <p className="text-slate-400 dark:text-slate-500 italic text-sm">No content added.</p>
                   )}
                 </div>
               </div>
@@ -272,52 +272,52 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
               {!isNote && (
                 <div className="space-y-4 md:space-y-6">
                   {/* Metadata Card */}
-                  <div className="bg-white p-4 md:p-6 rounded-xl border border-slate-100 shadow-sm space-y-4">
-                    <h3 className="text-xs md:text-sm font-semibold text-slate-900 uppercase tracking-wider mb-2 md:mb-4">Information</h3>
+                  <div className="bg-white dark:bg-slate-900 p-4 md:p-6 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4">
+                    <h3 className="text-xs md:text-sm font-semibold text-slate-900 dark:text-white uppercase tracking-wider mb-2 md:mb-4">Information</h3>
 
                     {(book.publisher) && (
                       <div className="flex flex-col gap-0.5 md:gap-1">
-                        <span className="text-[10px] md:text-xs text-slate-500">{book.type === 'ARTICLE' ? 'Journal' : 'Publisher'}</span>
-                        <span className="text-sm font-medium text-slate-800">{book.publisher}</span>
+                        <span className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400">{book.type === 'ARTICLE' ? 'Journal' : 'Publisher'}</span>
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-200">{book.publisher}</span>
                       </div>
                     )}
 
                     {book.publicationYear && (
                       <div className="flex flex-col gap-0.5 md:gap-1">
-                        <span className="text-[10px] md:text-xs text-slate-500">Year</span>
-                        <span className="text-sm font-medium text-slate-800">{book.publicationYear}</span>
+                        <span className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400">Year</span>
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-200">{book.publicationYear}</span>
                       </div>
                     )}
 
                     {book.translator && (
                       <div className="flex flex-col gap-0.5 md:gap-1">
-                        <span className="text-[10px] md:text-xs text-slate-500">Translator</span>
-                        <span className="text-sm font-medium text-slate-800">{book.translator}</span>
+                        <span className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400">Translator</span>
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-200">{book.translator}</span>
                       </div>
                     )}
 
                     {book.isbn && (
                       <div className="flex flex-col gap-0.5 md:gap-1">
-                        <span className="text-[10px] md:text-xs text-slate-500">ISBN</span>
-                        <span className="text-sm font-medium text-slate-800 font-mono">{book.isbn}</span>
+                        <span className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400">ISBN</span>
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-200 font-mono">{book.isbn}</span>
                       </div>
                     )}
 
                     {book.code && (
                       <div className="flex flex-col gap-0.5 md:gap-1">
-                        <span className="text-[10px] md:text-xs text-slate-500">Shelf Code</span>
+                        <span className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400">Shelf Code</span>
                         <div className="flex items-center gap-2">
-                          <Hash size={12} className="text-slate-400 md:w-3.5 md:h-3.5" />
-                          <span className="text-sm font-medium text-slate-800">{book.code}</span>
+                          <Hash size={12} className="text-slate-400 dark:text-slate-500 md:w-3.5 md:h-3.5" />
+                          <span className="text-sm font-medium text-slate-800 dark:text-slate-200">{book.code}</span>
                         </div>
                       </div>
                     )}
 
                     <div className="flex flex-col gap-0.5 md:gap-1">
-                      <span className="text-[10px] md:text-xs text-slate-500">Added</span>
+                      <span className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400">Added</span>
                       <div className="flex items-center gap-2">
-                        <Calendar size={12} className="text-slate-400 md:w-3.5 md:h-3.5" />
-                        <span className="text-sm font-medium text-slate-800">
+                        <Calendar size={12} className="text-slate-400 dark:text-slate-500 md:w-3.5 md:h-3.5" />
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
                           {new Date(book.addedAt).toLocaleDateString()}
                         </span>
                       </div>
@@ -335,7 +335,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                   <button
                     onClick={handleAnalyze}
                     disabled={isAnalyzing}
-                    className="text-xs md:text-sm text-indigo-600 hover:text-indigo-800 flex items-center gap-2 disabled:opacity-50"
+                    className="text-xs md:text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 flex items-center gap-2 disabled:opacity-50"
                   >
                     <Sparkles size={14} className="md:w-4 md:h-4" />
                     {isAnalyzing ? 'Analyzing...' : 'Analyze Highlights with AI'}
@@ -344,11 +344,11 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
               )}
 
               {aiSummary && (
-                <div className="bg-indigo-50 border border-indigo-100 p-3 md:p-4 rounded-lg mb-4 animate-in fade-in slide-in-from-top-2">
-                  <h4 className="text-indigo-800 font-semibold text-xs md:text-sm mb-2 flex items-center gap-2">
+                <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 p-3 md:p-4 rounded-lg mb-4 animate-in fade-in slide-in-from-top-2">
+                  <h4 className="text-indigo-800 dark:text-indigo-300 font-semibold text-xs md:text-sm mb-2 flex items-center gap-2">
                     <Sparkles size={14} /> AI Analysis
                   </h4>
-                  <p className="text-indigo-900 text-xs md:text-sm leading-relaxed italic">
+                  <p className="text-indigo-900 dark:text-indigo-200 text-xs md:text-sm leading-relaxed italic">
                     "{aiSummary}"
                   </p>
                 </div>

@@ -10,6 +10,7 @@ import {
     startAfter,
     QueryDocumentSnapshot,
     DocumentData,
+    writeBatch,
 } from "firebase/firestore";
 import { db } from "./firebaseClient";
 import { LibraryItem } from "../types";
@@ -81,4 +82,26 @@ export const deleteItemForUser = async (
 ): Promise<void> => {
     const ref = doc(userItemsCollection(userId), itemId);
     await deleteDoc(ref);
+    await deleteDoc(ref);
+};
+
+/**
+ * Birden fazla item'ı tek seferde siler (Batch Write).
+ */
+export const deleteMultipleItemsForUser = async (
+    userId: string,
+    itemIds: string[]
+): Promise<void> => {
+    if (itemIds.length === 0) return;
+
+    // Firestore batch limit is 500. If more, we need multiple batches.
+    // For simplicity, assuming < 500 for now or handling chunks.
+    const batch = writeBatch(db);
+
+    itemIds.forEach((id) => {
+        const ref = doc(userItemsCollection(userId), id);
+        batch.delete(ref);
+    });
+
+    await batch.commit();
 };

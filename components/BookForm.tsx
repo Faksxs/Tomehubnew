@@ -185,10 +185,10 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
 
   const getIcon = () => {
     switch (initialType) {
-      case 'ARTICLE': return <FileText className="text-indigo-500" size={24} />;
-      case 'WEBSITE': return <Globe className="text-indigo-500" size={24} />;
-      case 'PERSONAL_NOTE': return <PenTool className="text-indigo-500" size={24} />;
-      default: return <BookIcon className="text-indigo-500" size={24} />;
+      case 'ARTICLE': return <FileText className="text-indigo-500 dark:text-indigo-400" size={24} />;
+      case 'WEBSITE': return <Globe className="text-indigo-500 dark:text-indigo-400" size={24} />;
+      case 'PERSONAL_NOTE': return <PenTool className="text-indigo-500 dark:text-indigo-400" size={24} />;
+      default: return <BookIcon className="text-indigo-500 dark:text-indigo-400" size={24} />;
     }
   }
 
@@ -209,8 +209,8 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
 
         {/* Header */}
-        <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-white z-10">
-          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+        <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-900 z-10">
+          <h2 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
             {mode === 'search' ? (
               <>
                 <Search className="text-indigo-500" size={24} />
@@ -223,7 +223,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
               </>
             )}
           </h2>
-          <button onClick={onCancel} className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-100 rounded-full transition-colors">
+          <button onClick={onCancel} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
             <X size={24} />
           </button>
         </div>
@@ -238,7 +238,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={initialType === 'ARTICLE' ? "Enter Title, DOI, Author..." : "Enter Title, ISBN, Author..."}
-                className="w-full pl-5 pr-14 py-4 text-lg border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all placeholder:text-slate-400"
+                className="w-full pl-5 pr-14 py-4 text-lg border-2 border-slate-200 dark:border-slate-700 rounded-xl focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
               />
               <button
                 type="submit"
@@ -252,23 +252,23 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
             <div className="space-y-3 flex-1 mt-6">
               {searchResults.length > 0 ? (
                 <>
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Matches Found</p>
+                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Matches Found</p>
                   {searchResults.map((draft, idx) => (
                     <button
                       key={idx}
                       onClick={() => selectItem(draft)}
-                      className="w-full text-left p-4 rounded-xl border border-slate-200 hover:border-indigo-300 hover:shadow-md hover:bg-indigo-50/30 transition-all group flex justify-between items-center"
+                      className="w-full text-left p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500 hover:shadow-md hover:bg-indigo-50/30 dark:hover:bg-indigo-900/20 transition-all group flex justify-between items-center"
                     >
                       <div>
-                        <h3 className="font-bold text-slate-900">{draft.title}</h3>
-                        <p className="text-slate-600 text-sm">{draft.author}</p>
+                        <h3 className="font-bold text-slate-900 dark:text-white">{draft.title}</h3>
+                        <p className="text-slate-600 dark:text-slate-400 text-sm">{draft.author}</p>
                         <div className="flex gap-3 mt-1 text-xs text-slate-400">
                           {draft.publisher && <span>{draft.publisher}</span>}
                           {draft.publishedDate && <span>{draft.publishedDate}</span>}
                           {draft.isbn && <span className="font-mono tracking-tight">ISBN: {draft.isbn}</span>}
                         </div>
                       </div>
-                      <ChevronRight className="text-slate-300 group-hover:text-indigo-500" size={20} />
+                      <ChevronRight className="text-slate-300 dark:text-slate-600 group-hover:text-indigo-500 dark:group-hover:text-indigo-400" size={20} />
                     </button>
                   ))}
                 </>
@@ -282,10 +282,10 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
               )}
             </div>
 
-            <div className="mt-6 pt-6 border-t border-slate-100 flex justify-center">
+            <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800 flex justify-center">
               <button
                 onClick={() => setMode('edit')}
-                className="text-slate-500 hover:text-indigo-600 text-sm font-medium flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-slate-50 transition-colors"
+                className="text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-sm font-medium flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
               >
                 <span>Don't see it? Enter details manually</span>
                 <SkipForward size={16} />
@@ -301,20 +301,20 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
             <div className="space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className={isNote ? "md:col-span-2" : "md:col-span-2"}>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Title *</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Title *</label>
                   <input
                     required
                     name="title"
                     value={formData.title}
                     onChange={handleChange}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                     placeholder={isNote ? "Note Title" : (initialType === 'WEBSITE' ? 'Page Title or Site Name' : 'e.g. The Stranger')}
                   />
                 </div>
 
                 {!isNote && (
                   <div className={initialType === 'WEBSITE' ? 'md:col-span-2' : ''}>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                       {initialType === 'WEBSITE' ? 'Author / Organization' : 'Author *'}
                     </label>
                     <input
@@ -322,7 +322,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                       name="author"
                       value={formData.author}
                       onChange={handleChange}
-                      className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                       placeholder="e.g. Albert Camus"
                     />
                   </div>
@@ -330,7 +330,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
 
                 {isNote && (
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1">
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1">
                       <Calendar size={14} className="text-slate-400" />
                       Date
                     </label>
@@ -339,19 +339,19 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                       name="addedAt"
                       value={formData.addedAt}
                       onChange={handleChange}
-                      className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                     />
                   </div>
                 )}
 
                 {initialType === 'BOOK' && (
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Translator</label>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Translator</label>
                     <input
                       name="translator"
                       value={formData.translator}
                       onChange={handleChange}
-                      className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                     />
                   </div>
                 )}
@@ -361,51 +361,51 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {initialType !== 'WEBSITE' && (
                     <div className={initialType === 'ARTICLE' ? 'md:col-span-2' : ''}>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                         {initialType === 'ARTICLE' ? 'Journal / Publisher' : 'Publisher'}
                       </label>
                       <input
                         name="publisher"
                         value={formData.publisher}
                         onChange={handleChange}
-                        className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                       />
                     </div>
                   )}
 
                   {initialType === 'BOOK' && (
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">ISBN</label>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">ISBN</label>
                       <input
                         name="isbn"
                         value={formData.isbn}
                         onChange={handleChange}
-                        className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-mono"
+                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-mono bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                       />
                     </div>
                   )}
 
                   {initialType === 'ARTICLE' && (
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Year</label>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Year</label>
                       <input
                         name="publicationYear"
                         value={formData.publicationYear}
                         onChange={handleChange}
                         placeholder="YYYY"
-                        className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                       />
                     </div>
                   )}
 
                   {initialType === 'BOOK' && (
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Shelf Code</label>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Shelf Code</label>
                       <input
                         name="code"
                         value={formData.code}
                         onChange={handleChange}
-                        className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                         placeholder="e.g. A-12"
                       />
                     </div>
@@ -416,12 +416,12 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
               {/* URL Field for Website or Article */}
               {(initialType === 'WEBSITE' || initialType === 'ARTICLE') && (
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">URL</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">URL</label>
                   <input
                     name="url"
                     value={formData.url}
                     onChange={handleChange}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-indigo-600"
+                    className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-950"
                     placeholder="https://..."
                   />
                 </div>
@@ -429,7 +429,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
 
               {initialType === 'BOOK' && (
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center justify-between">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <ImageIcon size={16} />
                       Cover Image URL
@@ -443,20 +443,20 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                         value={formData.coverUrl}
                         onChange={handleChange}
                         placeholder="Paste image URL or Auto-Find ->"
-                        className="w-full border border-slate-300 rounded-lg pl-3 pr-24 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm text-slate-600"
+                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg pl-3 pr-24 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-950"
                       />
                       <button
                         type="button"
                         onClick={() => triggerCoverFetch(formData.title, formData.author, formData.isbn)}
                         disabled={isFetchingCover || (!formData.title && !formData.isbn)}
-                        className="absolute right-1 top-1 bottom-1 px-3 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded text-xs font-semibold flex items-center gap-1 transition-colors"
+                        className="absolute right-1 top-1 bottom-1 px-3 bg-indigo-100 dark:bg-indigo-900/50 hover:bg-indigo-200 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 rounded text-xs font-semibold flex items-center gap-1 transition-colors"
                         title="Auto-find cover based on Title/ISBN"
                       >
                         {isFetchingCover ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
                         Auto-Find
                       </button>
                     </div>
-                    <div className="w-16 h-20 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-sm relative group">
+                    <div className="w-16 h-20 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-sm relative group">
                       {formData.coverUrl ? (
                         <img
                           src={formData.coverUrl}
@@ -484,7 +484,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                       href={`https://www.google.com/search?tbm=isch&q=book+cover+${encodeURIComponent(formData.title + ' ' + formData.author)}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-xs text-slate-400 hover:text-indigo-600 hover:underline flex items-center gap-1"
+                      className="text-xs text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline flex items-center gap-1"
                     >
                       Manual Search on Google Images <Search size={10} />
                     </a>
@@ -493,12 +493,12 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
               )}
             </div>
 
-            <hr className="my-6 border-slate-100" />
+            <hr className="my-6 border-slate-100 dark:border-slate-800" />
 
             {/* Notes Section moved UP for Personal Notes to prioritize writing */}
             {isNote && (
               <div className="mb-6 flex-1 flex flex-col">
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                   Content
                 </label>
                 <textarea
@@ -506,7 +506,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                   rows={8}
                   value={formData.generalNotes}
                   onChange={handleChange}
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none leading-relaxed flex-1 font-lora"
+                  className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none leading-relaxed flex-1 font-lora bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                   placeholder="Write your note here..."
                 />
               </div>
@@ -517,12 +517,12 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
               {!isNote && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Reading Status *</label>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Reading Status *</label>
                     <select
                       name="readingStatus"
                       value={formData.readingStatus}
                       onChange={handleChange}
-                      className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                     >
                       <option value="To Read">To Read</option>
                       <option value="Reading">Reading</option>
@@ -533,12 +533,12 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                   {/* Inventory Status - Books Only */}
                   {initialType === 'BOOK' && (
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Inventory Status *</label>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Inventory Status *</label>
                       <select
                         name="status"
                         value={formData.status}
                         onChange={handleChange}
-                        className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                       >
                         <option value="On Shelf">On Shelf</option>
                         <option value="Lent Out">Lent Out</option>
@@ -550,14 +550,14 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
               )}
 
               <div className="relative">
-                <label className="block text-sm font-medium text-slate-700 mb-1 flex justify-between">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 flex justify-between">
                   Tags (comma separated)
                   {isNote && (
                     <button
                       type="button"
                       onClick={handleGenerateTags}
                       disabled={isGeneratingTags || !formData.generalNotes}
-                      className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1 disabled:opacity-50"
+                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 flex items-center gap-1 disabled:opacity-50"
                     >
                       {isGeneratingTags ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                       AI Auto-Tag
@@ -568,7 +568,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                   name="tags"
                   value={formData.tags}
                   onChange={handleChange}
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                   placeholder={isNote ? "Use AI to generate tags..." : "Ideas, Todo, Research"}
                 />
               </div>
@@ -600,12 +600,12 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
               )}
             </div>
 
-            <hr className="my-6 border-slate-100" />
+            <hr className="my-6 border-slate-100 dark:border-slate-800" />
 
             {/* Notes (Only for non-notes) */}
             {!isNote && (
               <div className="mb-4 flex-1 flex flex-col">
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                   General Notes & Summary
                 </label>
                 <textarea
@@ -613,7 +613,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                   rows={4}
                   value={formData.generalNotes}
                   onChange={handleChange}
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none leading-relaxed flex-1"
+                  className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none leading-relaxed flex-1 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                   placeholder={initialType === 'WEBSITE' ? "Why did you save this website?" : "Your thoughts..."}
                 />
               </div>
@@ -624,7 +624,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                 <button
                   type="button"
                   onClick={() => setMode('search')}
-                  className="text-sm text-slate-500 hover:text-indigo-600 underline decoration-indigo-200 hover:decoration-indigo-600"
+                  className="text-sm text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 underline decoration-indigo-200 dark:decoration-indigo-800 hover:decoration-indigo-600 dark:hover:decoration-indigo-400"
                 >
                   Back to Search
                 </button>
@@ -633,7 +633,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                 <button
                   type="button"
                   onClick={onCancel}
-                  className="px-5 py-2 text-slate-700 hover:bg-slate-100 rounded-lg transition-colors font-medium"
+                  className="px-5 py-2 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors font-medium"
                 >
                   Cancel
                 </button>

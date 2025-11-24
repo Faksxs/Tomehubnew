@@ -1,4 +1,17 @@
 import { ResourceType, LibraryItem } from "../types";
+import { getAuth } from "firebase/auth";
+
+// Helper function to get Firebase Auth ID token
+const getAuthToken = async (): Promise<string> => {
+  const auth = getAuth();
+  const user = auth.currentUser;
+
+  if (!user) {
+    throw new Error('User must be logged in to use AI features');
+  }
+
+  return await user.getIdToken();
+};
 
 export interface ItemDraft {
   title: string;
@@ -157,9 +170,14 @@ export const searchResourcesAI = async (
       Return ONLY valid JSON. No markdown formatting.
     `;
 
+    const idToken = await getAuthToken();
+
     const response = await fetch('https://us-central1-tomehub.cloudfunctions.net/bookEnrichmentHttp', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
+      },
       body: JSON.stringify({ prompt })
     });
 
@@ -209,9 +227,14 @@ export const analyzeHighlightsAI = async (
       Return ONLY the summary text.
     `;
 
+    const idToken = await getAuthToken();
+
     const response = await fetch('https://us-central1-tomehub.cloudfunctions.net/bookEnrichmentHttp', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
+      },
       body: JSON.stringify({ prompt })
     });
 
@@ -244,9 +267,14 @@ export const generateTagsForNote = async (
       Note: "${noteContent}"
     `;
 
+    const idToken = await getAuthToken();
+
     const response = await fetch('https://us-central1-tomehub.cloudfunctions.net/bookEnrichmentHttp', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
+      },
       body: JSON.stringify({ prompt })
     });
 
@@ -364,9 +392,14 @@ const verifyCoverWithAI = async (
       Return ONLY the URL string. If not found, return "null".
     `;
 
+    const idToken = await getAuthToken();
+
     const response = await fetch('https://us-central1-tomehub.cloudfunctions.net/bookEnrichmentHttp', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
+      },
       body: JSON.stringify({ prompt })
     });
 
@@ -442,6 +475,11 @@ export const enrichBookWithAI = async (item: ItemDraft): Promise<ItemDraft> => {
       Current Data:
       ${JSON.stringify(item)}
       
+      CRITICAL LANGUAGE INSTRUCTION:
+      1. DETECT the language of the book title and author.
+      2. IF the book is clearly English, generate 'summary' and 'tags' in ENGLISH.
+      3. IF the book is Turkish OR the language is unclear/ambiguous, generate 'summary' and 'tags' in TURKISH (Default).
+      
       Return the COMPLETE updated JSON object. 
       - Ensure 'summary' is detailed (at least 3 sentences).
       - Ensure 'tags' has at least 3 relevant genres/topics.
@@ -450,9 +488,14 @@ export const enrichBookWithAI = async (item: ItemDraft): Promise<ItemDraft> => {
       Return ONLY valid JSON. No markdown.
     `;
 
+    const idToken = await getAuthToken();
+
     const response = await fetch('https://us-central1-tomehub.cloudfunctions.net/bookEnrichmentHttp', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
+      },
       body: JSON.stringify({ prompt })
     });
 
@@ -483,4 +526,77 @@ export const needsBookEnrichment = (item: ItemDraft): boolean => {
   const needsSummary = !item.summary || item.summary.trim().length < 40;
   const needsTags = !item.tags || item.tags.length < 2;
   return needsSummary || needsTags;
+};
+
+export const enrichBooksBatch = async (items: ItemDraft[]): Promise<ItemDraft[]> => {
+  if (items.length === 0) return [];
+
+  try {
+    const prompt = `
+      Enrich this LIST of books with missing details (summary, tags, publisher, publication year).
+      
+      Input Data:
+      ${JSON.stringify(items)}
+      
+      CRITICAL LANGUAGE INSTRUCTION (Apply to EACH book individually):
+      1. DETECT the language of the book title and author.
+      2. IF the book is clearly English, generate 'summary' and 'tags' in ENGLISH.
+      3. IF the book is Turkish OR the language is unclear/ambiguous, generate 'summary' and 'tags' in TURKISH (Default).
+      
+      Return a JSON ARRAY of objects. Each object must correspond to the input list in the same order.
+      - Ensure 'summary' is detailed (at least 3 sentences).
+      - Ensure 'tags' has at least 3 relevant genres/topics.
+      - Do NOT change the title or author if they look correct.
+      - Include the original 'title' in the output for verification.
+      
+      Return ONLY valid JSON array. No markdown.
+    `;
+
+    const idToken = await getAuthToken();
+
+    const response = await fetch('https://us-central1-tomehub.cloudfunctions.net/bookEnrichmentHttp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
+      },
+      body: JSON.stringify({ prompt })
+    });
+
+    const data = await response.json();
+
+    if (!data.success) {
+      throw new Error(data.error || 'Unknown error');
+    }
+
+    if (!data.message) return items;
+
+    try {
+      const cleanJson = data.message.replace(/```json|```/g, '').trim();
+      const enrichedList = JSON.parse(cleanJson);
+
+      if (!Array.isArray(enrichedList)) {
+        console.error("Batch enrich returned non-array:", enrichedList);
+        return items;
+      }
+
+      // Merge results back into original items
+      // We try to match by index, but fallback to title matching if possible
+      return items.map((original, index) => {
+        const enriched = enrichedList[index] || enrichedList.find((e: any) => e.title === original.title);
+        if (enriched) {
+          return { ...original, ...enriched };
+        }
+        return original;
+      });
+
+    } catch (e) {
+      console.error("Failed to parse batch enriched JSON:", e);
+      return items;
+    }
+
+  } catch (e) {
+    console.error("Batch enrich error (Cloud Function):", e);
+    return items;
+  }
 };
