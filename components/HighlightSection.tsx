@@ -6,9 +6,10 @@ import { generateTagsForNote } from '../services/geminiService';
 interface HighlightSectionProps {
   highlights: Highlight[];
   onUpdate: (highlights: Highlight[]) => void;
+  autoEditHighlightId?: string; // Optional: auto-open edit for this highlight
 }
 
-export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, onUpdate }) => {
+export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, onUpdate, autoEditHighlightId }) => {
   // State for managing the form
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -19,6 +20,16 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
   const [dateInput, setDateInput] = useState('');
   const [tagsInput, setTagsInput] = useState('');
   const [isGeneratingTags, setIsGeneratingTags] = useState(false);
+
+  // Auto-open edit mode if autoEditHighlightId is provided
+  React.useEffect(() => {
+    if (autoEditHighlightId) {
+      const highlight = highlights.find(h => h.id === autoEditHighlightId);
+      if (highlight) {
+        handleEdit(highlight);
+      }
+    }
+  }, [autoEditHighlightId]); // Only run when autoEditHighlightId changes
 
   const handleAddNew = () => {
     setEditingId(null);
@@ -163,13 +174,13 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
               </label>
               <textarea
                 autoFocus
-                rows={4}
+                rows={8}
                 className={`w-full border rounded-lg p-2 md:p-3 text-sm md:text-base text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-lora ${entryType === 'highlight' ? 'bg-yellow-50/50 border-yellow-200' : 'bg-slate-50 border-slate-200'
                   }`}
                 placeholder={entryType === 'highlight' ? "Type the quote exactly as it appears..." : "Write your thoughts, summary, or key takeaway..."}
                 value={formData.text || ''}
                 onChange={e => setFormData(prev => ({ ...prev, text: e.target.value }))}
-              />
+              ></textarea>
             </div>
 
             {/* Note input only for Highlights */}

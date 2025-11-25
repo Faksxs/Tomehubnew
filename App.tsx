@@ -46,6 +46,8 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingBookId, setEditingBookId] = useState<string | null>(null);
+  const [openToHighlights, setOpenToHighlights] = useState(false); // Track if we should open highlights tab
+  const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null); // Track highlight to auto-edit
 
   const [activeTab, setActiveTab] = useState<
     ResourceType | "NOTES" | "DASHBOARD" | "PROFILE"
@@ -108,46 +110,49 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
       }
 
       // 4) Arka planda AI enrichment (UI'yı bloklamadan)
-      (async () => {
-        try {
-          // LibraryItem -> ItemDraft dönüşümü (senin helper'ın)
-          const draft = libraryItemToDraft(newItem);
-
-          // Vercel backend üzerinden Gemini çağrısı
-          const enrichedDraft = await enrichBookWithAI(draft);
-
-          // ItemDraft -> LibraryItem'e geri merge et (senin helper'ın)
-          const enrichedItem = mergeEnrichedDraftIntoItem(
-            newItem,
-            enrichedDraft
-          );
-
-          // Eğer hiçbir anlamlı değişiklik yoksa boşuna state güncellemeyelim
-          const hasChanged =
-            enrichedItem.generalNotes !== newItem.generalNotes ||
-            JSON.stringify(enrichedItem.tags) !==
-            JSON.stringify(newItem.tags);
-
-          if (!hasChanged) return;
-
-          // 5) State'i güncelle (listedeki item'i enriched sürümle değiştir)
-          setBooks((prev) =>
-            prev.map((b) => (b.id === newItem.id ? enrichedItem : b))
-          );
-
-          // 6) Firestore'u da enriched sürümle güncelle
+      // SKIP AI enrichment for Personal Notes - preserve user's original content
+      if (itemData.type !== 'PERSONAL_NOTE') {
+        (async () => {
           try {
-            await saveItemForUser(userId, enrichedItem);
-          } catch (err) {
-            console.error(
-              "Failed to save enriched item to Firestore:",
-              err
+            // LibraryItem -> ItemDraft dönüşümü (senin helper'ın)
+            const draft = libraryItemToDraft(newItem);
+
+            // Vercel backend üzerinden Gemini çağrısı
+            const enrichedDraft = await enrichBookWithAI(draft);
+
+            // ItemDraft -> LibraryItem'e geri merge et (senin helper'ın)
+            const enrichedItem = mergeEnrichedDraftIntoItem(
+              newItem,
+              enrichedDraft
             );
+
+            // Eğer hiçbir anlamlı değişiklik yoksa boşuna state güncellemeyelim
+            const hasChanged =
+              enrichedItem.generalNotes !== newItem.generalNotes ||
+              JSON.stringify(enrichedItem.tags) !==
+              JSON.stringify(newItem.tags);
+
+            if (!hasChanged) return;
+
+            // 5) State'i güncelle (listedeki item'i enriched sürümle değiştir)
+            setBooks((prev) =>
+              prev.map((b) => (b.id === newItem.id ? enrichedItem : b))
+            );
+
+            // 6) Firestore'u da enriched sürümle güncelle
+            try {
+              await saveItemForUser(userId, enrichedItem);
+            } catch (err) {
+              console.error(
+                "Failed to save enriched item to Firestore:",
+                err
+              );
+            }
+          } catch (err) {
+            console.error("Background enrichment failed:", err);
           }
-        } catch (err) {
-          console.error("Background enrichment failed:", err);
-        }
-      })();
+        })();
+      }
     },
     [userId]
   );
@@ -242,6 +247,60 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   }
     , [selectedBookId, userId]);
 
+  const handleToggleFavorite = useCallback(async (id: string) => {
+    // 1. Find and update the item
+    const bookIndex = books.findIndex(b => b.id === id);
+    if (bookIndex === -1) return;
+
+    const book = books[bookIndex];
+    const updatedBook = { ...book, isFavorite: !book.isFavorite };
+
+    // 2. Update Local State
+    setBooks(prev => {
+      const newBooks = [...prev];
+      newBooks[bookIndex] = updatedBook;
+      return newBooks;
+    });
+
+    // 3. Update Firestore
+    try {
+      await saveItemForUser(userId, updatedBook);
+    } catch (err) {
+      console.error("Failed to update favorite status in Firestore:", err);
+      // Optional: Revert state on failure
+    }
+  }, [books, userId]);
+
+  const handleToggleHighlightFavorite = useCallback(async (bookId: string, highlightId: string) => {
+    // 1. Find and update the item
+    const bookIndex = books.findIndex(b => b.id === bookId);
+    if (bookIndex === -1) return;
+
+    const book = books[bookIndex];
+    const updatedHighlights = book.highlights.map(h => {
+      if (h.id === highlightId) {
+        return { ...h, isFavorite: !h.isFavorite };
+      }
+      return h;
+    });
+
+    const updatedBook = { ...book, highlights: updatedHighlights };
+
+    // 2. Update Local State
+    setBooks(prev => {
+      const newBooks = [...prev];
+      newBooks[bookIndex] = updatedBook;
+      return newBooks;
+    });
+
+    // 3. Update Firestore
+    try {
+      await saveItemForUser(userId, updatedBook);
+    } catch (err) {
+      console.error("Failed to update highlight favorite status in Firestore:", err);
+    }
+  }, [books, userId]);
+
   // --- BATCH ENRICHMENT ---
   const handleUpdateBookForEnrichment = useCallback((updatedBook: LibraryItem) => {
     setBooks(prev => prev.map(b => b.id === updatedBook.id ? updatedBook : b));
@@ -313,6 +372,13 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
             activeTab={activeTab}
             onSelectBook={(book) => {
               setSelectedBookId(book.id);
+              setOpenToHighlights(false); // Default to info tab
+              setView("detail");
+            }}
+            onSelectBookWithTab={(book, tab, highlightId) => {
+              setSelectedBookId(book.id);
+              setOpenToHighlights(tab === 'highlights'); // Open to highlights tab if specified
+              setSelectedHighlightId(highlightId || null); // Store highlight ID to auto-edit
               setView("detail");
             }}
             onAddBook={() => {
@@ -322,6 +388,8 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
             onMobileMenuClick={() => setIsSidebarOpen(true)}
             onDeleteBook={handleDeleteBook}
             onDeleteMultiple={handleBulkDelete}
+            onToggleFavorite={handleToggleFavorite}
+            onToggleHighlightFavorite={handleToggleHighlightFavorite}
             onLoadMore={handleLoadMore}
             hasMore={hasMore}
           />
@@ -329,8 +397,12 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
           selectedBook && (
             <BookDetail
               book={selectedBook}
+              initialTab={openToHighlights ? 'highlights' : 'info'}
+              autoEditHighlightId={selectedHighlightId || undefined}
               onBack={() => {
                 setSelectedBookId(null);
+                setOpenToHighlights(false); // Reset state
+                setSelectedHighlightId(null); // Reset highlight ID
                 setView("list");
               }}
               onEdit={() => {

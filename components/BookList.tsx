@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { LibraryItem, ReadingStatus, ResourceType, PhysicalStatus } from '../types';
-import { Search, Plus, Book as BookIcon, Filter, FileText, Globe, ExternalLink, StickyNote, Quote, ArrowRight, PenTool, BarChart2, AlertTriangle, Library, ArrowUpDown, Calendar, Hash, Menu, Trash2, ChevronDown, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { Search, Plus, Book as BookIcon, Filter, FileText, Globe, ExternalLink, StickyNote, Quote, ArrowRight, PenTool, BarChart2, AlertTriangle, Library, ArrowUpDown, Calendar, Hash, Menu, Trash2, ChevronDown, ChevronLeft, ChevronRight, Loader2, Star } from 'lucide-react';
 // import { StatisticsView } from './StatisticsView'; // Lazy loaded below
 const StatisticsView = React.lazy(() => import('./StatisticsView').then(module => ({ default: module.StatisticsView })));
 
@@ -8,23 +8,25 @@ interface BookListProps {
     books: LibraryItem[];
     onAddBook: () => void;
     onSelectBook: (book: LibraryItem) => void;
+    onSelectBookWithTab?: (book: LibraryItem, tab: 'info' | 'highlights', highlightId?: string) => void; // Optional: select book with specific tab and highlight
     activeTab: ResourceType | 'NOTES' | 'DASHBOARD';
     onMobileMenuClick: () => void;
 
     onDeleteBook: (id: string) => void;
     onDeleteMultiple?: (ids: string[]) => void;
+    onToggleFavorite: (id: string) => void; // Toggle favorite status
+    onToggleHighlightFavorite?: (bookId: string, highlightId: string) => void; // Toggle highlight favorite status
 }
 
-export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook, onSelectBook, activeTab, onMobileMenuClick, onDeleteBook, onDeleteMultiple }) => {
+export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook, onSelectBook, onSelectBookWithTab, activeTab, onMobileMenuClick, onDeleteBook, onDeleteMultiple, onToggleFavorite, onToggleHighlightFavorite }) => {
     // UI State
     const [inputValue, setInputValue] = useState(''); // Immediate input for UI
     const [debouncedSearch, setDebouncedSearch] = useState(''); // Delayed search for logic
     const [isTyping, setIsTyping] = useState(false); // Visual feedback
-    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set()); // Selection state
 
     // Filter States
-    const [statusFilter, setStatusFilter] = useState<ReadingStatus | PhysicalStatus | 'ALL'>('ALL');
-    const [sortOption, setSortOption] = useState<'date_desc' | 'title_asc'>('date_desc');
+    const [statusFilter, setStatusFilter] = useState<ReadingStatus | PhysicalStatus | 'ALL' | 'HIGHLIGHTS' | 'FAVORITES'>('ALL');
+    const [sortOption, setSortOption] = useState<'date_desc' | 'date_asc' | 'title_asc'>('date_desc');
     const [publisherFilter, setPublisherFilter] = useState('');
 
     // Pagination State
@@ -68,11 +70,19 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
         }
     }, [inputValue, debouncedSearch]);
 
-    // Reset pagination and selection when filters or tab change
+    // Reset pagination when filters or tab change
     useEffect(() => {
         setCurrentPage(1);
-        setSelectedIds(new Set());
     }, [activeTab, statusFilter, publisherFilter, sortOption]);
+
+    // Reset filters when tab changes
+    useEffect(() => {
+        setStatusFilter('ALL');
+        setPublisherFilter('');
+        setDebouncedSearch('');
+        setInputValue('');
+        setIsTyping(false);
+    }, [activeTab]);
 
     // --- FILTER LOGIC ---
     const filteredBooks = useMemo(() => {
@@ -83,10 +93,16 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
         const result = books.filter(book => {
             if (book.type !== activeTab) return false;
 
-            // 1. Status Filter (Fastest check first)
+            // 2. Status Filter (Fastest check first)
             let matchesStatus = true;
             if (statusFilter !== 'ALL') {
-                if (['To Read', 'Reading', 'Finished'].includes(statusFilter)) {
+                if (statusFilter === 'HIGHLIGHTS') {
+                    // Filter for items with highlights
+                    matchesStatus = book.highlights && book.highlights.length > 0;
+                } else if (statusFilter === 'FAVORITES') {
+                    // Filter for favorited items
+                    matchesStatus = book.isFavorite === true;
+                } else if (['To Read', 'Reading', 'Finished'].includes(statusFilter)) {
                     matchesStatus = book.readingStatus === statusFilter;
                 } else {
                     if (activeTab === 'BOOK') {
@@ -98,14 +114,14 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
             }
             if (!matchesStatus) return false;
 
-            // 2. Publisher Filter
+            // 3. Publisher Filter
             if (publisherFilter) {
                 if (!book.publisher?.toLowerCase().includes(publisherFilter.toLowerCase())) {
                     return false;
                 }
             }
 
-            // 3. Search Term (Slowest check, do last)
+            // 4. Search Term (Slowest check, do last)
             if (!term) return true;
 
             // Check indexed fields (Title, Author, ISBN) first
@@ -135,6 +151,9 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
         return result.sort((a, b) => {
             if (sortOption === 'title_asc') {
                 return a.title.localeCompare(b.title);
+            } else if (sortOption === 'date_asc') {
+                // Oldest first
+                return a.addedAt - b.addedAt;
             }
             // Default: Date Added (Newest first)
             return b.addedAt - a.addedAt;
@@ -151,6 +170,11 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
         return books
             .flatMap(book => book.highlights.map(h => ({ ...h, source: book })))
             .filter(item => {
+                // 1. Status Filter
+                if (statusFilter === 'FAVORITES') {
+                    if (!item.isFavorite) return false;
+                }
+
                 if (!term) return true;
                 return item.text.toLowerCase().includes(term) ||
                     (item.note && item.note.toLowerCase().includes(term)) ||
@@ -159,7 +183,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                     (item.tags && item.tags.some(t => t.toLowerCase().includes(term)));
             })
             .sort((a, b) => b.createdAt - a.createdAt);
-    }, [books, isNotesTab, debouncedSearch]);
+    }, [books, isNotesTab, debouncedSearch, statusFilter]);
 
     // --- STATS CALCULATION ---
     const stats = useMemo(() => {
@@ -210,40 +234,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
         return filteredHighlights.slice(start, start + itemsPerPage);
     }, [filteredHighlights, currentPage, itemsPerPage]);
 
-    // --- SELECTION LOGIC ---
-    const toggleSelection = (id: string) => {
-        setSelectedIds(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(id)) {
-                newSet.delete(id);
-            } else {
-                newSet.add(id);
-            }
-            return newSet;
-        });
-    };
 
-    const toggleSelectAll = () => {
-        const visibleIds = displayedBooks.map(b => b.id);
-        const allSelected = visibleIds.every(id => selectedIds.has(id));
-
-        setSelectedIds(prev => {
-            const newSet = new Set(prev);
-            if (allSelected) {
-                visibleIds.forEach(id => newSet.delete(id));
-            } else {
-                visibleIds.forEach(id => newSet.add(id));
-            }
-            return newSet;
-        });
-    };
-
-    const handleBulkDelete = () => {
-        if (onDeleteMultiple && selectedIds.size > 0) {
-            onDeleteMultiple(Array.from(selectedIds));
-            setSelectedIds(new Set());
-        }
-    };
 
     // --- PAGINATION CONTROLS ---
     const renderPagination = () => {
@@ -354,12 +345,33 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                             return (
                                 <div
                                     key={`${highlight.id}-${idx}`}
-                                    onClick={() => onSelectBook(highlight.source)}
+                                    onClick={() => {
+                                        if (onSelectBookWithTab) {
+                                            onSelectBookWithTab(highlight.source, 'highlights', highlight.id);
+                                        } else {
+                                            onSelectBook(highlight.source);
+                                        }
+                                    }}
                                     className={`break-inside-avoid p-3 md:p-6 rounded-xl border hover:shadow-md transition-all group cursor-pointer relative flex flex-col ${isNote
                                         ? 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500'
                                         : 'bg-yellow-50 dark:bg-yellow-900/10 border-yellow-100 dark:border-yellow-900/30 hover:border-yellow-300 dark:hover:border-yellow-700'
                                         }`}
                                 >
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (onToggleHighlightFavorite) {
+                                                onToggleHighlightFavorite(highlight.source.id, highlight.id);
+                                            }
+                                        }}
+                                        className={`absolute top-2 right-2 p-1.5 rounded-full transition-all shadow-sm z-10 ${highlight.isFavorite
+                                            ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-500 dark:text-amber-400 opacity-100'
+                                            : 'bg-white/80 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 hover:text-amber-500 dark:hover:text-amber-400 opacity-0 group-hover:opacity-100 focus:opacity-100'
+                                            }`}
+                                        title={highlight.isFavorite ? "Remove from Favorites" : "Add to Favorites"}
+                                    >
+                                        <Star size={14} fill={highlight.isFavorite ? "currentColor" : "none"} />
+                                    </button>
                                     <div className="mb-2 md:mb-3">
                                         {isNote ? (
                                             <StickyNote className="text-indigo-400 fill-indigo-50 w-4 h-4 md:w-6 md:h-6" />
@@ -426,14 +438,26 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                                 onClick={() => onSelectBook(note)}
                                 className="break-inside-avoid bg-white dark:bg-slate-900 p-3 md:p-6 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-500 hover:shadow-lg hover:-translate-y-1 transition-all cursor-pointer flex flex-col h-auto group relative"
                             >
-                                {/* Delete Button for Note Card */}
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); onDeleteBook(note.id); }}
-                                    className="absolute top-2 right-2 p-1.5 bg-white/80 dark:bg-slate-800/80 hover:bg-red-50 dark:hover:bg-red-900/30 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 rounded-full transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 shadow-sm"
-                                    title="Delete Note"
-                                >
-                                    <Trash2 size={14} />
-                                </button>
+                                {/* Action Buttons */}
+                                <div className="absolute top-2 right-2 flex gap-1 z-10">
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); onToggleFavorite(note.id); }}
+                                        className={`p-1.5 rounded-full transition-all shadow-sm ${note.isFavorite
+                                            ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-500 dark:text-amber-400 opacity-100'
+                                            : 'bg-white/80 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 hover:text-amber-500 dark:hover:text-amber-400 opacity-0 group-hover:opacity-100 focus:opacity-100'
+                                            }`}
+                                        title={note.isFavorite ? "Remove from Favorites" : "Add to Favorites"}
+                                    >
+                                        <Star size={14} fill={note.isFavorite ? "currentColor" : "none"} />
+                                    </button>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); onDeleteBook(note.id); }}
+                                        className="p-1.5 bg-white/80 dark:bg-slate-800/80 hover:bg-red-50 dark:hover:bg-red-900/30 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 rounded-full transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 shadow-sm"
+                                        title="Delete Note"
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                </div>
 
                                 <h3 className="font-bold text-sm md:text-lg text-slate-900 dark:text-white mb-1 md:mb-3 leading-tight pr-6">{note.title}</h3>
 
@@ -471,18 +495,21 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                                 {/* Compact Cover / Icon Container */}
                                 <div className="h-24 md:h-40 bg-slate-100 dark:bg-slate-800 relative flex items-end justify-between overflow-hidden group-hover:opacity-95 transition-opacity">
 
-                                    {/* Selection Checkbox */}
-                                    <div className="absolute top-2 left-2 z-50" onClick={(e) => e.stopPropagation()}>
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedIds.has(book.id)}
-                                            onChange={() => toggleSelection(book.id)}
-                                            className="w-5 h-5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer shadow-sm"
-                                        />
-                                    </div>
-
-                                    {/* Delete Button Overlay */}
-                                    <div className="absolute top-2 right-2 z-40">
+                                    {/* Action Buttons Overlay */}
+                                    <div className="absolute top-2 right-2 z-40 flex gap-1">
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onToggleFavorite(book.id);
+                                            }}
+                                            className={`p-1.5 rounded-full shadow-sm backdrop-blur-sm border border-slate-100 dark:border-slate-800 transition-all ${book.isFavorite
+                                                ? 'bg-amber-100/90 dark:bg-amber-900/80 text-amber-500 dark:text-amber-400 opacity-100'
+                                                : 'bg-white/90 dark:bg-slate-900/90 text-slate-400 dark:text-slate-500 hover:text-amber-500 dark:hover:text-amber-400 opacity-0 group-hover:opacity-100 focus:opacity-100'
+                                                }`}
+                                            title={book.isFavorite ? "Remove from Favorites" : "Add to Favorites"}
+                                        >
+                                            <Star size={14} className="md:w-4 md:h-4" fill={book.isFavorite ? "currentColor" : "none"} />
+                                        </button>
                                         <button
                                             onClick={(e) => {
                                                 e.stopPropagation();
@@ -624,17 +651,6 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
 
                 {!isStats && (
                     <div className="flex gap-2">
-                        {selectedIds.size > 0 && (
-                            <button
-                                onClick={handleBulkDelete}
-                                className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-3 py-1.5 md:px-5 md:py-2.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors flex items-center gap-1.5 font-medium shrink-0 border border-red-100 dark:border-red-900/30"
-                            >
-                                <Trash2 size={16} className="md:w-5 md:h-5" />
-                                <span className="text-xs md:text-base">
-                                    Delete ({selectedIds.size})
-                                </span>
-                            </button>
-                        )}
                         <button
                             onClick={onAddBook}
                             className="bg-indigo-600 dark:bg-indigo-500 text-white px-3 py-1.5 md:px-5 md:py-2.5 rounded-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-colors flex items-center gap-1.5 shadow-md shadow-indigo-200 dark:shadow-none font-medium shrink-0"
@@ -668,27 +684,33 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                         )}
                     </div>
 
+                    {/* Favorites Toggle for Notes Views */}
+                    {(isNotesTab || isPersonalNotes) && (
+                        <button
+                            onClick={() => setStatusFilter(prev => prev === 'FAVORITES' ? 'ALL' : 'FAVORITES')}
+                            className={`p-2 rounded-lg border transition-all flex items-center justify-center shrink-0 ${statusFilter === 'FAVORITES'
+                                ? 'bg-amber-100 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400'
+                                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700'
+                                }`}
+                            title={statusFilter === 'FAVORITES' ? "Show All" : "Show Favorites Only"}
+                        >
+                            <Star size={20} className="md:w-5 md:h-5" fill={statusFilter === 'FAVORITES' ? "currentColor" : "none"} />
+                        </button>
+                    )}
+
                     {!isNotesTab && !isPersonalNotes && (
                         <div className="grid grid-cols-2 md:flex gap-2 items-center">
-                            {/* Select All Checkbox */}
-                            <div className="flex items-center gap-2 px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800">
-                                <input
-                                    type="checkbox"
-                                    checked={displayedBooks.length > 0 && displayedBooks.every(b => selectedIds.has(b.id))}
-                                    onChange={toggleSelectAll}
-                                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
-                                />
-                                <span className="text-xs md:text-sm text-slate-600 dark:text-slate-300 font-medium whitespace-nowrap">Select All</span>
-                            </div>
                             {/* Filter Dropdown */}
                             <div className="relative min-w-[100px] md:min-w-[160px]">
                                 <Filter className="absolute left-2 md:left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 w-3.5 h-3.5 md:w-4 md:h-4" />
                                 <select
                                     value={statusFilter}
-                                    onChange={(e) => setStatusFilter(e.target.value as ReadingStatus | PhysicalStatus | 'ALL')}
+                                    onChange={(e) => setStatusFilter(e.target.value as ReadingStatus | PhysicalStatus | 'ALL' | 'HIGHLIGHTS' | 'FAVORITES')}
                                     className="w-full pl-7 md:pl-9 pr-6 md:pr-8 py-1.5 md:py-2 border border-slate-200 dark:border-slate-700 rounded-lg appearance-none bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500 text-xs md:text-sm font-medium text-slate-700 dark:text-slate-200 cursor-pointer hover:border-slate-300 dark:hover:border-slate-600"
                                 >
                                     <option value="ALL">All</option>
+                                    <option value="FAVORITES">Favorites</option>
+                                    <option value="HIGHLIGHTS">Highlight</option>
                                     <optgroup label="Status">
                                         <option value="To Read">To Read</option>
                                         <option value="Reading">Reading</option>
@@ -709,10 +731,11 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                                 <ArrowUpDown className="absolute left-2 md:left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 w-3.5 h-3.5 md:w-4 md:h-4" />
                                 <select
                                     value={sortOption}
-                                    onChange={(e) => setSortOption(e.target.value as 'date_desc' | 'title_asc')}
+                                    onChange={(e) => setSortOption(e.target.value as 'date_desc' | 'date_asc' | 'title_asc')}
                                     className="w-full pl-7 md:pl-9 pr-6 md:pr-8 py-1.5 md:py-2 border border-slate-200 dark:border-slate-700 rounded-lg appearance-none bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500 text-xs md:text-sm font-medium text-slate-700 dark:text-slate-200 cursor-pointer hover:border-slate-300 dark:hover:border-slate-600"
                                 >
                                     <option value="date_desc">Newest</option>
+                                    <option value="date_asc">Oldest</option>
                                     <option value="title_asc">A-Z</option>
                                 </select>
                             </div>

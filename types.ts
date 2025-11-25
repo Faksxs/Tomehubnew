@@ -14,6 +14,7 @@ export interface Highlight {
   note?: string; // "Why is this important" or context (used primarily for highlights)
   createdAt: number;
   tags?: string[];
+  isFavorite?: boolean;
 }
 
 export interface LentInfo {
@@ -40,6 +41,7 @@ export interface LibraryItem {
   lentInfo?: LentInfo;
   highlights: Highlight[];
   addedAt: number;
+  isFavorite?: boolean; // Favorite status
 }
 
 export type SortOption = 'title' | 'author' | 'addedAt';
