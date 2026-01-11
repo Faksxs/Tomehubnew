@@ -18,11 +18,9 @@ echo "      Public IP: $PUBLIC_IP"
 echo "[2/4] Generating Caddyfile..."
 DOMAIN="${PUBLIC_IP}.nip.io"
 
-cat > /etc/caddy/Caddyfile << EOF
-${DOMAIN} {
-    reverse_proxy localhost:5000
-}
-EOF
+echo "${DOMAIN} {" > /etc/caddy/Caddyfile
+echo "    reverse_proxy localhost:5000" >> /etc/caddy/Caddyfile
+echo "}" >> /etc/caddy/Caddyfile
 
 echo "      Domain: https://${DOMAIN}"
 cat /etc/caddy/Caddyfile
