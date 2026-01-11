@@ -1,5 +1,5 @@
 # TomeHub Docker Compose
-# Manages backend container with environment variables
+# Backend-only configuration (HTTPS handled by OCI Load Balancer)
 
 version: '3.8'
 
@@ -48,25 +48,9 @@ services:
     networks:
       - tomehub-network
 
-  caddy:
-    image: caddy:latest
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data
-      - caddy_config:/config
-    networks:
-      - tomehub-network
-
 volumes:
   tomehub-uploads:
     driver: local
-  caddy_data:
-  caddy_config:
-
 
 networks:
   tomehub-network:
