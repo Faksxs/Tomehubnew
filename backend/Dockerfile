@@ -1,5 +1,5 @@
 # TomeHub Backend Dockerfile
-# Python Flask API with Oracle Database connectivity (Thin mode)
+# Python Flask API with Caddy for auto-HTTPS (self-discovering IP)
 
 FROM python:3.11-slim
 
@@ -11,10 +11,21 @@ ENV PYTHONIOENCODING=utf-8
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (minimal for Thin mode - no Instant Client needed)
+# Install system dependencies including Caddy and curl
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    curl \
+    debian-keyring \
+    debian-archive-keyring \
+    apt-transport-https \
+    && curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg \
+    && curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list \
+    && apt-get update \
+    && apt-get install -y caddy \
     && rm -rf /var/lib/apt/lists/*
+
+# Create Caddy config directory
+RUN mkdir -p /etc/caddy
 
 # Copy requirements first (for Docker layer caching)
 COPY requirements.txt .
@@ -26,16 +37,18 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy application code
 COPY . .
 
+# Make entrypoint executable
+RUN chmod +x /app/entrypoint.sh
+
 # Create uploads directory for temporary files
 RUN mkdir -p /app/uploads
 
-# Expose the Flask port
-EXPOSE 5000
+# Expose ports: 80 (HTTP redirect), 443 (HTTPS), 5000 (internal Flask)
+EXPOSE 80 443 5000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/')" || exit 1
+# Health check via HTTPS
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -sf http://localhost:5000/ || exit 1
 
-# Run the Flask application with Gunicorn for production
-# Using Gunicorn for better performance and stability in production
-CMD ["python", "-m", "gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "120", "app:app"]
+# Use entrypoint script to discover IP, generate Caddyfile, and start services
+ENTRYPOINT ["/app/entrypoint.sh"]
