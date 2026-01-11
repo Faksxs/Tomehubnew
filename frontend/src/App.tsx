@@ -5,12 +5,13 @@ import {
   Highlight,
   ResourceType,
 } from "./types";
-import { QueryDocumentSnapshot, DocumentData } from "firebase/firestore"; // Add imports
+import { QueryDocumentSnapshot, DocumentData } from "firebase/firestore";
 import { BookList } from "./components/BookList";
 import { BookForm } from "./components/BookForm";
 import { BookDetail } from "./components/BookDetail";
 import { Sidebar } from "./components/Sidebar";
 import { ProfileView } from "./components/ProfileView";
+import SmartSearch from "./components/SmartSearch";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import {
@@ -28,8 +29,7 @@ import {
 } from "./services/geminiService";
 import { useBatchEnrichment } from "./hooks/useBatchEnrichment";
 
-
-
+import { RAGSearch } from "./components/RAGSearch";
 
 // ----------------- LAYOUT (ANA UYGULAMA) -----------------
 
@@ -46,54 +46,55 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingBookId, setEditingBookId] = useState<string | null>(null);
-  const [openToHighlights, setOpenToHighlights] = useState(false); // Track if we should open highlights tab
-  const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null); // Track highlight to auto-edit
+  const [openToHighlights, setOpenToHighlights] = useState(false);
+  const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<
-    ResourceType | "NOTES" | "DASHBOARD" | "PROFILE"
+    ResourceType | "NOTES" | "DASHBOARD" | "PROFILE" | "RAG_SEARCH" | "SMART_SEARCH"
   >("DASHBOARD");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [itemsLoading, setItemsLoading] = useState(true);
   const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
   const [hasMore, setHasMore] = useState(true);
 
-  // Firestore'dan ilk yükleme (cloud → state)
   useEffect(() => {
-    let cancelled = false;
+    let active = true;
 
-    const load = async () => {
-      setItemsLoading(true);
+    async function loadItems() {
+      if (!userId) {
+        setItemsLoading(false);
+        return;
+      }
+
       try {
-        const { items, lastDoc: newLastDoc } = await fetchItemsForUser(userId, 1000);
-        if (!cancelled) {
+        const { items, lastDoc: newLastDoc } = await fetchItemsForUser(userId);
+        if (active) {
           setBooks(items);
           setLastDoc(newLastDoc);
           setHasMore(!!newLastDoc);
         }
       } catch (e) {
-        console.error("Error loading items from Firestore:", e);
+        console.error("Failed to load items:", e);
       } finally {
-        if (!cancelled) {
+        if (active) {
           setItemsLoading(false);
         }
       }
-    };
-
-    if (userId) {
-      load();
     }
 
+    loadItems();
+
     return () => {
-      cancelled = true;
+      active = false;
     };
   }, [userId]);
 
   const handleAddBook = useCallback(
-    async (itemData: Omit<LibraryItem, "id" | "highlights">) => {
+    async (itemData: Omit<LibraryItem, "id" | "highlights"> & { id?: string }) => {
       // 1) Yeni item'i oluştur (AI dokunmadan önceki ham hali)
       const newItem: LibraryItem = {
         ...itemData,
-        id: Date.now().toString(),
+        id: itemData.id || Date.now().toString(),
         addedAt: itemData.addedAt || Date.now(),
         highlights: [],
       };
@@ -156,8 +157,6 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     },
     [userId]
   );
-
-
 
   const handleUpdateBook = useCallback(async (
     itemData: Omit<LibraryItem, "id" | "highlights">
@@ -301,7 +300,6 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     }
   }, [books, userId]);
 
-  // --- BATCH ENRICHMENT ---
   const handleUpdateBookForEnrichment = useCallback((updatedBook: LibraryItem) => {
     setBooks(prev => prev.map(b => b.id === updatedBook.id ? updatedBook : b));
   }, []);
@@ -316,7 +314,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   const selectedBook = books.find((b) => b.id === selectedBookId);
   const editingBook = books.find((b) => b.id === editingBookId);
 
-  const handleTabChange = useCallback((newTab: ResourceType | "NOTES" | "DASHBOARD" | "PROFILE") => {
+  const handleTabChange = useCallback((newTab: ResourceType | "NOTES" | "DASHBOARD" | "PROFILE" | "RAG_SEARCH" | "SMART_SEARCH") => {
     setActiveTab(newTab);
     setView("list");
     setSelectedBookId(null);
@@ -334,7 +332,6 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     }
   }, [userId, lastDoc]);
 
-  // İlk yüklemede boşsa basit bir loading ekranı
   if (itemsLoading && books.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500">
@@ -358,6 +355,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
         {activeTab === "PROFILE" ? (
           <ProfileView
             email={userEmail}
+            userId={userId}
             onLogout={onLogout}
             onBack={() => handleTabChange("DASHBOARD")}
             books={books}
@@ -366,6 +364,10 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
             isEnriching={isEnriching}
             enrichmentStats={enrichmentStats}
           />
+        ) : activeTab === "SMART_SEARCH" ? (
+          <SmartSearch userId={userId} />
+        ) : activeTab === "RAG_SEARCH" ? (
+          <RAGSearch userId={userId} userEmail={userEmail} />
         ) : view === "list" ? (
           <BookList
             books={books}

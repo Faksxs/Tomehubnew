@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { LibraryItem, PhysicalStatus, ReadingStatus, ResourceType } from '../types';
-import { X, Loader2, Search, ChevronRight, Book as BookIcon, SkipForward, Image as ImageIcon, FileText, Globe, PenTool, Wand2, RefreshCw, Sparkles, Calendar } from 'lucide-react';
+import { X, Loader2, Search, ChevronRight, Book as BookIcon, SkipForward, Image as ImageIcon, FileText, Globe, PenTool, Wand2, RefreshCw, Sparkles, Calendar, Upload, FilePlus, AlertCircle, CheckCircle } from 'lucide-react';
 import { searchResourcesAI, ItemDraft, generateTagsForNote } from '../services/geminiService';
+import { useAuth } from '../contexts/AuthContext';
+import { ingestDocument } from '../services/backendApiService';
 
 interface BookFormProps {
   initialData?: LibraryItem;
@@ -23,6 +25,9 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
   const [isSearching, setIsSearching] = useState(false);
   const [isFetchingCover, setIsFetchingCover] = useState(false);
   const [isGeneratingTags, setIsGeneratingTags] = useState(false);
+  const [isIngesting, setIsIngesting] = useState(false);
+  const [selectedPdf, setSelectedPdf] = useState<File | null>(null);
+  const { user } = useAuth();
 
   // Form State
   const [formData, setFormData] = useState({
@@ -152,8 +157,35 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      if (file.type === 'application/pdf') {
+        setSelectedPdf(file);
+      } else {
+        alert('Please select a PDF file');
+        e.target.value = '';
+      }
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Generate ID for new books to ensure Backend Ingestion and Frontend Item match
+    const newBookId = initialData ? initialData.id : Date.now().toString();
+
+    if (selectedPdf && user) {
+      setIsIngesting(true);
+      try {
+        await ingestDocument(selectedPdf, formData.title, formData.author, user.uid, newBookId);
+      } catch (err) {
+        console.error("PDF Ingestion failed:", err);
+        // We still continue to save the metadata even if PDF fails
+      } finally {
+        setIsIngesting(false);
+      }
+    }
 
     const lentInfo = initialType === 'BOOK' && formData.status === 'Lent Out' && formData.lentToName
       ? { borrowerName: formData.lentToName, lentDate: formData.lentDate || new Date().toISOString().split('T')[0] }
@@ -163,6 +195,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
     const addedAtTimestamp = formData.addedAt ? new Date(formData.addedAt).getTime() : Date.now();
 
     onSave({
+      id: newBookId, // Pass the ID we used for ingestion
       type: initialType,
       title: formData.title,
       author: formData.author,
@@ -491,6 +524,37 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                   </div>
                 </div>
               )}
+
+              {/* PDF Upload Section - For Books and Articles */}
+              {(initialType === 'BOOK' || initialType === 'ARTICLE') && (
+                <div className="bg-indigo-50/50 dark:bg-indigo-900/10 p-4 rounded-xl border border-indigo-100 dark:border-indigo-800/50">
+                  <label className="block text-sm font-semibold text-indigo-900 dark:text-indigo-300 mb-2 flex items-center gap-2">
+                    <Upload size={16} />
+                    Upload PDF Document to Library
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="file"
+                      accept=".pdf"
+                      onChange={handleFileChange}
+                      className="flex-1 text-sm text-slate-600 dark:text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 transition-all cursor-pointer"
+                    />
+                    {selectedPdf && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPdf(null)}
+                        className="text-red-500 hover:text-red-600 p-2"
+                        title="Remove PDF"
+                      >
+                        <X size={18} />
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-2">
+                    PDF content will be vectorized and added to your searchable AI library.
+                  </p>
+                </div>
+              )}
             </div>
 
             <hr className="my-6 border-slate-100 dark:border-slate-800" />
@@ -606,7 +670,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
             {!isNote && (
               <div className="mb-4 flex-1 flex flex-col">
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                  General Notes & Summary
+                  Summary
                 </label>
                 <textarea
                   name="generalNotes"
@@ -639,9 +703,19 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg shadow transition-colors font-medium"
+                  disabled={isIngesting}
+                  className="px-5 py-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg shadow transition-colors font-medium flex items-center gap-2"
                 >
-                  Save {initialType === 'ARTICLE' ? 'Article' : (initialType === 'WEBSITE' ? 'Website' : (initialType === 'PERSONAL_NOTE' ? 'Note' : 'Book'))}
+                  {isIngesting ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      Ingesting PDF...
+                    </>
+                  ) : (
+                    <>
+                      Save {initialType === 'ARTICLE' ? 'Article' : (initialType === 'WEBSITE' ? 'Website' : (initialType === 'PERSONAL_NOTE' ? 'Note' : 'Book'))}
+                    </>
+                  )}
                 </button>
               </div>
             </div>

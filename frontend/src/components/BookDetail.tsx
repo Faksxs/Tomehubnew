@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { LibraryItem, PhysicalStatus, ReadingStatus, Highlight } from '../types';
-import { ArrowLeft, Edit2, Trash2, BookOpen, FileText, Globe, StickyNote, Sparkles, Hash, Calendar, Link as LinkIcon, PenTool, CheckCircle, Clock, Library, AlertTriangle, Archive } from 'lucide-react';
+import { ArrowLeft, Edit2, Trash2, BookOpen, FileText, Globe, StickyNote, Sparkles, Hash, Calendar, Link as LinkIcon, PenTool, CheckCircle, Clock, Library, AlertTriangle, Archive, Upload, Loader2, AlertCircle, FilePlus } from 'lucide-react';
 import { HighlightSection } from './HighlightSection';
 import { analyzeHighlightsAI } from '../services/geminiService';
+import { useAuth } from '../contexts/AuthContext';
+import { ingestDocument, IngestResponse } from '../services/backendApiService';
 
 interface BookDetailProps {
   book: LibraryItem;
@@ -18,6 +20,37 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
   const [activeTab, setActiveTab] = useState<'info' | 'highlights'>(initialTab);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isIngesting, setIsIngesting] = useState(false);
+  const [ingestResult, setIngestResult] = useState<IngestResponse | null>(null);
+  const [ingestError, setIngestError] = useState<string | null>(null);
+  const { user } = useAuth();
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    if (file.type !== 'application/pdf') {
+      setIngestError('Please select a PDF file');
+      return;
+    }
+
+    setIsIngesting(true);
+    setIngestError(null);
+    setIngestResult(null);
+
+    try {
+      const response = await ingestDocument(file, book.title, book.author, user.uid);
+      setIngestResult(response);
+      // Optional: Clear success message after some time
+      setTimeout(() => setIngestResult(null), 5000);
+    } catch (err) {
+      setIngestError(err instanceof Error ? err.message : 'Ingestion failed');
+    } finally {
+      setIsIngesting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   const getReadingStatusConfig = (status: ReadingStatus) => {
     switch (status) {
@@ -106,6 +139,22 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                 </div>
               </div>
               <div className="flex gap-1 md:gap-2 ml-2 md:ml-4 flex-shrink-0">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  className="hidden"
+                  accept=".pdf"
+                  onChange={handlePdfUpload}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isIngesting}
+                  className="p-2 text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-full transition-colors relative"
+                  title="Upload PDF"
+                >
+                  {isIngesting ? <Loader2 size={18} className="md:w-5 md:h-5 animate-spin text-indigo-500" /> : <Upload size={18} className="md:w-5 md:h-5" />}
+                </button>
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); onEdit(); }}
@@ -209,22 +258,51 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                 </div>
 
                 {/* Action Buttons */}
-                <div className="grid grid-cols-2 gap-2 mt-1 md:mt-2">
+                <div className="grid grid-cols-3 gap-2 mt-1 md:mt-2">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    className="hidden"
+                    accept=".pdf"
+                    onChange={handlePdfUpload}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isIngesting}
+                    className="flex items-center justify-center gap-2 px-2 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg text-slate-600 dark:text-slate-400 transition-colors text-xs font-medium disabled:opacity-50"
+                    title="Upload PDF"
+                  >
+                    {isIngesting ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                    <span className="hidden lg:inline">PDF</span>
+                  </button>
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); onEdit(); }}
-                    className="flex items-center justify-center gap-2 px-3 py-2 md:px-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg text-slate-600 dark:text-slate-400 transition-colors text-xs md:text-sm font-medium"
+                    className="flex items-center justify-center gap-2 px-2 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg text-slate-600 dark:text-slate-400 transition-colors text-xs font-medium"
                   >
-                    <Edit2 size={14} className="md:w-4 md:h-4" /> Edit
+                    <Edit2 size={14} /> <span className="hidden lg:inline">Edit</span>
                   </button>
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                    className="flex items-center justify-center gap-2 px-3 py-2 md:px-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-red-300 dark:hover:border-red-500 hover:text-red-600 dark:hover:text-red-400 rounded-lg text-slate-600 dark:text-slate-400 transition-colors text-xs md:text-sm font-medium"
+                    className="flex items-center justify-center gap-2 px-2 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-red-300 dark:hover:border-red-500 hover:text-red-600 dark:hover:text-red-400 rounded-lg text-slate-600 dark:text-slate-400 transition-colors text-xs font-medium"
                   >
-                    <Trash2 size={14} className="md:w-4 md:h-4" /> Delete
+                    <Trash2 size={14} /> <span className="hidden lg:inline">Delete</span>
                   </button>
                 </div>
+
+                {/* Status Messages */}
+                {ingestResult && (
+                  <div className="mt-2 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1 animate-in fade-in slide-in-from-top-1">
+                    <CheckCircle size={10} /> PDF Ingested!
+                  </div>
+                )}
+                {ingestError && (
+                  <div className="mt-2 text-[10px] text-red-600 dark:text-red-400 font-medium flex items-center gap-1 animate-in fade-in slide-in-from-top-1">
+                    <AlertCircle size={10} /> {ingestError}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -255,12 +333,12 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
           {(activeTab === 'info' || isNote) && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
               <div className={isNote ? "md:col-span-3" : "md:col-span-2 space-y-6"}>
-                {/* General Notes / Content */}
+                {/* Summary / Content */}
                 <div className={`bg-white dark:bg-slate-900 p-4 md:p-6 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm ${isNote ? 'min-h-[300px]' : ''}`}>
                   {!isNote && (
                     <h3 className="text-base md:text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3 md:mb-4 flex items-center gap-2">
                       <StickyNote size={18} className="text-indigo-500 dark:text-indigo-400 md:w-5 md:h-5" />
-                      General Notes
+                      Summary
                     </h3>
                   )}
                   {book.generalNotes ? (

@@ -1,0 +1,57 @@
+# TomeHub Docker Compose
+# Manages backend container with environment variables
+
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: tomehub-backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      # API Keys (will be overridden by .env or cloud secrets)
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+
+      # Oracle Database Configuration
+      - DB_USER=${DB_USER:-ADMIN}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_DSN=${DB_DSN}
+
+      # OCI Configuration (for PDF OCR service)
+      - OCI_USER_OCID=${OCI_USER_OCID}
+      - OCI_TENANCY_OCID=${OCI_TENANCY_OCID}
+      - OCI_FINGERPRINT=${OCI_FINGERPRINT}
+      - OCI_REGION=${OCI_REGION:-eu-frankfurt-1}
+      - OCI_KEY_FILE=/app/oci_private_key.pem
+      - OCI_COMPARTMENT_ID=${OCI_COMPARTMENT_ID}
+
+      # Flask Configuration
+      - FLASK_ENV=production
+      - FLASK_DEBUG=0
+    volumes:
+      # Mount wallet for Oracle mTLS connection
+      - ./backend/wallet:/app/wallet:ro
+      # Mount OCI private key
+      - ./backend/oci_private_key.pem:/app/oci_private_key.pem:ro
+      # Mount uploads directory for temporary file storage
+      - tomehub-uploads:/app/uploads
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/')" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - tomehub-network
+
+volumes:
+  tomehub-uploads:
+    driver: local
+
+networks:
+  tomehub-network:
+    driver: bridge

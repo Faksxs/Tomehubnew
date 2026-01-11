@@ -22,6 +22,7 @@ out
 .env.development.local
 .env.production.local
 .env.test.local
+backend/.env
 
 
 
@@ -38,6 +39,29 @@ out
 *.sln
 *.sw?
 
+
 # Misc
 *.local
 
+# Python
+backend/__pycache__/
+backend/*.pyc
+backend/venv/
+backend/.venv/
+backend/env/
+
+# Oracle Wallet - CRITICAL: Never commit these files!
+backend/wallet/
+wallet/
+*.sso
+*.p12
+*.jks
+*.pem
+*.ora
+
+
+# --- Tomehub Güvenlik Katmanı ---
+.env
+*.pem
+backend/wallet/
+__pycache__/

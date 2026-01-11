@@ -1,11 +1,11 @@
 import React from 'react';
-import { Book, FileText, Globe, PenTool, StickyNote, BarChart2, X, Library, User, Moon, Sun } from 'lucide-react';
+import { Book, FileText, Globe, PenTool, StickyNote, BarChart2, X, Library, User, Moon, Sun, Search, Upload, Wand2 } from 'lucide-react';
 import { ResourceType } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 
 interface SidebarProps {
-  activeTab: ResourceType | 'NOTES' | 'DASHBOARD' | 'PROFILE';
-  onTabChange: (tab: ResourceType | 'NOTES' | 'DASHBOARD' | 'PROFILE') => void;
+  activeTab: ResourceType | 'NOTES' | 'DASHBOARD' | 'PROFILE' | 'RAG_SEARCH' | 'INGEST' | 'SMART_SEARCH';
+  onTabChange: (tab: ResourceType | 'NOTES' | 'DASHBOARD' | 'PROFILE' | 'RAG_SEARCH' | 'INGEST' | 'SMART_SEARCH') => void;
   isOpen: boolean;
   onClose: () => void;
 }
@@ -14,6 +14,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen
   const { theme, toggleTheme } = useTheme();
   const menuItems = [
     { id: 'DASHBOARD', label: 'Dashboard', icon: BarChart2 },
+    { id: 'SMART_SEARCH', label: 'Smart Search (Layer 2)', icon: Wand2 },
+    { id: 'RAG_SEARCH', label: 'Deep Chatbot (Layer 3)', icon: Search },
     { id: 'BOOK', label: 'Books', icon: Book },
     { id: 'ARTICLE', label: 'Articles', icon: FileText },
     { id: 'WEBSITE', label: 'Websites', icon: Globe },

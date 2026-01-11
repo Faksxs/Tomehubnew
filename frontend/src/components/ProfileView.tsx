@@ -1,10 +1,12 @@
 import React from 'react';
 import { LogOut, User, ArrowLeft, Sparkles, Play, Square, Loader2 } from 'lucide-react';
+import { MigrateToAI } from './MigrateToAI';
 import { ImportBooks } from './ImportBooks';
 import { ExportBooks } from './ExportBooks';
 import { LibraryItem } from '../types';
 
 interface ProfileViewProps {
+    userId: string;
     email: string | null | undefined;
     onLogout: () => void;
     onBack: () => void;
@@ -22,6 +24,7 @@ interface ProfileViewProps {
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
+    userId,
     email,
     onLogout,
     onBack,
@@ -37,6 +40,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         (!b.generalNotes || b.generalNotes.length < 10) &&
         (!b.tags || b.tags.length === 0)
     ).length;
+
     return (
         <div className="p-6 md:p-10 max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4">
             {/* Back Button */}
@@ -147,6 +151,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     </div>
                 </div>
             </div>
+
+            {/* Migration Section */}
+            <MigrateToAI books={books} userId={userId} />
 
             <ImportBooks />
             <ExportBooks books={books} />
