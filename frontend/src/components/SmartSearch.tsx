@@ -80,7 +80,7 @@ export default function SmartSearch({ userId }: SmartSearchProps) {
         setSearched(true);
 
         try {
-            const response = await fetch('https://141.144.205.97.nip.io/api/smart-search', {
+            const response = await fetch('https://143.47.188.242.nip.io/api/smart-search', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ question: query, firebase_uid: userId }),
