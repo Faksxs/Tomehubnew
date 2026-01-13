@@ -19,6 +19,13 @@ import google.generativeai as genai
 
 # Import TomeHub services
 from services.embedding_service import get_embedding
+from services.epistemic_service import (
+    extract_core_concepts, 
+    classify_chunk, 
+    determine_answer_mode,
+    build_epistemic_context,
+    get_prompt_for_mode
+)
 
 # Load environment variables - go up one level from services/ to backend/
 env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env')
@@ -481,120 +488,115 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
     print("=" * 70)
     print(f"\n[QUESTION] {question}")
     
-    # Step 1: Retrieving Context
+    # Step 1: RETRIEVAL STRATEGY
+    # ---------------------------------------------------------
     print(f"\n{'='*70}")
     print(f"Step 1: Retrieving Context (Target Book: {context_book_id if context_book_id else 'None'})")
     print(f"{'='*70}")
     
-    similar_chunks = []
+    # A. Extract keywords EARLY to use for targeted retrieval
+    keywords = extract_core_concepts(question)
+    print(f"[RETRIEVAL] Extracted core concepts: {keywords}")
     
-    # STRATEGY A: Specific Book Context (if book_id provided)
-    if context_book_id:
-        print(f"[INFO] Using Contextual Retrieval for Book ID: {context_book_id}")
-        book_chunks = get_book_context(context_book_id, question, firebase_uid)
-        
-        # Adapt format for valid output
-        for c in book_chunks:
-            similar_chunks.append({
-                'title': c['title'],
-                'page_number': c['page'],
-                'content_chunk': c['text'],
-                'score': c['distance'],  # Lower is better (distance), but we treat loosely here
-                'source_type': 'BOOK_CONTEXT'
-            })
+    all_chunks_map = {}  # Deduplication map: id -> chunk
+    
+    # B. Run standard Smart Search with full question
+    print(f"[RETRIEVAL] Running semantic search for question: '{question}'")
+    question_results = perform_smart_search(question, firebase_uid)
+    if question_results:
+        for c in question_results:
+            # Generate a unique ID if not present (title + start of content)
+            c_id = f"{c.get('title','')}_{str(c.get('content_chunk',''))[:20]}"
+            all_chunks_map[c_id] = c
+
+    # C. Run SUPPLEMENTARY Keyword Search (The "Gap Filler")
+    # This ensures we get the "6 exact matches" the user sees in Layer 2
+    if keywords:
+        # Construct a keyword-focused query (just the top keywords joined)
+        # Limiting to top 2 keywords to avoid noise
+        keyword_query = " ".join(keywords[:2])
+        if keyword_query and keyword_query != question:
+            print(f"[RETRIEVAL] Running supplementary search for keywords: '{keyword_query}'")
+            keyword_results = perform_smart_search(keyword_query, firebase_uid)
             
-        # Also fetch related notes to see if user has thoughts on this
-        print(f"[INFO] Augmenting with proper global Smart Search...")
-        global_results = perform_smart_search(question, firebase_uid)
-        if global_results:
-             # Add top 5 global results (notes/other books) for broader synthesis
-             similar_chunks.extend(global_results[:5])
+            if keyword_results:
+                count_new = 0
+                for c in keyword_results:
+                    c_id = f"{c.get('title','')}_{str(c.get('content_chunk',''))[:20]}"
+                    if c_id not in all_chunks_map:
+                        all_chunks_map[c_id] = c
+                        count_new += 1
+                print(f"[RETRIEVAL] Added {count_new} unique chunks from keyword search")
+
+    # Convert back to list
+    combined_chunks = list(all_chunks_map.values())
+    
+    if not combined_chunks:
+        print(f"[ERROR] No relevant content found via Smart Search")
+        return None, None
         
-    # STRATEGY B: Global Search (Standard)
-    else:
-        # Layer 2 handles hybrid search, query expansion, and ranking
-        all_results = perform_smart_search(question, firebase_uid)
-        
-        if not all_results:
-            print(f"[ERROR] No relevant content found via Smart Search")
-            return None, None
-            
-        # CONTEXT MANAGEMENT: Take only the TOP 30 results
-        similar_chunks = all_results[:30]
+    # CONTEXT MANAGEMENT: Take top 40 (increased from 30 to accommodate merged results)
+    # Re-rank strictly? or just trust the merge?
+    # For now, let's trust the order: Question results first, then appended keyword results
+    # Ideally we should score them, but simple append works for "filling gaps"
+    similar_chunks = combined_chunks[:40]
         
     print(f"[{datetime.now().strftime('%H:%M:%S')}] Context Management: Using top {len(similar_chunks)} chunks")
     
-    # Step 2: Build context from retrieved chunks
+    # Step 2: EPISTEMIC CLASSIFICATION
     print(f"\n{'='*70}")
-    print("Step 2: Building Context with Strict Labeling")
+    print("Step 2: Epistemic Classification (A/B/C Levels)")
     print(f"{'='*70}")
     
-    context_parts = []
+    # Classify each chunk (using the already extracted keywords)
+    for chunk in similar_chunks:
+        chunk['epistemic_level'] = classify_chunk(keywords, chunk)
+    
+    # Count levels
+    level_counts = {'A': 0, 'B': 0, 'C': 0}
+    for chunk in similar_chunks:
+        level = chunk.get('epistemic_level', 'C')
+        level_counts[level] = level_counts.get(level, 0) + 1
+    
+    print(f"[EPISTEMIC] Classification results: Level A={level_counts['A']}, Level B={level_counts['B']}, Level C={level_counts['C']}")
+    
+    # Determine answer mode
+    answer_mode = determine_answer_mode(similar_chunks)
+    print(f"[EPISTEMIC] Answer Mode: {answer_mode}")
+    
+    # Build epistemic-aware context
+    # Add metadata about total evidence count to help Gemini understand the volume
+    evidence_meta = f"[SİSTEM NOTU: Kullanıcının kütüphanesinde '{', '.join(keywords)}' ile ilgili toplam {level_counts['A'] + level_counts['B']} adet doğrudan not bulundu.]"
+    
+    context = evidence_meta + "\n\n" + build_epistemic_context(similar_chunks, answer_mode)
+    
+    # Track sources for the citations UI
     sources = []
-    
-    for i, chunk in enumerate(similar_chunks, 1):
-        # MAPPING FIX: Strictly distinguish between book summary and personal thought
-        source_label = f"[Source {i}: {chunk['title']}]"
-        
-        # Build the block for Gemini
-        block = f"{source_label}\n"
-        
-        if chunk.get('content_chunk'):
-            block += f"- HIGHLIGHT (Alıntı): {chunk['content_chunk']}\n"
-        
-        if chunk.get('summary'):
-            block += f"- BOOK SUMMARY (Kitap Özeti): {chunk['summary']}\n"
-            
-        if chunk.get('personal_comment'):
-            block += f"- MY INSIGHT (Kişisel Yorumun): {chunk['personal_comment']}\n"
-            
-        context_parts.append(block + "---\n")
-        
-        # Track sources for the citations UI
+    for chunk in similar_chunks:
         sources.append({
-            'title': chunk['title'],
+            'title': chunk.get('title', 'Unknown'),
             'page_number': chunk.get('page_number', 0),
-            'similarity_score': chunk.get('score', 0)
+            'similarity_score': chunk.get('score', 0),
+            'epistemic_level': chunk.get('epistemic_level', 'C')
         })
-        
-    context = "\n".join(context_parts)
     
-    # --- GRAPHRAG ENRICHMENT ---
-    graph_insight = get_graph_enriched_context(similar_chunks, firebase_uid)
-    if graph_insight:
-        print(f"[INFO] Adding Graph Insights to prompt...")
-        context = graph_insight + "\n\n" + context
+    # --- GRAPHRAG ENRICHMENT (still valuable for synthesis mode) ---
+    if answer_mode == 'SYNTHESIS':
+        graph_insight = get_graph_enriched_context(similar_chunks, firebase_uid)
+        if graph_insight:
+            print(f"[INFO] Adding Graph Insights to prompt (Synthesis Mode)...")
+            context = graph_insight + "\n\n" + context
     
-    # Step 3: Generate answer with Gemini
+    # Step 3: Generate answer with mode-specific prompt
     print(f"\n{'='*70}")
-    print("Step 3: Generating AI Answer (Strict Grounding)")
+    print(f"Step 3: Generating AI Answer ({answer_mode} Mode)")
     print(f"{'='*70}")
     
     try:
-        # REWRITE SYSTEM PROMPT (Strict Grounding & Partner Persona)
-        prompt = f"""You are a thought partner (düşünce ortağı) analyzing a user's private library of notes and highlights.
-
-STRATEGIC INSTRUCTIONS:
-1. **Analyze the Bridges:** Look at the 'SEMANTIC BRIDGES' section. Use these "invisible bridges" to connect different thoughts in the user's library. For example, if Note A mentions Wittgenstein and the Graph shows Wittgenstein is related to Derrida, use that connection to provide a deep synthesis.
-2. **Prioritize Grounding:** You MUST prioritize the provided notes and graph insights. Avoid giving generic AI definitions.
-3. **Personalized Anchoring:** Start your reasoning based on the notes. Use phrases like:
-   - "Senin [Kitap Adı] notunda belirttiğin gibi..."
-   - "Düşüncelerindeki şu 'köprü' (bridge) sayesinde Wittgenstein'ın sessizlik düşüncesini Derrida'nın yapısökümüyle şöyle ilişkilendirebiliriz..."
-4. **Distinguish Voices:** Clearly distinguish between the author's summary (BOOK SUMMARY) and the user's personal thought (PERSONAL COMMENT). 
-5. **Analytical Synthesis:** Connect different sources using the graph paths provided.
-6. **Language:** MANDATORY - Provide the final answer in fluent, intellectual TURKISH.
-7. **No Hallucination Fallback:** If neither the notes nor the graph insights contain the answer, you MUST say:
-   "Notlarında ve düşünce ağında bu konuya doğrudan bir değini bulamadım..."
-
-KUTUPHANE NOTLARIN (CONTEXT):
-{context}
-
-KULLANICI SORUSU:
-{question}
-
-CEVAP (Türkçe):"""
+        # Get the appropriate prompt for the detected mode
+        prompt = get_prompt_for_mode(answer_mode, context, question)
         
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Sending request to gemini-2.0-flash...")
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Sending request to gemini-2.0-flash ({answer_mode} Mode)...")
         
         model = genai.GenerativeModel('gemini-2.0-flash')
         response = model.generate_content(prompt)
@@ -603,7 +605,7 @@ CEVAP (Türkçe):"""
         if response and hasattr(response, 'text'):
             answer = response.text
             print(f"\n[{datetime.now().strftime('%H:%M:%S')}] --- GEMINI RESPONSE START ---")
-            print(answer)
+            print(answer[:500] + "..." if len(answer) > 500 else answer)
             print(f"[{datetime.now().strftime('%H:%M:%S')}] --- GEMINI RESPONSE END ---\n")
             return answer, sources
         else:
