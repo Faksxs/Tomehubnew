@@ -1,9 +1,10 @@
 
 import React, { useState } from 'react';
-import { Search, Loader2, BookOpen, AlertCircle, Sparkles, Wand2, Type } from 'lucide-react';
+import { Search, Loader2, BookOpen, AlertCircle, Sparkles, Wand2, Type, ArrowLeft } from 'lucide-react';
 
 interface SmartSearchProps {
     userId: string;
+    onBack?: () => void;
 }
 
 interface SearchResult {
@@ -18,7 +19,7 @@ interface SearchResult {
     match_type: string;
 }
 
-export default function SmartSearch({ userId }: SmartSearchProps) {
+export default function SmartSearch({ userId, onBack }: SmartSearchProps) {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<SearchResult[]>([]);
     const [loading, setLoading] = useState(false);
@@ -80,7 +81,14 @@ export default function SmartSearch({ userId }: SmartSearchProps) {
         setSearched(true);
 
         try {
-            const response = await fetch('https://143.47.188.242.nip.io/api/smart-search', {
+            // TODO: Change back to production URL before deploying:
+            // const response = await fetch('https://143.47.188.242.nip.io/api/smart-search', {
+            const apiUrl = 'http://localhost:5000/api/smart-search';
+            console.log('[SmartSearch] Calling:', apiUrl);
+            console.log('[SmartSearch] Query:', query);
+            console.log('[SmartSearch] UID:', userId);
+
+            const response = await fetch(apiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ question: query, firebase_uid: userId }),
@@ -88,8 +96,11 @@ export default function SmartSearch({ userId }: SmartSearchProps) {
 
             if (!response.ok) throw new Error('Search failed');
             const data = await response.json();
+            console.log('[SmartSearch] Results count:', data.results?.length || 0);
+            console.log('[SmartSearch] First 3 titles:', data.results?.slice(0, 3).map((r: any) => r.title));
             setResults(data.results || []);
         } catch (err) {
+            console.error('[SmartSearch] Error:', err);
             setError(err instanceof Error ? err.message : 'An error occurred');
         } finally {
             setLoading(false);
@@ -98,47 +109,79 @@ export default function SmartSearch({ userId }: SmartSearchProps) {
 
     return (
         <div className="flex flex-col h-full space-y-8 p-6 max-w-5xl mx-auto w-full animate-in fade-in duration-500">
-            {/* Premium Header */}
-            <div className="text-center space-y-3 pt-6">
-                <div className="inline-flex items-center justify-center p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl mb-2">
-                    <Wand2 className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
+            {/* Header - Compact when results are shown */}
+            {!searched ? (
+                <div className="text-center space-y-3 pt-6 relative">
+                    {/* Back Button */}
+                    {onBack && (
+                        <button
+                            onClick={onBack}
+                            className="absolute left-0 top-6 flex items-center gap-2 text-gray-500 hover:text-indigo-600 transition-colors font-medium"
+                        >
+                            <ArrowLeft className="w-5 h-5" />
+                            <span className="hidden sm:inline">Back</span>
+                        </button>
+                    )}
+                    <div className="inline-flex items-center justify-center p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl mb-2">
+                        <Wand2 className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
+                    </div>
+                    <h2 className="text-4xl font-extrabold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent tracking-tight">
+                        Smart Search
+                    </h2>
+                    <p className="text-gray-500 dark:text-gray-400 text-lg max-w-2xl mx-auto font-medium">
+                        Layer 2: AI-Enhanced retrieval that understands context, fixes typos, and expands your query.
+                    </p>
                 </div>
-                <h2 className="text-4xl font-extrabold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent tracking-tight">
-                    Smart Search
-                </h2>
-                <p className="text-gray-500 dark:text-gray-400 text-lg max-w-2xl mx-auto font-medium">
-                    Layer 2: AI-Enhanced retrieval that understands context, fixes typos, and expands your query.
-                </p>
-            </div>
+            ) : (
+                <div className="flex items-center gap-4 pt-2">
+                    {onBack && (
+                        <button
+                            onClick={onBack}
+                            className="flex items-center gap-2 text-gray-500 hover:text-indigo-600 transition-colors font-medium"
+                        >
+                            <ArrowLeft className="w-5 h-5" />
+                            <span className="hidden sm:inline">Back</span>
+                        </button>
+                    )}
+                    <div className="flex items-center gap-2">
+                        <Wand2 className="w-6 h-6 text-indigo-600" />
+                        <h2 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                            Smart Search
+                        </h2>
+                    </div>
+                </div>
+            )}
 
-            {/* Search Bar Container */}
-            <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl shadow-indigo-100/50 dark:shadow-none border border-gray-100 dark:border-gray-700 overflow-hidden transform transition-all hover:scale-[1.01] duration-300">
-                <div className="p-3">
-                    <form onSubmit={handleSearch} className="flex items-center gap-3">
+            {/* Search Bar Container - ALWAYS VISIBLE */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 sticky top-0 z-50">
+                <div className="p-2">
+                    <form onSubmit={handleSearch} className="flex items-center gap-2">
                         <div className="relative flex-1 group">
-                            <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-400 w-6 h-6 group-focus-within:text-indigo-500 transition-colors" />
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5 group-focus-within:text-indigo-500 transition-colors" />
                             <input
                                 type="text"
-                                placeholder="Search your knowledge base..."
+                                placeholder="Search here..."
                                 value={query}
                                 onChange={(e) => setQuery(e.target.value)}
-                                className="w-full pl-16 pr-6 py-5 text-xl bg-transparent border-none outline-none text-gray-900 dark:text-gray-100 placeholder:text-gray-400 font-medium"
+                                className="w-full pl-12 pr-4 py-4 text-lg bg-transparent border-none outline-none text-gray-900 dark:text-gray-100 placeholder:text-gray-400 font-medium"
                             />
                         </div>
                         <button
                             type="submit"
                             disabled={loading}
-                            className="bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white px-10 py-5 rounded-2xl font-bold text-lg transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed m-1"
+                            className="bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white px-8 py-4 rounded-xl font-bold text-base transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                         >
-                            {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <span>Search</span>}
+                            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <span>Search</span>}
                         </button>
                     </form>
                 </div>
-                <div className="bg-gray-50 dark:bg-gray-900/40 px-8 py-4 border-t border-gray-100 dark:border-gray-700 flex flex-wrap gap-6 text-sm text-gray-500 font-medium">
-                    <span className="flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-1 rounded-full border border-gray-100 dark:border-gray-700 shadow-sm"><Sparkles className="w-4 h-4 text-amber-500" /> AI Query Expansion</span>
-                    <span className="flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-1 rounded-full border border-gray-100 dark:border-gray-700 shadow-sm"><Type className="w-4 h-4 text-blue-500" /> Typo Correction</span>
-                    <span className="flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-1 rounded-full border border-gray-100 dark:border-gray-700 shadow-sm"><BookOpen className="w-4 h-4 text-emerald-500" /> Hybrid Retrieval</span>
-                </div>
+                {!searched && (
+                    <div className="bg-gray-50 dark:bg-gray-900/40 px-6 py-3 border-t border-gray-100 dark:border-gray-700 flex flex-wrap gap-4 text-sm text-gray-500 font-medium">
+                        <span className="flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-1 rounded-full border border-gray-100 dark:border-gray-700 shadow-sm"><Sparkles className="w-4 h-4 text-amber-500" /> AI Query Expansion</span>
+                        <span className="flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-1 rounded-full border border-gray-100 dark:border-gray-700 shadow-sm"><Type className="w-4 h-4 text-blue-500" /> Typo Correction</span>
+                        <span className="flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-1 rounded-full border border-gray-100 dark:border-gray-700 shadow-sm"><BookOpen className="w-4 h-4 text-emerald-500" /> Hybrid Retrieval</span>
+                    </div>
+                )}
             </div>
 
             {error && (

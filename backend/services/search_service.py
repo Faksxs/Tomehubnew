@@ -10,6 +10,7 @@ Date: 2026-01-07
 """
 
 import os
+import time
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 from dotenv import load_dotenv
@@ -22,6 +23,9 @@ from services.embedding_service import get_embedding
 # Load environment variables - go up one level from services/ to backend/
 env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env')
 load_dotenv(dotenv_path=env_path)
+
+from utils.logger import get_logger
+logger = get_logger("search_service")
 
 # Configure Gemini
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -70,8 +74,21 @@ def get_database_connection():
 
 
 
-# Import Smart Search Service (Layer 2)
-from services.smart_search_service import perform_smart_search, create_turkish_fuzzy_pattern, parse_and_clean_content
+# Import Smart Search Service & Helpers
+from services.smart_search_service import (
+    perform_smart_search, 
+    create_turkish_fuzzy_pattern, 
+    parse_and_clean_content,
+    generate_query_variations,
+    score_with_bm25,
+    compute_rrf
+)
+
+# Import Graph Service
+from services.graph_service import get_graph_candidates
+
+# Import Re-rank Service
+from services.rerank_service import rerank_candidates
 
 def get_graph_enriched_context(base_results: List[Dict], firebase_uid: str) -> str:
     """
@@ -210,190 +227,226 @@ def get_book_context(book_id: str, query_text: str, firebase_uid: str) -> List[D
 
 def search_similar_content(query_text: str, firebase_uid: str, top_k: int = 5) -> Optional[List[Dict]]:
     """
-    Search for semantically similar content using vector similarity.
+    Advanced Hybrid RAG Retrieval Pipeline (Phase 1 Upgrade).
     
-    This function converts the query to a vector embedding and searches
-    the database for the most similar chunks using COSINE distance.
-    
-    Args:
-        query_text (str): The search query or question
-        firebase_uid (str): User identifier to filter results
-        top_k (int): Number of results to return (default: 5)
-    
-    Returns:
-        List[Dict] or None: List of similar chunks, each containing:
-            - content_chunk (str): The text content
-            - page_number (int): Page number from source
-            - title (str): Book/document title
-            - similarity_score (float): Similarity score (0 = identical)
-        Returns None if search fails.
-    
-    Example:
-        >>> results = search_similar_content("What is Dasein?", "user_123")
-        >>> for result in results:
-        ...     print(f"{result['title']} (p.{result['page_number']})")
+    Orchestration:
+    1. Query Expansion (Gemini) -> [q1, q2, q3]
+    2. Parallel Vector Search (Oracle) for all queries
+    3. Sparse Retrieval Simulation (BM25)
+    4. Reciprocal Rank Fusion (RRF)
+    5. Final Candidate Selection
     """
-    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Searching for: '{query_text}'")
+    start_time = time.time()
+    logger.info("Hybrid Search Started", extra={"query": query_text, "uid": firebase_uid})
     
     try:
-        # Step 1: Generate embedding for query
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Generating query embedding...")
-        query_embedding = get_embedding(query_text)
-        
-        if query_embedding is None:
-            print(f"[ERROR] Failed to generate embedding for query")
-            return None
-        
-        # Step 2: Connect to database
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Connecting to database...")
         connection = get_database_connection()
         cursor = connection.cursor()
         
-        # Step 3: Search for similar content using vector distance
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Searching for similar content...")
+        # 1. QUERY EXPANSION
+        t0 = time.time()
+        queries = [query_text]
+        variations = generate_query_variations(query_text)
+        if variations:
+            queries.extend(variations)
+            logger.info("Query Expansion Complete", extra={
+                "original": query_text, 
+                "expanded": variations,
+                "duration_ms": int((time.time() - t0) * 1000)
+            })
+
+        # 2. RETRIEVAL (Vector + Keyword for ALL variations)
+        t1 = time.time()
+        candidate_pool = {} # content_hash -> row_data
         
-        # --- STRATEGY: TRUE HYBRID SEARCH ---
-        # 1. Vector Search (Semantic) - Fetch top 40
-        # 2. Keyword Search (Exact) - Fetch top 10 matches for specific terms
+        for q in set(queries): # Unique queries only
+            # A. Vector Retrieval
+            q_emb = get_embedding(q)
+            if q_emb:
+                vector_sql = """
+                SELECT content_chunk, page_number, title, source_type,
+                       VECTOR_DISTANCE(vec_embedding, :p_vec, COSINE) as dist
+                FROM TOMEHUB_CONTENT
+                WHERE firebase_uid = :p_uid
+                ORDER BY dist
+                FETCH FIRST 20 ROWS ONLY
+                """
+                cursor.execute(vector_sql, {"p_vec": q_emb, "p_uid": firebase_uid})
+                rows = cursor.fetchall()
+                
+                for r in rows:
+                     # Create unique key (assuming title+page+content_snippet is unique enough)
+                    content = r[0].read() if r[0] else ""
+                    key = f"{r[2]}_{r[1]}_{content[:30]}"
+                    
+                    if key not in candidate_pool:
+                        candidate_pool[key] = {
+                            'content': content,
+                            'page': r[1],
+                            'title': r[2],
+                            'type': r[3],
+                            'vector_score': 1 - r[4], # Similarity (0.0 to 1.0)
+                            'bm25_score': 0.0,
+                            'graph_score': 0.0
+                        }
+                    else:
+                        # Keep best vector score if found multiple times
+                        current_sim = 1 - r[4]
+                        if current_sim > candidate_pool[key]['vector_score']:
+                            candidate_pool[key]['vector_score'] = current_sim
+
+            # B. Keyword/SQL Retrieval (Broad sweep for exact matches)
+            # Only run for original query to avoid noise
+            if q == query_text:
+                keyword_sql = """
+                SELECT content_chunk, page_number, title, source_type
+                FROM TOMEHUB_CONTENT
+                WHERE firebase_uid = :p_uid
+                AND LOWER(content_chunk) LIKE :p_kw
+                FETCH FIRST 15 ROWS ONLY
+                """
+                cursor.execute(keyword_sql, {"p_uid": firebase_uid, "p_kw": f"%{q.lower()}%"})
+                k_rows = cursor.fetchall()
+                
+                for r in k_rows:
+                    content = r[0].read() if r[0] else ""
+                    key = f"{r[2]}_{r[1]}_{content[:30]}"
+                    if key not in candidate_pool:
+                        candidate_pool[key] = {
+                            'content': content,
+                            'page': r[1],
+                            'title': r[2],
+                            'type': r[3],
+                            'vector_score': 0.0, # Not found by vector
+                            'bm25_score': 0.0,
+                            'graph_score': 0.0
+                        }
         
-        # Part A: Vector Search
-        vector_sql = """
-        SELECT 
-            content_chunk,
-            page_number,
-            title,
-            VECTOR_DISTANCE(vec_embedding, :p_query_vec, COSINE) as similarity_score,
-            source_type
-        FROM TOMEHUB_CONTENT
-        WHERE firebase_uid = :p_uid
-        ORDER BY similarity_score
-        FETCH FIRST 40 ROWS ONLY
-        """
-        
-        cursor.execute(vector_sql, {
-            "p_query_vec": query_embedding,
-            "p_uid": firebase_uid
+        logger.info("Base Retrieval Complete", extra={
+            "candidates_count": len(candidate_pool),
+            "duration_ms": int((time.time() - t1) * 1000)
         })
-        vector_results = cursor.fetchall()
+
+        # 3. GRAPH RETRIEVAL (Phase 2)
+        # Finds chunks that are conceptually related but textually different
+        t2 = time.time()
+        logger.info("Executing GraphRAG Retrieval...")
+        graph_chunks = get_graph_candidates(query_text, firebase_uid)
         
-        # Part B: Keyword Search (if query has significant words)
-        keyword_results = []
-        significant_words = [w for w in query_text.split() if len(w) > 3]
-        
-        if significant_words:
-            # Construct a dynamic LIKE clause for the most significant word (simplification)
-            # For a more robust solution, we take the longest word as the primary keyword
-            primary_keyword = max(significant_words, key=len)
-            keyword_term = f"%{primary_keyword.lower()}%"
-            
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] Running keyword search for: '{primary_keyword}'")
-            
-            keyword_sql = """
-            SELECT 
-                content_chunk,
-                page_number,
-                title,
-                0.0 as similarity_score, -- Artificial score for keyword matches
-                source_type
-            FROM TOMEHUB_CONTENT
-            WHERE firebase_uid = :p_uid
-            AND LOWER(content_chunk) LIKE :p_keyword
-            FETCH FIRST 10 ROWS ONLY
-            """
-            
-            cursor.execute(keyword_sql, {
-                "p_uid": firebase_uid,
-                "p_keyword": keyword_term
-            })
-            keyword_results = cursor.fetchall()
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] Found {len(keyword_results)} keyword matches")
-            
-        # Merge results
-        results = vector_results + keyword_results
-        
-        # Step 4: Advanced Re-ranking & Filtering
-        candidates = []
-        user_query_lower = query_text.lower()
-        
-        for row in results:
-            content_chunk_clob, page_number, title, similarity_score, source_type = row
-            
-            # Read CLOB content
-            if content_chunk_clob:
-                content_text = content_chunk_clob.read()
+        for gc in graph_chunks:
+            # Create same key structure
+            key = f"{gc['title']}_{gc['page']}_{gc['content'][:30]}"
+            if key not in candidate_pool:
+                candidate_pool[key] = {
+                    'content': gc['content'],
+                    'page': gc['page'],
+                    'title': gc['title'],
+                    'type': gc['type'],
+                    'vector_score': 0.0,
+                    'bm25_score': 0.0,
+                    'graph_score': 1.0 # High confidence
+                }
             else:
-                content_text = ""
-                
-            # --- HYBRID SCORING LOGIC ---
-            # 1. Start with base vector distance (lower is better)
-            final_score = similarity_score
+                candidate_pool[key]['graph_score'] = 1.0
+
+        logger.info("Graph Retrieval Complete", extra={
+            "graph_candidates": len(graph_chunks),
+            "duration_ms": int((time.time() - t2) * 1000)
+        })
+
+        # 4. BM25 SCORING (Sparse)
+        candidates_list = list(candidate_pool.values())
+        corpus = [c['content'] for c in candidates_list]
+        bm25_scores = score_with_bm25(corpus, query_text) # Score against ORIGINAL query
+        
+        for i, score in enumerate(bm25_scores):
+            candidates_list[i]['bm25_score'] = score
             
-            # 2. Priority Boost for NOTES (User's personal thoughts)
-            # Reduce distance by 20% to bubble them up
-            if source_type and 'NOTE' in source_type.upper():
-                final_score *= 0.8  
+        # 5. FUSION (RRF)
+        # Create ranked lists
+        # Rank by Vector (High to Low)
+        vector_ranking = sorted([k for k, v in candidate_pool.items() if v['vector_score'] > 0], 
+                              key=lambda k: candidate_pool[k]['vector_score'], reverse=True)
+                              
+        # Rank by BM25 (High to Low)
+        bm25_ranking = sorted([k for k, v in candidate_pool.items()], 
+                            key=lambda k: candidate_pool[k]['bm25_score'], reverse=True)
+                            
+        # Rank by Graph (High to Low) - essentially binary here but robust for future
+        graph_ranking = sorted([k for k, v in candidate_pool.items() if v['graph_score'] > 0], 
+                             key=lambda k: candidate_pool[k]['graph_score'], reverse=True)
+        
+        # Fuse 3 Lists
+        rrf_scores = compute_rrf([vector_ranking, bm25_ranking, graph_ranking], k=60)
+        
+        # Attach RRF scores
+        final_results = []
+        for key, score in rrf_scores.items():
+            cand = candidate_pool[key]
+            cand['rrf_score'] = score
+            final_results.append(cand)
             
-            # 3. Keyword Catch Priority
-            # If specific query terms appear in the content/title, give boost
-            query_words = [w for w in user_query_lower.split() if len(w) > 3]
-            keyword_match = False
-            for word in query_words:
-                if word in content_text.lower() or word in title.lower():
-                    keyword_match = True
-                    break
-            
-            if keyword_match:
-                final_score *= 0.7  # 30% boost for direct keyword matches
-                
-            candidates.append({
-                'content_chunk': content_text,
-                'page_number': page_number,
-                'title': title,
-                'similarity_score': similarity_score, # Original score
-                'final_score': final_score,           # Re-ranked score
-                'source_type': source_type
+        # Sort by RRF
+        final_results.sort(key=lambda x: x['rrf_score'], reverse=True)
+        
+        # 6. RE-RANKING (Phase 3)
+        # We take top 30 from RRF and re-score them using LLM
+        t3 = time.time()
+        logger.info("Re-ranking top candidates...")
+        
+        # Prepare candidates for re-ranking (Standardize Keys)
+        rerank_input = []
+        for res in final_results[:30]:
+            rerank_input.append({
+                'content': res['content'],
+                'page': res['page'],
+                'title': res['title'],
+                'type': res['type'],
+                'rrf_score': res['rrf_score']
             })
             
-        # Sort by new final_score (lower is better)
-        candidates.sort(key=lambda x: x['final_score'])
+        reranked_results = rerank_candidates(query_text, rerank_input)
         
-        # --- DIVERSITY FILTER ---
-        # Select chunks trying to get at least 5 different sources
-        final_selection = []
+        if not reranked_results:
+             logger.warning("Re-ranking returned empty/failed. Using RRF results.")
+             reranked_results = rerank_input
+
+        logger.info("Re-ranking Complete", extra={
+            "input_count": len(rerank_input),
+            "output_count": len(reranked_results),
+            "duration_ms": int((time.time() - t3) * 1000)
+        })
+
+        # 7. FORMATTING & DIVERSITY
+        selected_chunks = []
         seen_titles = set()
         
-        # Pass 1: Greedily take the best chunk from unique titles (up to 5)
-        for cand in candidates:
-            if cand['title'] not in seen_titles and len(seen_titles) < 5:
-                final_selection.append(cand)
-                seen_titles.add(cand['title'])
-        
-        # Pass 2: Fill the rest up to 20 with the best remaining chunks
-        current_ids = {c['content_chunk'] for c in final_selection} 
-        
-        for cand in candidates:
-            if len(final_selection) >= 20:
+        # Diversity Pass: First 10 results from diff books
+        for res in reranked_results:
+            if len(selected_chunks) >= top_k: 
                 break
-            if cand['content_chunk'] not in current_ids:
-                final_selection.append(cand)
-                current_ids.add(cand['content_chunk'])
-                
-        # Re-sort final selection by score to put best ones first behaviorally
-        final_selection.sort(key=lambda x: x['final_score'])
-        
-        similar_chunks = final_selection
-        
+            
+            # Use 'content_chunk' key to match old API
+            selected_chunks.append({
+                'content_chunk': res['content'],
+                'page_number': res['page'],
+                'title': res['title'],
+                'similarity_score': res.get('rerank_score', 0), # New score
+                'final_score': res['rrf_score'], # Keep original for debug
+                'source_type': res['type']
+            })
+            
         cursor.close()
         connection.close()
         
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Selected {len(similar_chunks)} chunks from {len(results)} candidates")
-        
-        return similar_chunks
-        
+        logger.info("Hybrid Search Finished", extra={
+            "final_count": len(selected_chunks),
+            "total_duration_ms": int((time.time() - start_time) * 1000)
+        })
+        return selected_chunks
+
     except Exception as e:
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] [ERROR] Search failed: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error("Hybrid Search Failed", extra={"error": str(e)}, exc_info=True)
         return None
 
 
@@ -493,7 +546,7 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
             block += f"- BOOK SUMMARY (Kitap Özeti): {chunk['summary']}\n"
             
         if chunk.get('personal_comment'):
-            block += f"- PERSONAL COMMENT (Arşiv Notun/Kişisel Yorumun): {chunk['personal_comment']}\n"
+            block += f"- MY INSIGHT (Kişisel Yorumun): {chunk['personal_comment']}\n"
             
         context_parts.append(block + "---\n")
         

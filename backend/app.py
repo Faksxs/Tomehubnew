@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Import TomeHub services from packages
 from services.search_service import generate_answer
 from services.ingestion_service import ingest_book
+from services.feedback_service import submit_feedback
 
 import logging
 
@@ -159,6 +160,33 @@ def search():
             'error': 'Internal server error',
             'details': str(e)
         }), 500
+
+
+@app.route('/api/feedback', methods=['POST'])
+def feedback():
+    """
+    Submit user feedback for a search result.
+    Expects JSON: { firebase_uid, query, answer, rating, comment }
+    """
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
+        # Basic validation
+        if not data.get('firebase_uid'):
+            return jsonify({'error': 'Missing firebase_uid'}), 400
+
+        success = submit_feedback(data)
+
+        if success:
+            return jsonify({'success': True}), 200
+        else:
+            return jsonify({'error': 'Failed to save feedback'}), 500
+
+    except Exception as e:
+        print(f"Error in feedback: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 # ============================================================================

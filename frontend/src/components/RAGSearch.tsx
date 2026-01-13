@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, BookOpen, Loader2, AlertCircle, ExternalLink, User } from 'lucide-react';
+import { Search, BookOpen, Loader2, AlertCircle, ExternalLink, User, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { searchLibrary, SearchResponse } from '../services/backendApiService';
 
 interface RAGSearchProps {
@@ -12,6 +12,8 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail }) => {
     const [isSearching, setIsSearching] = useState(false);
     const [result, setResult] = useState<SearchResponse | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [feedbackStatus, setFeedbackStatus] = useState<'none' | 'liked' | 'disliked'>('none');
+    const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
 
     const handleSearch = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -24,6 +26,7 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail }) => {
         setIsSearching(true);
         setError(null);
         setResult(null);
+        setFeedbackStatus('none');
 
         try {
             const response = await searchLibrary(question, userId);
@@ -32,6 +35,30 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail }) => {
             setError(err instanceof Error ? err.message : 'Search failed');
         } finally {
             setIsSearching(false);
+        }
+    };
+
+    const handleFeedback = async (rating: 1 | 0) => {
+        if (!result || isSubmittingFeedback) return;
+
+        setIsSubmittingFeedback(true);
+        try {
+            await fetch('http://localhost:5000/api/feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    firebase_uid: userId,
+                    query: question,
+                    answer: result.answer,
+                    rating: rating,
+                    comment: '' // Future: Allow adding comment
+                })
+            });
+            setFeedbackStatus(rating === 1 ? 'liked' : 'disliked');
+        } catch (error) {
+            console.error('Failed to submit feedback:', error);
+        } finally {
+            setIsSubmittingFeedback(false);
         }
     };
 
@@ -113,6 +140,42 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail }) => {
                             <p className="text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
                                 {result.answer}
                             </p>
+                        </div>
+
+                        {/* Feedback Buttons */}
+                        <div className="flex items-center gap-4 pt-4 border-t border-slate-100 dark:border-slate-700">
+                            <span className="text-sm text-slate-500 dark:text-slate-400">
+                                Was this answer helpful?
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => handleFeedback(1)}
+                                    disabled={feedbackStatus !== 'none' || isSubmittingFeedback}
+                                    className={`p-2 rounded-lg transition-colors ${feedbackStatus === 'liked'
+                                            ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
+                                            : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-green-600'
+                                        }`}
+                                    title="Helpful"
+                                >
+                                    <ThumbsUp className="w-5 h-5" />
+                                </button>
+                                <button
+                                    onClick={() => handleFeedback(0)}
+                                    disabled={feedbackStatus !== 'none' || isSubmittingFeedback}
+                                    className={`p-2 rounded-lg transition-colors ${feedbackStatus === 'disliked'
+                                            ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
+                                            : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-red-600'
+                                        }`}
+                                    title="Not helpful"
+                                >
+                                    <ThumbsDown className="w-5 h-5" />
+                                </button>
+                            </div>
+                            {feedbackStatus !== 'none' && (
+                                <span className="text-sm text-green-600 dark:text-green-400 animate-fade-in">
+                                    Thanks for your feedback!
+                                </span>
+                            )}
                         </div>
                     </div>
 

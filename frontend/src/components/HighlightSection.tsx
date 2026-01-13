@@ -124,7 +124,7 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
           className="w-full py-3 md:py-4 border-2 border-dashed border-slate-300 rounded-xl text-slate-500 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50/30 transition-all flex flex-col items-center gap-1 md:gap-2"
         >
           <Plus size={20} className="md:w-6 md:h-6" />
-          <span className="text-sm md:text-base font-medium">Add Highlight or Note</span>
+          <span className="text-sm md:text-base font-medium">Add Highlight or Insights</span>
         </button>
       )}
 
@@ -145,39 +145,51 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
           <div className="flex bg-slate-100 p-1 rounded-lg mb-4 md:mb-5">
             <button
               type="button"
-              onClick={() => setEntryType('highlight')}
+              onClick={() => {
+                if (entryType !== 'highlight') {
+                  setEntryType('highlight');
+                  setFormData({}); // Clear form when switching
+                  setTagsInput('');
+                }
+              }}
               className={`flex-1 flex items-center justify-center gap-2 py-1.5 md:py-2 text-xs md:text-sm font-medium rounded-md transition-all ${entryType === 'highlight'
                 ? 'bg-white text-indigo-700 shadow-sm'
                 : 'text-slate-500 hover:text-slate-700'
                 }`}
             >
               <Quote size={14} className="md:w-4 md:h-4" />
-              Highlight / Quote
+              Highlight
             </button>
             <button
               type="button"
-              onClick={() => setEntryType('note')}
+              onClick={() => {
+                if (entryType !== 'note') {
+                  setEntryType('note');
+                  setFormData({}); // Clear form when switching
+                  setTagsInput('');
+                }
+              }}
               className={`flex-1 flex items-center justify-center gap-2 py-1.5 md:py-2 text-xs md:text-sm font-medium rounded-md transition-all ${entryType === 'note'
                 ? 'bg-white text-indigo-700 shadow-sm'
                 : 'text-slate-500 hover:text-slate-700'
                 }`}
             >
               <StickyNote size={14} className="md:w-4 md:h-4" />
-              Personal Note
+              Insights
             </button>
           </div>
 
           <div className="space-y-3 md:space-y-4">
             <div>
               <label className="block text-[10px] md:text-xs font-medium text-slate-500 mb-1 uppercase">
-                {entryType === 'highlight' ? 'Quote Text *' : 'Note Content *'}
+                {entryType === 'highlight' ? 'Highlight Text *' : 'Insight Content *'}
               </label>
               <textarea
                 autoFocus
                 rows={8}
                 className={`w-full border rounded-lg p-2 md:p-3 text-sm md:text-base text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-lora ${entryType === 'highlight' ? 'bg-yellow-50/50 border-yellow-200' : 'bg-slate-50 border-slate-200'
                   }`}
-                placeholder={entryType === 'highlight' ? "Type the quote exactly as it appears..." : "Write your thoughts, summary, or key takeaway..."}
+                placeholder={entryType === 'highlight' ? "Type the text exactly as it appears..." : "Write your thoughts, summary, or key takeaway..."}
                 value={formData.text || ''}
                 onChange={e => setFormData(prev => ({ ...prev, text: e.target.value }))}
               ></textarea>
@@ -377,7 +389,7 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
 
         {highlights.length === 0 && !isFormOpen && (
           <div className="text-center py-8 md:py-12 text-slate-400">
-            <p className="text-xs md:text-base">No highlights or notes added yet.</p>
+            <p className="text-xs md:text-base">No highlights or insights added yet.</p>
           </div>
         )}
       </div>

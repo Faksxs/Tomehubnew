@@ -65,3 +65,4 @@ wallet/
 *.pem
 backend/wallet/
 __pycache__/
+backend/reports/

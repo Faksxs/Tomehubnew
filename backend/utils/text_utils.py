@@ -18,6 +18,9 @@ def normalize_text(text: str) -> str:
     if not text:
         return ""
     
+    # 0. Unicode Normalization (Handle composed chars like ü = u + ¨)
+    text = unicodedata.normalize('NFC', text)
+    
     # 1. Turkish Lowercase Mapping
     # Standard .lower() maps 'I' -> 'i' which is wrong for Turkish.
     # We must explicitly handle I -> ı and İ -> i
@@ -68,3 +71,58 @@ def calculate_fuzzy_score(query: str, target: str) -> int:
     except ImportError:
         # Fallback if rapidfuzz not present (though it should be)
         return 0
+
+# --- Phase 1: New NLP Functions ---
+import unidecode
+try:
+    import zeyrek
+    _analyzer = zeyrek.MorphAnalyzer()
+except ImportError:
+    _analyzer = None
+    print("[WARNING] Zeyrek not found. Lemmatization will be disabled.")
+
+def normalize_canonical(text: str) -> str:
+    """
+    Turkish-aware normalization aiming to preserve characters (NFC) 
+    but standardized (lowercase, no weird punctuation).
+    Used for Lemmatization inputs.
+    """
+    if not text: return ""
+    text = unicodedata.normalize('NFC', text)
+    # Turkish lowercase
+    text = text.replace('İ', 'i').replace('I', 'ı')
+    text = text.lower()
+    # Remove punctuation but KEEP Turkish chars
+    text = re.sub(r'[^\w\s]', '', text) 
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+def deaccent_text(text: str) -> str:
+    """
+    Aggressive de-accenting using existing normalize_text (which does transliteration).
+    """
+    return normalize_text(text)
+
+def get_lemmas(text: str) -> list[str]:
+    """
+    Extracts unique lemmas (roots) from text using Zeyrek.
+    Input must contain original Turkish characters for best results.
+    """
+    if not text or not _analyzer:
+        return []
+    
+    lemmas = set()
+    try:
+        # Use Canonical (Accents preserved) for Zeyrek
+        canonical = normalize_canonical(text)
+        
+        results = _analyzer.analyze(canonical)
+        for word_analysis in results:
+            for parse in word_analysis:
+                if parse.lemma and parse.lemma.lower() not in ['unk', 'unknown']:
+                     lemmas.add(parse.lemma.lower())
+                     
+    except Exception as e:
+        pass
+        
+    return list(lemmas)

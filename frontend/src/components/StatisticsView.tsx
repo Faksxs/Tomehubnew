@@ -71,7 +71,7 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({ items }) => {
                                 <div className="p-1.5 md:p-2 bg-yellow-100 rounded-lg">
                                     <Quote className="text-yellow-600" size={16} />
                                 </div>
-                                <span className="font-semibold text-yellow-900 text-xs md:text-base">Highlights & Quotes</span>
+                                <span className="font-semibold text-yellow-900 text-xs md:text-base">Highlights & Insights</span>
                             </div>
                             <p className="text-2xl md:text-4xl font-bold text-yellow-700 mt-1 md:mt-2">{quotes.length}</p>
                             <p className="text-[10px] md:text-xs text-yellow-600/80 mt-0.5 md:mt-1">Passages saved from books & articles</p>

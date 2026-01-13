@@ -365,7 +365,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
             enrichmentStats={enrichmentStats}
           />
         ) : activeTab === "SMART_SEARCH" ? (
-          <SmartSearch userId={userId} />
+          <SmartSearch userId={userId} onBack={() => handleTabChange("DASHBOARD")} />
         ) : activeTab === "RAG_SEARCH" ? (
           <RAGSearch userId={userId} userEmail={userEmail} />
         ) : view === "list" ? (

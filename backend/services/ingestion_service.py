@@ -21,7 +21,8 @@ import uuid
 from services.pdf_service import extract_pdf_content
 from services.epub_service import extract_epub_content
 from services.embedding_service import get_embedding
-from utils.text_utils import normalize_text
+from utils.text_utils import normalize_text, deaccent_text, get_lemmas
+import json
 
 # Load environment variables - go up one level from services/ to backend/
 env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env')
@@ -130,8 +131,8 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
     
     insert_sql = """
     INSERT INTO TOMEHUB_CONTENT 
-    (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, book_id, normalized_content)
-    VALUES (:p_uid, :p_type, :p_title, :p_content, :p_chunk_type, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm_content)
+    (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, book_id, normalized_content, text_deaccented, lemma_tokens)
+    VALUES (:p_uid, :p_type, :p_title, :p_content, :p_chunk_type, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm_content, :p_deaccent, :p_lemmas)
     """
     
     successful_inserts = 0
@@ -146,6 +147,9 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
             
         # Normalize content for search
         normalized_text = normalize_text(chunk_text)
+        # Phase 1 NLP columns
+        deaccented_text = deaccent_text(chunk_text)
+        lemmas_json = json.dumps(get_lemmas(chunk_text), ensure_ascii=False)
             
         try:
             embedding = get_embedding(chunk_text)
@@ -164,7 +168,9 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
                 "p_chunk_idx": i,
                 "p_vec": embedding,
                 "p_book_id": book_id,
-                "p_norm_content": normalized_text
+                "p_norm_content": normalized_text,
+                "p_deaccent": deaccented_text,
+                "p_lemmas": lemmas_json
             })
             
             successful_inserts += 1
@@ -209,20 +215,22 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
 
 # (Keep ingest_text_item and process_bulk_items_logic as is, just ensuring imports)
 def ingest_text_item(text: str, title: str, author: str, source_type: str = "NOTE", firebase_uid: str = "test_user_001") -> bool:
-    # Existing implementation (omitted for brevity in replacement, but should be kept if re-writing whole file - wait, I'm replacing whole file, so I need to include it)
-    # Re-implementing simplified version for completeness
-    
     print(f"\n[INFO] Text Ingestion: {title}")
     try:
         connection = get_database_connection()
         cursor = connection.cursor()
         
+        # NLP Processing
+        normalized_text = normalize_text(text)
+        deaccented_text = deaccent_text(text)
+        lemmas_json = json.dumps(get_lemmas(text), ensure_ascii=False)
+        
         embedding = get_embedding(text)
         if embedding:
             cursor.execute("""
                 INSERT INTO TOMEHUB_CONTENT 
-                (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding)
-                VALUES (:p_uid, :p_type, :p_title, :p_content, :p_chunk_type, :p_page, :p_chunk_idx, :p_vec)
+                (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, normalized_content, text_deaccented, lemma_tokens)
+                VALUES (:p_uid, :p_type, :p_title, :p_content, :p_chunk_type, :p_page, :p_chunk_idx, :p_vec, :p_norm, :p_deaccent, :p_lemmas)
             """, {
                 "p_uid": firebase_uid,
                 "p_type": source_type,
@@ -231,7 +239,10 @@ def ingest_text_item(text: str, title: str, author: str, source_type: str = "NOT
                 "p_chunk_type": "full_text",
                 "p_page": 1,
                 "p_chunk_idx": 0,
-                "p_vec": embedding
+                "p_vec": embedding,
+                "p_norm": normalized_text,
+                "p_deaccent": deaccented_text,
+                "p_lemmas": lemmas_json
             })
             connection.commit()
             return True
@@ -243,8 +254,6 @@ def ingest_text_item(text: str, title: str, author: str, source_type: str = "NOT
         if 'connection' in locals(): connection.close()
 
 def process_bulk_items_logic(items: list, firebase_uid: str) -> dict:
-    # Re-implementing simplified bulk logic
-    # In a real scenario, I'd copy the existing function, but for brevity/efficiency here:
     print(f"Bulk processing {len(items)} items...")
     success = 0
     
@@ -255,18 +264,28 @@ def process_bulk_items_logic(items: list, firebase_uid: str) -> dict:
         import time
         for item in items:
             try:
-                embedding = get_embedding(item.get('text', ''))
+                text = item.get('text', '')
+                
+                # NLP Processing
+                normalized_text = normalize_text(text)
+                deaccented_text = deaccent_text(text)
+                lemmas_json = json.dumps(get_lemmas(text), ensure_ascii=False)
+                
+                embedding = get_embedding(text)
                 if embedding:
                     cursor.execute("""
                         INSERT INTO TOMEHUB_CONTENT 
-                        (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding)
-                        VALUES (:uid, :type, :title, :content, 'full_text', 1, 0, :vec)
+                        (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, normalized_content, text_deaccented, lemma_tokens)
+                        VALUES (:uid, :type, :title, :content, 'full_text', 1, 0, :vec, :norm, :deaccent, :lemmas)
                     """, {
                         "uid": firebase_uid,
                         "type": item.get('type', 'NOTE'),
                         "title": f"{item.get('title')} - {item.get('author')}",
-                        "content": item.get('text'),
-                        "vec": embedding
+                        "content": text,
+                        "vec": embedding,
+                        "norm": normalized_text,
+                        "deaccent": deaccented_text,
+                        "lemmas": lemmas_json
                     })
                     success += 1
                     time.sleep(0.5) # Rate limit

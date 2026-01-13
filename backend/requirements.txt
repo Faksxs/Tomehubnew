@@ -31,3 +31,9 @@ python-dotenv>=1.0.0
 
 # Production WSGI Server
 gunicorn>=21.0.0
+
+# Search & Ranking
+rank_bm25>=0.2.2
+python-json-logger
+zeyrek>=0.1.0
+symspellpy>=6.7.0
