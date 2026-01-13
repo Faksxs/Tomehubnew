@@ -43,7 +43,7 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail }) => {
 
         setIsSubmittingFeedback(true);
         try {
-            await fetch('http://localhost:5000/api/feedback', {
+            await fetch('https://158.101.206.111.nip.io/api/feedback', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -152,8 +152,8 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail }) => {
                                     onClick={() => handleFeedback(1)}
                                     disabled={feedbackStatus !== 'none' || isSubmittingFeedback}
                                     className={`p-2 rounded-lg transition-colors ${feedbackStatus === 'liked'
-                                            ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
-                                            : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-green-600'
+                                        ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
+                                        : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-green-600'
                                         }`}
                                     title="Helpful"
                                 >
@@ -163,8 +163,8 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail }) => {
                                     onClick={() => handleFeedback(0)}
                                     disabled={feedbackStatus !== 'none' || isSubmittingFeedback}
                                     className={`p-2 rounded-lg transition-colors ${feedbackStatus === 'disliked'
-                                            ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
-                                            : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-red-600'
+                                        ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
+                                        : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-red-600'
                                         }`}
                                     title="Not helpful"
                                 >

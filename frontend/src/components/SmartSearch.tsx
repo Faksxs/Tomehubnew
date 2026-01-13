@@ -81,9 +81,8 @@ export default function SmartSearch({ userId, onBack }: SmartSearchProps) {
         setSearched(true);
 
         try {
-            // TODO: Change back to production URL before deploying:
-            // const response = await fetch('https://143.47.188.242.nip.io/api/smart-search', {
-            const apiUrl = 'http://localhost:5000/api/smart-search';
+            // Production API URL (SSL via nip.io)
+            const apiUrl = 'https://158.101.206.111.nip.io/api/smart-search';
             console.log('[SmartSearch] Calling:', apiUrl);
             console.log('[SmartSearch] Query:', query);
             console.log('[SmartSearch] UID:', userId);
