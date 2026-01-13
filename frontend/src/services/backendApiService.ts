@@ -3,7 +3,7 @@
  * Connects React frontend to Flask backend for RAG search and document ingestion
  */
 
-const API_BASE_URL = 'https://143.47.188.242.nip.io';
+const API_BASE_URL = 'https://158.101.206.111.nip.io';
 
 export interface SearchRequest {
     question: string;
