@@ -1,0 +1,92 @@
+[
+    {
+        "id": "q1",
+        "question": "Hz. Ali'nin ibadet sınıflandırmasında \"tüccarların ibadeti\" neyi ifade eder?",
+        "reference_answer": "Karşılık beklentisi / Özel bir yarar veya çıkar gözetmesi.",
+        "key_concepts": [
+            "Hz. Ali",
+            "İbadet",
+            "Tüccar",
+            "Karşılık"
+        ]
+    },
+    {
+        "id": "q2",
+        "question": "Heraklit neden bir irmaga iki kez girilmez der?",
+        "reference_answer": "Evrendeki sürekli değişim / Sabit kalmanın mümkün olmaması.",
+        "key_concepts": [
+            "Heraklit",
+            "Irmak",
+            "Değişim",
+            "Akış"
+        ]
+    },
+    {
+        "id": "q3",
+        "question": "Tefekkuru, Teemmul den  ayiran temel fark nedir?",
+        "reference_answer": "Özel bir yarar veya çıkar gözetmesi.",
+        "key_concepts": [
+            "Tefekkür",
+            "Teemmül",
+            "Fark",
+            "Yarar"
+        ]
+    },
+    {
+        "id": "q4",
+        "question": "Engels belirttiği erkeklerin kadınları sistematik biçimde sömürme durumu  nedir?",
+        "reference_answer": "Üretim fazlasının oluşturduğu servetten ve devlet sosyal katmanlaşma ve mülkün erkekler tarafından kontrol edilmesi.",
+        "key_concepts": [
+            "Engels",
+            "Kadın",
+            "Sömürü",
+            "Mülkiyet",
+            "Erkek"
+        ]
+    },
+    {
+        "id": "q5",
+        "question": "Sokrates bilgiyi neden dusunceden ustun tutar?",
+        "reference_answer": "Öteki seçeneklerin (alternatiflerin) neden yanlış olduğunu bilmek.",
+        "key_concepts": [
+            "Sokrates",
+            "Bilgi",
+            "Düşünce",
+            "Yanlış",
+            "Alternatif"
+        ]
+    },
+    {
+        "id": "q6",
+        "question": "Amin Maalouf yazarina gore mixed blessing nedir?",
+        "reference_answer": "Karşı iktidar eksikliği / İki ucu keskin kılıç.",
+        "key_concepts": [
+            "Amin Maalouf",
+            "Mixed Blessing",
+            "İktidar"
+        ]
+    },
+    {
+        "id": "q7",
+        "question": "Derrida için metafizik yanılsamalar dilsel yapi icinde yok edilebilir mi?",
+        "reference_answer": "Yok edilemez.",
+        "key_concepts": [
+            "Derrida",
+            "Metafizik",
+            "Yanılsama",
+            "Dil",
+            "Yok edilemez"
+        ]
+    },
+    {
+        "id": "q8",
+        "question": "John Adams Amerikayi nasil bir mekan olarak gormustur",
+        "reference_answer": "Muazzam bir düzenin başlangıç mekanı.",
+        "key_concepts": [
+            "John Adams",
+            "Amerika",
+            "Mekan",
+            "Düzen"
+        ]
+    }
+]

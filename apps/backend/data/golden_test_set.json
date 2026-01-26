@@ -1,0 +1,17 @@
+{
+    "vicdan_degiskenlik": {
+        "query": "vicdan değişen bir şey midir",
+        "must_quote": [
+            "vicdan için iki teori var"
+        ],
+        "must_synthesize": [
+            "Ayrılmak ne tuhaf"
+        ],
+        "forbidden": [
+            "durumunuza uygun bir tanım bulunamadı",
+            "doğrudan tanım bulunamadı",
+            "Couldn't find"
+        ],
+        "expected_mode": "HYBRID"
+    }
+}
