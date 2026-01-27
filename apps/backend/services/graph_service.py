@@ -88,16 +88,21 @@ def save_to_graph(content_id: int, concepts: list, relations: list):
                     
                 # 2. Save Relations
                 for rel in relations:
-                    if len(rel) == 3:
-                        src_name, rel_type, dst_name = rel
+                    # Expecting [src, type, dst, confidence]
+                    if len(rel) >= 3:
+                        src_name = rel[0]
+                        rel_type = rel[1]
+                        dst_name = rel[2]
+                        weight = float(rel[3]) if len(rel) > 3 else 1.0
+                        
                         sid = concept_map.get(src_name)
                         did = concept_map.get(dst_name)
                         
                         if sid and did:
                             cursor.execute("""
-                                INSERT INTO TOMEHUB_RELATIONS (src_id, dst_id, rel_type)
-                                VALUES (:sid, :did, :rtype)
-                            """, {"sid": sid, "did": did, "rtype": rel_type[:100]})
+                                INSERT INTO TOMEHUB_RELATIONS (src_id, dst_id, rel_type, weight)
+                                VALUES (:sid, :did, :rtype, :wght)
+                            """, {"sid": sid, "did": did, "rtype": rel_type[:100], "wght": weight})
                             
                 conn.commit()
     except Exception as e:
@@ -171,27 +176,25 @@ def get_graph_candidates(query_text: str, firebase_uid: str) -> list[dict]:
                 sql = """
                     SELECT DISTINCT 
                         ct.content_chunk, ct.page_number, ct.title, ct.source_type,
-                        c_neighbor.name as related_concept
+                        c_neighbor.name as related_concept,
+                        r.rel_type,
+                        r.weight
                     FROM TOMEHUB_RELATIONS r
                     JOIN TOMEHUB_CONCEPTS c_neighbor ON (r.dst_id = c_neighbor.id OR r.src_id = c_neighbor.id)
                     JOIN TOMEHUB_CONCEPT_CHUNKS cc ON c_neighbor.id = cc.concept_id
                     JOIN TOMEHUB_CONTENT ct ON cc.content_id = ct.id
                     WHERE (r.src_id IN ({SEQ}) OR r.dst_id IN ({SEQ}))
                     AND ct.firebase_uid = :p_uid
-                    -- Avoid self-loops to entry node if needed, but here we want everything relevant
                     AND c_neighbor.id NOT IN ({SEQ}) 
                     FETCH FIRST 15 ROWS ONLY
                 """
                 
                 # Format the IN clause params SAFE WAY
-                # Generate unique bind names for each ID: :id_0, :id_1, ...
                 bind_names = [f":id_{i}" for i in range(len(concept_ids))]
                 bind_clause = ",".join(bind_names)
                 
-                # Replace placeholder with comma-separated BIND NAMES (not values)
                 safe_sql = sql.replace("{SEQ}", bind_clause)
                 
-                # Construct parameter dictionary
                 params = {"p_uid": firebase_uid}
                 for i, cid in enumerate(concept_ids):
                     params[f"id_{i}"] = cid
@@ -201,15 +204,48 @@ def get_graph_candidates(query_text: str, firebase_uid: str) -> list[dict]:
                 
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] Found {len(rows)} neighbor chunks via Graph.")
                 
+                # Relation Type Weighting Table
+                TYPE_WEIGHTS = {
+                    'DIRECT_CITATION': 1.0, 'QUOTES': 1.0,
+                    'IS_A': 0.9, 'DEFINES': 0.9, 'PART_OF': 0.9,
+                    'SEMANTIC_SIMILARITY': 0.7, 'SYNONYM': 0.7,
+                    'RELATED_TO': 0.6, 'ASSOCIATED_WITH': 0.6,
+                    'CO_OCCURRENCE': 0.4
+                }
+
                 for r in rows:
-                    content = safe_read_clob(r[0])
+                    chunk_text = safe_read_clob(r[0])
+                    page_num = r[1]
+                    title = r[2]
+                    source_type = r[3]
+                    neighbor_name = r[4]
+                    rel_type = r[5]
+                    link_weight = float(r[6]) if r[6] is not None else 1.0
+                    
+                    # Calculate Composite Score
+                    # Use substring match for types (e.g., "IS_A_TYPE" matches "IS_A")
+                    type_modifier = 0.5 # Default fallback
+                    
+                    # Exact or partial match
+                    r_upper = rel_type.upper()
+                    for k, v in TYPE_WEIGHTS.items():
+                        if k in r_upper:
+                            type_modifier = v
+                            break
+                            
+                    final_graph_score = link_weight * type_modifier
+                    
+                    # Filtering: "Confident but wrong" check
+                    if final_graph_score < 0.5:
+                        continue
+                        
                     candidates.append({
-                        'content': content,
-                        'page': r[1],
-                        'title': r[2],
-                        'type': r[3],
-                        'graph_score': 1.0, # High confidence for graph connection
-                        'reason': f"Linked via concept: {r[4]}"
+                        'content': chunk_text,
+                        'page': page_num,
+                        'title': title,
+                        'type': source_type,
+                        'graph_score': final_graph_score,
+                        'reason': f"Linked via {neighbor_name} ({rel_type}, w={final_graph_score:.2f})"
                     })
             
     except Exception as e:

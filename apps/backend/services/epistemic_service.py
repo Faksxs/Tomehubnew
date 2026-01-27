@@ -146,13 +146,26 @@ def extract_core_concepts(question: str) -> List[str]:
 
 def classify_question_intent(question: str) -> tuple:
     """
-    Classify the user's intent: DIRECT, COMPARATIVE, or SYNTHESIS.
+    Classify the user's intent: DIRECT, COMPARATIVE, SYNTHESIS, or FOLLOW_UP.
     Also detects complexity for HYBRID mode.
     
     Returns:
         tuple: (intent, complexity) where complexity is 'LOW', 'MEDIUM', or 'HIGH'
     """
     q_lower = question.lower()
+    
+    # FOLLOW_UP Detection (Phase 3 Memory)
+    # Check for context-dependent words if question is short
+    follow_up_tokens = [
+        r'^peki\b', r'^o zaman\b', r'^onun\b', r'^bunun\b', r'^şunun\b',
+        r'^neden\b', r'^nasıl\b', r'^başka\b', r'^bu konuda\b'
+    ]
+    is_follow_up = any(re.search(p, q_lower) for p in follow_up_tokens) or len(q_lower.split()) <= 3
+    
+    # If it's a very short question, assume follow-up to history
+    if is_follow_up:
+        # We'll determine complexity later or default to LOW for short follow-ups
+        return ('FOLLOW_UP', 'LOW')
     
     # Complexity detection (Phase 5)
     # High complexity: philosophical, abstract, requires multiple perspectives
@@ -444,65 +457,45 @@ def determine_answer_mode(classified_chunks: List[Dict], question_intent: str = 
 
 
 
-def build_epistemic_context(chunks: List[Dict], answer_mode: str) -> str:
+from typing import List, Dict, Any, Optional, Tuple
+
+def build_epistemic_context(chunks: List[Dict], answer_mode: str) -> Tuple[str, List[Dict]]:
     """
     Build context string with epistemic priority markers AND metadata.
-    Includes Answerability Score and Features for the LLM.
+    Returns (context_string, used_chunks_list)
     """
     context_parts = []
     
     # Sort by Answerability Score (High to Low)
     sorted_chunks = sorted(chunks, key=lambda c: c.get('answerability_score', 0), reverse=True)
     
-    # LIMIT CONTEXT: Only use top 12 chunks to prevent overwhelming the LLM and "list mania"
-    sorted_chunks = sorted_chunks[:12]
+    # LIMIT CONTEXT: Only use top 12 chunks
+    used_chunks = sorted_chunks[:12]
     
-    for i, chunk in enumerate(sorted_chunks, 1):
+    for i, chunk in enumerate(used_chunks, 1):
         level = chunk.get('epistemic_level', 'C')
         score = chunk.get('answerability_score', 0)
         features = chunk.get('epistemic_features', [])
-        
-        # Phase 3: Semantic type and quotability
         passage_type = chunk.get('passage_type', 'SITUATIONAL')
         quotability = chunk.get('quotability', 'MEDIUM')
-        
-        # Determine strict match boolean for LLM prompt
-        exact_match = 'KEYWORD_MATCH' in features
         
         title = chunk.get('title', 'Unknown')
         text = chunk.get('content_chunk', '')
         if hasattr(text, 'read'):
             text = text.read()
-        text = str(text)[:500]
+        text = str(text)[:700]
         
-        personal_comment = chunk.get('personal_comment', '')
-        summary = chunk.get('summary', '')
+        # Simple ID-focused header for LLM citations
+        meta_header = f"[ID: {i} | Kaynak: {title} | Güven: {level}]"
         
-        # Phase 4: Enhanced Metadata Header with Type/Quotability
-        # LLM uses this to decide what to quote vs synthesize
-        meta_header = f"[ID: {i} | Score: {score}/7 | Level: {level} | Type: {passage_type} | Quotability: {quotability} | ExactMatch: {exact_match}]"
-        
-        # Priority marker based on quotability
+        block = f"{meta_header}\n"
         if quotability == 'HIGH' or level == 'A':
-            marker = "★★★ DOĞRUDAN ALINTI YAP (Quote Verbatim)"
-        elif level == 'B':
-            marker = "★★ BAĞLAMDA KULLAN (Use in Context)"
-        else:
-            marker = "★ SENTEZ YAP (Synthesize Only)"
+            block += "★★★ YÜKSEK ÖNCELİKLİ KAYNAK: Doğrudan alıntı önerilir.\n"
         
-        block = f"{meta_header}\n{marker} Kaynak: {title}\n"
-        
-        if text:
-            block += f"- ALINTI: {text}\n"
-        if personal_comment:
-            block += f"- KİŞİSEL NOT: {personal_comment}\n"
-        if summary:
-            block += f"- ÖZET: {summary}\n"
-        
-        block += "---\n"
+        block += f"İÇERİK: {text}\n---\n"
         context_parts.append(block)
     
-    return "\n".join(context_parts)
+    return "\n".join(context_parts), used_chunks
 
 
 
@@ -617,7 +610,47 @@ ZORUNLU ÇIKTI FORMATI:
 
 CEVAP:"""
     
-    else:  # SYNTHESIS mode
+    elif answer_mode == 'EXPLORER':
+        # Mode B: EXPLORER (Deep Search & Dialectical Thinking)
+        return f"""{intro}
+
+ÖNEMLİ: Bu bir ARAŞTIRMA DİYALOĞU (Explorer Mode). Amacımız kullanıcıya bir makale sunmak değil, onunla birlikte düşünmek ve konuyu adım adım açmak.
+
+─────────────────────────────────────────────────────────────────
+DİYALEKTİK RİTM VE KONUŞMA KURALLARI:
+─────────────────────────────────────────────────────────────────
+1. MONOLOGDAN KAÇIN: Cevabı devasa bloklar halinde verme. Kısa, vurucu ve merak uyandırıcı paragraflar kullan.
+2. ÖNCE ÖZ: En güçlü bulguyu veya en ilginç çelişkiyi en başta söyle.
+3. ADIM ADIM DERİNLEŞ: Her şeyi tek seferde anlatma. Önemli bir noktayı açıkla ve bir sonrakine geçmek için kapı aç.
+4. TAŞLAŞMAYI (OSSIFICATION) KIR: Notları aynen tekrar etme. Notlar arasındaki boşlukları bul, çelişkileri vurgula ve "notlarında bu konuda bilgi eksik" demekten çekinme. Yeni bir sentez ortaya koy.
+5. "YOL AYRIMLARI" SUN: Cevabın sonunda her zaman kullanıcıya 2-3 somut "keşif yolu" öner. 
+   Örn: "Bu çelişkiyi mi deşelim, yoksa literatürdeki benzer örneklere mi bakalım?"
+
+─────────────────────────────────────────────────────────────────
+EPİSTEMİK ALÇAKGÖNÜLLÜLÜK KURALLARI (Her cümlede uygula):
+─────────────────────────────────────────────────────────────────
+DİL KULLANIMI:
+✓ Bilgi: "X'e göre...", "Notlarda belirtildiği üzere..."
+✓ Yorum: "Bu genellikle ... olarak yorumlanır", "Şu şekilde okunabilir:"
+✓ Belirsizlik: "Bu noktada kesin hüküm vermek güç", "Farklı yorumlar mümkün"
+✓ Kaynak Gösterimi: Notlar için [ID: X], dış bilgi için [GENEL BİLGİ], yorumlar için [YORUM].
+
+✗ YASAK: "Kesinlikle", "Tartışmasız", "Şüphesiz", "Tek doğru yorum budur".
+─────────────────────────────────────────────────────────────────
+
+BAĞLAM (Kullanıcı Notları + Önceki Durum):
+{context}
+
+KULLANICI SORUSU:
+{question}
+
+ÇIKTI TALİMATI:
+1. Cevabı doğrudan "##" başlıklarıyla bölmek zorunda değilsin, akıcı bir anlatım tercih et.
+2. Mutlaka bir "Keşif Önerileri" (Exploration Paths) bölümüyle bitir.
+
+CEVAP:"""
+
+    else:  # SYNTHESIS mode (Fallback)
         return f"""{intro}
 
 DURUM: Sentez ve yorumlama modu aktif.

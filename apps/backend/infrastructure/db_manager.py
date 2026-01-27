@@ -82,10 +82,15 @@ class DatabaseManager:
             raise RuntimeError("Database Pool is not initialized. Call init_pool() first.")
         
         try:
-            return cls._pool.acquire(timeout=timeout)
-        except oracledb.PoolTimeout:
-            logger.error(f"Database pool exhausted, wait timeout: {timeout}s")
-            raise RuntimeError(f"Database temporarily unavailable (pool exhausted, timeout: {timeout}s)")
+            # oracledb Pool.acquire doesn't take timeout in all versions
+            # and PoolTimeout is often under oracledb.exceptions
+            return cls._pool.acquire()
+        except Exception as e:
+            # Check for timeout in a version-agnostic way
+            if "PoolTimeout" in str(type(e)) or "timeout" in str(e).lower():
+                logger.error(f"Database pool exhausted, wait timeout: {timeout}s")
+                raise RuntimeError(f"Database temporarily unavailable (pool exhausted, timeout: {timeout}s)")
+            raise e
 
 # Dependency for FastAPI routes
 def get_db_connection():

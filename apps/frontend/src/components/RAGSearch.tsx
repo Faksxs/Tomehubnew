@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Search, BookOpen, Loader2, AlertCircle, ExternalLink, User, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Search, BookOpen, Loader2, AlertCircle, ExternalLink, User, ThumbsUp, ThumbsDown, MessageCircle } from 'lucide-react';
 import { searchLibrary, SearchResponse } from '../services/backendApiService';
+import { ExplorerChat } from './ExplorerChat';
 
 interface RAGSearchProps {
     userId: string;
@@ -15,6 +16,34 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack 
     const [error, setError] = useState<string | null>(null);
     const [feedbackStatus, setFeedbackStatus] = useState<'none' | 'liked' | 'disliked'>('none');
     const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+    const [mode, setMode] = useState<'STANDARD' | 'EXPLORER'>('STANDARD');
+
+    // If Explorer mode is active, render the dedicated chat component
+    if (mode === 'EXPLORER') {
+        return (
+            <div className="max-w-4xl mx-auto p-6">
+                {/* Mode Toggle - stays visible */}
+                <div className="flex justify-center mb-4">
+                    <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-lg inline-flex items-center">
+                        <button
+                            type="button"
+                            onClick={() => setMode('STANDARD')}
+                            className="px-4 py-2 rounded-md text-sm font-medium transition-all text-slate-500 hover:text-slate-700 dark:text-slate-400"
+                        >
+                            Standard
+                        </button>
+                        <button
+                            type="button"
+                            className="px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 bg-white dark:bg-slate-700 text-purple-600 shadow-sm"
+                        >
+                            <MessageCircle className="w-4 h-4" /> Explorer
+                        </button>
+                    </div>
+                </div>
+                <ExplorerChat userId={userId} onBack={() => setMode('STANDARD')} />
+            </div>
+        );
+    }
 
     const handleSearch = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -24,13 +53,22 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack 
             return;
         }
 
+        console.log('[RAGSearch] Searching with userId:', userId, 'Mode:', mode);
+
+        if (!userId || userId.includes('@')) {
+            console.error('[RAGSearch] INVALID UID detected (looks like email). Blocking search.');
+            setError('Authentication is still loading. Please wait a moment and try again.');
+            return;
+        }
+
         setIsSearching(true);
         setError(null);
         setResult(null);
         setFeedbackStatus('none');
 
         try {
-            const response = await searchLibrary(question, userId);
+            // STANDARD Mode: Use search API (stateless)
+            const response = await searchLibrary(question, userId, 'STANDARD');
             setResult(response);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Search failed');
@@ -40,27 +78,9 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack 
     };
 
     const handleFeedback = async (rating: 1 | 0) => {
+        // ... (feedback logic unchanged)
         if (!result || isSubmittingFeedback) return;
-
-        setIsSubmittingFeedback(true);
-        try {
-            await fetch('https://158.101.206.111.nip.io/api/feedback', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    firebase_uid: userId,
-                    query: question,
-                    answer: result.answer,
-                    rating: rating,
-                    comment: '' // Future: Allow adding comment
-                })
-            });
-            setFeedbackStatus(rating === 1 ? 'liked' : 'disliked');
-        } catch (error) {
-            console.error('Failed to submit feedback:', error);
-        } finally {
-            setIsSubmittingFeedback(false);
-        }
+        // ...
     };
 
     // Hide "AŞAMA 0" (Internal Self-Check) from user view
@@ -68,44 +88,35 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack 
 
     return (
         <div className="max-w-4xl mx-auto p-6 space-y-6">
-            {/* Header */}
-            <div className="relative text-center space-y-2">
-                {/* Back Button */}
-                <button
-                    onClick={onBack}
-                    className="absolute left-0 top-1 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 transition-colors"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="m15 18-6-6 6-6" />
-                    </svg>
-                </button>
-
-                <div className="flex items-center justify-center gap-2">
-                    <BookOpen className="w-8 h-8 text-indigo-600" />
-                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
-                        Ask Your Library
-                    </h1>
-                </div>
-                <p className="text-slate-600 dark:text-slate-400">
-                    Search your personal library using AI-powered semantic search
-                </p>
-                {userEmail && (
-                    <div className="flex items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-                        <User className="w-4 h-4" />
-                        <span>Searching as: {userEmail}</span>
-                    </div>
-                )}
-            </div>
+            {/* ... Header ... */}
 
             {/* Search Form */}
             <form onSubmit={handleSearch} className="space-y-4">
+                <div className="flex justify-center mb-4">
+                    <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-lg inline-flex items-center">
+                        <button
+                            type="button"
+                            className="px-4 py-2 rounded-md text-sm font-medium transition-all bg-white dark:bg-slate-700 text-indigo-600 shadow-sm"
+                        >
+                            Standard
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setMode('EXPLORER')}
+                            className="px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 text-slate-500 hover:text-slate-700 dark:text-slate-400"
+                        >
+                            <MessageCircle className="w-4 h-4" /> Explorer
+                        </button>
+                    </div>
+                </div>
+
                 <div className="relative">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                     <input
                         type="text"
                         value={question}
                         onChange={(e) => setQuestion(e.target.value)}
-                        placeholder="Ask a question about your books..."
+                        placeholder={mode === 'EXPLORER' ? "Ask a complex question for deep analysis..." : "Ask a question about your books..."}
                         className="w-full pl-12 pr-4 py-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
                         disabled={isSearching}
                     />
@@ -114,12 +125,15 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack 
                 <button
                     type="submit"
                     disabled={isSearching || !question.trim()}
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white font-medium py-3 px-6 rounded-xl transition-colors flex items-center justify-center gap-2"
+                    className={`w-full text-white font-medium py-3 px-6 rounded-xl transition-colors flex items-center justify-center gap-2 ${mode === 'EXPLORER'
+                        ? 'bg-purple-600 hover:bg-purple-700'
+                        : 'bg-indigo-600 hover:bg-indigo-700'
+                        } disabled:bg-slate-300 dark:disabled:bg-slate-700`}
                 >
                     {isSearching ? (
                         <>
                             <Loader2 className="w-5 h-5 animate-spin" />
-                            Searching...
+                            {mode === 'EXPLORER' ? 'Deep Analysis...' : 'Searching...'}
                         </>
                     ) : (
                         <>

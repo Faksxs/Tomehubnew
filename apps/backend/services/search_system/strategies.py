@@ -5,6 +5,9 @@ import oracledb
 # Import DatabaseManager
 from infrastructure.db_manager import DatabaseManager
 from utils.text_utils import normalize_text, deaccent_text, get_lemmas
+from utils.logger import get_logger
+
+logger = get_logger("search_strategies")
 
 class SearchStrategy(ABC):
     """
@@ -38,11 +41,19 @@ class ExactMatchStrategy(SearchStrategy):
                                normalized_content
                         FROM TOMEHUB_CONTENT
                         WHERE firebase_uid = :p_uid
-                        AND text_deaccented LIKE '%' || :p_term || '%'
+                        AND (
+                            text_deaccented LIKE '%' || :p_term || '%'
+                            OR LOWER(content_chunk) LIKE '%' || :p_term_lower || '%'
+                        )
                         FETCH FIRST :p_limit ROWS ONLY
                     """
                     
-                    cursor.execute(sql, {"p_uid": firebase_uid, "p_term": q_deaccented, "p_limit": limit})
+                    cursor.execute(sql, {
+                        "p_uid": firebase_uid, 
+                        "p_term": q_deaccented, 
+                        "p_term_lower": query.lower(),
+                        "p_limit": limit
+                    })
                     rows = cursor.fetchall()
                     
                     results = []
@@ -68,7 +79,7 @@ class ExactMatchStrategy(SearchStrategy):
                     return results
 
         except Exception as e:
-            print(f"[ERROR] ExactMatchStrategy failed: {e}")
+            logger.error(f"ExactMatchStrategy failed: {e}", exc_info=True)
             return []
 
 class LemmaMatchStrategy(SearchStrategy):
@@ -128,7 +139,7 @@ class LemmaMatchStrategy(SearchStrategy):
                     return results # Orchestrator handles deduplication
 
         except Exception as e:
-            print(f"[ERROR] LemmaMatchStrategy failed: {e}")
+            logger.error(f"LemmaMatchStrategy failed: {e}", exc_info=True)
             return []
 
 class SemanticMatchStrategy(SearchStrategy):
@@ -138,7 +149,15 @@ class SemanticMatchStrategy(SearchStrategy):
     def __init__(self, embedding_service_fn):
         self.get_embedding = embedding_service_fn
         
-    def search(self, query: str, firebase_uid: str, limit: int = 20) -> List[Dict[str, Any]]:
+    def search(self, query: str, firebase_uid: str, limit: int = 20, intent: str = 'SYNTHESIS') -> List[Dict[str, Any]]:
+        """
+        Executes semantic search with Content-Aware Filtering.
+        
+        Dynamic Tiered Retrieval:
+        - DIRECT Intent: Bias towards shorter chunks (< 400 chars).
+        - NARRATIVE Intent: Bias towards longer chunks (> 600 chars).
+        - Otherwise: Standard retrieval.
+        """
         emb = self.get_embedding(query)
         if not emb:
             return []
@@ -146,28 +165,73 @@ class SemanticMatchStrategy(SearchStrategy):
         try:
             with DatabaseManager.get_connection() as conn:
                 with conn.cursor() as cursor:
-                    sql = """
-                        SELECT id, content_chunk, title, source_type, page_number,
-                               tags, summary, personal_note,
-                               VECTOR_DISTANCE(vec_embedding, :vec, COSINE) as dist
-                        FROM TOMEHUB_CONTENT
-                        WHERE firebase_uid = :p_uid
-                        ORDER BY dist ASC
-                        FETCH FIRST :p_limit ROWS ONLY
-                    """
-                    
-                    cursor.execute(sql, {"p_uid": firebase_uid, "vec": emb, "p_limit": limit})
-                    rows = cursor.fetchall()
-                    
                     results = []
+                    
+                    # Helper to run query
+                    def run_query(custom_limit, length_filter=None):
+                        sql = """
+                            SELECT id, content_chunk, title, source_type, page_number,
+                                   tags, summary, personal_note,
+                                   VECTOR_DISTANCE(vec_embedding, :vec, COSINE) as dist
+                            FROM TOMEHUB_CONTENT
+                            WHERE firebase_uid = :p_uid
+                        """
+                        
+                        params = {"p_uid": firebase_uid, "vec": emb, "p_limit": custom_limit}
+                        
+                        # Apply Content-Aware Filters
+                        if length_filter:
+                            if length_filter == 'SHORT':
+                                sql += " AND LENGTH(content_chunk) < 600 " # Relaxed from 400 for better recall
+                            elif length_filter == 'LONG':
+                                sql += " AND LENGTH(content_chunk) > 600 "
+                                
+                        sql += """
+                            ORDER BY dist ASC
+                            FETCH FIRST :p_limit ROWS ONLY
+                        """
+                        
+                        cursor.execute(sql, params)
+                        return cursor.fetchall()
+                    
+                    # --- EXECUTE SUB-QUERIES ---
+                    rows = []
+                    
+                    if intent == 'DIRECT' or intent == 'FOLLOW_UP':
+                        # 1. Standard Sweep (ensure we don't miss good long answers)
+                        # Use a portion of limit for each
+                        sweep_limit = max(5, limit // 2)
+                        rows.extend(run_query(sweep_limit))
+                        # 2. Bias: Short & Punchy (Definitions/Factoids)
+                        rows.extend(run_query(sweep_limit, length_filter='SHORT'))
+                        
+                    elif intent == 'NARRATIVE':
+                        # 1. Standard Sweep
+                        rows.extend(run_query(15))
+                        # 2. Bias: Long & Contextual
+                        rows.extend(run_query(10, length_filter='LONG'))
+                        
+                    else:
+                        # SYNTHESIS / Default -> Standard Search
+                        rows.extend(run_query(limit))
+                        
+                    # Deduplicate by ID
+                    seen_ids = set()
+                    unique_rows = []
                     for r in rows:
+                        if r[0] not in seen_ids:
+                            seen_ids.add(r[0])
+                            unique_rows.append(r)
+                            
+                    # Process Results
+                    for r in unique_rows:
                         content = r[1].read() if r[1] else ""
                         tags = r[5].read() if r[5] else ""
                         summary = r[6].read() if r[6] else ""
                         note = r[7].read() if r[7] else ""
                         dist = r[8]
+                        
                         if dist is None:
-                            # Handle missing vector in DB gracefully
                             score = 0.0
                         else:
                             score = max(0, (1 - dist) * 100)
@@ -184,8 +248,11 @@ class SemanticMatchStrategy(SearchStrategy):
                             'score': score,
                             'match_type': 'semantic'
                         })
-                    return results
+                        
+                    # Sort again by score after merge
+                    results.sort(key=lambda x: x['score'], reverse=True)
+                    return results[:limit]
 
         except Exception as e:
-            print(f"[ERROR] SemanticMatchStrategy failed: {e}")
+            logger.error(f"SemanticMatchStrategy failed: {e}", exc_info=True)
             return []

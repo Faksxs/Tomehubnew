@@ -16,14 +16,14 @@ from typing import Dict, List
 
 DEFAULT_RUBRIC: Dict[str, Dict] = {
     "source_accuracy": {
-        "weight": 0.30,
+        "weight": 0.25,
         "description": "Are quotes verbatim? Are sources correctly cited?",
         "description_tr": "Alıntılar birebir mi? Kaynaklar doğru mu?",
         "failure_signals": ["misquote", "wrong_source", "fabricated_quote"],
         "hint": "Alıntıları kelimesi kelimesine kontrol et. Kaynak isimlerini doğrula."
     },
     "relevance": {
-        "weight": 0.25,
+        "weight": 0.20,
         "description": "Does the answer directly address the question?",
         "description_tr": "Cevap soruyu doğrudan karşılıyor mu?",
         "failure_signals": ["off_topic", "tangential", "missing_core_concept"],
@@ -36,8 +36,15 @@ DEFAULT_RUBRIC: Dict[str, Dict] = {
         "failure_signals": ["partial_answer", "missing_perspective"],
         "hint": "Sorunun birden fazla yönü var. Tüm perspektifleri ele al."
     },
-    "ocr_correction": {
+    "synthesis_depth": {
         "weight": 0.15,
+        "description": "Does the answer synthesize insights or just paraphrase?",
+        "description_tr": "Cevap içgörüleri sentezliyor mu yoksa sadece notları mı tekrarlıyor?",
+        "failure_signals": ["ossified_content", "shallow_synthesis", "low_dialectical_depth"],
+        "hint": "Notları aynen tekrarlamak yerine aralarındaki bağlantıları ve eksik noktaları açıkla."
+    },
+    "ocr_correction": {
+        "weight": 0.10,
         "description": "Were OCR artifacts properly corrected?",
         "description_tr": "OCR hataları düzeltildi mi?",
         "failure_signals": ["uncorrected_ocr", "garbled_text"],
@@ -60,15 +67,15 @@ DIRECT_RUBRIC: Dict[str, Dict] = {
     **DEFAULT_RUBRIC,
     "source_accuracy": {
         **DEFAULT_RUBRIC["source_accuracy"],
-        "weight": 0.40,  # Higher weight for definitional questions
+        "weight": 0.40,
+    },
+    "synthesis_depth": {
+        **DEFAULT_RUBRIC["synthesis_depth"],
+        "weight": 0.05, # Low weight for direct definitions
     },
     "relevance": {
         **DEFAULT_RUBRIC["relevance"],
         "weight": 0.25,
-    },
-    "completeness": {
-        **DEFAULT_RUBRIC["completeness"],
-        "weight": 0.15,
     },
 }
 
@@ -76,15 +83,19 @@ SYNTHESIS_RUBRIC: Dict[str, Dict] = {
     **DEFAULT_RUBRIC,
     "source_accuracy": {
         **DEFAULT_RUBRIC["source_accuracy"],
-        "weight": 0.20,  # Lower for synthesis
+        "weight": 0.15,
+    },
+    "synthesis_depth": {
+        **DEFAULT_RUBRIC["synthesis_depth"],
+        "weight": 0.30, # HIGH weight for synthesis/explorer
     },
     "relevance": {
         **DEFAULT_RUBRIC["relevance"],
-        "weight": 0.30,  # Higher for synthesis
+        "weight": 0.25,
     },
     "completeness": {
         **DEFAULT_RUBRIC["completeness"],
-        "weight": 0.30,  # Higher for synthesis
+        "weight": 0.20,
     },
 }
 

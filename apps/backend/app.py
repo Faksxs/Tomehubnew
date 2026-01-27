@@ -25,7 +25,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Import Models
 from models.request_models import (
     SearchRequest, SearchResponse, IngestRequest, 
-    FeedbackRequest, AddItemRequest, BatchMigrateRequest
+    FeedbackRequest, AddItemRequest, BatchMigrateRequest,
+    ChatRequest, ChatResponse
 )
 from middleware.auth_middleware import verify_firebase_token
 
@@ -60,7 +61,7 @@ from services.cache_service import get_cache, generate_cache_key
 # Configure Logging
 logging.basicConfig(
     filename='backend_error.log',
-    level=logging.ERROR,
+    level=logging.INFO,
     format='%(asctime)s %(levelname)s: %(message)s'
 )
 logger = logging.getLogger("tomehub_api")
@@ -176,10 +177,12 @@ async def search(request: SearchRequest):
         from functools import partial
         loop = asyncio.get_running_loop()
         
-        # Check Feature Flag
-        enable_dual_ai = os.getenv("ENABLE_DUAL_AI", "false").lower() == "true"
+        # Route based on mode:
+        # - STANDARD: Use fast legacy flow (original architecture)
+        # - EXPLORER: Use Dual-AI Orchestrator (new deep analysis)
+        use_explorer_mode = request.mode == 'EXPLORER'
         
-        if enable_dual_ai:
+        if use_explorer_mode:
             print("[SEARCH] Using Dual-AI Orchestrator Flow")
             
             # 1. Retrieve Context
@@ -189,7 +192,9 @@ async def search(request: SearchRequest):
                     get_rag_context, 
                     request.question, 
                     request.firebase_uid, 
-                    request.book_id
+                    request.book_id,
+                    None, # chat_history
+                    request.mode # Pass mode
                 )
             )
             
@@ -201,10 +206,13 @@ async def search(request: SearchRequest):
                 }
                 
             # 2. Evaluate & Generate
+            # Force EXPLORER mode if requested, otherwise respect RAG classification
+            effective_mode = request.mode if request.mode == 'EXPLORER' else rag_ctx['mode']
+            
             result = await generate_evaluated_answer(
                 question=request.question,
                 chunks=rag_ctx['chunks'],
-                answer_mode=rag_ctx['mode'],
+                answer_mode=effective_mode,
                 confidence_score=rag_ctx['confidence'],
                 network_status=rag_ctx.get('network_status', 'IN_NETWORK')
             )
@@ -259,6 +267,134 @@ async def search(request: SearchRequest):
         
     except Exception as e:
         print(f"[ERROR] Search failed: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/chat", response_model=ChatResponse)
+async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks):
+    """
+    Stateful Chat Endpoint (Memory Layer).
+    Orchestrates session, history, and RAG search.
+    """
+    print(f"\n[CHAT] Started for Session: {request.session_id} UID: {request.firebase_uid}")
+    
+    try:
+        import asyncio
+        from functools import partial
+        from services.chat_history_service import (
+            create_session, add_message, get_session_context, summarize_session_history
+        )
+        
+        loop = asyncio.get_running_loop()
+        
+        # 1. Handle Session Creation
+        session_id = request.session_id
+        if not session_id:
+            new_title = f"Chat: {request.message[:40]}..."
+            session_id = await loop.run_in_executor(None, create_session, request.firebase_uid, new_title)
+            if not session_id:
+                raise HTTPException(status_code=500, detail="Failed to create session")
+            
+        # 2. Get Context (Summary + History)
+        ctx_data = await loop.run_in_executor(None, get_session_context, session_id)
+        
+        # 3. Save User Message
+        await loop.run_in_executor(None, add_message, session_id, 'user', request.message)
+        
+        # 4. Generate Answer (Using RAG with history)
+        # Route based on mode:
+        # - STANDARD: Use fast legacy flow (generate_answer)
+        # - EXPLORER: Use Dual-AI Orchestrator (deep dialectical analysis)
+        use_explorer_mode = request.mode == 'EXPLORER'
+        
+        answer = "Üzgünüm, ilgili içerik bulunamadı."
+        sources = []
+        conversation_state = None  # To return in response
+        thinking_history = []      # To return in response
+        
+        if use_explorer_mode:
+            # EXPLORER Mode: Dual-AI Orchestrator with conversation state
+            from services.chat_history_service import get_conversation_state
+            
+            # Get structured conversation state for context
+            if session_id:
+                conversation_state = await loop.run_in_executor(
+                    None, get_conversation_state, session_id
+                )
+            else:
+                conversation_state = {}
+
+            # 1. Retrieve Context
+            rag_ctx = await loop.run_in_executor(
+                None, 
+                partial(
+                    get_rag_context, 
+                    request.message, 
+                    request.firebase_uid, 
+                    chat_history=ctx_data['recent_messages'],
+                    mode='EXPLORER'
+                )
+            )
+            
+            if rag_ctx:
+                from services.dual_ai_orchestrator import generate_evaluated_answer
+                
+                final_result = await generate_evaluated_answer(
+                    question=request.message,
+                    chunks=rag_ctx['chunks'],
+                    answer_mode='EXPLORER',
+                    confidence_score=rag_ctx['confidence'],
+                    network_status=rag_ctx.get('network_status', 'IN_NETWORK'),
+                    conversation_state=conversation_state  # Pass structured state
+                )
+                
+                answer = final_result['final_answer']
+                thinking_history = final_result['metadata'].get('history', [])
+                
+                # Use the exact sources seen by the LLM
+                used_chunks = final_result['metadata'].get('used_chunks', [])
+                for i, c in enumerate(used_chunks, 1):
+                    sources.append({
+                        'id': i,
+                        'title': c.get('title', 'Unknown'),
+                        'score': c.get('answerability_score', 0),
+                        'page_number': c.get('page_number', 0),
+                        'content': str(c.get('content_chunk', ''))[:500]
+                    })
+        else:
+            # STANDARD Mode: Fast legacy flow
+            answer_result, sources_result = await loop.run_in_executor(
+                None,
+                partial(
+                    generate_answer,
+                    request.message,
+                    request.firebase_uid,
+                    context_book_id=request.book_id
+                )
+            )
+            
+            if answer_result:
+                answer = answer_result
+                sources = sources_result or []
+        
+        # 5. Save Assistant Message
+        await loop.run_in_executor(None, add_message, session_id, 'assistant', answer, sources)
+        
+        # 6. Periodic Summarization (Background)
+        background_tasks.add_task(summarize_session_history, session_id)
+        
+        # 7. Format Response
+        return {
+            "answer": answer,
+            "session_id": session_id,
+            "sources": sources or [],
+            "timestamp": datetime.now().isoformat(),
+            "conversation_state": conversation_state,
+            "thinking_history": thinking_history
+        }
+        
+    except Exception as e:
+        print(f"[ERROR] Chat failed: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -321,6 +457,8 @@ async def extract_metadata_endpoint(file: UploadFile = File(...)):
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
+from services.report_service import generate_file_report
+
 def run_ingestion_background(temp_path: str, title: str, author: str, firebase_uid: str, book_id: str):
     """
     Background task wrapper for book ingestion.
@@ -331,6 +469,13 @@ def run_ingestion_background(temp_path: str, title: str, author: str, firebase_u
         
         if success:
             logger.info(f"Background ingestion success: {title}")
+            # Trigger Memory Layer: File Report Generation
+            logger.info(f"Generating File Report for {book_id}...")
+            report_success = generate_file_report(book_id, firebase_uid)
+            if report_success:
+                logger.info(f"File Report generated for {title}")
+            else:
+                logger.error(f"File Report generation failed for {title}")
         else:
             logger.error(f"Background ingestion failed: {title}")
             
@@ -347,7 +492,9 @@ async def ingest_endpoint(
     firebase_uid: str = Form(...),
     book_id: Optional[str] = Form(None)
 ):
-    # ... (keep async, awaits file.read)
+    # Log ingestion start
+    print(f"Ingesting file: {file.filename} Title: {title}")
+    
     upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
     os.makedirs(upload_dir, exist_ok=True)
     
@@ -357,6 +504,10 @@ async def ingest_endpoint(
     original_filename = secure_filename(file.filename)
     unique_filename = f"{uuid.uuid4()}_{original_filename}"
     temp_path = os.path.join(upload_dir, unique_filename)
+    
+    # Ensure ID exists for Memory Layer tracking
+    if not book_id:
+        book_id = str(uuid.uuid4())
     
     try:
         with open(temp_path, "wb") as buffer:

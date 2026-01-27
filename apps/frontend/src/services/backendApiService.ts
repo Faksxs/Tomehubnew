@@ -8,6 +8,7 @@ const API_BASE_URL = 'http://localhost:5000'; // Updated for local testing
 export interface SearchRequest {
     question: string;
     firebase_uid: string;
+    mode?: 'STANDARD' | 'EXPLORER';
 }
 
 export interface SearchResponse {
@@ -39,6 +40,44 @@ export interface ApiError {
     details?: string;
 }
 
+// Chat API types (for Explorer Mode with conversational memory)
+export interface ChatRequest {
+    message: string;
+    firebase_uid: string;
+    session_id?: number | null;
+    book_id?: string | null;
+    mode?: 'STANDARD' | 'EXPLORER';
+}
+
+export interface ChatResponse {
+    answer: string;
+    session_id: number;
+    sources: Array<{
+        id?: number;
+        title: string;
+        score: number;
+        page_number: number;
+        content?: string;
+    }>;
+    timestamp: string;
+    conversation_state?: {
+        active_topic?: string;
+        assumptions?: Array<{ id: number; text: string; confidence: string }>;
+        open_questions?: string[];
+        established_facts?: Array<{ text: string; source: string }>;
+    };
+    thinking_history?: Array<{
+        attempt: number;
+        answer: string;
+        evaluation: {
+            verdict: string;
+            overall_score: number;
+            explanation: string;
+        };
+        latency: number;
+    }>;
+}
+
 /**
  * Check if backend API is online
  */
@@ -57,10 +96,12 @@ export async function checkApiHealth(): Promise<boolean> {
  * Search library using RAG
  * @param question - The user's question
  * @param firebaseUid - The authenticated user's Firebase UID
+ * @param mode - Search mode (STANDARD or EXPLORER)
  */
 export async function searchLibrary(
     question: string,
-    firebaseUid: string
+    firebaseUid: string,
+    mode: 'STANDARD' | 'EXPLORER' = 'STANDARD'
 ): Promise<SearchResponse> {
     if (!firebaseUid) {
         throw new Error('User must be authenticated to search');
@@ -74,12 +115,51 @@ export async function searchLibrary(
         body: JSON.stringify({
             question,
             firebase_uid: firebaseUid,
+            mode
         } as SearchRequest),
     });
 
     if (!response.ok) {
         const error: ApiError = await response.json();
         throw new Error(error.details || error.error || 'Search failed');
+    }
+
+    return response.json();
+}
+
+/**
+ * Send a chat message with conversational memory (for Explorer Mode)
+ * @param message - The user's message
+ * @param firebaseUid - The authenticated user's Firebase UID
+ * @param sessionId - Optional session ID for continuing a conversation
+ * @param mode - Chat mode (EXPLORER for deep conversational analysis)
+ */
+export async function sendChatMessage(
+    message: string,
+    firebaseUid: string,
+    sessionId: number | null = null,
+    mode: 'STANDARD' | 'EXPLORER' = 'EXPLORER'
+): Promise<ChatResponse> {
+    if (!firebaseUid) {
+        throw new Error('User must be authenticated to chat');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/chat`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            message,
+            firebase_uid: firebaseUid,
+            session_id: sessionId,
+            mode
+        } as ChatRequest),
+    });
+
+    if (!response.ok) {
+        const error: ApiError = await response.json();
+        throw new Error(error.details || error.error || 'Chat failed');
     }
 
     return response.json();

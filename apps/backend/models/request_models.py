@@ -5,6 +5,7 @@ class SearchRequest(BaseModel):
     question: str
     firebase_uid: str
     book_id: Optional[str] = None
+    mode: Optional[str] = "STANDARD" # STANDARD or EXPLORER
     
 class SearchResponse(BaseModel):
     answer: str
@@ -58,3 +59,20 @@ class VerifyCoverRequest(BaseModel):
 
 class AnalyzeHighlightsRequest(BaseModel):
     highlights: List[str]
+
+# --- Memory Layer Models ---
+class ChatRequest(BaseModel):
+    message: str
+    firebase_uid: str
+    session_id: Optional[int] = None
+    book_id: Optional[str] = None # Optional focus context
+    mode: Optional[str] = "STANDARD" # STANDARD (Default) or EXPLORER
+
+class ChatResponse(BaseModel):
+    answer: str
+    session_id: int
+    sources: List[Any]
+    timestamp: str
+    conversation_state: Optional[dict] = None  # Structured state for Context Bar
+    thinking_history: Optional[List[Any]] = None  # Process logs for UI
+

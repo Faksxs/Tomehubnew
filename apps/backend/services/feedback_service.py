@@ -46,8 +46,8 @@ def submit_feedback(data: dict) -> bool:
         
         sql = """
             INSERT INTO TOMEHUB_FEEDBACK 
-            (firebase_uid, query_text, generated_answer, rating, feedback_text, context_book_id)
-            VALUES (:p_uid, :p_q, :p_ans, :p_rating, :p_comment, :p_bid)
+            (firebase_uid, query_text, generated_answer, rating, feedback_text, context_book_id, search_log_id)
+            VALUES (:p_uid, :p_q, :p_ans, :p_rating, :p_comment, :p_bid, :p_log_id)
         """
         
         cursor.execute(sql, {
@@ -56,7 +56,8 @@ def submit_feedback(data: dict) -> bool:
             "p_ans": data.get('answer'),
             "p_rating": data.get('rating'), # 1 or 0
             "p_comment": data.get('comment', ''),
-            "p_bid": data.get('book_id', None)
+            "p_bid": data.get('book_id', None),
+            "p_log_id": data.get('search_log_id', None)
         })
         
         conn.commit()

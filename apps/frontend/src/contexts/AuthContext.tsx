@@ -31,6 +31,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     // Kullanıcı oturum durumunu izle
     useEffect(() => {
         const unsub = onAuthStateChanged(auth, (firebaseUser) => {
+            // DEBUG: Log the actual Firebase user object
+            if (firebaseUser) {
+                console.log('[AuthContext] Firebase User Object:', {
+                    uid: firebaseUser.uid,
+                    email: firebaseUser.email,
+                    displayName: firebaseUser.displayName,
+                    photoURL: firebaseUser.photoURL
+                });
+            }
             setUser(firebaseUser);
             setLoading(false);
         });

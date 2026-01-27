@@ -20,16 +20,17 @@ def get_logger(name):
     
     # Avoid adding handlers multiple times
     if not logger.handlers:
-        handler = logging.StreamHandler(sys.stdout)
+        # File Handler
+        fh = logging.FileHandler('backend_error.log', encoding='utf-8')
+        fh.setFormatter(CustomJsonFormatter('%(timestamp)s %(level)s %(name)s %(message)s'))
+        logger.addHandler(fh)
         
-        # Configure JSON format
-        formatter = CustomJsonFormatter('%(timestamp)s %(level)s %(name)s %(message)s')
-        handler.setFormatter(formatter)
+        # Stream Handler
+        sh = logging.StreamHandler(sys.stdout)
+        sh.setFormatter(CustomJsonFormatter('%(timestamp)s %(level)s %(name)s %(message)s'))
+        logger.addHandler(sh)
         
-        logger.addHandler(handler)
         logger.setLevel(logging.INFO)
-        
-        # Prevent propagation to root logger to avoid double printing if root is configured
         logger.propagate = False
         
     return logger

@@ -15,7 +15,8 @@ async def generate_evaluated_answer(
     answer_mode: str,
     confidence_score: float,
     max_attempts: int = 2,
-    network_status: str = "IN_NETWORK"
+    network_status: str = "IN_NETWORK",
+    conversation_state: Dict[str, Any] = None
 ) -> Dict[str, Any]:
     """
     Generate and evaluate an answer with automatic quality-based retry.
@@ -83,7 +84,8 @@ async def generate_evaluated_answer(
                 answer_mode=answer_mode,
                 confidence_score=confidence_score,
                 feedback_hints=None,
-                network_status=network_status
+                network_status=network_status,
+                conversation_state=conversation_state
             )
             
             # Construct a "SKIPPED_GOOD" verification result
@@ -111,84 +113,123 @@ async def generate_evaluated_answer(
 
 
     # Regular Audit Track (Loop)
-    for attempt in range(1, max_attempts + 1):
-        step_start = time.time()
-        logger.info(f"[DualAI] Attempt {attempt}/{max_attempts} for '{question[:30]}...' (Mode: {answer_mode})")
-        
-        # 1. Work AI Generation
+    # Refactored for Explorer Timeout Support
+    async def _execute_audit_track():
+        current_hints = hints
+        for attempt in range(1, max_attempts + 1):
+            step_start = time.time()
+            logger.info(f"[DualAI] Attempt {attempt}/{max_attempts} for '{question[:30]}...' (Mode: {answer_mode})")
+            
+            # 1. Work AI Generation
+            try:
+                work_result = await generate_work_ai_answer(
+                    question=question,
+                    chunks=chunks,
+                    answer_mode=answer_mode,
+                    confidence_score=confidence_score,
+                    feedback_hints=current_hints,
+                    network_status=network_status,
+                    conversation_state=conversation_state
+                )
+                answer_text = work_result["answer"]
+            except Exception as e:
+                logger.error(f"[DualAI] Work AI failed: {e}")
+                if attempt < max_attempts:
+                    continue # Retry
+                return _create_error_response(e)
+                
+            # 2. Judge AI Evaluation
+            try:
+                eval_result = await evaluate_answer(
+                    question=question,
+                    answer=answer_text,
+                    chunks=chunks,
+                    answer_mode=answer_mode,
+                    intent=intent
+                )
+            except Exception as e:
+                logger.error(f"[DualAI] Judge AI failed: {e}")
+                return _create_fallback_response(answer_text, work_result)
+                
+            step_latency = (time.time() - step_start) * 1000
+            
+            # Log result
+            logger.info(f"[DualAI] Verdict: {eval_result['verdict']} | Score: {eval_result['overall_score']:.2f}")
+            
+            history.append({
+                "attempt": attempt,
+                "answer": answer_text,
+                "evaluation": eval_result,
+                "latency": step_latency
+            })
+            
+            # 3. Decision Logic
+            verdict = eval_result["verdict"]
+            
+            if verdict == "PASS":
+                return _create_success_response(answer_text, eval_result, history, start_time, work_result)
+                
+            elif verdict == "REGENERATE":
+                if attempt < max_attempts:
+                    current_hints = eval_result["hints_for_retry"]
+                    logger.info(f"[DualAI] Retrying with hints: {current_hints}")
+                    continue
+                else:
+                    return _create_success_response(answer_text, eval_result, history, start_time, work_result)
+                    
+            elif verdict == "DECLINE":
+                 if eval_result["overall_score"] < 0.3 or attempt >= max_attempts:
+                     return _create_success_response(answer_text, eval_result, history, start_time, work_result)
+                 else:
+                     current_hints = eval_result["hints_for_retry"]
+                     continue
+
+        # Fallback (should be reached via loop exits)
+        last_entry = history[-1]
+        return _create_success_response(last_entry["answer"], last_entry["evaluation"], history, start_time, work_result)
+
+    # Execute with Timeout for Explorer Mode
+    if answer_mode == 'EXPLORER':
         try:
-            work_result = await generate_work_ai_answer(
+            return await asyncio.wait_for(_execute_audit_track(), timeout=45.0)
+        except asyncio.TimeoutError:
+            logger.warning("[DualAI] Explorer Mode TIMEOUT (45s). Falling back to Standard Synthesis.")
+            
+            # Fallback: Run standard synthesis (Fast & Reliable)
+            # We treat this as a "system fallback"
+            fallback_result = await generate_work_ai_answer(
                 question=question,
                 chunks=chunks,
-                answer_mode=answer_mode,
+                answer_mode='SYNTHESIS', # Fallback to Standard
                 confidence_score=confidence_score,
-                feedback_hints=hints,
                 network_status=network_status
             )
-            answer_text = work_result["answer"]
-        except Exception as e:
-            logger.error(f"[DualAI] Work AI failed: {e}")
-            if attempt < max_attempts:
-                continue # Retry
-            return _create_error_response(e)
             
-        # 2. Judge AI Evaluation
-        try:
-            eval_result = await evaluate_answer(
-                question=question,
-                answer=answer_text,
-                chunks=chunks,
-                answer_mode=answer_mode,
-                intent=intent
-            )
-        except Exception as e:
-            logger.error(f"[DualAI] Judge AI failed: {e}")
-            # If Judge fails, we accept the answer but mark as unevaluated
-            return _create_fallback_response(answer_text, work_result)
+            # Create a synthetic "Timeout" evaluation
+            fallback_eval = {
+                "verdict": "FALLBACK_TIMEOUT",
+                "overall_score": 0.5,
+                "criterion_scores": {},
+                "failures": ["Timeout in Explorer Mode"],
+                "hints_for_retry": [],
+                "explanation": "Explorer mode time limit exceeded. Answer generated via Standard mode."
+            }
             
-        step_latency = (time.time() - step_start) * 1000
-        
-        # Log result
-        logger.info(f"[DualAI] Verdict: {eval_result['verdict']} | Score: {eval_result['overall_score']:.2f}")
-        
-        history.append({
-            "attempt": attempt,
-            "answer": answer_text,
-            "evaluation": eval_result,
-            "latency": step_latency
-        })
-        
-        # 3. Decision Logic
-        verdict = eval_result["verdict"]
-        
-        if verdict == "PASS":
-            return _create_success_response(answer_text, eval_result, history, start_time)
+            # Append note to answer
+            final_ans = fallback_result["answer"] + "\n\n(Not: Derin analiz zaman aşımına uğradığı için standart özet sunulmaktadır.)"
             
-        elif verdict == "REGENERATE":
-            if attempt < max_attempts:
-                # Prepare hints for next attempt
-                hints = eval_result["hints_for_retry"]
-                logger.info(f"[DualAI] Retrying with hints: {hints}")
-                continue
-            else:
-                # Out of attempts, return best effort or decline
-                # If score is very low, decline. If borderline, pass with warning?
-                # For now, we return the last answer but with DECLINE status
-                return _create_success_response(answer_text, eval_result, history, start_time)
-                
-        elif verdict == "DECLINE":
-             # Immediate failure (e.g. offensive, completely wrong topic)
-             # But usually we try at least once more if we haven't retried yet?
-             # If score is extremely low (<0.3), maybe stop.
-             if eval_result["overall_score"] < 0.3 or attempt >= max_attempts:
-                 return _create_success_response(answer_text, eval_result, history, start_time)
-             else:
-                 hints = eval_result["hints_for_retry"]
-                 continue
-
-    # Fallback (should be reached via loop exits)
-    last_entry = history[-1]
-    return _create_success_response(last_entry["answer"], last_entry["evaluation"], history, start_time)
+            history.append({
+                "attempt": 1, 
+                "answer": final_ans,
+                "evaluation": fallback_eval,
+                "latency": (time.time() - start_time) * 1000
+            })
+            
+            return _create_success_response(final_ans, fallback_eval, history, start_time)
+            
+    else:
+        # Standard execution (no extra timeout wrapper, let global timeout handle it)
+        return await _execute_audit_track()
 
 
 def should_trigger_audit(confidence: float, intent: str, network_status: str) -> tuple:
@@ -218,7 +259,7 @@ def should_trigger_audit(confidence: float, intent: str, network_status: str) ->
     return False, "Standard In-Network Query"
 
 
-def _create_success_response(answer, evaluation, history, start_time):
+def _create_success_response(answer, evaluation, history, start_time, work_result):
     return {
         "final_answer": answer,
         "metadata": {
@@ -226,7 +267,8 @@ def _create_success_response(answer, evaluation, history, start_time):
             "quality_score": evaluation["overall_score"],
             "attempts": len(history),
             "total_latency_ms": (time.time() - start_time) * 1000,
-            "history": history
+            "history": history,
+            "used_chunks": work_result['metadata'].get('chunks', [])
         }
     }
 
@@ -245,6 +287,7 @@ def _create_fallback_response(answer, work_result):
         "metadata": {
             "verdict": "UNEVALUATED",
             "quality_score": 0.0,
-            "note": "Judge AI failed, returning raw answer"
+            "note": "Judge AI failed, returning raw answer",
+            "used_chunks": work_result['metadata'].get('chunks', [])
         }
     }

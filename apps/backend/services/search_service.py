@@ -457,7 +457,43 @@ def search_similar_content(query_text: str, firebase_uid: str, top_k: int = 5) -
 
 from concurrent.futures import ThreadPoolExecutor
 
-def get_rag_context(question: str, firebase_uid: str, context_book_id: str = None) -> Optional[Dict[str, Any]]:
+def rewrite_query_with_history(question: str, history: List[Dict]) -> str:
+    """
+    Memory Layer: Rewrites the user query to be standalone using conversation history.
+    Resolves pronouns and coreferences (e.g., 'What did he say?' -> 'What did Socrates say?').
+    """
+    if not history:
+        return question
+        
+    try:
+        # Avoid circular import by using genai locally if needed, but it's already at top
+        history_str = ""
+        for msg in history[-3:]: # Only need very recent for rewrite
+            role = "Kullanıcı" if msg['role'] == 'user' else "Asistan"
+            history_str += f"{role}: {msg['content']}\n"
+            
+        prompt = f"""
+        Aşağıdaki konuşma geçmişine dayanarak, kullanıcının son sorusunu bağlamı içerecek şekilde (tek başına anlamlı) yeniden yaz.
+        Eğer soru zaten tam ve anlaşılırsa, olduğu gibi bırak. 
+        Sadece yeniden yazılmış soruyu döndür. Dil: Türkçe.
+
+        GEÇMİŞ:
+        {history_str}
+
+        SON SORU: {question}
+
+        YENİDEN YAZILMIŞ SORU:
+        """
+        
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        response = model.generate_content(prompt)
+        rewritten = response.text.strip() if response else question
+        return rewritten
+    except Exception as e:
+        print(f"[WARNING] Query rewriting failed: {e}")
+        return question
+
+def get_rag_context(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, mode: str = 'STANDARD') -> Optional[Dict[str, Any]]:
     """
     Retrieves and processes context for RAG.
     Shared by Legacy Search and Dual-AI Chat.
@@ -470,20 +506,34 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
     - confidence: float
     - keywords: List[str]
     """
-    print(f"\n[RAG] Retrieving context for: {question}")
+    print(f"\n[RAG] Retrieving context for: {question} (Mode: {mode})")
     
-    # 1. Keyword Extraction
-    keywords = extract_core_concepts(question)
+    # 0. Query Rewriting (Memory Layer)
+    effective_query = question
+    if chat_history:
+        effective_query = rewrite_query_with_history(question, chat_history)
+        if effective_query != question:
+            print(f"[MEMORY] Contextual Rewriting: '{question}' -> '{effective_query}'")
+
+    # 1. Keyword Extraction & Intent Classification
+    # We classify intent EARLY now (Phase 4) to guide retrieval strategy
+    intent, complexity = classify_question_intent(effective_query)
+    keywords = extract_core_concepts(effective_query)
+    
+    print(f"[RAG] Intent: {intent} | Complexity: {complexity}")
     
     all_chunks_map = {}
     
     # 2. Parallel Retrieval (Vector + Graph)
     def run_vector_search():
-        return perform_smart_search(question, firebase_uid) or []
+        # Pass intent to guide filtering (Short/Long bias)
+        # Returns (results, metadata)
+        search_depth = 'deep' if mode == 'EXPLORER' else 'normal'
+        return perform_smart_search(effective_query, firebase_uid, intent=intent, book_id=context_book_id, search_depth=search_depth)
         
     def run_graph_search():
         try:
-            return get_graph_candidates(question, firebase_uid)
+            return get_graph_candidates(effective_query, firebase_uid)
         except:
             return []
 
@@ -495,9 +545,19 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         future_graph = executor.submit(run_graph_search)
         
         try:
-            question_results = future_vec.result()
+            # Result is now (list, dict)
+            vec_res, vec_meta = future_vec.result()
+            question_results = vec_res or []
+            
+            # Extract log id
+            search_log_id = vec_meta.get('search_log_id')
+            if search_log_id:
+                print(f"[RAG] Search Log ID: {search_log_id}")
+                
         except Exception as e:
             print(f"[ERROR] Vector: {e}")
+            vec_meta = {}
+            search_log_id = None
             
         try:
             graph_results = future_graph.result()
@@ -512,13 +572,17 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
 
     if graph_results:
         for c in graph_results:
+            # Graph results now have a calculated 'graph_score' (0.5 - 1.0)
+            g_score = c.get('graph_score', 0.5)
+            
             c_std = {
                 'title': c.get('title', 'Unknown'),
                 'content_chunk': c.get('content', '') or c.get('content_chunk', ''),
                 'page_number': c.get('page', 0),
                 'source_type': 'GRAPH_RELATION',
-                'epistemic_level': 'B',
-                'score': 100
+                'epistemic_level': 'B', # Default, will be adjusted
+                'score': g_score,       # Use graph score as the similarity score
+                'graph_score': g_score 
             }
             key = f"{c_std['title']}_{str(c_std['content_chunk'])[:20]}"
             if key not in all_chunks_map:
@@ -528,7 +592,7 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
     if keywords:
         search_kw = " ".join(keywords[:2])
         if search_kw and search_kw != question:
-            kw_res = perform_smart_search(search_kw, firebase_uid)
+            kw_res, kw_meta = perform_smart_search(search_kw, firebase_uid)
             if kw_res:
                 for c in kw_res:
                     key = f"{c.get('title','')}_{str(c.get('content_chunk',''))[:20]}"
@@ -537,18 +601,38 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
     
     combined_chunks = list(all_chunks_map.values())
     
-    if not combined_chunks:
+    if not combined_chunks and mode != 'EXPLORER':
         return None
         
     # Truncate if too many
     if len(combined_chunks) > 100:
         combined_chunks = combined_chunks[:100]
 
-    # 4. Epistemic Scoring & Intent
-    intent, complexity = classify_question_intent(question)
+    # 4. Epistemic Scoring (Already have intent)
+    # intent, complexity = classify_question_intent(question) # MOVED UP
     
     for chunk in combined_chunks:
         classify_chunk(keywords, chunk)
+        
+        # CRITICAL: Graph Results Re-Scoring
+        # classify_chunk may give 0 score if no keywords match (which is the point of "Invisible Bridges")
+        # We must restore the score based on the graph confidence weight.
+        if chunk.get('source_type') == 'GRAPH_RELATION':
+            g_score = chunk.get('graph_score', 0.5)
+            # Map 0.5-1.0 range to Answerability Score 1.5-4.0
+            # 0.5 -> 1.5 (Level B)
+            # 1.0 -> 3.5 (Level A - strong definition/citation)
+            boost = 1.5 + (g_score - 0.5) * 4.0 
+            
+            # Apply boost if it's higher than the keyword-based score
+            if boost > chunk.get('answerability_score', 0):
+                chunk['answerability_score'] = boost
+                
+                # Re-assign Level based on new score
+                if boost >= 3.0:
+                    chunk['epistemic_level'] = 'A'
+                elif boost >= 1.0:
+                    chunk['epistemic_level'] = 'B'
         
     # Passage Weighting & Sorting
     standard_top_40 = combined_chunks[:40]
@@ -595,11 +679,12 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         "chunks": final_chunks,
         "intent": intent,
         "complexity": complexity,
-        "mode": answer_mode,
-        "confidence": avg_conf,
+        "mode": answer_mode, # Use pre-calculated mode
+        "confidence": 0.85, # dynamic in future
         "network_status": network_info["status"],
         "network_reason": network_info["reason"],
         "keywords": keywords,
+        "search_log_id": search_log_id, # Return the log ID for feedback loop
         "level_counts": {
             'A': sum(1 for c in final_chunks if c.get('epistemic_level') == 'A'),
             'B': sum(1 for c in final_chunks if c.get('epistemic_level') == 'B'),
@@ -607,12 +692,12 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
     }
 
 
-def generate_answer(question: str, firebase_uid: str, context_book_id: str = None) -> Tuple[Optional[str], Optional[List[Dict]]]:
+def generate_answer(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, session_summary: str = "") -> Tuple[Optional[str], Optional[List[Dict]]]:
     """
-    Legacy RAG generation (Wrapper around get_rag_context).
+    RAG generation pipeline with Memory Layer support.
     """
     # 1. Retrieve Context
-    ctx = get_rag_context(question, firebase_uid, context_book_id)
+    ctx = get_rag_context(question, firebase_uid, context_book_id, chat_history=chat_history)
     if not ctx:
         return "Üzgünüm, şu an cevap üretemiyorum. İlgili içerik bulunamadı.", []
         
@@ -625,7 +710,8 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
     level_counts = ctx['level_counts']
     evidence_meta = f"[SİSTEM NOTU: Kullanıcının kütüphanesinde '{', '.join(keywords)}' ile ilgili toplam {level_counts['A'] + level_counts['B']} adet doğrudan not bulundu.]"
     
-    context_str = evidence_meta + "\n\n" + build_epistemic_context(chunks, answer_mode)
+    context_str_base, used_chunks = build_epistemic_context(chunks, answer_mode)
+    context_str = evidence_meta + "\n\n" + context_str_base
     
     # Add Graph insights if synthesis
     if answer_mode == 'SYNTHESIS':
@@ -636,17 +722,47 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
         except:
             pass
             
-    # 3. Generate Answer
+    # 3. Generate Answer (Ensure sources match IDs)
     sources = [{
+        'id': i,
         'title': c.get('title', 'Unknown'), 
         'page_number': c.get('page_number', 0),
-        'similarity_score': c.get('score', 0)
-    } for c in chunks]
+        'content': str(c.get('content_chunk', ''))[:400],
+        'score': c.get('score', 0)
+    } for i, c in enumerate(used_chunks, 1)]
     
     try:
         network_status = ctx.get('network_status', 'IN_NETWORK')
-        prompt = get_prompt_for_mode(answer_mode, context_str, question, confidence_score=avg_conf, network_status=network_status)
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        
+        # Prepare Memory-Augmented Prompt
+        history_str = ""
+        if chat_history:
+            for msg in chat_history[-3:]: # Just last 3 turns
+                role = "Kullanıcı" if msg['role'] == 'user' else "Asistan"
+                history_str += f"{role}: {msg['content']}\n"
+        
+        # In Memory Layer, we explicitly label context zones (Structured Phase 3)
+        structured_context = []
+        if session_summary:
+            structured_context.append(f"### KONUŞMA ÖZETİ (LONG-TERM MEMORY)\n{session_summary}")
+        
+        if history_str:
+            structured_context.append(f"### SON YAZIŞMALAR (SHORT-TERM MEMORY)\n{history_str}")
+        
+        structured_context.append(f"### KAYNAK DOKÜMANLAR (FOUND EVIDENCE)\n{context_str}")
+        
+        full_context_str = "\n\n---\n\n".join(structured_context)
+            
+        prompt = get_prompt_for_mode(
+            answer_mode, 
+            full_context_str, 
+            question, 
+            confidence_score=avg_conf, 
+            network_status=network_status
+        )
+        
+        # Use Flash for conversational speed
+        model = genai.GenerativeModel('gemini-flash-latest')
         response = model.generate_content(prompt)
         answer = response.text if response else "Cevap üretilemedi."
         return answer, sources
@@ -664,6 +780,14 @@ if __name__ == "__main__":
     print("TomeHub RAG Search Service - Interactive Test")
     print("=" * 70)
     
+    # Init DB Pool for test
+    from infrastructure.db_manager import DatabaseManager
+    try:
+        DatabaseManager.init_pool()
+    except Exception as e:
+        print(f"[ERROR] DB Init Failed: {e}")
+        exit(1)
+        
     # Get user ID
     firebase_uid = input("\nEnter Firebase UID (press Enter for test_user_001): ").strip()
     if not firebase_uid:

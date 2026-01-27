@@ -161,22 +161,33 @@ def score_with_bm25(documents: list[str], query: str) -> list[float]:
 from services.search_system.orchestrator import SearchOrchestrator
 from services.search_system.search_utils import compute_rrf # Re-export for compatibility
 
-def perform_smart_search(query, firebase_uid, book_id=None):
+def perform_smart_search(query, firebase_uid, book_id=None, intent='SYNTHESIS', search_depth='normal'):
     """
     Delegates to the new SearchOrchestrator (Phase 3 Architecture).
+    search_depth: 'normal' (default, limit 50) or 'deep' (limit 100)
     """
     try:
         from services.cache_service import get_cache
         cache = get_cache()
         
+        # Determine limit based on depth
+        limit = 100 if search_depth == 'deep' else 50
+        
         # Initialize Orchestrator with embedding function and cache
         orchestrator = SearchOrchestrator(embedding_fn=get_embedding, cache=cache)
-        return orchestrator.search(query, firebase_uid, book_id=book_id)
+        result = orchestrator.search(query, firebase_uid, limit=limit, book_id=book_id, intent=intent)
+        
+        if result is None:
+            print("[ERROR] Orchestrator returned None")
+            return [], {}
+            
+        return result
+        
     except Exception as e:
         print(f"[ERROR] Smart Search Failed: {e}")
         import traceback
         traceback.print_exc()
-        return []
+        return [], {}
 
 def parse_metadata_from_row(row):
     # Helper to clean content
