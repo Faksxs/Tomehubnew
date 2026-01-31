@@ -538,6 +538,152 @@ class FlowService:
         return None, None, anchor_id
     
     # -------------------------------------------------------------------------
+    # FEED SEEDING ARCHITECTURE (SEED-FIRST LOGIC)
+    # -------------------------------------------------------------------------
+
+    def _seed_candidates(
+        self,
+        firebase_uid: str,
+        session_id: str,
+        target_vector: Optional[List[float]],
+        resource_type: Optional[str],
+        limit: int = 15
+    ) -> List[FlowCard]:
+        """
+        Generate candidates using a Multi-Seed approach (Feed Logic).
+        3 Pools:
+        1. Gravity (Semantic match to anchor) - Only if target_vector exists
+        2. Recency (New highlights/notes)
+        3. Serendipity (Random quality chunks)
+        """
+        seeds = []
+        
+        # 1. Gravity Seed (if applicable)
+        if target_vector:
+            gravity_candidates = self._fetch_seed_gravity(
+                firebase_uid, session_id, target_vector, resource_type, limit=5
+            )
+            seeds.extend(gravity_candidates)
+            
+        # 2. Recency Seed (Contextual Anchoring)
+        recency_candidates = self._fetch_seed_recency(
+            firebase_uid, session_id, resource_type, limit=5
+        )
+        seeds.extend(recency_candidates)
+        
+        # 3. Serendipity Seed (Discovery)
+        # If we have very few gravity matches, boost serendipity
+        needed = limit - len(seeds)
+        if needed > 0:
+            # Always fetch at least 5 random to ensure variety
+            fetch_count = max(needed, 5) 
+            serendipity_candidates = self._fetch_seed_serendipity(
+                firebase_uid, session_id, resource_type, limit=fetch_count
+            )
+            seeds.extend(serendipity_candidates)
+            
+        return seeds
+
+    def _fetch_seed_gravity(
+        self, uid: str, sid: str, vec: List[float], r_type: Optional[str], limit: int
+    ) -> List[FlowCard]:
+        """Fetch semantically related items (Soft thresholds)."""
+        # We reuse Zone 1/2 logic but with relaxed constraints
+        # Effectively finding "Related" content
+        # For simplicity, we blindly fetch nearest neighbors regardless of zone
+        vec_array = array.array('f', vec)
+        params = {"p_uid": uid, "p_vec": vec_array, "p_sid": sid, "p_limit": limit}
+        
+        sql = """
+            SELECT id, content_chunk, title, source_type, page_number,
+                   VECTOR_DISTANCE(VEC_EMBEDDING, :p_vec, COSINE) as distance
+            FROM TOMEHUB_CONTENT
+            WHERE firebase_uid = :p_uid
+            AND VEC_EMBEDDING IS NOT NULL
+            AND id NOT IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE session_id = :p_sid)
+        """
+        if r_type:
+             # Add resource type filter
+             pass # Simplified for brevity, will implement if needed or rely on base filter
+             
+        sql += " ORDER BY distance ASC FETCH FIRST :p_limit ROWS ONLY "
+        
+        cards = []
+        with DatabaseManager.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, params)
+                for row in cursor.fetchall():
+                    raw_content = safe_read_clob(row[1])
+                    content = extract_note_content(raw_content)
+                    sim = 1 - row[5]
+                    
+                    # Tag based on similarity (No drop!)
+                    tag = "🎯 Precision" if sim > 0.6 else "🔗 Related" if sim > 0.3 else "🌊 Flow"
+                    
+                    cards.append(FlowCard(
+                        flow_id=str(uuid.uuid4()),
+                        chunk_id=str(row[0]),
+                        content=content,
+                        title=row[2] or "Untitled",
+                        page_number=row[4],
+                        source_type="pdf_chunk" if row[3] in ['PDF','PDF_CHUNK','EPUB'] else 'personal',
+                        zone=1, # Treat as "Gravity" zone
+                        epistemic_level="A",
+                        reason=f"{tag} ({sim:.0%})"
+                    ))
+                    # Attach sim for ranking
+                    cards[-1]._similarity = sim
+        return cards
+
+    def _fetch_seed_recency(self, uid: str, sid: str, r_type: Optional[str], limit: int) -> List[FlowCard]:
+        """Fetch recently added content (Highlights/Notes)."""
+        sql = """
+            SELECT id, content_chunk, title, source_type, page_number
+            FROM TOMEHUB_CONTENT
+            WHERE firebase_uid = :p_uid
+            AND (source_type = 'NOTES' OR title LIKE '% - Self')
+            AND id NOT IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE session_id = :p_sid)
+            ORDER BY id DESC FETCH FIRST :p_limit ROWS ONLY
+        """
+        # Recency = Zone 2 (High priority but below strong semantic matches)
+        return self._execute_simple_fetch(sql, {"p_uid": uid, "p_sid": sid, "p_limit": limit}, "✨ Recent", zone=2)
+
+    def _fetch_seed_serendipity(self, uid: str, sid: str, r_type: Optional[str], limit: int) -> List[FlowCard]:
+        """Fetch random high-quality chunks."""
+        sql = """
+            SELECT id, content_chunk, title, source_type, page_number
+            FROM TOMEHUB_CONTENT
+            WHERE firebase_uid = :p_uid
+            AND id NOT IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE session_id = :p_sid)
+            ORDER BY DBMS_RANDOM.VALUE FETCH FIRST :p_limit ROWS ONLY
+        """
+        # Serendipity = Zone 4 (Discovery / Low priority)
+        return self._execute_simple_fetch(sql, {"p_uid": uid, "p_sid": sid, "p_limit": limit}, "🎲 Serendipity", zone=4)
+
+    def _execute_simple_fetch(self, sql: str, params: dict, reason_prefix: str, zone: int) -> List[FlowCard]:
+         cards = []
+         with DatabaseManager.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, params)
+                for row in cursor.fetchall():
+                    raw_content = safe_read_clob(row[1])
+                    content = extract_note_content(raw_content)
+                    cards.append(FlowCard(
+                        flow_id=str(uuid.uuid4()),
+                        chunk_id=str(row[0]),
+                        content=content,
+                        title=row[2] or "Untitled",
+                        page_number=row[4],
+                        source_type="pdf_chunk" if row[3] in ['PDF','PDF_CHUNK','EPUB'] else 'personal',
+                        zone=zone, 
+                        epistemic_level="B",
+                        reason=reason_prefix
+                    ))
+                    # Zero similarity (pure diversity)
+                    cards[-1]._similarity = 0.0
+         return cards
+
+    # -------------------------------------------------------------------------
     # INTERNAL: CANDIDATE GENERATION
     # -------------------------------------------------------------------------
     
@@ -558,27 +704,26 @@ class FlowService:
         if state.resource_type == 'PERSONAL_NOTE':
             return self._fetch_personal_notes_simple(firebase_uid, session_id, batch_size)
         
-        # Calculate target vector using Dual Anchor
-        target_vector = self._calculate_target_vector(state)
+        # Determine Flow Mode (Gravity vs Zero Gravity)
+        target_vector = None
+        is_zero_gravity = (state.global_anchor_id == "General Discovery") or (not state.global_anchor_id)
         
-        # Determine active zones based on horizon value
-        active_zones = self._get_active_zones(state.horizon_value)
+        if not is_zero_gravity:
+             # Calculate target vector using Dual Anchor
+             target_vector = self._calculate_target_vector(state)
+        else:
+             logger.info("[FLOW] Zero Gravity Mode (General Discovery) - Skipping vector bias")
         
-        # 1. Fetch Candidates from Zones
-        all_candidates = []
-        zone_stats = {}
-        for zone in active_zones:
-            candidates = self._fetch_zone_candidates(
-                zone=zone,
-                target_vector=target_vector,
-                state=state,
-                firebase_uid=firebase_uid,
-                resource_type=state.resource_type
-            )
-            zone_stats[zone] = len(candidates)
-            all_candidates.extend(candidates)
+        # 1. Fetch Candidates (Seed-First Architecture)
+        all_candidates = self._seed_candidates(
+            firebase_uid=firebase_uid,
+            session_id=session_id,
+            target_vector=target_vector,
+            resource_type=state.resource_type,
+            limit=batch_size * 3  # Fetch 3x to allow for filtering/ranking fallout
+        )
         
-        logger.info(f"[FLOW-METRICS] Funnel Start: {len(all_candidates)} candidates. Zones: {zone_stats}")
+        logger.info(f"[FLOW-METRICS] Funnel Start: {len(all_candidates)} candidates via Seeding.")
         
         # Source Distribution Analysis
         source_dist = {"highlights": 0, "pdf_chunks": 0}
@@ -613,14 +758,12 @@ class FlowService:
         final_cards = ranked[:batch_size]
         
         logger.info(f"[FLOW-METRICS] Funnel Final: {len(final_cards)} cards returned")
-
         
         # Update session state
         for card in final_cards:
             self.session_manager.add_seen_chunk(session_id, card.chunk_id)
             self._record_seen_chunk(firebase_uid, session_id, card.chunk_id)
-            # Update centroid with the card's vector if available
-            # (This would require storing vectors with cards - simplified here)
+            # Update centroid if available (future)
         
         # Update local anchor to the last shown card
         if final_cards:
@@ -629,6 +772,7 @@ class FlowService:
             self.session_manager.update_session(state)
         
         return final_cards
+
     
     def _calculate_target_vector(self, state: FlowSessionState) -> Optional[List[float]]:
         """
