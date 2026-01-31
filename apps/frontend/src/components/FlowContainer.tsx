@@ -66,7 +66,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     anchor_id: anchorId,
                     mode: 'FOCUS',
                     horizon_value: horizonValue,
-                    resource_type: activeFilter !== 'ALL' ? activeFilter : undefined
+                    resource_type: activeFilter === 'ALL' ? 'ALL_NOTES' : activeFilter
                 });
 
                 setSessionId(response.session_id);
@@ -163,7 +163,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                 'topic',
                 'General Discovery',
                 firebaseUid,
-                activeFilter !== 'ALL' ? activeFilter : undefined
+                activeFilter === 'ALL' ? 'ALL_NOTES' : activeFilter
             );
 
             setTopicLabel(result.topic_label);

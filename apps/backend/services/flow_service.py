@@ -6,7 +6,7 @@ Orchestrates the "Expanding Horizons" algorithm with Dual Anchor gravity.
 """
 
 import logging
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Set
 from datetime import datetime
 import numpy as np
 import array
@@ -74,6 +74,9 @@ SIMILARITY_THRESHOLDS = {
     "discovery": 0.45, # Zone 4
     "dedup": 0.90,     # Semantic deduplication
 }
+
+# Resource type helper constants
+BOOK_SOURCE_TYPES = ("PDF", "EPUB", "PDF_CHUNK", "NOTES")
 
 
 # ============================================================================
@@ -298,9 +301,6 @@ class FlowService:
                 with conn.cursor() as cursor:
                     # PRIORITY 1: Epistemic Gaps (High centrality concepts NOT in seen history)
                     # This satisfies "hiç dokunulmamış ama merkezi concept"
-                    source_type_map = {'BOOK': 'PDF', 'ARTICLE': 'ARTICLE', 'WEBSITE': 'WEBSITE'}
-                    db_type = source_type_map.get(state.resource_type)
-                    
                     params = {"p_uid": state.firebase_uid, "p_sid": state.session_id}
                     
                     sql = """
@@ -317,13 +317,7 @@ class FlowService:
                             WHERE content_id IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE firebase_uid = :p_uid)
                         )
                     """
-                    if state.resource_type == 'PERSONAL_NOTE':
-                        sql += " AND ct.title LIKE '% - Self' "
-                    elif db_type == 'PDF':
-                        sql += " AND ct.source_type IN ('PDF', 'EPUB', 'PDF_CHUNK') AND ct.title NOT LIKE '% - Self' "
-                    elif db_type:
-                        sql += " AND ct.source_type = :p_type "
-                        params["p_type"] = db_type
+                    sql, params = self._apply_resource_filter(sql, params, state.resource_type)
                         
                     sql += " ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY "
                     cursor.execute(sql, params)
@@ -353,13 +347,7 @@ class FlowService:
                             WHERE id IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE firebase_uid = :p_uid)
                         )
                     """
-                    if state.resource_type == 'PERSONAL_NOTE':
-                        sql += " AND title LIKE '% - Self' "
-                    elif db_type == 'PDF':
-                        sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK') AND title NOT LIKE '% - Self' "
-                    elif db_type:
-                        sql += " AND source_type = :p_type "
-                        params["p_type"] = db_type
+                    sql, params = self._apply_resource_filter(sql, params, state.resource_type)
                         
                     sql += " ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY "
                     cursor.execute(sql, params)
@@ -418,6 +406,32 @@ class FlowService:
         if norm_a == 0 or norm_b == 0:
             return 0.0
         return float(np.dot(a, b) / (norm_a * norm_b))
+
+    @staticmethod
+    def _apply_resource_filter(
+        sql: str,
+        params: dict,
+        resource_type: Optional[str]
+    ) -> Tuple[str, dict]:
+        """
+        Append resource-type filters to a SQL query.
+
+        - BOOK: PDF/EPUB/PDF_CHUNK + NOTES (exclude personal notes)
+        - ALL_NOTES: NOTES only (exclude personal notes)
+        - PERSONAL_NOTE: titles ending with "- Self"
+        - ARTICLE/WEBSITE: strict source_type match
+        """
+        if resource_type == 'PERSONAL_NOTE':
+            sql += " AND title LIKE '% - Self' "
+        elif resource_type == 'ALL_NOTES':
+            sql += " AND source_type = 'NOTES' AND title NOT LIKE '% - Self' "
+        elif resource_type == 'BOOK':
+            sql += " AND title NOT LIKE '% - Self' "
+            sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'NOTES') "
+        elif resource_type in ('ARTICLE', 'WEBSITE'):
+            sql += " AND source_type = :p_type "
+            params["p_type"] = resource_type
+        return sql, params
 
     def _resolve_anchor(
         self, 
@@ -489,13 +503,7 @@ class FlowService:
                             """
                             params = {"p_uid": firebase_uid}
                             
-                            if resource_type == 'PERSONAL_NOTE':
-                                sql += " AND title LIKE '% - Self' "
-                            elif resource_type == 'BOOK':
-                                sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK') AND title NOT LIKE '% - Self' "
-                            elif resource_type in ['ARTICLE', 'WEBSITE']:
-                                sql += " AND source_type = :p_type "
-                                params["p_type"] = resource_type
+                            sql, params = self._apply_resource_filter(sql, params, resource_type)
                                 
                             sql += " ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY "
                             cursor.execute(sql, params)
@@ -585,6 +593,20 @@ class FlowService:
         filtered = self._filter_candidates(all_candidates, state, session_id, target_vector)
         
         logger.info(f"[FLOW-METRICS] Funnel Filtered: {len(filtered)} candidates (Dropped {len(all_candidates) - len(filtered)})")
+
+        # Fallback: if filtering is too strict, allow globally seen items (still avoid session duplicates)
+        if len(filtered) < batch_size and all_candidates:
+            fallback = self._filter_candidates(
+                all_candidates,
+                state,
+                session_id,
+                target_vector,
+                allow_global_seen=True,
+                skip_ids={card.chunk_id for card in filtered}
+            )
+            if fallback:
+                logger.info(f"[FLOW] Relaxed filter added {len(fallback)} candidates after global-seen fallback.")
+                filtered.extend(fallback)
         
         # Rank and select top N
         ranked = self._rank_candidates(filtered, target_vector)
@@ -692,7 +714,7 @@ class FlowService:
                     elif zone == 4:
                         # ZONE 4: Discovery Bridge (Looser similarity, high centrality)
                         candidates = self._fetch_zone4_discovery(
-                            cursor, target_vector, firebase_uid, state.session_id, limit, resource_type
+                            cursor, target_vector, firebase_uid, state.session_id, limit, state.cards_shown, resource_type
                         )
         
         except Exception as e:
@@ -781,8 +803,6 @@ class FlowService:
         """
         Zone 1: Fetch chunks from the same book, near the anchor's page.
         """
-        source_type_map = {'BOOK': 'PDF', 'ARTICLE': 'ARTICLE', 'WEBSITE': 'WEBSITE'}
-        db_type = source_type_map.get(resource_type)
         # Safety check: Is the anchor ID a numeric database ID?
         is_numeric_id = state.global_anchor_id and state.global_anchor_id.isdigit()
         
@@ -816,16 +836,7 @@ class FlowService:
                     )
                 """
                 # Apply filters
-                if resource_type == 'PERSONAL_NOTE':
-                    sql += " AND title LIKE '% - Self' "
-                elif resource_type is None:
-                    # All Notes - no filter (include everything)
-                    pass
-                elif db_type == 'PDF':
-                    sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK') AND title NOT LIKE '% - Self' "
-                elif db_type:
-                    sql += " AND source_type = :p_type "
-                    params["p_type"] = db_type
+                sql, params = self._apply_resource_filter(sql, params, resource_type)
                 
                 sql += " ORDER BY distance FETCH FIRST :p_limit ROWS ONLY "
                 cursor.execute(sql, params)
@@ -880,15 +891,7 @@ class FlowService:
                 WHERE session_id = :p_sid
             )
         """
-        if resource_type == 'PERSONAL_NOTE':
-            sql += " AND title LIKE '% - Self' "
-        elif resource_type is None:
-            pass  # All Notes - no filter
-        elif db_type == 'PDF':
-            sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK') AND title NOT LIKE '% - Self' "
-        elif db_type:
-            sql += " AND source_type = :p_type "
-            params["p_type"] = db_type
+        sql, params = self._apply_resource_filter(sql, params, resource_type)
             
         sql += " ORDER BY ABS(NVL(page_number, 1) - :p_page) FETCH FIRST :p_limit ROWS ONLY "
         cursor.execute(sql, params)
@@ -917,8 +920,6 @@ class FlowService:
         """
         Zone 2: Fetch from the same author or graph 1-hop neighbors.
         """
-        source_type_map = {'BOOK': 'PDF', 'ARTICLE': 'ARTICLE', 'WEBSITE': 'WEBSITE'}
-        db_type = source_type_map.get(resource_type)
         # Get author of the anchor (parsed from title since AUTHOR column is missing)
         author = None
         is_numeric_id = state.global_anchor_id and state.global_anchor_id.isdigit()
@@ -961,15 +962,7 @@ class FlowService:
                 )
             """
 
-            if resource_type == 'PERSONAL_NOTE':
-                sql += " AND title LIKE '% - Self' "
-            elif resource_type is None:
-                pass  # All Notes - no filter
-            elif db_type == 'PDF':
-                sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK') AND title NOT LIKE '% - Self' "
-            elif db_type:
-                sql += " AND source_type = :p_type "
-                params["p_type"] = db_type
+            sql, params = self._apply_resource_filter(sql, params, resource_type)
                 
             sql += " ORDER BY DBMS_RANDOM.VALUE FETCH FIRST :p_limit ROWS ONLY "
             cursor.execute(sql, params)
@@ -992,11 +985,13 @@ class FlowService:
              # Fallback: If no author (Topic Anchor), use broader vector search
              # Use loose threshold (0.40)
             vec_array = array.array('f', state.global_anchor_vector)
+            offset = min(10, state.cards_shown)
             params = {
                 "p_uid": firebase_uid,
                 "p_vec": vec_array,
                 "p_limit": limit,
-                "p_sid": state.session_id
+                "p_sid": state.session_id,
+                "p_offset": offset
             }
             sql = """
                 SELECT id, content_chunk, title, source_type, page_number,
@@ -1009,17 +1004,9 @@ class FlowService:
                     WHERE session_id = :p_sid
                 )
             """
-            if resource_type == 'PERSONAL_NOTE':
-                sql += " AND title LIKE '% - Self' "
-            elif resource_type is None:
-                pass  # All Notes - no filter
-            elif db_type == 'PDF':
-                sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK') AND title NOT LIKE '% - Self' "
-            elif db_type:
-                sql += " AND source_type = :p_type "
-                params["p_type"] = db_type
+            sql, params = self._apply_resource_filter(sql, params, resource_type)
                 
-            sql += " ORDER BY distance OFFSET 10 ROWS FETCH NEXT :p_limit ROWS ONLY "
+            sql += " ORDER BY distance OFFSET :p_offset ROWS FETCH NEXT :p_limit ROWS ONLY "
             cursor.execute(sql, params)
             
             for row in cursor.fetchall():
@@ -1054,9 +1041,6 @@ class FlowService:
         # Convert to array for Oracle
         vec_array = array.array('f', target_vector)
         
-        source_type_map = {'BOOK': 'PDF', 'ARTICLE': 'ARTICLE', 'WEBSITE': 'WEBSITE', 'PERSONAL_NOTE': 'NOTES'}
-        db_type = source_type_map.get(resource_type)
-        
         params = {
             "p_uid": firebase_uid,
             "p_vec": vec_array,
@@ -1074,15 +1058,7 @@ class FlowService:
                 WHERE session_id = :p_sid
             )
         """
-        if resource_type == 'PERSONAL_NOTE':
-            sql += " AND title LIKE '% - Self' "
-        elif resource_type is None:
-            pass  # All Notes - no filter
-        elif db_type == 'PDF':
-            sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK') AND title NOT LIKE '% - Self' "
-        elif db_type:
-            sql += " AND source_type = :p_type "
-            params["p_type"] = db_type
+        sql, params = self._apply_resource_filter(sql, params, resource_type)
             
         sql += " ORDER BY distance FETCH FIRST :p_limit ROWS ONLY "
         cursor.execute(sql, params)
@@ -1112,6 +1088,7 @@ class FlowService:
     
     def _fetch_zone4_discovery(
         self, cursor, target_vector: Optional[List[float]], firebase_uid: str, session_id: str, limit: int,
+        cards_shown: int = 0,
         resource_type: Optional[str] = None
     ) -> List[FlowCard]:
         """
@@ -1137,14 +1114,16 @@ class FlowService:
                 AND c.centrality_score > 0.01
             """
             
-            source_type_map = {'BOOK': 'PDF', 'ARTICLE': 'ARTICLE', 'WEBSITE': 'WEBSITE', 'PERSONAL_NOTE': 'NOTES'}
-            db_type = source_type_map.get(resource_type)
-            
-            if db_type == 'PDF':
-                sql += " AND ct.source_type IN ('PDF', 'EPUB', 'PDF_CHUNK') "
-            elif db_type:
+            if resource_type == 'PERSONAL_NOTE':
+                sql += " AND ct.title LIKE '% - Self' "
+            elif resource_type == 'ALL_NOTES':
+                sql += " AND ct.source_type = 'NOTES' AND ct.title NOT LIKE '% - Self' "
+            elif resource_type == 'BOOK':
+                sql += " AND ct.title NOT LIKE '% - Self' "
+                sql += " AND ct.source_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'NOTES') "
+            elif resource_type in ('ARTICLE', 'WEBSITE'):
                 sql += " AND ct.source_type = :p_type "
-                params["p_type"] = db_type
+                params["p_type"] = resource_type
                 
             sql += " ORDER BY c.centrality_score DESC, DBMS_RANDOM.VALUE FETCH FIRST :p_limit ROWS ONLY "
             cursor.execute(sql, params)
@@ -1174,11 +1153,13 @@ class FlowService:
             remaining = limit - len(cards)
             vec_array = array.array('f', target_vector)
             
+            offset = min(20, cards_shown)
             params = {
                 "p_uid": firebase_uid,
                 "p_vec": vec_array,
                 "p_limit": remaining,
-                "p_sid": session_id
+                "p_sid": session_id,
+                "p_offset": offset
             }
             sql = """
                 SELECT id, content_chunk, title, source_type, page_number,
@@ -1192,20 +1173,9 @@ class FlowService:
                 )
             """
             
-            source_type_map = {'BOOK': 'PDF', 'ARTICLE': 'ARTICLE', 'WEBSITE': 'WEBSITE'}
-            db_type = source_type_map.get(resource_type)
-            
-            if resource_type == 'PERSONAL_NOTE':
-                sql += " AND title LIKE '% - Self' "
-            elif resource_type is None:
-                pass  # All Notes - no filter
-            elif db_type == 'PDF':
-                sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK') AND title NOT LIKE '% - Self' "
-            elif db_type:
-                sql += " AND source_type = :p_type "
-                params["p_type"] = db_type
+            sql, params = self._apply_resource_filter(sql, params, resource_type)
                 
-            sql += " ORDER BY distance OFFSET 20 ROWS FETCH NEXT :p_limit ROWS ONLY "
+            sql += " ORDER BY distance OFFSET :p_offset ROWS FETCH NEXT :p_limit ROWS ONLY "
             cursor.execute(sql, params)
             
             for row in cursor.fetchall():
@@ -1240,7 +1210,9 @@ class FlowService:
         candidates: List[FlowCard], 
         state: FlowSessionState,
         session_id: str,
-        target_vector: Optional[List[float]] = None
+        target_vector: Optional[List[float]] = None,
+        allow_global_seen: bool = False,
+        skip_ids: Optional[Set[str]] = None
     ) -> List[FlowCard]:
         """
         Filter candidates:
@@ -1255,7 +1227,10 @@ class FlowService:
         chunk_ids = [c.chunk_id for c in candidates]
         metadata = self._get_candidate_metadata_batch(state.firebase_uid, chunk_ids, days=30)
         
+        skip_ids = skip_ids or set()
         for card in candidates:
+            if card.chunk_id in skip_ids:
+                continue
             # Check 1: Already shown in THIS session (Absolute exclusion)
             if self.session_manager.is_chunk_seen(session_id, card.chunk_id):
                 continue
@@ -1267,7 +1242,7 @@ class FlowService:
                 # Should not happen given logic, but safe fallback
                 continue
                 
-            if meta['is_seen']:
+            if meta['is_seen'] and not allow_global_seen:
                 # Applying logic for discovery jumps vs normal flow
                 local_anchor_id = state.local_anchor_id or ""
                 # If discovery jump, we might be strict, else soft?
@@ -1528,4 +1503,3 @@ def get_flow_service() -> FlowService:
     if _flow_service is None:
         _flow_service = FlowService()
     return _flow_service
-
