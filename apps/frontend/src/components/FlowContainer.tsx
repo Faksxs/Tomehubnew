@@ -267,20 +267,43 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                             />
                         ))}
 
-                        {/* Load More Trigger */}
-                        <div ref={loadMoreRef} className="flow-container__load-more">
-                            {isLoading && (
-                                <div className="flow-container__loader">
-                                    <div className="spinner" />
-                                    <span>{isJumping ? 'Jumping to something new...' : 'Exploring thoughts...'}</span>
-                                </div>
-                            )}
-                            {!hasMore && cards.length > 0 && (
-                                <div className="flow-container__end">
-                                    <span>🎉 You've explored all related thoughts</span>
-                                </div>
-                            )}
-                        </div>
+                        {/* Empty State - Explicitly show when no cards found */}
+                        {!isLoading && !error && cards.length === 0 && (
+                            <div className="flex flex-col items-center justify-center py-20 text-center px-4">
+                                <div className="text-6xl mb-6 opacity-80">📚</div>
+                                <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">
+                                    {activeFilter === 'PERSONAL_NOTE' ? 'No Personal Notes Found' : 'Library Empty'}
+                                </h3>
+                                <p className="text-slate-500 max-w-md mx-auto mb-8">
+                                    {activeFilter === 'PERSONAL_NOTE'
+                                        ? "We couldn't find any personal notes or highlights. Try adding some content or switching to 'All Notes'."
+                                        : "Your knowledge stream is waiting for content. Upload books or add notes to get started."}
+                                </p>
+                                <button
+                                    onClick={onClose}
+                                    className="px-6 py-2.5 bg-[#CC561E] hover:bg-[#b04a1a] text-white font-medium rounded-lg transition-colors"
+                                >
+                                    Go to Dashboard
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Load More Trigger - Only render if we have cards or are loading */}
+                        {(cards.length > 0 || isLoading) && (
+                            <div ref={loadMoreRef} className="flow-container__load-more">
+                                {isLoading && (
+                                    <div className="flow-container__loader">
+                                        <div className="spinner" />
+                                        <span>{isJumping ? 'Jumping to something new...' : 'Exploring thoughts...'}</span>
+                                    </div>
+                                )}
+                                {!hasMore && cards.length > 0 && (
+                                    <div className="flow-container__end">
+                                        <span>🎉 You've explored all related thoughts</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
 

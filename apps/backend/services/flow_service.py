@@ -27,6 +27,33 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+def extract_note_content(raw_content: str) -> str:
+    """
+    Extract clean note content from database format.
+    Personal notes are stored with metadata prefix like:
+    'Title: X Author: Y Content/Notes: <actual content>'
+    
+    This function extracts only the actual content.
+    """
+    if not raw_content:
+        return ""
+    
+    import re
+    # Check if content has the metadata prefix pattern
+    if raw_content.startswith("Title:"):
+        # Extract content after "Content/Notes:" marker
+        match = re.search(r'Content/Notes:\s*(.*)', raw_content, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+    
+    # If no pattern found, return as-is
+    return raw_content.strip()
+
+
+# ============================================================================
 # CONSTANTS & CONFIGURATION
 # ============================================================================
 
@@ -243,7 +270,7 @@ class FlowService:
                     source_type="external",
                     epistemic_level="A",
                     zone=4,
-                    reason=f"💎 Keşif: {new_label}"
+                    reason=f"[Kesif]: {new_label}"
                 )
                 
                 return FlowNextResponse(
@@ -291,7 +318,7 @@ class FlowService:
                         )
                     """
                     if state.resource_type == 'PERSONAL_NOTE':
-                        sql += " AND (ct.source_type = 'NOTES' OR (ct.source_type = 'PDF' AND ct.title LIKE '% - Self')) "
+                        sql += " AND ct.title LIKE '% - Self' "
                     elif db_type == 'PDF':
                         sql += " AND ct.source_type IN ('PDF', 'EPUB', 'PDF_CHUNK') AND ct.title NOT LIKE '% - Self' "
                     elif db_type:
@@ -327,7 +354,7 @@ class FlowService:
                         )
                     """
                     if state.resource_type == 'PERSONAL_NOTE':
-                        sql += " AND (source_type = 'NOTES' OR (source_type = 'PDF' AND title LIKE '% - Self')) "
+                        sql += " AND title LIKE '% - Self' "
                     elif db_type == 'PDF':
                         sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK') AND title NOT LIKE '% - Self' "
                     elif db_type:
@@ -448,7 +475,9 @@ class FlowService:
                             
                     elif anchor_type == "topic":
                         # AUTO-BOOTSTRAP: If generic "General Discovery", pivot to most recent content
+                        # AUTO-BOOTSTRAP: If generic "General Discovery", pivot to most recent content
                         if anchor_id == "General Discovery" or not anchor_id:
+                            logger.info(f"*** DEBUG: Auto-bootstrapping for UID: [{firebase_uid}] ***")
                             logger.info(f"Auto-bootstrapping for UID: {firebase_uid}, Scope: {resource_type}")
                             
                             # Build dynamic bootstrap SQL
@@ -461,7 +490,7 @@ class FlowService:
                             params = {"p_uid": firebase_uid}
                             
                             if resource_type == 'PERSONAL_NOTE':
-                                sql += " AND (source_type = 'NOTES' OR (source_type = 'PDF' AND title LIKE '% - Self')) "
+                                sql += " AND title LIKE '% - Self' "
                             elif resource_type == 'BOOK':
                                 sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK') AND title NOT LIKE '% - Self' "
                             elif resource_type in ['ARTICLE', 'WEBSITE']:
@@ -484,18 +513,15 @@ class FlowService:
                                 else:
                                     logger.warning(f"Failed to read vector for bootstrapped item {new_id}")
                             
-                            # PHASE 14: Cross-User Development Fallback REMOVED
+                            # If we reach here, bootstrap failed (no content or no valid vector)
                             # Strict Data Isolation Policy: Do not fallback to other users.
                             logger.info(f"UID {firebase_uid} has no content. Returning empty state.")
 
                             # Empty Library Case
-                            logger.warning(f"Empty Library or vector-less items for UID: {firebase_uid} and ver63")
+                            logger.warning(f"Empty Library or vector-less items for UID: {firebase_uid}")
                             vec = get_query_embedding(anchor_id or "Knowledge Discovery")
                             return list(vec) if vec else None, "Waiting for Content...", anchor_id
                         
-                        # Specific topic requested
-                        vec = get_query_embedding(anchor_id)
-                        return list(vec) if vec else None, f"Topic: {anchor_id}", anchor_id
         
         except Exception as e:
             import traceback
@@ -532,6 +558,7 @@ class FlowService:
         
         # 1. Fetch Candidates from Zones
         all_candidates = []
+        zone_stats = {}
         for zone in active_zones:
             candidates = self._fetch_zone_candidates(
                 zone=zone,
@@ -540,16 +567,31 @@ class FlowService:
                 firebase_uid=firebase_uid,
                 resource_type=state.resource_type
             )
+            zone_stats[zone] = len(candidates)
             all_candidates.extend(candidates)
         
-        logger.info(f"[FLOW] Total candidates before filtering: {len(all_candidates)}")
+        logger.info(f"[FLOW-METRICS] Funnel Start: {len(all_candidates)} candidates. Zones: {zone_stats}")
         
+        # Source Distribution Analysis
+        source_dist = {"highlights": 0, "pdf_chunks": 0}
+        for c in all_candidates:
+            if c.source_type == 'personal' or c.source_type == 'NOTES':
+                source_dist["highlights"] += 1
+            else:
+                source_dist["pdf_chunks"] += 1
+        logger.info(f"[FLOW-METRICS] Source Dist: {source_dist}")
+
         # Filter: Dedup, Seen, Negative feedback
         filtered = self._filter_candidates(all_candidates, state, session_id, target_vector)
+        
+        logger.info(f"[FLOW-METRICS] Funnel Filtered: {len(filtered)} candidates (Dropped {len(all_candidates) - len(filtered)})")
         
         # Rank and select top N
         ranked = self._rank_candidates(filtered, target_vector)
         final_cards = ranked[:batch_size]
+        
+        logger.info(f"[FLOW-METRICS] Funnel Final: {len(final_cards)} cards returned")
+
         
         # Update session state
         for card in final_cards:
@@ -678,11 +720,14 @@ class FlowService:
             with DatabaseManager.get_connection() as conn:
                 with conn.cursor() as cursor:
                     # Fetch random personal notes that haven't been seen yet
+                    # PERSONAL_NOTE Filter: Only show items with "- Self" suffix
+                    # source_type='NOTES' contains ALL book highlights, not personal notes
+                    # True personal notes have title ending with " - Self"
                     sql = """
                         SELECT id, content_chunk, title, page_number, source_type
                         FROM TOMEHUB_CONTENT
                         WHERE firebase_uid = :p_uid
-                        AND (source_type = 'NOTES' OR (source_type = 'PDF' AND title LIKE '% - Self'))
+                        AND title LIKE '% - Self'
                         AND id NOT IN (
                             SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
                             WHERE session_id = :p_sid
@@ -697,12 +742,16 @@ class FlowService:
                         "p_limit": batch_size
                     })
                     
+                    
                     for row in cursor.fetchall():
-                        content = safe_read_clob(row[1])
+                        raw_content = safe_read_clob(row[1])
+                        # Extract clean content (remove Title/Author prefix)
+                        clean_content = extract_note_content(raw_content)
+                        
                         cards.append(FlowCard(
                             flow_id=str(uuid.uuid4()),
                             chunk_id=str(row[0]),
-                            content=content[:500],
+                            content=clean_content,  # Full content, no truncation
                             title=row[2] or "Untitled Note",
                             page_number=row[3],
                             source_type="personal",
@@ -710,6 +759,7 @@ class FlowService:
                             epistemic_level="A",
                             reason="📝 Personal Note"
                         ))
+
                     
                     logger.info(f"[FLOW] Fetched {len(cards)} personal notes")
                     
@@ -767,7 +817,7 @@ class FlowService:
                 """
                 # Apply filters
                 if resource_type == 'PERSONAL_NOTE':
-                    sql += " AND (source_type = 'NOTES' OR (source_type = 'PDF' AND title LIKE '% - Self')) "
+                    sql += " AND title LIKE '% - Self' "
                 elif resource_type is None:
                     # All Notes - no filter (include everything)
                     pass
@@ -788,7 +838,7 @@ class FlowService:
                          cards.append(FlowCard(
                             flow_id=str(uuid.uuid4()),
                             chunk_id=str(row[0]),
-                            content=content[:500],
+                            content=content,
                             title=row[2] or "Untitled",
                             page_number=row[4],
                             source_type="personal" if row[3] == 'NOTES' or (row[3] == 'PDF' and ' - Self' in (row[2] or '')) else "pdf_chunk",
@@ -819,14 +869,19 @@ class FlowService:
             WHERE firebase_uid = :p_uid
             AND title = :p_book_title
             AND ABS(NVL(page_number, 1) - :p_page) <= 10
-            AND id != :p_anchor_id
+        """
+        # Only filter by anchor ID if it's actually a numeric database ID
+        if state.global_anchor_id and state.global_anchor_id.isdigit():
+            sql += " AND id != :p_anchor_id "
+        
+        sql += """
             AND id NOT IN (
                 SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
                 WHERE session_id = :p_sid
             )
         """
         if resource_type == 'PERSONAL_NOTE':
-            sql += " AND (title LIKE '% - Self' OR source_type = 'NOTES') "
+            sql += " AND title LIKE '% - Self' "
         elif resource_type is None:
             pass  # All Notes - no filter
         elif db_type == 'PDF':
@@ -844,13 +899,13 @@ class FlowService:
             cards.append(FlowCard(
                 flow_id=str(uuid.uuid4()),
                 chunk_id=str(row[0]),
-                content=content[:500],
+                content=content,
                 title=row[2] or "Untitled",
                 page_number=row[4],
                 source_type="pdf_chunk" if row[3] in ["PDF", "PDF_CHUNK", "EPUB"] else "personal",
                 zone=1,
                 epistemic_level="B", # Contextual
-                reason=f"📖 Same book, page {row[4]}"
+                reason=f"[Book] Page {row[4]}"
             ))
         
         return cards
@@ -894,14 +949,20 @@ class FlowService:
                 FROM TOMEHUB_CONTENT
                 WHERE firebase_uid = :p_uid
                 AND title LIKE :p_author_pattern
-                AND id != :p_anchor_id
+            """
+            # Only filter by anchor ID if it's actually a numeric database ID
+            if state.global_anchor_id and state.global_anchor_id.isdigit():
+                sql += " AND id != :p_anchor_id "
+            
+            sql += """
                 AND id NOT IN (
                     SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
                     WHERE session_id = :p_sid
                 )
             """
+
             if resource_type == 'PERSONAL_NOTE':
-                sql += " AND (source_type = 'NOTES' OR (source_type = 'PDF' AND title LIKE '% - Self')) "
+                sql += " AND title LIKE '% - Self' "
             elif resource_type is None:
                 pass  # All Notes - no filter
             elif db_type == 'PDF':
@@ -918,14 +979,14 @@ class FlowService:
                 cards.append(FlowCard(
                     flow_id=str(uuid.uuid4()),
                     chunk_id=str(row[0]),
-                    content=content[:500],
+                    content=content,
                     title=row[2] or "Untitled",
                     author=author,
                     page_number=row[4],
                     source_type="pdf_chunk" if row[3] in ["PDF", "PDF_CHUNK", "EPUB"] else "personal",
                     zone=2,
                     epistemic_level="B", # Contextual
-                    reason=f"✍️ Aynı Yazar: {author}"
+                    reason=f"[Author] {author}"
                 ))
         elif state.global_anchor_vector:
              # Fallback: If no author (Topic Anchor), use broader vector search
@@ -949,7 +1010,7 @@ class FlowService:
                 )
             """
             if resource_type == 'PERSONAL_NOTE':
-                sql += " AND (source_type = 'NOTES' OR (source_type = 'PDF' AND title LIKE '% - Self')) "
+                sql += " AND title LIKE '% - Self' "
             elif resource_type is None:
                 pass  # All Notes - no filter
             elif db_type == 'PDF':
@@ -969,13 +1030,13 @@ class FlowService:
                     cards.append(FlowCard(
                         flow_id=str(uuid.uuid4()),
                         chunk_id=str(row[0]),
-                        content=content[:500],
+                        content=content,
                         title=row[2] or "Untitled",
                         page_number=row[4],
                         source_type="pdf_chunk" if row[3] in ["PDF", "PDF_CHUNK", "EPUB"] else "personal",
                         zone=2,
                         epistemic_level="B", # Broad Context
-                        reason=f"🧠 Concept Context ({similarity:.0%})"
+                        reason=f"[Concept] Context ({similarity:.0%})"
                     ))
         
         return cards
@@ -1014,7 +1075,7 @@ class FlowService:
             )
         """
         if resource_type == 'PERSONAL_NOTE':
-            sql += " AND (source_type = 'NOTES' OR (source_type = 'PDF' AND title LIKE '% - Self')) "
+            sql += " AND title LIKE '% - Self' "
         elif resource_type is None:
             pass  # All Notes - no filter
         elif db_type == 'PDF':
@@ -1038,7 +1099,7 @@ class FlowService:
             cards.append(FlowCard(
                 flow_id=str(uuid.uuid4()),
                 chunk_id=str(row[0]),
-                content=content[:500],
+                content=content,
                 title=row[2] or "Untitled",
                 page_number=row[4],
                 source_type="pdf_chunk" if row[3] in ["PDF", "PDF_CHUNK", "EPUB"] else "personal",
@@ -1096,7 +1157,7 @@ class FlowService:
                 cards.append(FlowCard(
                     flow_id=str(uuid.uuid4()),
                     chunk_id=str(row[0]),
-                    content=content[:500],
+                    content=content,
                     title=row[2] or "Untitled",
                     page_number=row[4],
                     source_type="pdf_chunk" if row[3] in ["PDF", "PDF_CHUNK", "EPUB"] else "personal",
@@ -1135,7 +1196,7 @@ class FlowService:
             db_type = source_type_map.get(resource_type)
             
             if resource_type == 'PERSONAL_NOTE':
-                sql += " AND (source_type = 'NOTES' OR (source_type = 'PDF' AND title LIKE '% - Self')) "
+                sql += " AND title LIKE '% - Self' "
             elif resource_type is None:
                 pass  # All Notes - no filter
             elif db_type == 'PDF':
@@ -1158,13 +1219,13 @@ class FlowService:
                 cards.append(FlowCard(
                     flow_id=str(uuid.uuid4()),
                     chunk_id=str(row[0]),
-                    content=content[:500],
+                    content=content,
                     title=row[2] or "Untitled",
                     page_number=row[4],
                     source_type="pdf_chunk" if row[3] in ["PDF", "PDF_CHUNK", "EPUB"] else "personal",
                     zone=4,
                     epistemic_level="B", # Discovery
-                    reason=f"🌌 Expanding horizon ({similarity:.0%})"
+                    reason=f"Expanding Horizon ({similarity:.0%})"
                 ))
         
         return cards
@@ -1467,3 +1528,4 @@ def get_flow_service() -> FlowService:
     if _flow_service is None:
         _flow_service = FlowService()
     return _flow_service
+
