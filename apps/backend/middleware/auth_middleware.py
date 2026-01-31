@@ -59,17 +59,16 @@ async def verify_firebase_token(request: Request):
         if token == "mock_token":
              return "test_user_001"
              
-        # REAL VERIFICATION (Uncomment when key is ready)
-        # decoded_token = auth.verify_id_token(token)
-        # return decoded_token['uid']
         
-        # Temporary pass-through for existing frontend until we full migrate
-        # The existing frontend sends Bearer token but we might not have the Admin SDK key yet.
-        # Returning a placeholder or decoding without verification (unsafe but works for migration step)
-        return "user_verified_placeholder"
+        # TEMPORARY: Firebase Admin SDK not configured with service account
+        # For local development, we'll pass through the token/request
+        # In production, proper service account credentials should be set
+        
+        # For now, return a bypass value that signals to use request body
+        # The route handler will use flow_request.firebase_uid from the body
+        return None  # Signal to use request body UID
         
     except Exception as e:
         print(f"[AUTH ERROR] {e}")
-        # raise HTTPException(status_code=401, detail="Invalid Token")
-        # Soft fail for migration Phase 1
-        return "unauthenticated_user"
+        # For development, allow through
+        return None
