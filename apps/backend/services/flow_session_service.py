@@ -274,7 +274,6 @@ class FlowSessionManager:
             updated = old_centroid + (new_vec - old_centroid) / n
             state.session_centroid = updated.tolist()
         
-        state.cards_shown += 1
         self.update_session(state)
     
     # --- Negative Feedback ---

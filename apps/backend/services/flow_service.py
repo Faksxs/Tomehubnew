@@ -83,31 +83,8 @@ class FlowService:
         logger.info(f"Starting Flow session: anchor_type={request.anchor_type}, anchor_id={request.anchor_id}")
         
         # Step 1: Resolve anchor to vector
-        # Determine effective UID (Phase 14 Fallback)
+        # Use the authenticated UID as the only source of content.
         effective_uid = request.firebase_uid
-        try:
-             with DatabaseManager.get_connection() as conn:
-                 with conn.cursor() as cursor:
-                     # Check if current user has any content
-                     cursor.execute("SELECT count(*) FROM TOMEHUB_CONTENT WHERE LOWER(TRIM(firebase_uid)) = LOWER(TRIM(:p_uid))", {"p_uid": request.firebase_uid})
-                     if cursor.fetchone()[0] == 0:
-                         logger.info(f"UID {request.firebase_uid} is empty. Searching for most populated UID...")
-                         # Dynamic Discovery: Get the UID with the most vector embeddings
-                         cursor.execute("""
-                            SELECT firebase_uid FROM (
-                                SELECT firebase_uid, COUNT(*) as cnt 
-                                FROM TOMEHUB_CONTENT 
-                                WHERE VEC_EMBEDDING IS NOT NULL
-                                GROUP BY firebase_uid 
-                                ORDER BY cnt DESC
-                            ) FETCH FIRST 1 ROW ONLY
-                         """)
-                         top_row = cursor.fetchone()
-                         if top_row:
-                             effective_uid = str(top_row[0])
-                             logger.info(f"Dynamically discovered fallback UID: {effective_uid}")
-        except Exception as e:
-            logger.warning(f"Fallback discovery failed: {e}")
 
         anchor_vector, anchor_label, resolved_id = self._resolve_anchor(
             request.anchor_type, request.anchor_id, effective_uid, request.resource_type
@@ -125,7 +102,7 @@ class FlowService:
         
         # Step 2: Create session
         state = self.session_manager.create_session(
-            firebase_uid=effective_uid, # Store the effective UID for this session's future batches
+            firebase_uid=effective_uid, # Store the UID for this session's future batches
             anchor_id=resolved_id,      # Use the REAL ID (e.g., numeric ID from ver63)
             anchor_vector=anchor_vector,
             horizon_value=request.horizon_value,
@@ -361,6 +338,17 @@ class FlowService:
                 return None
         return None
 
+    @staticmethod
+    def _cosine_similarity(vec_a: List[float], vec_b: List[float]) -> float:
+        """Calculate cosine similarity."""
+        a = np.array(vec_a)
+        b = np.array(vec_b)
+        norm_a = np.linalg.norm(a)
+        norm_b = np.linalg.norm(b)
+        if norm_a == 0 or norm_b == 0:
+            return 0.0
+        return float(np.dot(a, b) / (norm_a * norm_b))
+
     def _resolve_anchor(
         self, 
         anchor_type: str, 
@@ -530,7 +518,7 @@ class FlowService:
         logger.info(f"[FLOW] Total candidates before filtering: {len(all_candidates)}")
         
         # Filter: Dedup, Seen, Negative feedback
-        filtered = self._filter_candidates(all_candidates, state, session_id)
+        filtered = self._filter_candidates(all_candidates, state, session_id, target_vector)
         
         # Rank and select top N
         ranked = self._rank_candidates(filtered, target_vector)
@@ -1163,7 +1151,8 @@ class FlowService:
         self, 
         candidates: List[FlowCard], 
         state: FlowSessionState,
-        session_id: str
+        session_id: str,
+        target_vector: Optional[List[float]] = None
     ) -> List[FlowCard]:
         """
         Filter candidates:
@@ -1181,7 +1170,8 @@ class FlowService:
             # Check 1b: Globally seen recently (Global Decay penalty/exclusion)
             # For Discovery Jumps, we want absolute exclusion from recent global history
             # For normal flow, maybe just a penalty? User said "discovery jump'ta düşük öncelik"
-            if state.mode == FlowMode.BRIDGE or state.local_anchor_id.startswith("pivot_"):
+            local_anchor_id = state.local_anchor_id or ""
+            if state.mode == FlowMode.BRIDGE or local_anchor_id.startswith("pivot_"):
                  if self._is_globally_seen(state.firebase_uid, card.chunk_id, days=60):
                      logger.debug(f"Skipping globally seen chunk for discovery: {card.chunk_id}")
                      continue
@@ -1196,6 +1186,8 @@ class FlowService:
             card_vector = self._get_chunk_vector(card.chunk_id)
             
             if card_vector:
+                if target_vector:
+                    card._similarity = self._cosine_similarity(card_vector, target_vector)
                 # Check if semantically duplicate
                 if self.session_manager.is_semantically_duplicate(
                     session_id, card_vector, threshold=0.85
@@ -1326,28 +1318,40 @@ class FlowService:
         Rank candidates by zone priority and relevance.
         
         Lower zones have higher priority (Zone 1 > Zone 2 > Zone 3 > Zone 4).
-        Within same zone, shuffle for variety.
+        Within same zone, use similarity + penalty, then shuffle for variety.
         """
         import random
         
+        zone_weight = {1: 0.4, 2: 0.3, 3: 0.2, 4: 0.1}
+        similarity_weight = 0.6
+
+        def score(card: FlowCard) -> float:
+            similarity = getattr(card, "_similarity", None)
+            if similarity is None:
+                similarity = 0.0
+            penalty = getattr(card, "_penalty", 1.0)
+            base = zone_weight.get(card.zone, 0.1) + (similarity_weight * similarity)
+            return base * penalty
+
         # Group by zone
         by_zone = {1: [], 2: [], 3: [], 4: []}
         for card in candidates:
             by_zone.get(card.zone, []).append(card)
-        
-        # Shuffle within each zone
+
+        # Sort by similarity/penalty within each zone, keep light shuffle for variety
         for zone in by_zone:
             random.shuffle(by_zone[zone])
-        
+            by_zone[zone].sort(key=score, reverse=True)
+
         # Interleave: Take from each zone in round-robin
         result = []
         max_len = max(len(cards) for cards in by_zone.values()) if by_zone else 0
-        
+
         for i in range(max_len):
             for zone in sorted(by_zone.keys()):
                 if i < len(by_zone[zone]):
                     result.append(by_zone[zone][i])
-        
+
         return result
 
 

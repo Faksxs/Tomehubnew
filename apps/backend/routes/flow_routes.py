@@ -41,6 +41,9 @@ async def flow_start(
     """
     print(f"\n[FLOW-API] Incoming request: {flow_request}")
     print(f"[FLOW-API] Authenticated UID: {user_id}")
+    if flow_request.firebase_uid != user_id:
+        logger.warning(f"[FLOW] UID mismatch on start: body={flow_request.firebase_uid} token={user_id}")
+        raise HTTPException(status_code=403, detail="firebase_uid mismatch")
     logger.info(f"[FLOW] Starting session for UID: {flow_request.firebase_uid}")
     
     try:
@@ -72,6 +75,9 @@ async def flow_next(
     """
     Get the next batch of cards in the Knowledge Stream.
     """
+    if flow_request.firebase_uid != user_id:
+        logger.warning(f"[FLOW] UID mismatch on next: body={flow_request.firebase_uid} token={user_id}")
+        raise HTTPException(status_code=403, detail="firebase_uid mismatch")
     logger.info(f"[FLOW] Next batch for session: {flow_request.session_id}")
     
     try:
@@ -104,6 +110,9 @@ async def flow_feedback(
     Submit feedback on a card (like, dislike, skip, save).
     Used to adjust the stream in real-time.
     """
+    if feedback.firebase_uid != user_id:
+        logger.warning(f"[FLOW] UID mismatch on feedback: body={feedback.firebase_uid} token={user_id}")
+        raise HTTPException(status_code=403, detail="firebase_uid mismatch")
     logger.info(f"[FLOW] Feedback: {feedback.action} on {feedback.chunk_id}")
     
     try:
@@ -166,6 +175,9 @@ async def flow_reset_anchor(
     """
     Explicitly reset the session anchor (Change Topic).
     """
+    if firebase_uid != user_id:
+        logger.warning(f"[FLOW] UID mismatch on reset-anchor: body={firebase_uid} token={user_id}")
+        raise HTTPException(status_code=403, detail="firebase_uid mismatch")
     logger.info(f"[FLOW] Resetting anchor for session {session_id} to {anchor_type}:{anchor_id}")
     
     try:
