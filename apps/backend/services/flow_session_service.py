@@ -334,43 +334,56 @@ class FlowSessionManager:
             
         return 1.0
     
-    # --- Prefetch Queue ---
+    # --- Prefetch Queue (Full Card Cache) ---
     
-    def enqueue_prefetch(self, session_id: str, chunk_ids: List[str]):
-        """Add to prefetch queue."""
+    def enqueue_prefetch(self, session_id: str, cards: List[Dict[str, Any]]):
+        """
+        Add full card objects to prefetch queue.
+        Expects cards to be serialized (dicts) or FlowCard objects.
+        """
         key = self._key(session_id, "queue")
         if self.use_redis and self.l2.redis:
             try:
-                for cid in chunk_ids:
-                    self.l2.redis.rpush(key, cid)
-                self.l2.redis.expire(key, SESSION_TTL)
-            except Exception:
-                pass
+                # pipeline for atomicity
+                pipe = self.l2.redis.pipeline()
+                for card in cards:
+                    # Handle Pydantic objects or dicts
+                    card_data = card.model_dump() if hasattr(card, 'model_dump') else card
+                    pipe.rpush(key, json.dumps(card_data))
+                pipe.expire(key, SESSION_TTL)
+                pipe.execute()
+            except Exception as e:
+                logger.error(f"Redis error (enqueue): {e}")
         else:
             if key not in self._local_storage:
                 self._local_storage[key] = []
-            self._local_storage[key].extend(chunk_ids)
+            
+            for card in cards:
+                card_data = card.model_dump() if hasattr(card, 'model_dump') else card
+                self._local_storage[key].append(card_data)
 
-    def dequeue_prefetch(self, session_id: str, count: int) -> List[str]:
-        """Get from prefetch queue."""
+    def dequeue_prefetch(self, session_id: str, count: int) -> List[Dict[str, Any]]:
+        """Get full cards from prefetch queue."""
         key = self._key(session_id, "queue")
+        result = []
+        
         if self.use_redis and self.l2.redis:
             try:
-                result = []
                 for _ in range(count):
-                    cid = self.l2.redis.lpop(key)
-                    if cid:
-                        result.append(cid.decode() if isinstance(cid, bytes) else cid)
+                    raw_data = self.l2.redis.lpop(key)
+                    if raw_data:
+                        result.append(json.loads(raw_data))
                     else:
                         break
-                return result
-            except Exception:
-                return []
+            except Exception as e:
+                logger.error(f"Redis error (dequeue): {e}")
         else:
              queue = self._local_storage.get(key, [])
+             # pop first 'count' elements
              result = queue[:count]
              self._local_storage[key] = queue[count:]
-             return result
+             
+        return result
 
     def get_prefetch_count(self, session_id: str) -> int:
          """Get size of prefetch queue."""
