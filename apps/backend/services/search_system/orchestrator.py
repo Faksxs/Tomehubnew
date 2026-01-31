@@ -35,7 +35,7 @@ class SearchOrchestrator:
         if self.embedding_fn:
             self.strategies.append(SemanticMatchStrategy(self.embedding_fn))
             
-    def search(self, query: str, firebase_uid: str, limit: int = 50, book_id: str = None, intent: str = 'SYNTHESIS') -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    def search(self, query: str, firebase_uid: str, limit: int = 50, book_id: str = None, intent: str = 'SYNTHESIS', resource_type: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         start_time = time.time()
         logger.info(f"Orchestrator: Search started for query='{query}' UID='{firebase_uid}' intent='{intent}'")
         
@@ -95,9 +95,9 @@ class SearchOrchestrator:
                 
                 # Check if strategy supports 'intent' arg (Semantic does, others don't)
                 if isinstance(strat, SemanticMatchStrategy):
-                     future_map[executor.submit(strat.search, query, firebase_uid, limit, intent)] = label
+                     future_map[executor.submit(strat.search, query, firebase_uid, limit, intent, resource_type)] = label
                 else:
-                     future_map[executor.submit(strat.search, query, firebase_uid, limit)] = label
+                     future_map[executor.submit(strat.search, query, firebase_uid, limit, resource_type)] = label
             
             # C. Collect original query results first
             for future in list(future_map.keys()):
@@ -124,8 +124,8 @@ class SearchOrchestrator:
                 variation_futures = {}
                 for i, var_query in enumerate(variations):
                     label = f"SemanticMatchStrategy_Var{i+1}"
-                    # Pass intent here too
-                    variation_futures[executor.submit(semantic_strat.search, var_query, firebase_uid, limit, intent)] = label
+                    # Pass intent and resource_type here too
+                    variation_futures[executor.submit(semantic_strat.search, var_query, firebase_uid, limit, intent, resource_type)] = label
                 
                 # Collect variation results
                 for future in variation_futures:
@@ -144,14 +144,34 @@ class SearchOrchestrator:
         # But we can assume if specific ExactMatch returned high scores, we might prioritize.
         # For Phase 2, let's skip gating to maximize recall via RRF.
         
-        # 3. Fusion (RRF)
-        # Flatten and RRF
-        
+        # 3. Fusion (RRF) with Intent-Aware Weighting
         candidate_pool = {} # Key -> Item
         rankings = []
         
-        for result_set in raw_results_list:
+        # Determine base weights based on intent
+        # Default: [Exact, Lemma, SemanticOriginal, SemanticVar1, SemanticVar2, ...]
+        if intent == 'DIRECT' or intent == 'CITATION_SEEKING':
+            base_weights = [0.6, 0.3, 0.1] # High priority on exact/lemma
+        elif intent == 'NARRATIVE' or intent == 'SYNTHESIS':
+            base_weights = [0.1, 0.2, 0.7] # High priority on semantic
+        else:
+            base_weights = [0.33, 0.33, 0.34] # Equal-ish distribution
+            
+        final_weights = []
+        
+        for i, result_set in enumerate(raw_results_list):
             ranking = []
+            # Calculate weight for this specific ranking list
+            if i < 3:
+                # Original query results (Exact, Lemma, Semantic)
+                w = base_weights[i] if i < len(base_weights) else 0.33
+            else:
+                # Expanded variations (Semantic only)
+                # Dampen expansions by 50% relative to the original semantic query
+                w = base_weights[2] * 0.5 if len(base_weights) > 2 else 0.15
+            
+            final_weights.append(w)
+            
             for hit in result_set:
                 # Key Generation
                 if hit.get('id'):
@@ -161,17 +181,23 @@ class SearchOrchestrator:
                 
                 if key not in candidate_pool:
                     candidate_pool[key] = hit
-                    candidate_pool[key]['strategies'] = ['aggregated'] 
+                    candidate_pool[key]['strategies'] = [f"strat_{i}"]
                 else:
                     # Update score (max)
                     candidate_pool[key]['score'] = max(candidate_pool[key]['score'], hit['score'])
+                    candidate_pool[key]['strategies'].append(f"strat_{i}")
                 
                 ranking.append(key)
             
             if ranking:
                 rankings.append(ranking)
-            
-        rrf_scores = compute_rrf(rankings)
+            else:
+                # Maintain weight list integrity even if ranking is empty
+                # rankings.append([]) # Actually rankings list in compute_rrf should match weights list size or we handle it
+                pass
+                
+        # Call RRF with calculated weight vector
+        rrf_scores = compute_rrf(rankings, weights=final_weights)
         
         # Apply RRF scores
         final_list = []

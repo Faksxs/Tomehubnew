@@ -276,10 +276,10 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
 
   const getIcon = () => {
     switch (initialType) {
-      case 'ARTICLE': return <FileText className="text-indigo-500 dark:text-indigo-400" size={24} />;
-      case 'WEBSITE': return <Globe className="text-indigo-500 dark:text-indigo-400" size={24} />;
-      case 'PERSONAL_NOTE': return <PenTool className="text-indigo-500 dark:text-indigo-400" size={24} />;
-      default: return <BookIcon className="text-indigo-500 dark:text-indigo-400" size={24} />;
+      case 'ARTICLE': return <FileText className="text-[#CC561E]" size={24} />;
+      case 'WEBSITE': return <Globe className="text-[#CC561E]" size={24} />;
+      case 'PERSONAL_NOTE': return <PenTool className="text-[#CC561E]" size={24} />;
+      default: return <BookIcon className="text-[#CC561E]" size={24} />;
     }
   }
 
@@ -304,7 +304,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
           <h2 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
             {mode === 'search' ? (
               <>
-                <Search className="text-indigo-500" size={24} />
+                <Search className="text-[#CC561E]" size={24} />
                 Find {initialType === 'ARTICLE' ? 'Article' : 'Book'}
               </>
             ) : (
@@ -329,12 +329,12 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={initialType === 'ARTICLE' ? "Enter Title, DOI, Author..." : "Enter Title, ISBN, Author..."}
-                className="w-full pl-5 pr-14 py-4 text-lg border-2 border-slate-200 dark:border-slate-700 rounded-xl focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                className="w-full pl-5 pr-14 py-4 text-lg border-2 border-slate-200 dark:border-slate-700 rounded-xl focus:border-[#CC561E] dark:focus:border-[#CC561E] focus:ring-4 focus:ring-[#CC561E]/10 outline-none transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
               />
               <button
                 type="submit"
                 disabled={isSearching || !searchQuery.trim()}
-                className="absolute right-3 top-1/2 -translate-y-1/2 bg-indigo-600 text-white p-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:hover:bg-indigo-600 transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 bg-[#CC561E] text-white p-2 rounded-lg hover:bg-[#b34b1a] disabled:opacity-50 disabled:hover:bg-[#CC561E] transition-colors"
               >
                 {isSearching ? <Loader2 className="animate-spin" size={20} /> : <Search size={20} />}
               </button>
@@ -348,7 +348,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                     <button
                       key={idx}
                       onClick={() => selectItem(draft)}
-                      className="w-full text-left p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500 hover:shadow-md hover:bg-indigo-50/30 dark:hover:bg-indigo-900/20 transition-all group flex justify-between items-center"
+                      className="w-full text-left p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-[#CC561E]/50 dark:hover:border-[#CC561E]/50 hover:shadow-md hover:bg-[rgba(204,86,30,0.05)] dark:hover:bg-[rgba(204,86,30,0.1)] transition-all group flex justify-between items-center"
                     >
                       <div>
                         <h3 className="font-bold text-slate-900 dark:text-white">{draft.title}</h3>
@@ -359,7 +359,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                           {draft.isbn && <span className="font-mono tracking-tight">ISBN: {draft.isbn}</span>}
                         </div>
                       </div>
-                      <ChevronRight className="text-slate-300 dark:text-slate-600 group-hover:text-indigo-500 dark:group-hover:text-indigo-400" size={20} />
+                      <ChevronRight className="text-slate-300 dark:text-slate-600 group-hover:text-[#CC561E]" size={20} />
                     </button>
                   ))}
                 </>
@@ -376,7 +376,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
             <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800 flex justify-center">
               <button
                 onClick={() => setMode('edit')}
-                className="text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-sm font-medium flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                className="text-slate-500 dark:text-slate-400 hover:text-[#CC561E] dark:hover:text-[#f3a47b] text-sm font-medium flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
               >
                 <span>Don't see it? Enter details manually</span>
                 <SkipForward size={16} />
@@ -398,7 +398,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                     name="title"
                     value={formData.title}
                     onChange={handleChange}
-                    className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                    className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                     placeholder={isNote ? "Note Title" : (initialType === 'WEBSITE' ? 'Page Title or Site Name' : 'e.g. The Stranger')}
                   />
                 </div>
@@ -413,7 +413,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                       name="author"
                       value={formData.author}
                       onChange={handleChange}
-                      className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                      className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                       placeholder="e.g. Albert Camus"
                     />
                   </div>
@@ -430,7 +430,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                       name="addedAt"
                       value={formData.addedAt}
                       onChange={handleChange}
-                      className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                      className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                     />
                   </div>
                 )}
@@ -442,7 +442,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                       name="translator"
                       value={formData.translator}
                       onChange={handleChange}
-                      className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                      className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                     />
                   </div>
                 )}
@@ -459,7 +459,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                         name="publisher"
                         value={formData.publisher}
                         onChange={handleChange}
-                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                       />
                     </div>
                   )}
@@ -471,7 +471,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                         name="isbn"
                         value={formData.isbn}
                         onChange={handleChange}
-                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-mono bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] font-mono bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                       />
                     </div>
                   )}
@@ -484,7 +484,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                         value={formData.publicationYear}
                         onChange={handleChange}
                         placeholder="YYYY"
-                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                       />
                     </div>
                   )}
@@ -497,7 +497,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                         name="pageCount"
                         value={formData.pageCount}
                         onChange={handleChange}
-                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                         placeholder="e.g. 250"
                       />
                     </div>
@@ -510,7 +510,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                         name="code"
                         value={formData.code}
                         onChange={handleChange}
-                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                         placeholder="e.g. A-12"
                       />
                     </div>
@@ -526,7 +526,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                     name="url"
                     value={formData.url}
                     onChange={handleChange}
-                    className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-950"
+                    className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] text-[#CC561E] dark:text-[#f3a47b] bg-white dark:bg-slate-950"
                     placeholder="https://..."
                   />
                 </div>
@@ -548,13 +548,13 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                         value={formData.coverUrl}
                         onChange={handleChange}
                         placeholder="Paste image URL or Auto-Find ->"
-                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg pl-3 pr-24 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-950"
+                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg pl-3 pr-24 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] text-sm text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-950"
                       />
                       <button
                         type="button"
                         onClick={() => triggerCoverFetch(formData.title, formData.author, formData.isbn)}
                         disabled={isFetchingCover || (!formData.title && !formData.isbn)}
-                        className="absolute right-1 top-1 bottom-1 px-3 bg-indigo-100 dark:bg-indigo-900/50 hover:bg-indigo-200 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 rounded text-xs font-semibold flex items-center gap-1 transition-colors"
+                        className="absolute right-1 top-1 bottom-1 px-3 bg-[rgba(204,86,30,0.1)] dark:bg-[rgba(204,86,30,0.2)] hover:bg-[rgba(204,86,30,0.15)] dark:hover:bg-[rgba(204,86,30,0.25)] text-[#CC561E] dark:text-[#f3a47b] rounded text-xs font-semibold flex items-center gap-1 transition-colors"
                         title="Auto-find cover based on Title/ISBN"
                       >
                         {isFetchingCover ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
@@ -574,7 +574,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                       )}
                       {isFetchingCover && (
                         <div className="absolute inset-0 bg-white/50 flex items-center justify-center backdrop-blur-[1px]">
-                          <Loader2 size={16} className="animate-spin text-indigo-500" />
+                          <Loader2 size={16} className="animate-spin text-[#CC561E]" />
                         </div>
                       )}
                       {!isFetchingCover && !formData.coverUrl && (
@@ -589,7 +589,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                       href={`https://www.google.com/search?tbm=isch&q=book+cover+${encodeURIComponent(formData.title + ' ' + formData.author)}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-xs text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline flex items-center gap-1"
+                      className="text-xs text-slate-400 dark:text-slate-500 hover:text-[#CC561E] dark:hover:text-[#f3a47b] hover:underline flex items-center gap-1"
                     >
                       Manual Search on Google Images <Search size={10} />
                     </a>
@@ -599,8 +599,8 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
 
               {/* PDF Upload Section - For Books and Articles */}
               {(initialType === 'BOOK' || initialType === 'ARTICLE') && (
-                <div className="bg-indigo-50/50 dark:bg-indigo-900/10 p-4 rounded-xl border border-indigo-100 dark:border-indigo-800/50">
-                  <label className="block text-sm font-semibold text-indigo-900 dark:text-indigo-300 mb-2 flex items-center gap-2">
+                <div className="bg-[rgba(204,86,30,0.05)] dark:bg-[rgba(204,86,30,0.1)] p-4 rounded-xl border border-[#CC561E]/10 dark:border-[#CC561E]/20">
+                  <label className="block text-sm font-semibold text-[#CC561E] dark:text-[#f3a47b] mb-2 flex items-center gap-2">
                     <Upload size={16} />
                     Upload PDF Document to Library
                   </label>
@@ -609,7 +609,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                       type="file"
                       accept=".pdf"
                       onChange={handleFileChange}
-                      className="flex-1 text-sm text-slate-600 dark:text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 transition-all cursor-pointer"
+                      className="flex-1 text-sm text-slate-600 dark:text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-[#CC561E] file:text-white hover:file:bg-[#b34b1a] transition-all cursor-pointer"
                     />
                     {selectedPdf && (
                       <button
@@ -622,7 +622,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                       </button>
                     )}
                     {isExtractingMetadata && (
-                      <div className="flex items-center gap-1.5 text-xs text-indigo-600 font-medium animate-pulse">
+                      <div className="flex items-center gap-1.5 text-xs text-[#CC561E] font-medium animate-pulse">
                         <Loader2 size={14} className="animate-spin" />
                         Verifying metadata...
                       </div>
@@ -648,7 +648,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                   rows={8}
                   value={formData.generalNotes}
                   onChange={handleChange}
-                  className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none leading-relaxed flex-1 font-lora bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                  className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] resize-none leading-relaxed flex-1 font-lora bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                   placeholder="Write your note here..."
                 />
               </div>
@@ -664,7 +664,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                       name="readingStatus"
                       value={formData.readingStatus}
                       onChange={handleChange}
-                      className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                      className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                     >
                       <option value="To Read">To Read</option>
                       <option value="Reading">Reading</option>
@@ -680,7 +680,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                         name="status"
                         value={formData.status}
                         onChange={handleChange}
-                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                       >
                         <option value="On Shelf">On Shelf</option>
                         <option value="Lent Out">Lent Out</option>
@@ -696,7 +696,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                   <div className="flex items-center gap-2">
                     Tags (comma separated)
                     {isEnriching && (
-                      <span className="text-xs text-indigo-500 animate-pulse flex items-center gap-1">
+                      <span className="text-xs text-[#CC561E] animate-pulse flex items-center gap-1">
                         <Sparkles size={10} /> AI Enriching...
                       </span>
                     )}
@@ -706,7 +706,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                       type="button"
                       onClick={handleGenerateTags}
                       disabled={isGeneratingTags || !formData.generalNotes}
-                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 flex items-center gap-1 disabled:opacity-50"
+                      className="text-xs text-[#CC561E] dark:text-[#f3a47b] hover:text-[#b34b1a] dark:hover:text-white flex items-center gap-1 disabled:opacity-50"
                     >
                       {isGeneratingTags ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                       AI Auto-Tag
@@ -717,7 +717,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                   name="tags"
                   value={formData.tags}
                   onChange={handleChange}
-                  className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                  className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                   placeholder={isNote ? "Use AI to generate tags..." : "Ideas, Todo, Research"}
                 />
               </div>
@@ -762,7 +762,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                   rows={4}
                   value={formData.generalNotes}
                   onChange={handleChange}
-                  className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none leading-relaxed flex-1 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                  className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] resize-none leading-relaxed flex-1 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                   placeholder={initialType === 'WEBSITE' ? "Why did you save this website?" : "Your thoughts..."}
                 />
               </div>
@@ -773,7 +773,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                 <button
                   type="button"
                   onClick={() => setMode('search')}
-                  className="text-sm text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 underline decoration-indigo-200 dark:decoration-indigo-800 hover:decoration-indigo-600 dark:hover:decoration-indigo-400"
+                  className="text-sm text-slate-500 dark:text-slate-400 hover:text-[#CC561E] dark:hover:text-[#f3a47b] underline decoration-[#CC561E]/30 dark:decoration-[#CC561E]/50 hover:decoration-[#CC561E] dark:hover:decoration-[#CC561E]"
                 >
                   Back to Search
                 </button>
@@ -789,7 +789,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
                 <button
                   type="submit"
                   disabled={isIngesting}
-                  className="px-5 py-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg shadow transition-colors font-medium flex items-center gap-2"
+                  className="px-5 py-2 bg-[#CC561E] text-white hover:bg-[#b34b1a] rounded-lg shadow-lg shadow-[#CC561E]/20 transition-all font-medium flex items-center gap-2 active:scale-95"
                 >
                   {isIngesting ? (
                     <>

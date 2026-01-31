@@ -13,6 +13,7 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      - "5000:5000"
     environment:
       # API Keys
       - GEMINI_API_KEY=${GEMINI_API_KEY}
@@ -51,10 +52,68 @@ services:
     networks:
       - tomehub-network
 
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: tomehub-prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - tomehub-network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: tomehub-grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/:/etc/grafana/provisioning/
+      - ./grafana/dashboards/:/var/lib/grafana/dashboards/
+    networks:
+      - tomehub-network
+    restart: unless-stopped
+    depends_on:
+      - loki
+      - prometheus
+
+  loki:
+    image: grafana/loki:latest
+    container_name: tomehub-loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki/local-config.yaml:/etc/loki/local-config.yaml
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      tomehub-network:
+        aliases:
+          - tomehub-loki
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: tomehub-promtail
+    volumes:
+      - ./promtail/config.yaml:/etc/promtail/config.yaml
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: -config.file=/etc/promtail/config.yaml
+    networks:
+      - tomehub-network
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+
 volumes:
   tomehub-uploads:
     driver: local
   caddy_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
     driver: local
 
 networks:

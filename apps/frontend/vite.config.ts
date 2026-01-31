@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => {
     root: '.',
     base: '/Tomehubnew/',   // ✅ GitHub Pages deploy path
     server: {
-      port: 3000,
+      port: 5173,
       host: '0.0.0.0',
     },
     plugins: [react()],

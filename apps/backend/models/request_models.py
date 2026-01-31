@@ -66,6 +66,7 @@ class ChatRequest(BaseModel):
     firebase_uid: str
     session_id: Optional[int] = None
     book_id: Optional[str] = None # Optional focus context
+    resource_type: Optional[str] = None # Layer 4 Filter: BOOK, ARTICLE, WEBSITE, PERSONAL_NOTE
     mode: Optional[str] = "STANDARD" # STANDARD (Default) or EXPLORER
 
 class ChatResponse(BaseModel):

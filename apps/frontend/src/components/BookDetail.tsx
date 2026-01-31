@@ -156,7 +156,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
   );
 
   return (
-    <div className="max-w-5xl mx-auto p-3 md:p-4 pb-20 animate-in fade-in duration-300">
+    <div className="max-w-[1100px] w-full mx-auto p-3 md:p-4 pb-20 animate-in fade-in duration-300">
       {/* Header Navigation */}
       <button onClick={onBack} className="mb-2 md:mb-6 flex items-center text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors group text-base md:text-base">
         <ArrowLeft size={18} className="mr-1.5 md:mr-1 md:w-5 md:h-5 group-hover:-translate-x-1 transition-transform" />

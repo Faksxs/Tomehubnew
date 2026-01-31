@@ -3,7 +3,10 @@
  * Connects React frontend to Flask backend for RAG search and document ingestion
  */
 
-const API_BASE_URL = 'http://localhost:5000'; // Updated for local testing
+const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:5001'
+    : `https://${window.location.hostname.replace('.github.io', '.nip.io')}`; // Placeholder logic for production mapping
+
 
 export interface SearchRequest {
     question: string;
@@ -46,6 +49,7 @@ export interface ChatRequest {
     firebase_uid: string;
     session_id?: number | null;
     book_id?: string | null;
+    resource_type?: 'BOOK' | 'ARTICLE' | 'WEBSITE' | 'PERSONAL_NOTE' | null;
     mode?: 'STANDARD' | 'EXPLORER';
 }
 
@@ -138,7 +142,8 @@ export async function sendChatMessage(
     message: string,
     firebaseUid: string,
     sessionId: number | null = null,
-    mode: 'STANDARD' | 'EXPLORER' = 'EXPLORER'
+    mode: 'STANDARD' | 'EXPLORER' = 'EXPLORER',
+    resourceType: 'BOOK' | 'ARTICLE' | 'WEBSITE' | 'PERSONAL_NOTE' | null = null
 ): Promise<ChatResponse> {
     if (!firebaseUid) {
         throw new Error('User must be authenticated to chat');
@@ -153,7 +158,8 @@ export async function sendChatMessage(
             message,
             firebase_uid: firebaseUid,
             session_id: sessionId,
-            mode
+            mode,
+            resource_type: resourceType
         } as ChatRequest),
     });
 

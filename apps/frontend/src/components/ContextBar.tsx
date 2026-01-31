@@ -18,18 +18,18 @@ export const ContextBar: React.FC<ContextBarProps> = ({ state }) => {
     }
 
     return (
-        <div className="sticky top-0 z-10 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm border-b border-purple-100 dark:border-slate-700 shadow-sm transition-all">
+        <div className="sticky top-0 z-10 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm border-b border-[#CC561E]/10 dark:border-slate-700 shadow-sm transition-all">
             <div
                 className="max-w-4xl mx-auto px-4 py-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50"
                 onClick={() => setIsExpanded(!isExpanded)}
             >
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3 overflow-hidden">
-                        <div className="p-1.5 bg-purple-100 dark:bg-purple-900/30 rounded-md flex-shrink-0">
-                            <Compass className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                        <div className="p-1.5 bg-[#CC561E]/10 dark:bg-[#CC561E]/20 rounded-md flex-shrink-0">
+                            <Compass className="w-4 h-4 text-[#CC561E] dark:text-[#f3a47b]" />
                         </div>
                         <div className="min-w-0">
-                            <p className="text-xs font-semibold text-purple-600 dark:text-purple-400 uppercase tracking-wider">
+                            <p className="text-[10px] font-bold text-[#CC561E] dark:text-[#f3a47b] uppercase tracking-widest">
                                 Current Topic
                             </p>
                             <p className="text-sm font-medium text-slate-900 dark:text-white truncate">

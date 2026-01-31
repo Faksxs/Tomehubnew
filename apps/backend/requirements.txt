@@ -14,6 +14,7 @@ oracledb>=2.0.0
 
 # AI & Embeddings
 google-generativeai>=0.5.0
+firebase-admin>=6.2.0
 
 # Oracle Cloud Infrastructure
 oci>=2.100.0
@@ -42,7 +43,11 @@ python-json-logger
 zeyrek>=0.1.0
 symspellpy>=6.7.0
 slowapi>=0.1.9
+tenacity>=8.2.0
 
 # Caching
 cachetools>=5.3.0
 redis>=5.0.0
+
+# Observability
+prometheus-fastapi-instrumentator>=6.0.0

@@ -1,0 +1,1366 @@
+# -*- coding: utf-8 -*-
+"""
+Layer 4: Flow Service (The Knowledge Stream Engine)
+=====================================================
+Orchestrates the "Expanding Horizons" algorithm with Dual Anchor gravity.
+"""
+
+import logging
+from typing import List, Optional, Tuple
+from datetime import datetime
+import numpy as np
+import array
+import uuid
+
+from models.flow_models import (
+    FlowMode, FlowCard, FlowSessionState,
+    FlowStartRequest, FlowStartResponse,
+    FlowNextRequest, FlowNextResponse, PivotInfo
+)
+from services.flow_session_service import (
+    FlowSessionManager, get_flow_session_manager
+)
+from services.embedding_service import get_embedding, get_query_embedding
+from infrastructure.db_manager import DatabaseManager, safe_read_clob
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# CONSTANTS & CONFIGURATION
+# ============================================================================
+
+# Zone Configuration (Maps to Horizon Slider: 0.0 - 1.0)
+ZONE_CONFIG = {
+    1: {"name": "Tight Context", "horizon_min": 0.0, "horizon_max": 0.25},
+    2: {"name": "Author's Mind", "horizon_min": 0.25, "horizon_max": 0.50},
+    3: {"name": "Syntopic Debate", "horizon_min": 0.50, "horizon_max": 0.75},
+    4: {"name": "Discovery Bridge", "horizon_min": 0.75, "horizon_max": 1.0},
+}
+
+# How many candidates to fetch per zone
+ZONE_FETCH_LIMITS = {1: 10, 2: 10, 3: 15, 4: 5}
+
+# Minimum similarity threshold for semantic matches
+SIMILARITY_THRESHOLDS = {
+    "syntopic": 0.60,  # Zone 3
+    "discovery": 0.45, # Zone 4
+    "dedup": 0.90,     # Semantic deduplication
+}
+
+
+# ============================================================================
+# FLOW SERVICE CLASS
+# ============================================================================
+
+class FlowService:
+    """
+    The Knowledge Stream Engine.
+    
+    Responsibilities:
+    - Start a new Flow session from an anchor (note, book, topic)
+    - Generate candidates from multiple zones based on Horizon Slider
+    - Apply Dual Anchor gravity (Global + Local)
+    - Filter using session state (dedup, negative feedback)
+    - Orchestrate prefetching for smooth UX
+    """
+    
+    def __init__(self):
+        self.session_manager: FlowSessionManager = get_flow_session_manager()
+    
+    # -------------------------------------------------------------------------
+    # PUBLIC API
+    # -------------------------------------------------------------------------
+    
+    def start_session(self, request: FlowStartRequest) -> FlowStartResponse:
+        """
+        Start a new Flow session.
+        
+        1. Resolve anchor to a vector
+        2. Create session state in Redis
+        3. Generate initial batch of cards
+        """
+        logger.info(f"Starting Flow session: anchor_type={request.anchor_type}, anchor_id={request.anchor_id}")
+        
+        # Step 1: Resolve anchor to vector
+        # Determine effective UID (Phase 14 Fallback)
+        effective_uid = request.firebase_uid
+        try:
+             with DatabaseManager.get_connection() as conn:
+                 with conn.cursor() as cursor:
+                     # Check if current user has any content
+                     cursor.execute("SELECT count(*) FROM TOMEHUB_CONTENT WHERE LOWER(TRIM(firebase_uid)) = LOWER(TRIM(:p_uid))", {"p_uid": request.firebase_uid})
+                     if cursor.fetchone()[0] == 0:
+                         logger.info(f"UID {request.firebase_uid} is empty. Searching for most populated UID...")
+                         # Dynamic Discovery: Get the UID with the most vector embeddings
+                         cursor.execute("""
+                            SELECT firebase_uid FROM (
+                                SELECT firebase_uid, COUNT(*) as cnt 
+                                FROM TOMEHUB_CONTENT 
+                                WHERE VEC_EMBEDDING IS NOT NULL
+                                GROUP BY firebase_uid 
+                                ORDER BY cnt DESC
+                            ) FETCH FIRST 1 ROW ONLY
+                         """)
+                         top_row = cursor.fetchone()
+                         if top_row:
+                             effective_uid = str(top_row[0])
+                             logger.info(f"Dynamically discovered fallback UID: {effective_uid}")
+        except Exception as e:
+            logger.warning(f"Fallback discovery failed: {e}")
+
+        anchor_vector, anchor_label, resolved_id = self._resolve_anchor(
+            request.anchor_type, request.anchor_id, effective_uid, request.resource_type
+        )
+        
+        if anchor_vector is None:
+            # Fallback: Generate embedding from anchor_id as text
+            logger.warning("Could not resolve anchor, using anchor_id as text query")
+            anchor_vector = get_query_embedding(request.anchor_id)
+            anchor_label = request.anchor_id[:50]
+        
+        # Convert to list if it's an array.array
+        if isinstance(anchor_vector, array.array):
+            anchor_vector = list(anchor_vector)
+        
+        # Step 2: Create session
+        state = self.session_manager.create_session(
+            firebase_uid=effective_uid, # Store the effective UID for this session's future batches
+            anchor_id=resolved_id,      # Use the REAL ID (e.g., numeric ID from ver63)
+            anchor_vector=anchor_vector,
+            horizon_value=request.horizon_value,
+            mode=request.mode,
+            resource_type=request.resource_type
+        )
+        
+        # Step 3: Generate initial cards
+        initial_cards = self._generate_batch(
+            session_id=state.session_id,
+            firebase_uid=state.firebase_uid, # Use the UID from session state (may be mapped to ver63)
+            batch_size=5
+        )
+        
+        # After initial card generation, if we successfully got cards,
+        # we can update the local anchor to the first card's ID if needed
+        # but the session state already has the global anchor.
+        
+        logger.info(f"[FLOW] Returning {len(initial_cards)} initial cards for session {state.session_id}")
+        
+        return FlowStartResponse(
+            session_id=state.session_id,
+            initial_cards=initial_cards,
+            topic_label=anchor_label or "Knowledge Stream"
+        )
+    
+    def reset_anchor(self, session_id: str, anchor_type: str, anchor_id: str, firebase_uid: str, resource_type: Optional[str] = None) -> Tuple[str, Optional[PivotInfo]]:
+        """
+        Manually pivot the session to a new anchor.
+        Supports 'discovery' type for automated discovery jumps.
+        """
+        state = self.session_manager.get_session(session_id)
+        if not state:
+            raise ValueError(f"Session not found: {session_id}")
+
+        logger.info(f"[FLOW] Manual reset: type={anchor_type}, id={anchor_id}")
+        
+        pivot_info = None
+        if anchor_type == "discovery":
+            # POWER DISCOVERY JUMP
+            new_vector, new_label, resolved_id, pivot_info = self._discovery_pivot(state)
+            if not new_vector:
+                raise ValueError("Could not find a valid discovery jump target.")
+        else:
+            # Standard Manual Pivot
+            new_vector, new_label, resolved_id = self._resolve_anchor(
+                anchor_type, anchor_id, firebase_uid, resource_type
+            )
+            if not new_vector:
+                raise ValueError(f"Could not resolve new anchor: {anchor_id}")
+
+        # Update session state via manager
+        self.session_manager.update_session_anchor(
+            session_id=session_id,
+            anchor_id=resolved_id,
+            anchor_vector=new_vector
+        )
+        
+        return new_label or f"Pivoted to {anchor_id}", pivot_info
+
+    def get_next_batch(self, request: FlowNextRequest) -> FlowNextResponse:
+        """
+        Get the next batch of cards. Triggers Discovery Pivot if saturated.
+        """
+        state = self.session_manager.get_session(request.session_id)
+        if not state:
+            logger.error(f"Session not found: {request.session_id}")
+            return FlowNextResponse(cards=[], has_more=False)
+        
+        cards = self._generate_batch(
+            session_id=state.session_id,
+            firebase_uid=state.firebase_uid,
+            batch_size=request.batch_size
+        )
+        
+        # SATURATION DETECTION: If 0 cards, attempt an automated Discovery Jump
+        if not cards:
+            logger.info(f"[FLOW] Saturation detected for session {state.session_id}. Attempting Discovery Jump...")
+            new_vector, new_label, resolved_id, pivot_info = self._discovery_pivot(state)
+            
+            if new_vector:
+                # Update session anchor
+                self.session_manager.update_session_anchor(
+                    session_id=state.session_id,
+                    anchor_id=resolved_id,
+                    anchor_vector=new_vector
+                )
+                
+                # Create a specialized pivot card to show the transition
+                pivot_card = FlowCard(
+                    flow_id=str(uuid.uuid4()),
+                    chunk_id=f"pivot_{resolved_id}",
+                    content=pivot_info.message,
+                    title="Yönlendirilmiş Keşif",
+                    source_type="external",
+                    epistemic_level="A",
+                    zone=4,
+                    reason=f"💎 Keşif: {new_label}"
+                )
+                
+                return FlowNextResponse(
+                    cards=[pivot_card],
+                    has_more=True,
+                    pivot_info=pivot_info,
+                    session_state={"status": "pivoted", "anchor_id": resolved_id}
+                )
+        
+        return FlowNextResponse(
+            cards=cards,
+            has_more=len(cards) > 0,
+            session_state={"cards_shown": state.cards_shown}
+        )
+
+    def _discovery_pivot(self, state: FlowSessionState) -> Tuple[Optional[List[float]], str, str, PivotInfo]:
+        """
+        Hierarchical Discovery Logic:
+        1. Distant but related (2-3 graph hops from seen content)
+        2. Dormant Books (User has them but hasn't seen them in ages)
+        3. Epistemic Gaps (High centrality concepts unseen by this user)
+        """
+        try:
+            with DatabaseManager.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    # PRIORITY 1: Epistemic Gaps (High centrality concepts NOT in seen history)
+                    # This satisfies "hiç dokunulmamış ama merkezi concept"
+                    source_type_map = {'BOOK': 'PDF', 'ARTICLE': 'ARTICLE', 'WEBSITE': 'WEBSITE'}
+                    db_type = source_type_map.get(state.resource_type)
+                    
+                    params = {"p_uid": state.firebase_uid, "p_sid": state.session_id}
+                    
+                    sql = """
+                        SELECT DISTINCT c.id, c.name, ct.id as content_id, ct.title
+                        FROM TOMEHUB_CONCEPTS c
+                        JOIN TOMEHUB_CONCEPT_CHUNKS cc ON c.id = cc.concept_id
+                        JOIN TOMEHUB_CONTENT ct ON cc.content_id = ct.id
+                        WHERE ct.firebase_uid = :p_uid
+                        AND ct.id NOT IN (
+                            SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE session_id = :p_sid
+                        )
+                        AND c.id NOT IN (
+                            SELECT concept_id FROM TOMEHUB_CONCEPT_CHUNKS 
+                            WHERE content_id IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE firebase_uid = :p_uid)
+                        )
+                    """
+                    if state.resource_type == 'PERSONAL_NOTE':
+                        sql += " AND (ct.source_type = 'NOTES' OR (ct.source_type = 'PDF' AND ct.title LIKE '% - Self')) "
+                    elif db_type == 'PDF':
+                        sql += " AND ct.source_type IN ('PDF', 'EPUB', 'PDF_CHUNK') AND ct.title NOT LIKE '% - Self' "
+                    elif db_type:
+                        sql += " AND ct.source_type = :p_type "
+                        params["p_type"] = db_type
+                        
+                    sql += " ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY "
+                    cursor.execute(sql, params)
+                    
+                    row = cursor.fetchone()
+                    if row:
+                        concept_id, concept_name, content_id, title = row
+                        cursor.execute("SELECT VEC_EMBEDDING FROM TOMEHUB_CONTENT WHERE id = :p_id", {"p_id": content_id})
+                        vec_row = cursor.fetchone()
+                        if vec_row:
+                            return (
+                                self._to_list(vec_row[0]), 
+                                f"Temel: {concept_name}", 
+                                str(content_id),
+                                PivotInfo(type="discovery_gap", message=f"Henüz incelemediğiniz temel bir kavrama geçiş yapılıyor: '{title}' içinde '{concept_name}'.")
+                            )
+
+                    # PRIORITY 2: Dormant Books / Distant Content
+                    # (Simplified: Random discovery of unseen books/authors for now)
+                    params = {"p_uid": state.firebase_uid}
+                    sql = """
+                        SELECT id, title, VEC_EMBEDDING
+                        FROM TOMEHUB_CONTENT
+                        WHERE firebase_uid = :p_uid
+                        AND title NOT IN (
+                            SELECT title FROM TOMEHUB_CONTENT 
+                            WHERE id IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE firebase_uid = :p_uid)
+                        )
+                    """
+                    if state.resource_type == 'PERSONAL_NOTE':
+                        sql += " AND (source_type = 'NOTES' OR (source_type = 'PDF' AND title LIKE '% - Self')) "
+                    elif db_type == 'PDF':
+                        sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK') AND title NOT LIKE '% - Self' "
+                    elif db_type:
+                        sql += " AND source_type = :p_type "
+                        params["p_type"] = db_type
+                        
+                    sql += " ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY "
+                    cursor.execute(sql, params)
+                    
+                    row = cursor.fetchone()
+                    if row:
+                        content_id, title, vec_data = row
+                        return (
+                            self._to_list(vec_data),
+                            title,
+                            str(content_id),
+                            PivotInfo(type="discovery_dormant", message=f"Jumping to a dormant path in your library: '{title}'.")
+                        )
+                        
+        except Exception as e:
+            logger.warning(f"Discovery Jump selection failed: {e}")
+            
+        return None, "", "", None
+    
+    # -------------------------------------------------------------------------
+    # INTERNAL: ANCHOR RESOLUTION
+    # -------------------------------------------------------------------------
+    
+    def _to_list(self, vec_data) -> Optional[List[float]]:
+        """Helper to robustly convert Oracle vector data to Python list of floats."""
+        if vec_data is None:
+            return None
+        if isinstance(vec_data, (list, tuple)):
+            return [float(x) for x in vec_data]
+        if hasattr(vec_data, 'tolist'): # For numpy/other types
+            return [float(x) for x in vec_data.tolist()]
+        if hasattr(vec_data, 'read'):
+            # This handles LOBs (CLOB or BLOB)
+            try:
+                content = vec_data.read()
+                if isinstance(content, str):
+                    import json
+                    data = json.loads(content)
+                    return [float(x) for x in data] if isinstance(data, list) else None
+                if isinstance(content, bytes):
+                    # Handle binary vector (4-byte floats)
+                    import struct
+                    return list(struct.unpack(f"{len(content)//4}f", content))
+            except Exception as e:
+                logger.warning(f"Vector conversion error: {e}")
+                return None
+        return None
+
+    def _resolve_anchor(
+        self, 
+        anchor_type: str, 
+        anchor_id: str, 
+        firebase_uid: str,
+        resource_type: Optional[str] = None
+    ) -> Tuple[Optional[List[float]], Optional[str], Optional[str]]:
+        """
+        Resolve an anchor to its embedding vector, label, and database ID.
+        
+        Returns: (vector, label, resolved_id)
+        """
+        try:
+            with DatabaseManager.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    if anchor_type == "note":
+                        # Fetch the note's content and existing vector
+                        cursor.execute("""
+                            SELECT content_chunk, title, VEC_EMBEDDING, id
+                            FROM TOMEHUB_CONTENT
+                            WHERE id = :p_id AND firebase_uid = :p_uid
+                        """, {"p_id": anchor_id, "p_uid": firebase_uid})
+                        row = cursor.fetchone()
+                        if row:
+                            content = safe_read_clob(row[0])
+                            title = row[1]
+                            resolved_id = str(row[3])
+                            # Try to use stored embedding
+                            vec = self._to_list(row[2])
+                            if vec:
+                                return vec, title, resolved_id
+                            # Generate if not stored
+                            vec = get_embedding(content[:2000])
+                            return list(vec) if vec else None, title, resolved_id
+                    
+                    elif anchor_type == "book":
+                        # Get representative chunk from book
+                        cursor.execute("""
+                            SELECT content_chunk, title, VEC_EMBEDDING, id
+                            FROM TOMEHUB_CONTENT
+                            WHERE title = :p_title AND firebase_uid = :p_uid
+                            AND (source_type = 'PDF' OR source_type = 'PDF_CHUNK' OR source_type = 'EPUB')
+                            ORDER BY page_number
+                            FETCH FIRST 1 ROW ONLY
+                        """, {"p_title": anchor_id, "p_uid": firebase_uid})
+                        row = cursor.fetchone()
+                        if row:
+                            content = safe_read_clob(row[0])
+                            resolved_id = str(row[3])
+                            vec = self._to_list(row[2])
+                            if vec is None:
+                                vec = list(get_embedding(content[:2000]))
+                            return vec, anchor_id, resolved_id
+                            
+                    elif anchor_type == "topic":
+                        # AUTO-BOOTSTRAP: If generic "General Discovery", pivot to most recent content
+                        if anchor_id == "General Discovery" or not anchor_id:
+                            logger.info(f"Auto-bootstrapping for UID: {firebase_uid}, Scope: {resource_type}")
+                            
+                            # Build dynamic bootstrap SQL
+                            sql = """
+                                SELECT id, title, VEC_EMBEDDING
+                                FROM TOMEHUB_CONTENT
+                                WHERE LOWER(TRIM(firebase_uid)) = LOWER(TRIM(:p_uid))
+                                AND VEC_EMBEDDING IS NOT NULL
+                            """
+                            params = {"p_uid": firebase_uid}
+                            
+                            if resource_type == 'PERSONAL_NOTE':
+                                sql += " AND (source_type = 'NOTES' OR (source_type = 'PDF' AND title LIKE '% - Self')) "
+                            elif resource_type == 'BOOK':
+                                sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK') AND title NOT LIKE '% - Self' "
+                            elif resource_type in ['ARTICLE', 'WEBSITE']:
+                                sql += " AND source_type = :p_type "
+                                params["p_type"] = resource_type
+                                
+                            sql += " ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY "
+                            cursor.execute(sql, params)
+                            
+                            recent_row = cursor.fetchone()
+                            if recent_row:
+                                # Found recent content! Use it as the anchor.
+                                new_id, title, vec_data = recent_row
+                                logger.info(f"Bootstrapped to recent: {title} ({new_id})")
+                                
+                                # Read vector properly using helper
+                                vec = self._to_list(vec_data)
+                                if vec:
+                                    return vec, f"Devam ediyor: {title}", str(new_id)
+                                else:
+                                    logger.warning(f"Failed to read vector for bootstrapped item {new_id}")
+                            
+                            # PHASE 14: Cross-User Development Fallback
+                            # If this user has NO content, try to pull from the 'ver63' bootstrap account
+                            logger.info(f"UID {firebase_uid} has no content in _resolve_anchor. Trying dynamic fallback...")
+                            cursor.execute("""
+                                SELECT id, title, VEC_EMBEDDING
+                                FROM TOMEHUB_CONTENT
+                                WHERE firebase_uid = :p_uid
+                                AND VEC_EMBEDDING IS NOT NULL
+                                FETCH FIRST 1 ROW ONLY
+                            """, {"p_uid": firebase_uid}) # Note: effective_uid should be passed in start_session already, but this is safety
+                            fallback_row = cursor.fetchone()
+                            if fallback_row:
+                                new_id, title, vec_data = fallback_row
+                                logger.info(f"Fallback successful: {title} (ID: {new_id})")
+                                vec = self._to_list(vec_data)
+                                if vec:
+                                    return vec, f"Exploring: {title}", str(new_id)
+                            else:
+                                logger.warning("CRITICAL: Fallback returned NO rows.")
+
+                            # Empty Library Case
+                            logger.warning(f"Empty Library or vector-less items for UID: {firebase_uid} and ver63")
+                            vec = get_query_embedding(anchor_id or "Knowledge Discovery")
+                            return list(vec) if vec else None, "Waiting for Content...", anchor_id
+                        
+                        # Specific topic requested
+                        vec = get_query_embedding(anchor_id)
+                        return list(vec) if vec else None, f"Topic: {anchor_id}", anchor_id
+        
+        except Exception as e:
+            import traceback
+            logger.error(f"Failed to resolve anchor: {e}\n{traceback.format_exc()}")
+        
+        return None, None, anchor_id
+    
+    # -------------------------------------------------------------------------
+    # INTERNAL: CANDIDATE GENERATION
+    # -------------------------------------------------------------------------
+    
+    def _generate_batch(
+        self,
+        session_id: str,
+        firebase_uid: str,
+        batch_size: int = 5
+    ) -> List[FlowCard]:
+        """
+        Generate a batch of cards using the Expanding Horizons algorithm.
+        """
+        state = self.session_manager.get_session(session_id)
+        if not state:
+            return []
+        
+        # SPECIAL CASE: Personal Notes - Simple Random Fetch
+        if state.resource_type == 'PERSONAL_NOTE':
+            return self._fetch_personal_notes_simple(firebase_uid, session_id, batch_size)
+        
+        # Calculate target vector using Dual Anchor
+        target_vector = self._calculate_target_vector(state)
+        
+        # Determine active zones based on horizon value
+        active_zones = self._get_active_zones(state.horizon_value)
+        
+        # 1. Fetch Candidates from Zones
+        all_candidates = []
+        for zone in active_zones:
+            candidates = self._fetch_zone_candidates(
+                zone=zone,
+                target_vector=target_vector,
+                state=state,
+                firebase_uid=firebase_uid,
+                resource_type=state.resource_type
+            )
+            all_candidates.extend(candidates)
+        
+        logger.info(f"[FLOW] Total candidates before filtering: {len(all_candidates)}")
+        
+        # Filter: Dedup, Seen, Negative feedback
+        filtered = self._filter_candidates(all_candidates, state, session_id)
+        
+        # Rank and select top N
+        ranked = self._rank_candidates(filtered, target_vector)
+        final_cards = ranked[:batch_size]
+        
+        # Update session state
+        for card in final_cards:
+            self.session_manager.add_seen_chunk(session_id, card.chunk_id)
+            self._record_seen_chunk(firebase_uid, session_id, card.chunk_id)
+            # Update centroid with the card's vector if available
+            # (This would require storing vectors with cards - simplified here)
+        
+        # Update local anchor to the last shown card
+        if final_cards:
+            state.local_anchor_id = final_cards[-1].chunk_id
+            state.cards_shown += len(final_cards)
+            self.session_manager.update_session(state)
+        
+        return final_cards
+    
+    def _calculate_target_vector(self, state: FlowSessionState) -> Optional[List[float]]:
+        """
+        Calculate the target vector using Dual Anchor gravity.
+        
+        V_target = α * V_global + (1-α) * V_local
+        
+        α is inversely proportional to horizon_value:
+        - Low horizon (Focus): α ≈ 0.8 (Strong global gravity)
+        - High horizon (Explore): α ≈ 0.3 (Weak global gravity)
+        """
+        if not state.global_anchor_vector:
+            return None
+        
+        # Calculate alpha based on horizon value
+        # horizon=0 -> alpha=0.9, horizon=1 -> alpha=0.3
+        alpha = 0.9 - (state.horizon_value * 0.6)
+        
+        global_vec = np.array(state.global_anchor_vector)
+        
+        if state.local_anchor_vector:
+            local_vec = np.array(state.local_anchor_vector)
+            target = alpha * global_vec + (1 - alpha) * local_vec
+            # Normalize
+            target = target / np.linalg.norm(target)
+            return target.tolist()
+        
+        return state.global_anchor_vector
+    
+    def _get_active_zones(self, horizon_value: float) -> List[int]:
+        """
+        Determine which zones are active based on horizon slider.
+        
+        Zone 1 is always active.
+        Higher zones activate as horizon increases.
+        """
+        active = [1]  # Zone 1 always active
+        
+        if horizon_value >= 0.25:
+            active.append(2)
+        if horizon_value >= 0.50:
+            active.append(3)
+        if horizon_value >= 0.75:
+            active.append(4)
+        
+        return active
+    
+    def _fetch_zone_candidates(
+        self,
+        zone: int,
+        target_vector: Optional[List[float]],
+        state: FlowSessionState,
+        firebase_uid: str,
+        resource_type: Optional[str] = None
+    ) -> List[FlowCard]:
+        """
+        Fetch candidates from a specific zone.
+        """
+        limit = ZONE_FETCH_LIMITS.get(zone, 10)
+        
+        candidates = []
+        try:
+            with DatabaseManager.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    if zone == 1:
+                        # ZONE 1: Tight Context (Same book, nearby pages)
+                        candidates = self._fetch_zone1_tight_context(
+                            cursor, state, firebase_uid, limit, resource_type
+                        )
+                    
+                    elif zone == 2:
+                        # ZONE 2: Author's Mind (Same author, graph 1-hop)
+                        candidates = self._fetch_zone2_authors_mind(
+                            cursor, state, firebase_uid, limit, resource_type
+                        )
+                    
+                    elif zone == 3:
+                        # ZONE 3: Syntopic Debate (Vector similarity to Global Anchor)
+                        candidates = self._fetch_zone3_syntopic(
+                            cursor, target_vector, firebase_uid, state.session_id, limit, resource_type
+                        )
+                    
+                    elif zone == 4:
+                        # ZONE 4: Discovery Bridge (Looser similarity, high centrality)
+                        candidates = self._fetch_zone4_discovery(
+                            cursor, target_vector, firebase_uid, state.session_id, limit, resource_type
+                        )
+        
+        except Exception as e:
+            logger.error(f"Zone {zone} fetch failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+        
+        return candidates
+        
+        return candidates
+    
+    # -------------------------------------------------------------------------
+    # PERSONAL NOTES SIMPLE FETCHER
+    # -------------------------------------------------------------------------
+    
+    def _fetch_personal_notes_simple(
+        self, firebase_uid: str, session_id: str, batch_size: int
+    ) -> List[FlowCard]:
+        """
+        Simple fetcher for Personal Notes: Get random unseen personal notes.
+        Personal Notes are identified by: source_type='PDF' AND title LIKE '% - Self'
+        """
+        cards = []
+        try:
+            with DatabaseManager.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    # Fetch random personal notes that haven't been seen yet
+                    sql = """
+                        SELECT id, content_chunk, title, page_number, source_type
+                        FROM TOMEHUB_CONTENT
+                        WHERE firebase_uid = :p_uid
+                        AND (source_type = 'NOTES' OR (source_type = 'PDF' AND title LIKE '% - Self'))
+                        AND id NOT IN (
+                            SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
+                            WHERE session_id = :p_sid
+                        )
+                        ORDER BY DBMS_RANDOM.VALUE
+                        FETCH FIRST :p_limit ROWS ONLY
+                    """
+                    
+                    cursor.execute(sql, {
+                        "p_uid": firebase_uid,
+                        "p_sid": session_id,
+                        "p_limit": batch_size
+                    })
+                    
+                    for row in cursor.fetchall():
+                        content = safe_read_clob(row[1])
+                        cards.append(FlowCard(
+                            flow_id=str(uuid.uuid4()),
+                            chunk_id=str(row[0]),
+                            content=content[:500],
+                            title=row[2] or "Untitled Note",
+                            page_number=row[3],
+                            source_type="personal",
+                            zone=1,
+                            epistemic_level="A",
+                            reason="📝 Personal Note"
+                        ))
+                    
+                    logger.info(f"[FLOW] Fetched {len(cards)} personal notes")
+                    
+        except Exception as e:
+            logger.error(f"Failed to fetch personal notes: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        return cards
+    
+    # -------------------------------------------------------------------------
+    # ZONE FETCHERS
+    # -------------------------------------------------------------------------
+    
+    def _fetch_zone1_tight_context(
+        self, cursor, state: FlowSessionState, firebase_uid: str, limit: int,
+        resource_type: Optional[str] = None
+    ) -> List[FlowCard]:
+        """
+        Zone 1: Fetch chunks from the same book, near the anchor's page.
+        """
+        source_type_map = {'BOOK': 'PDF', 'ARTICLE': 'ARTICLE', 'WEBSITE': 'WEBSITE'}
+        db_type = source_type_map.get(resource_type)
+        # Safety check: Is the anchor ID a numeric database ID?
+        is_numeric_id = state.global_anchor_id and state.global_anchor_id.isdigit()
+        
+        anchor_row = None
+        if is_numeric_id:
+            cursor.execute("""
+                SELECT title, page_number FROM TOMEHUB_CONTENT
+                WHERE id = :p_id AND firebase_uid = :p_uid
+            """, {"p_id": state.global_anchor_id, "p_uid": firebase_uid})
+            anchor_row = cursor.fetchone()
+        if not anchor_row:
+            # Fallback: If anchor ID isn't found (e.g., Topic Anchor), use strict vector search
+            if state.global_anchor_vector:
+                # Use loose threshold (0.40) to ensure content for Topic Anchors like "General Discovery"
+                vec_array = array.array('f', state.global_anchor_vector)
+                params = {
+                    "p_uid": firebase_uid,
+                    "p_vec": vec_array,
+                    "p_limit": limit,
+                    "p_sid": state.session_id
+                }
+                sql = """
+                    SELECT id, content_chunk, title, source_type, page_number,
+                           VECTOR_DISTANCE(VEC_EMBEDDING, :p_vec, COSINE) as distance
+                    FROM TOMEHUB_CONTENT
+                    WHERE firebase_uid = :p_uid
+                    AND VEC_EMBEDDING IS NOT NULL
+                    AND id NOT IN (
+                        SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
+                        WHERE session_id = :p_sid
+                    )
+                """
+                # Apply filters
+                if resource_type == 'PERSONAL_NOTE':
+                    sql += " AND (source_type = 'NOTES' OR (source_type = 'PDF' AND title LIKE '% - Self')) "
+                elif resource_type is None:
+                    # All Notes - no filter (include everything)
+                    pass
+                elif db_type == 'PDF':
+                    sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK') AND title NOT LIKE '% - Self' "
+                elif db_type:
+                    sql += " AND source_type = :p_type "
+                    params["p_type"] = db_type
+                
+                sql += " ORDER BY distance FETCH FIRST :p_limit ROWS ONLY "
+                cursor.execute(sql, params)
+                cards = []
+                for row in cursor.fetchall():
+                    distance = row[5]
+                    similarity = 1 - distance if distance else 0
+                    if similarity >= 0.35:
+                         content = safe_read_clob(row[1])
+                         cards.append(FlowCard(
+                            flow_id=str(uuid.uuid4()),
+                            chunk_id=str(row[0]),
+                            content=content[:500],
+                            title=row[2] or "Untitled",
+                            page_number=row[4],
+                            source_type="personal" if row[3] == 'NOTES' or (row[3] == 'PDF' and ' - Self' in (row[2] or '')) else "pdf_chunk",
+                            zone=1,
+                            epistemic_level="B", # Contextual
+                            reason=f"🎯 Konu Odaklı ({similarity:.0%})"
+                        ))
+                    else:
+                        logger.debug(f"[FLOW] Skipping candidate with low similarity: {similarity:.2f}")
+                return cards
+            return []
+        
+        book_title, anchor_page = anchor_row
+        anchor_page = anchor_page or 1
+        
+        # Fetch nearby chunks (within 10 pages)
+        params = {
+            "p_uid": firebase_uid,
+            "p_book_title": book_title,
+            "p_page": anchor_page,
+            "p_anchor_id": state.global_anchor_id,
+            "p_limit": limit,
+            "p_sid": state.session_id
+        }
+        sql = """
+            SELECT id, content_chunk, title, source_type, page_number
+            FROM TOMEHUB_CONTENT
+            WHERE firebase_uid = :p_uid
+            AND title = :p_book_title
+            AND ABS(NVL(page_number, 1) - :p_page) <= 10
+            AND id != :p_anchor_id
+            AND id NOT IN (
+                SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
+                WHERE session_id = :p_sid
+            )
+        """
+        if resource_type == 'PERSONAL_NOTE':
+            sql += " AND (title LIKE '% - Self' OR source_type = 'NOTES') "
+        elif resource_type is None:
+            pass  # All Notes - no filter
+        elif db_type == 'PDF':
+            sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK') AND title NOT LIKE '% - Self' "
+        elif db_type:
+            sql += " AND source_type = :p_type "
+            params["p_type"] = db_type
+            
+        sql += " ORDER BY ABS(NVL(page_number, 1) - :p_page) FETCH FIRST :p_limit ROWS ONLY "
+        cursor.execute(sql, params)
+        
+        cards = []
+        for row in cursor.fetchall():
+            content = safe_read_clob(row[1])
+            cards.append(FlowCard(
+                flow_id=str(uuid.uuid4()),
+                chunk_id=str(row[0]),
+                content=content[:500],
+                title=row[2] or "Untitled",
+                page_number=row[4],
+                source_type="pdf_chunk" if row[3] in ["PDF", "PDF_CHUNK", "EPUB"] else "personal",
+                zone=1,
+                epistemic_level="B", # Contextual
+                reason=f"📖 Same book, page {row[4]}"
+            ))
+        
+        return cards
+    
+    def _fetch_zone2_authors_mind(
+        self, cursor, state: FlowSessionState, firebase_uid: str, limit: int,
+        resource_type: Optional[str] = None
+    ) -> List[FlowCard]:
+        """
+        Zone 2: Fetch from the same author or graph 1-hop neighbors.
+        """
+        source_type_map = {'BOOK': 'PDF', 'ARTICLE': 'ARTICLE', 'WEBSITE': 'WEBSITE'}
+        db_type = source_type_map.get(resource_type)
+        # Get author of the anchor (parsed from title since AUTHOR column is missing)
+        author = None
+        is_numeric_id = state.global_anchor_id and state.global_anchor_id.isdigit()
+        
+        if is_numeric_id:
+            cursor.execute("""
+                SELECT title FROM TOMEHUB_CONTENT
+                WHERE id = :p_id AND firebase_uid = :p_uid
+            """, {"p_id": state.global_anchor_id, "p_uid": firebase_uid})
+            
+            anchor_row = cursor.fetchone()
+            if anchor_row and " - " in anchor_row[0]:
+                author = anchor_row[0].split(" - ")[-1].strip()
+        
+        cards = []
+        
+        if author:
+            # Same author, different books (Query via TITLE suffix)
+            params = {
+                "p_uid": firebase_uid,
+                "p_author_pattern": f"% - {author}",
+                "p_anchor_id": state.global_anchor_id,
+                "p_limit": limit,
+                "p_sid": state.session_id
+            }
+            sql = """
+                SELECT id, content_chunk, title, source_type, page_number
+                FROM TOMEHUB_CONTENT
+                WHERE firebase_uid = :p_uid
+                AND title LIKE :p_author_pattern
+                AND id != :p_anchor_id
+                AND id NOT IN (
+                    SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
+                    WHERE session_id = :p_sid
+                )
+            """
+            if resource_type == 'PERSONAL_NOTE':
+                sql += " AND (source_type = 'NOTES' OR (source_type = 'PDF' AND title LIKE '% - Self')) "
+            elif resource_type is None:
+                pass  # All Notes - no filter
+            elif db_type == 'PDF':
+                sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK') AND title NOT LIKE '% - Self' "
+            elif db_type:
+                sql += " AND source_type = :p_type "
+                params["p_type"] = db_type
+                
+            sql += " ORDER BY DBMS_RANDOM.VALUE FETCH FIRST :p_limit ROWS ONLY "
+            cursor.execute(sql, params)
+            
+            for row in cursor.fetchall():
+                content = safe_read_clob(row[1])
+                cards.append(FlowCard(
+                    flow_id=str(uuid.uuid4()),
+                    chunk_id=str(row[0]),
+                    content=content[:500],
+                    title=row[2] or "Untitled",
+                    author=author,
+                    page_number=row[4],
+                    source_type="pdf_chunk" if row[3] in ["PDF", "PDF_CHUNK", "EPUB"] else "personal",
+                    zone=2,
+                    epistemic_level="B", # Contextual
+                    reason=f"✍️ Aynı Yazar: {author}"
+                ))
+        elif state.global_anchor_vector:
+             # Fallback: If no author (Topic Anchor), use broader vector search
+             # Use loose threshold (0.40)
+            vec_array = array.array('f', state.global_anchor_vector)
+            params = {
+                "p_uid": firebase_uid,
+                "p_vec": vec_array,
+                "p_limit": limit,
+                "p_sid": state.session_id
+            }
+            sql = """
+                SELECT id, content_chunk, title, source_type, page_number,
+                       VECTOR_DISTANCE(VEC_EMBEDDING, :p_vec, COSINE) as distance
+                FROM TOMEHUB_CONTENT
+                WHERE firebase_uid = :p_uid
+                AND VEC_EMBEDDING IS NOT NULL
+                AND id NOT IN (
+                    SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
+                    WHERE session_id = :p_sid
+                )
+            """
+            if resource_type == 'PERSONAL_NOTE':
+                sql += " AND (source_type = 'NOTES' OR (source_type = 'PDF' AND title LIKE '% - Self')) "
+            elif resource_type is None:
+                pass  # All Notes - no filter
+            elif db_type == 'PDF':
+                sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK') AND title NOT LIKE '% - Self' "
+            elif db_type:
+                sql += " AND source_type = :p_type "
+                params["p_type"] = db_type
+                
+            sql += " ORDER BY distance OFFSET 10 ROWS FETCH NEXT :p_limit ROWS ONLY "
+            cursor.execute(sql, params)
+            
+            for row in cursor.fetchall():
+                distance = row[5]
+                similarity = 1 - distance if distance else 0
+                if similarity >= 0.40:
+                    content = safe_read_clob(row[1])
+                    cards.append(FlowCard(
+                        flow_id=str(uuid.uuid4()),
+                        chunk_id=str(row[0]),
+                        content=content[:500],
+                        title=row[2] or "Untitled",
+                        page_number=row[4],
+                        source_type="pdf_chunk" if row[3] in ["PDF", "PDF_CHUNK", "EPUB"] else "personal",
+                        zone=2,
+                        epistemic_level="B", # Broad Context
+                        reason=f"🧠 Concept Context ({similarity:.0%})"
+                    ))
+        
+        return cards
+    
+    def _fetch_zone3_syntopic(
+        self, cursor, target_vector: Optional[List[float]], firebase_uid: str, session_id: str, limit: int,
+        resource_type: Optional[str] = None
+    ) -> List[FlowCard]:
+        """
+        Zone 3: Vector similarity search (Syntopic Debate).
+        """
+        if not target_vector:
+            return []
+        
+        # Convert to array for Oracle
+        vec_array = array.array('f', target_vector)
+        
+        source_type_map = {'BOOK': 'PDF', 'ARTICLE': 'ARTICLE', 'WEBSITE': 'WEBSITE', 'PERSONAL_NOTE': 'NOTES'}
+        db_type = source_type_map.get(resource_type)
+        
+        params = {
+            "p_uid": firebase_uid,
+            "p_vec": vec_array,
+            "p_limit": limit,
+            "p_sid": session_id
+        }
+        sql = """
+            SELECT id, content_chunk, title, source_type, page_number,
+                   VECTOR_DISTANCE(VEC_EMBEDDING, :p_vec, COSINE) as distance
+            FROM TOMEHUB_CONTENT
+            WHERE firebase_uid = :p_uid
+            AND VEC_EMBEDDING IS NOT NULL
+            AND id NOT IN (
+                SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
+                WHERE session_id = :p_sid
+            )
+        """
+        if resource_type == 'PERSONAL_NOTE':
+            sql += " AND (source_type = 'NOTES' OR (source_type = 'PDF' AND title LIKE '% - Self')) "
+        elif resource_type is None:
+            pass  # All Notes - no filter
+        elif db_type == 'PDF':
+            sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK') AND title NOT LIKE '% - Self' "
+        elif db_type:
+            sql += " AND source_type = :p_type "
+            params["p_type"] = db_type
+            
+        sql += " ORDER BY distance FETCH FIRST :p_limit ROWS ONLY "
+        cursor.execute(sql, params)
+        
+        cards = []
+        for row in cursor.fetchall():
+            distance = row[5]
+            similarity = 1 - distance if distance else 0
+            
+            if similarity < SIMILARITY_THRESHOLDS["syntopic"]:
+                continue
+            
+            content = safe_read_clob(row[1])
+            cards.append(FlowCard(
+                flow_id=str(uuid.uuid4()),
+                chunk_id=str(row[0]),
+                content=content[:500],
+                title=row[2] or "Untitled",
+                page_number=row[4],
+                source_type="pdf_chunk" if row[3] in ["PDF", "PDF_CHUNK", "EPUB"] else "personal",
+                zone=3,
+                epistemic_level="B", # Dialectical
+                reason=f"🔗 Anlamsal Bağlantı ({similarity:.0%})"
+            ))
+        
+        return cards
+    
+    def _fetch_zone4_discovery(
+        self, cursor, target_vector: Optional[List[float]], firebase_uid: str, session_id: str, limit: int,
+        resource_type: Optional[str] = None
+    ) -> List[FlowCard]:
+        """
+        Zone 4: Discovery Bridge (prioritize high-centrality bridge nodes).
+        
+        Uses precomputed centrality_score from TOMEHUB_CONCEPTS (via calculate_graph_stats.py).
+        Falls back to looser vector similarity if graph data unavailable.
+        """
+        cards = []
+        
+        # Strategy 1: Try to find chunks linked to high-centrality concepts
+        try:
+            params = {"p_uid": firebase_uid, "p_limit": limit}
+            
+            sql = """
+                SELECT DISTINCT
+                    ct.id, ct.content_chunk, ct.title, ct.source_type, ct.page_number,
+                    c.name as concept_name, c.centrality_score
+                FROM TOMEHUB_CONCEPTS c
+                JOIN TOMEHUB_CONCEPT_CHUNKS cc ON c.id = cc.concept_id
+                JOIN TOMEHUB_CONTENT ct ON cc.content_id = ct.id
+                WHERE ct.firebase_uid = :p_uid
+                AND c.centrality_score > 0.01
+            """
+            
+            source_type_map = {'BOOK': 'PDF', 'ARTICLE': 'ARTICLE', 'WEBSITE': 'WEBSITE', 'PERSONAL_NOTE': 'NOTES'}
+            db_type = source_type_map.get(resource_type)
+            
+            if db_type == 'PDF':
+                sql += " AND ct.source_type IN ('PDF', 'EPUB', 'PDF_CHUNK') "
+            elif db_type:
+                sql += " AND ct.source_type = :p_type "
+                params["p_type"] = db_type
+                
+            sql += " ORDER BY c.centrality_score DESC, DBMS_RANDOM.VALUE FETCH FIRST :p_limit ROWS ONLY "
+            cursor.execute(sql, params)
+            
+            for row in cursor.fetchall():
+                content = safe_read_clob(row[1])
+                concept_name = row[5]
+                centrality = row[6] or 0
+                
+                cards.append(FlowCard(
+                    flow_id=str(uuid.uuid4()),
+                    chunk_id=str(row[0]),
+                    content=content[:500],
+                    title=row[2] or "Untitled",
+                    page_number=row[4],
+                    source_type="pdf_chunk" if row[3] in ["PDF", "PDF_CHUNK", "EPUB"] else "personal",
+                    zone=4,
+                    epistemic_level="A", # Foundational
+                    reason=f"💎 Temel Kavram: {concept_name} (merkezilik: {centrality:.2f})"
+                ))
+                
+        except Exception as e:
+            logger.warning(f"Graph bridge query failed, falling back to vector: {e}")
+        
+        # Strategy 2: Fallback to loose vector similarity if graph didn't yield enough
+        if len(cards) < limit and target_vector:
+            remaining = limit - len(cards)
+            vec_array = array.array('f', target_vector)
+            
+            params = {
+                "p_uid": firebase_uid,
+                "p_vec": vec_array,
+                "p_limit": remaining,
+                "p_sid": session_id
+            }
+            sql = """
+                SELECT id, content_chunk, title, source_type, page_number,
+                       VECTOR_DISTANCE(VEC_EMBEDDING, :p_vec, COSINE) as distance
+                FROM TOMEHUB_CONTENT
+                WHERE firebase_uid = :p_uid
+                AND VEC_EMBEDDING IS NOT NULL
+                AND id NOT IN (
+                    SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
+                    WHERE session_id = :p_sid
+                )
+            """
+            
+            source_type_map = {'BOOK': 'PDF', 'ARTICLE': 'ARTICLE', 'WEBSITE': 'WEBSITE'}
+            db_type = source_type_map.get(resource_type)
+            
+            if resource_type == 'PERSONAL_NOTE':
+                sql += " AND (source_type = 'NOTES' OR (source_type = 'PDF' AND title LIKE '% - Self')) "
+            elif resource_type is None:
+                pass  # All Notes - no filter
+            elif db_type == 'PDF':
+                sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK') AND title NOT LIKE '% - Self' "
+            elif db_type:
+                sql += " AND source_type = :p_type "
+                params["p_type"] = db_type
+                
+            sql += " ORDER BY distance OFFSET 20 ROWS FETCH NEXT :p_limit ROWS ONLY "
+            cursor.execute(sql, params)
+            
+            for row in cursor.fetchall():
+                distance = row[5]
+                similarity = 1 - distance if distance else 0
+                
+                if similarity < SIMILARITY_THRESHOLDS["discovery"]:
+                    continue
+                
+                content = safe_read_clob(row[1])
+                cards.append(FlowCard(
+                    flow_id=str(uuid.uuid4()),
+                    chunk_id=str(row[0]),
+                    content=content[:500],
+                    title=row[2] or "Untitled",
+                    page_number=row[4],
+                    source_type="pdf_chunk" if row[3] in ["PDF", "PDF_CHUNK", "EPUB"] else "personal",
+                    zone=4,
+                    epistemic_level="B", # Discovery
+                    reason=f"🌌 Expanding horizon ({similarity:.0%})"
+                ))
+        
+        return cards
+
+    
+    # -------------------------------------------------------------------------
+    # FILTERING & RANKING
+    # -------------------------------------------------------------------------
+    
+    def _filter_candidates(
+        self, 
+        candidates: List[FlowCard], 
+        state: FlowSessionState,
+        session_id: str
+    ) -> List[FlowCard]:
+        """
+        Filter candidates:
+        1. Remove already seen chunks (ID-based)
+        2. Apply semantic deduplication (Centroid + Buffer check)
+        3. Apply negative feedback penalty
+        """
+        filtered = []
+        
+        for card in candidates:
+            # Check 1: Already shown in THIS session (Absolute exclusion)
+            if self.session_manager.is_chunk_seen(session_id, card.chunk_id):
+                continue
+            
+            # Check 1b: Globally seen recently (Global Decay penalty/exclusion)
+            # For Discovery Jumps, we want absolute exclusion from recent global history
+            # For normal flow, maybe just a penalty? User said "discovery jump'ta düşük öncelik"
+            if state.mode == FlowMode.BRIDGE or state.local_anchor_id.startswith("pivot_"):
+                 if self._is_globally_seen(state.firebase_uid, card.chunk_id, days=60):
+                     logger.debug(f"Skipping globally seen chunk for discovery: {card.chunk_id}")
+                     continue
+            else:
+                 # Normal flow: 30 day soft check
+                 if self._is_globally_seen(state.firebase_uid, card.chunk_id, days=30):
+                     logger.debug(f"Skipping recently seen global chunk: {card.chunk_id}")
+                     continue
+            
+            # Check 2: Semantic deduplication
+            # Get the card's vector (we need to fetch it from DB or cache)
+            card_vector = self._get_chunk_vector(card.chunk_id)
+            
+            if card_vector:
+                # Check if semantically duplicate
+                if self.session_manager.is_semantically_duplicate(
+                    session_id, card_vector, threshold=0.85
+                ):
+                    logger.debug(f"Skipping semantically duplicate chunk: {card.chunk_id}")
+                    continue
+                
+                # Check 3: Negative feedback penalty
+                penalty = self.session_manager.calculate_negative_penalty(
+                    session_id, card_vector, penalty_threshold=0.80
+                )
+                
+                if penalty < 0.3:
+                    # Too similar to disliked content - skip entirely
+                    logger.debug(f"Skipping negatively penalized chunk: {card.chunk_id}")
+                    continue
+                
+                # Store penalty for ranking (attach to card for later use)
+                card._penalty = penalty
+            
+            filtered.append(card)
+        
+        return filtered
+    
+    def _record_seen_chunk(self, firebase_uid: str, session_id: str, chunk_id: str):
+        """Persist seen chunk to Database for cross-session global history and decay."""
+        try:
+            with DatabaseManager.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    # Ensure table exists/columns exist (In Oracle we'd usually have this pre-created)
+                    cursor.execute("""
+                        INSERT INTO TOMEHUB_FLOW_SEEN (firebase_uid, session_id, chunk_id, seen_at)
+                        VALUES (:p_uid, :p_sid, :p_cid, CURRENT_TIMESTAMP)
+                    """, {"p_uid": firebase_uid, "p_sid": session_id, "p_cid": chunk_id})
+                    conn.commit()
+        except Exception as e:
+            # Silently fail if DB not ready for tiered history yet
+            logger.debug(f"DB seen recording failed (likely missing columns/table): {e}")
+
+    def _is_globally_seen(self, firebase_uid: str, chunk_id: str, days: int = 30) -> bool:
+        """Check if chunk was seen by this user globally within X days (Decay)."""
+        try:
+            with DatabaseManager.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    # Note: Oracle date subtraction 'TIMESTAMP - NUMBER' results in days
+                    cursor.execute("""
+                        SELECT count(*) FROM TOMEHUB_FLOW_SEEN
+                        WHERE firebase_uid = :p_uid AND chunk_id = :p_cid
+                        AND seen_at > CURRENT_TIMESTAMP - :p_days
+                    """, {"p_uid": firebase_uid, "p_cid": chunk_id, "p_days": days})
+                    return cursor.fetchone()[0] > 0
+        except Exception:
+            return False
+
+    def _get_chunk_vector(self, chunk_id: str) -> Optional[List[float]]:
+        """
+        Retrieve the embedding vector for a chunk from the database.
+        """
+        try:
+            with DatabaseManager.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT VEC_EMBEDDING FROM TOMEHUB_CONTENT WHERE id = :p_id
+                    """, {"p_id": chunk_id})
+                    
+                    row = cursor.fetchone()
+                    if row and row[0]:
+                        return self._to_list(row[0])
+        except Exception as e:
+            logger.warning(f"Failed to get vector for chunk {chunk_id}: {e}")
+        
+        return None
+    
+    def handle_feedback(
+        self,
+        session_id: str,
+        chunk_id: str,
+        action: str,
+        firebase_uid: str
+    ) -> bool:
+        """
+        Handle user feedback on a card.
+        
+        Actions:
+        - 'like': Add to positive signals (future use)
+        - 'dislike': Add vector to negative buffer
+        - 'skip': Mild negative signal
+        - 'save': Strong positive signal (future use)
+        """
+        state = self.session_manager.get_session(session_id)
+        if not state:
+            return False
+        
+        if action in ('dislike', 'skip'):
+            # Get the chunk's vector
+            chunk_vector = self._get_chunk_vector(chunk_id)
+            
+            if chunk_vector:
+                # Add to negative buffer
+                self.session_manager.add_negative_vector(session_id, chunk_vector)
+                logger.info(f"Added negative signal for chunk {chunk_id}")
+                return True
+        
+        elif action == 'like':
+            # Update the local anchor to this card (user engaged with it)
+            chunk_vector = self._get_chunk_vector(chunk_id)
+            if chunk_vector:
+                state.local_anchor_id = chunk_id
+                state.local_anchor_vector = chunk_vector
+                self.session_manager.update_session(state)
+                
+                # Add to recent vectors for dedup tracking
+                self.session_manager.add_recent_vector(session_id, chunk_vector)
+                
+                # Update session centroid
+                self.session_manager.update_session_centroid(session_id, chunk_vector)
+                logger.info(f"Updated session anchors from liked chunk {chunk_id}")
+                return True
+        
+        return False
+    
+    def _rank_candidates(
+        self,
+        candidates: List[FlowCard],
+        target_vector: Optional[List[float]]
+    ) -> List[FlowCard]:
+        """
+        Rank candidates by zone priority and relevance.
+        
+        Lower zones have higher priority (Zone 1 > Zone 2 > Zone 3 > Zone 4).
+        Within same zone, shuffle for variety.
+        """
+        import random
+        
+        # Group by zone
+        by_zone = {1: [], 2: [], 3: [], 4: []}
+        for card in candidates:
+            by_zone.get(card.zone, []).append(card)
+        
+        # Shuffle within each zone
+        for zone in by_zone:
+            random.shuffle(by_zone[zone])
+        
+        # Interleave: Take from each zone in round-robin
+        result = []
+        max_len = max(len(cards) for cards in by_zone.values()) if by_zone else 0
+        
+        for i in range(max_len):
+            for zone in sorted(by_zone.keys()):
+                if i < len(by_zone[zone]):
+                    result.append(by_zone[zone][i])
+        
+        return result
+
+
+# ============================================================================
+# GLOBAL INSTANCE
+# ============================================================================
+
+_flow_service: Optional[FlowService] = None
+
+
+def get_flow_service() -> FlowService:
+    """Get or create the global FlowService instance."""
+    global _flow_service
+    if _flow_service is None:
+        _flow_service = FlowService()
+    return _flow_service

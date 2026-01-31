@@ -250,6 +250,10 @@ def get_graph_candidates(query_text: str, firebase_uid: str) -> list[dict]:
             
     except Exception as e:
         print(f"[ERROR] Graph Retrieval failed: {e}")
+        # Metrics are handled by Prometheus (API error rate)
+        # Logs are handled by Loki (via stdout)
+        import traceback
+        traceback.print_exc()
         return []
         
     return candidates

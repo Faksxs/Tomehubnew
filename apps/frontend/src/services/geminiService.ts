@@ -15,7 +15,7 @@ const getAuthToken = async (): Promise<string> => {
   return await user.getIdToken();
 };
 
-const API_BASE_URL = 'http://localhost:5000';
+const API_BASE_URL = 'http://localhost:5001';
 
 export interface ItemDraft {
   title: string;

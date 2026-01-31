@@ -32,4 +32,4 @@ caddy start --config /etc/caddy/Caddyfile --adapter caddyfile
 # Step 4: Start Flask backend (foreground)
 echo "[4/4] Starting Flask backend..."
 echo "=== Ready! Backend available at https://${DOMAIN} ==="
-exec python -m gunicorn --bind 0.0.0.0:5000 --workers 2 --timeout 120 app:app
+exec python -m gunicorn -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:5000 --workers 2 --timeout 120 app:app

@@ -180,6 +180,21 @@ def classify_question_intent(question: str) -> tuple:
     is_complex = any(re.search(p, q_lower) for p in complex_patterns)
     complexity = 'HIGH' if is_complex else 'LOW'
     
+    # CITATION_SEEKING: Questions asking about author claims or literature references
+    # "Camus'a göre insan nedir?", "Literatürde bu tanım var mı?", "Kim söylemiş?"
+    citation_patterns = [
+        r"(\w+)'?[nıiuü]n?\s+dediği\s+gibi",   # "Camus'ün dediği gibi"
+        r"(\w+)'?[ea]\s+göre",                  # "Camus'a göre", "X'e göre"
+        r"literatür(de|e|den)",                 # "literatürde", "literatüre"
+        r"kim\s+(söyle|demiş|iddia|ifade)",     # "kim söylemiş", "kim iddia ediyor"
+        r"hangi\s+(düşünür|yazar|filozof)",     # "hangi düşünür"
+        r"(\w+)\s+bunu\s+(söyle|yaz|ifade)",    # "X bunu söylemiş"
+        r"kaynak(lar)?da",                      # "kaynaklarda"
+        r"hangi\s+kitap(ta)?",                  # "hangi kitapta"
+    ]
+    if any(re.search(p, q_lower) for p in citation_patterns):
+        return ('CITATION_SEEKING', complexity)
+    
     # Direct Definition/Fact - includes Turkish question suffixes
     direct_patterns = [
         r'nedir\??$', r'kimdir\??$', r'ne demek', r'anlamı ne', 
@@ -426,6 +441,11 @@ def determine_answer_mode(classified_chunks: List[Dict], question_intent: str = 
     # Phase 12: Soft Valid Gate
     # Capture high-quality notes (Score >= 3) that might miss strict Definition tag
     has_high_score_evidence = any(c.get('answerability_score', 0) >= 3 for c in classified_chunks)
+    
+    # GATE -1: CITATION_SEEKING - Always use QUOTE mode for author attribution questions
+    # These questions specifically ask "X'e göre", "Kim söylemiş?" etc.
+    if question_intent == 'CITATION_SEEKING':
+        return 'QUOTE'
     
     # GATE 0: HYBRID Mode (Phase 5)
     # For complex philosophical questions that are DIRECT in form but need both quote AND synthesis

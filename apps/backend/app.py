@@ -58,13 +58,30 @@ from config import settings
 from infrastructure.db_manager import DatabaseManager
 from services.cache_service import get_cache, generate_cache_key
 
-# Configure Logging
-logging.basicConfig(
-    filename='backend_error.log',
-    level=logging.INFO,
-    format='%(asctime)s %(levelname)s: %(message)s'
-)
+# Configure Sentry - REPLACED BY LOKI (Standard Logging)
+# (Sentry code removed)
+
+# Configure Logging (Structured JSON)
+from pythonjsonlogger import jsonlogger
+
 logger = logging.getLogger("tomehub_api")
+logger.setLevel(logging.INFO)
+
+# Console Handler (Stdout for Docker)
+logHandler = logging.StreamHandler()
+formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s %(message)s')
+logHandler.setFormatter(formatter)
+logger.addHandler(logHandler)
+
+# File Handler (Legacy support)
+fileHandler = logging.FileHandler('backend_error.log')
+fileHandler.setFormatter(formatter)
+logger.addHandler(fileHandler)
+
+# Remove default handlers to avoid duplicates
+logging.getLogger().handlers = []
+logging.getLogger().addHandler(logHandler)
+logging.getLogger().addHandler(fileHandler)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -116,9 +133,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include Layer 4 Flow Routes (MUST BE BEFORE Instrumentator)
+# Include Layer 4 Flow Routes (MUST BE BEFORE Instrumentator)
+# We import explicitly to fail fast if there's an issue
+print("[FLOW] Importing flow_routes...")
+from routes.flow_routes import router as flow_router
+app.include_router(flow_router)
+print(f"[FLOW] Router registered with {len(flow_router.routes)} routes")
+
+# Prometheus Instrumentation (must be AFTER all routers are added)
+from prometheus_fastapi_instrumentator import Instrumentator
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+
+
 # ============================================================================
 # HEALTH CHECK
 # ============================================================================
+
+
 
 @app.get("/")
 async def health_check():
@@ -206,8 +238,16 @@ async def search(request: SearchRequest):
                 }
                 
             # 2. Evaluate & Generate
-            # Force EXPLORER mode if requested, otherwise respect RAG classification
-            effective_mode = request.mode if request.mode == 'EXPLORER' else rag_ctx['mode']
+            # For CITATION_SEEKING intent, override to QUOTE mode to show authorial definitions
+            # Otherwise, force EXPLORER mode if requested
+            intent = rag_ctx.get('intent', 'SYNTHESIS')
+            if intent == 'CITATION_SEEKING':
+                effective_mode = 'QUOTE'  # Show author quotes directly
+                print("[EXPLORER] CITATION_SEEKING detected - using QUOTE mode for authorial definitions")
+            elif request.mode == 'EXPLORER':
+                effective_mode = 'EXPLORER'
+            else:
+                effective_mode = rag_ctx['mode']
             
             result = await generate_evaluated_answer(
                 question=request.question,
@@ -328,11 +368,12 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks)
             rag_ctx = await loop.run_in_executor(
                 None, 
                 partial(
-                    get_rag_context, 
+                    get_rag_context,
                     request.message, 
                     request.firebase_uid, 
                     chat_history=ctx_data['recent_messages'],
-                    mode='EXPLORER'
+                    mode='EXPLORER',
+                    resource_type=request.resource_type
                 )
             )
             
@@ -702,6 +743,8 @@ async def search_resources_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+
+
 if __name__ == "__main__":
-    print("[INFO] Starting FastAPI Server on port 5000...")
-    uvicorn.run("app:app", host="0.0.0.0", port=5000, reload=True)
+    print("[INFO] Starting FastAPI Server on port 5001...")
+    uvicorn.run(app, host="0.0.0.0", port=5001)

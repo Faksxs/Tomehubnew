@@ -49,6 +49,8 @@ backend/*.pyc
 backend/venv/
 backend/.venv/
 backend/env/
+.venv/
+venv/
 
 # Oracle Wallet - CRITICAL: Never commit these files!
 backend/wallet/

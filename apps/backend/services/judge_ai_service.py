@@ -4,7 +4,7 @@ import json
 import re
 import logging
 import asyncio
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any, Optional, Tuple
 import google.generativeai as genai
 from services.rubric import (
     DEFAULT_RUBRIC, 
@@ -20,6 +20,7 @@ from utils.spell_checker import get_spell_checker
 import numpy as np
 
 logger = logging.getLogger(__name__)
+from services.monitoring import JUDGE_SCORE
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -110,7 +111,8 @@ def verify_source_accuracy(answer: str, chunks: List[Dict]) -> Tuple[float, List
     """
     citations = extract_citations_from_answer(answer, chunks)
     if not citations:
-        return 1.0, [] 
+        # PENALTY: No citations = no way to verify source accuracy
+        return 0.6, ["no_citations_for_verification"]
 
     violations = []
     total_score = 0.0
@@ -177,9 +179,14 @@ def verify_relevance(question: str, answer: str, intent: str) -> Tuple[float, Li
     a_emb = get_embedding(answer)
     similarity = cosine_similarity(q_emb, a_emb)
     
-    # Boost similarity if it's already high (it's hard to get 1.0 with sentence vs paragraph)
-    # 0.75+ is usually very good for QA
-    semantic_score = min(1.0, similarity / 0.75) 
+    # NOTE: Don't inflate the score - use raw similarity with realistic ceiling
+    # 0.85+ is excellent, 0.75+ is good, below is weak
+    if similarity >= 0.85:
+        semantic_score = 1.0
+    elif similarity >= 0.70:
+        semantic_score = 0.7 + (similarity - 0.70) * 2  # 0.70->0.7, 0.85->1.0
+    else:
+        semantic_score = similarity  # Raw score for weak matches
     
     # Step 2: Intent Checks
     score_modifier = 1.0
@@ -224,7 +231,7 @@ def verify_ocr_quality(text: str) -> Tuple[float, List[str]]:
     words = text.split()
     if not words: return 1.0, []
     
-    valid_count = sum(1 for w in words if spell_checker.check(w) or w.isnumeric() or len(w) < 3)
+    valid_count = sum(1 for w in words if (spell_checker.loaded and w.lower() in spell_checker.vocab) or w.isnumeric() or len(w) < 3)
     fluency_score = valid_count / len(words)
     
     if fluency_score < 0.80:
@@ -272,16 +279,24 @@ def verify_synthesis_depth(answer: str, chunks: List[Dict], mode: str) -> Tuple[
     # High verbatim ratio reduces score
     # High connector count increases score
     
-    base_score = 1.0
+    # 3. Scoring
+    # Base depth score now starts lower to mandate "value-add"
+    # High verbatim ratio reduces score
+    # High connector count increases score
+    
+    base_score = 0.8 # Start lower, require connectors to gain score
+    
     if verbatim_ratio > 0.8: # Extreme copy-pasting
-        base_score *= 0.4
+        base_score *= 0.3 # Heavy penalty
         violations.append("ossified_content: too high verbatim ratio")
-    elif verbatim_ratio > 0.5:
-        base_score *= 0.7
+    elif verbatim_ratio > 0.4: # Lowered threshold for paraphrase detection
+        base_score *= 0.6
         violations.append("shallow_synthesis: high paraphrasing, low value-add")
         
-    if connector_count < 3 and mode == 'EXPLORER':
-        base_score *= 0.8
+    if connector_count >= 5:
+        base_score += 0.2 # Bonus for deep synthesis language
+    elif connector_count < 3 and mode == 'EXPLORER':
+        base_score *= 0.7
         violations.append("low_dialectical_depth: missing reasoning connectors")
         
     return max(0.0, min(1.0, base_score)), violations
@@ -302,9 +317,9 @@ def verify_format(answer: str, mode: str) -> Tuple[float, List[str]]:
     
     if missing:
         violations.append(f"missing_headers: {missing}")
-        return 0.5, violations
+        return 0.4, violations  # Stricter penalty for missing headers
         
-    return 1.0, []
+    return 0.9, []  # Don't give perfect 1.0 for just having headers
 
 # =============================================================================
 # MAIN EVALUATION FUNCTION
@@ -366,6 +381,27 @@ async def evaluate_answer(
         
     hints = generate_hints_from_failures(failures)
     
+    # [Observability] Record Metric
+    # Intent and Netowrk Status are passed in, verify context
+    # Note: 'network_status' is not passed to evaluate_answer currently, defaulting to "UNKNOWN" if missing
+    # But wait, evaluate_answer signature: (question, answer, chunks, answer_mode, intent)
+    # Orchestrator has network_status. We should probably pass it or infer it.
+    # For now, let's use a safe default or ask to update signature. 
+    # Actually Orchestrator calls this. Let's keep it simple and record partially.
+    # Actually, we can get better context if we move the recording to Orchestrator?
+    # No, keep it close to logic. 
+    try:
+        # We need to map verdict (PASS/REGENERATE) from the result
+        # verdict is in result['verdict']
+        verdict_val = verdict.upper() if verdict else "UNKNOWN"
+        JUDGE_SCORE.labels(
+            intent=intent, 
+            network_status="UNKNOWN", 
+            verdict=verdict_val
+        ).observe(overall_score)
+    except Exception as e:
+        logger.warning(f"Failed to record metric: {e}")
+
     return {
         "verdict": verdict,
         "overall_score": overall_score,

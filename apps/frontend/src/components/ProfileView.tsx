@@ -42,7 +42,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     ).length;
 
     return (
-        <div className="p-6 md:p-10 max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4">
+        <div className="p-6 md:p-10 max-w-[1100px] w-full mx-auto animate-in fade-in slide-in-from-bottom-4">
             {/* Back Button */}
             <button
                 onClick={onBack}

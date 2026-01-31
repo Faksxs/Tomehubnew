@@ -34,7 +34,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
 
     const statusColors = {
         'To Read': 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200',
-        'Reading': 'bg-indigo-100 text-indigo-800 border border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-800',
+        'Reading': 'bg-[rgba(204,86,30,0.1)] text-[#CC561E] border border-[#CC561E]/20 dark:bg-[rgba(204,86,30,0.2)] dark:text-[#f3a47b] dark:border-[#CC561E]/30',
         'Finished': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
     };
 
@@ -352,7 +352,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                                         }
                                     }}
                                     className={`break-inside-avoid p-3 md:p-6 rounded-xl border hover:shadow-md transition-all group cursor-pointer relative flex flex-col ${isNote
-                                        ? 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500'
+                                        ? 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-[#CC561E]/50 dark:hover:border-[#CC561E]/70'
                                         : 'bg-yellow-50 dark:bg-yellow-900/10 border-yellow-100 dark:border-yellow-900/30 hover:border-yellow-300 dark:hover:border-yellow-700'
                                         }`}
                                 >
@@ -373,20 +373,20 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                                     </button>
                                     <div className="mb-2 md:mb-3">
                                         {isNote ? (
-                                            <StickyNote className="text-indigo-400 fill-indigo-50 w-4 h-4 md:w-6 md:h-6" />
+                                            <StickyNote className="text-[#CC561E] fill-[#CC561E]/10 w-4 h-4 md:w-6 md:h-6" />
                                         ) : (
                                             <Quote className="text-yellow-400 fill-yellow-200 w-4 h-4 md:w-6 md:h-6" />
                                         )}
                                     </div>
-                                    <p className={`text-[10px] md:text-base leading-relaxed mb-2 md:mb-4 whitespace-pre-wrap line-clamp-[8] md:line-clamp-none font-lora ${isNote ? 'text-slate-700 dark:text-slate-300' : 'text-slate-900 dark:text-slate-200'}`}>
+                                    <p className={`text-xs md:text-base leading-relaxed mb-2 md:mb-4 whitespace-pre-wrap line-clamp-[8] md:line-clamp-none font-lora ${isNote ? 'text-slate-700 dark:text-slate-300' : 'text-slate-900 dark:text-slate-200'}`}>
                                         {highlight.text}
                                     </p>
 
                                     {highlight.tags && highlight.tags.length > 0 && (
                                         <div className="flex flex-wrap gap-1 mb-2 md:mb-3">
                                             {highlight.tags.map((tag, i) => (
-                                                <span key={i} className="px-1 md:px-1.5 py-0.5 bg-white/60 dark:bg-slate-700/50 border border-black/5 dark:border-white/10 rounded text-[8px] md:text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-0.5">
-                                                    <Hash size={8} /> {tag}
+                                                <span key={i} className="px-1.5 md:px-2 py-0.5 md:py-1 bg-white/60 dark:bg-slate-700/50 border border-black/5 dark:border-white/10 rounded text-[10px] md:text-xs text-slate-500 dark:text-slate-400 flex items-center gap-0.5">
+                                                    <Hash size={10} className="md:w-3 md:h-3" /> {tag}
                                                 </span>
                                             ))}
                                         </div>
@@ -394,8 +394,8 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
 
                                     <div className={`pt-2 md:pt-4 mt-auto flex items-center justify-between border-t ${isNote ? 'border-slate-100' : 'border-yellow-200/50'}`}>
                                         <div className="flex-1 min-w-0">
-                                            <h4 className="text-[10px] md:text-sm font-bold text-slate-900 dark:text-white truncate">{highlight.source.title}</h4>
-                                            <div className="flex items-center gap-1 md:gap-2 text-[9px] md:text-xs text-slate-500 dark:text-slate-400">
+                                            <h4 className="text-xs md:text-sm font-bold text-slate-900 dark:text-white truncate">{highlight.source.title}</h4>
+                                            <div className="flex items-center gap-1 md:gap-2 text-[10px] md:text-xs text-slate-500 dark:text-slate-400">
                                                 <span className="truncate max-w-[50%]">{highlight.source.author}</span>
                                             </div>
                                         </div>
@@ -435,7 +435,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                             <div
                                 key={note.id}
                                 onClick={() => onSelectBook(note)}
-                                className="break-inside-avoid bg-white dark:bg-slate-900 p-3 md:p-6 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-500 hover:shadow-lg hover:-translate-y-1 transition-all cursor-pointer flex flex-col h-auto group relative"
+                                className="break-inside-avoid bg-white dark:bg-slate-900 p-3 md:p-6 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-[#CC561E]/50 dark:hover:border-[#CC561E]/70 hover:shadow-lg hover:-translate-y-1 transition-all cursor-pointer flex flex-col h-auto group relative"
                             >
                                 {/* Action Buttons */}
                                 <div className="absolute top-2 right-2 flex gap-1 z-10">
@@ -458,9 +458,9 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                                     </button>
                                 </div>
 
-                                <h3 className="font-bold text-sm md:text-lg text-slate-900 dark:text-white mb-1 md:mb-3 leading-tight pr-6">{note.title}</h3>
+                                <h3 className="font-bold text-sm md:text-lg text-slate-900 dark:text-white mb-2 md:mb-3 leading-tight pr-6">{note.title}</h3>
 
-                                <div className="text-slate-600 dark:text-slate-300 text-xs md:text-base mb-2 md:mb-4 whitespace-pre-wrap leading-relaxed max-h-[150px] md:max-h-[300px] overflow-hidden relative font-lora">
+                                <div className="text-slate-600 dark:text-slate-300 text-xs md:text-base mb-3 md:mb-4 whitespace-pre-wrap leading-relaxed max-h-[150px] md:max-h-[300px] overflow-hidden relative font-lora">
                                     {note.generalNotes || <span className="italic text-slate-400 dark:text-slate-500">Empty</span>}
                                     {note.generalNotes && note.generalNotes.length > 100 && (
                                         <div className="absolute bottom-0 inset-x-0 h-8 md:h-12 bg-gradient-to-t from-white dark:from-slate-900 to-transparent" />
@@ -469,13 +469,13 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
 
                                 <div className="mt-auto pt-2 md:pt-3 flex flex-wrap gap-1 md:gap-2 border-t border-slate-50 dark:border-slate-800">
                                     {note.tags.slice(0, 2).map((tag, idx) => (
-                                        <span key={idx} className="px-1.5 py-0.5 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-[9px] md:text-xs rounded">#{tag}</span>
+                                        <span key={idx} className="px-1.5 md:px-2 py-0.5 md:py-1 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-[10px] md:text-xs rounded">#{tag}</span>
                                     ))}
                                     {note.tags.length > 2 && (
                                         <span className="text-[9px] md:text-xs text-slate-400">+{note.tags.length - 2}</span>
                                     )}
-                                    <span className="ml-auto text-[9px] md:text-xs text-slate-300 flex items-center gap-1">
-                                        <Calendar size={8} />
+                                    <span className="ml-auto text-[10px] md:text-xs text-slate-300 flex items-center gap-1">
+                                        <Calendar size={10} className="md:w-3 md:h-3" />
                                         {new Date(note.addedAt).toLocaleDateString()}
                                     </span>
                                 </div>
@@ -625,7 +625,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
     };
 
     return (
-        <div className="max-w-7xl mx-auto p-3 md:p-8 pb-24 md:pb-20">
+        <div className="max-w-[1100px] w-full mx-auto p-4 md:p-8 animate-in fade-in duration-500">
             {/* Compact Header for Mobile */}
             <div className="flex items-center justify-between mb-4 md:mb-8 gap-2">
                 <div className="flex items-center gap-2 md:gap-4 overflow-hidden flex-1">
@@ -662,7 +662,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                     <div className="flex gap-2">
                         <button
                             onClick={onAddBook}
-                            className="bg-indigo-600 dark:bg-indigo-500 text-white px-3 py-1.5 md:px-5 md:py-2.5 rounded-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-colors flex items-center gap-1.5 shadow-md shadow-indigo-200 dark:shadow-none font-medium shrink-0"
+                            className="bg-[#CC561E] text-white px-3 py-1.5 md:px-5 md:py-2.5 rounded-lg hover:bg-[#b34b1a] transition-all flex items-center gap-1.5 shadow-md shadow-[#CC561E]/20 dark:shadow-none font-medium shrink-0 active:scale-95"
                         >
                             <Plus size={16} className="md:w-5 md:h-5" />
                             <span className="text-xs md:text-base">
@@ -683,12 +683,12 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                             placeholder={getSearchPlaceholder()}
                             value={inputValue}
                             onChange={(e) => setInputValue(e.target.value)}
-                            className="w-full pl-8 md:pl-10 pr-4 py-1.5 md:py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-xs md:text-base bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500"
+                            className="w-full pl-8 md:pl-10 pr-4 py-1.5 md:py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-[#CC561E] focus:border-transparent outline-none transition-all text-xs md:text-base bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500"
                         />
                         {/* Loading Spinner inside input */}
                         {isTyping && (
                             <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                                <Loader2 size={16} className="animate-spin text-indigo-400" />
+                                <Loader2 size={16} className="animate-spin text-[#CC561E]" />
                             </div>
                         )}
                     </div>
@@ -715,7 +715,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                                 <select
                                     value={statusFilter}
                                     onChange={(e) => setStatusFilter(e.target.value as ReadingStatus | PhysicalStatus | 'ALL' | 'HIGHLIGHTS' | 'FAVORITES')}
-                                    className="w-full pl-7 md:pl-9 pr-6 md:pr-8 py-1.5 md:py-2 border border-slate-200 dark:border-slate-700 rounded-lg appearance-none bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500 text-xs md:text-sm font-medium text-slate-700 dark:text-slate-200 cursor-pointer hover:border-slate-300 dark:hover:border-slate-600"
+                                    className="w-full pl-7 md:pl-9 pr-6 md:pr-8 py-1.5 md:py-2 border border-slate-200 dark:border-slate-700 rounded-lg appearance-none bg-white dark:bg-slate-800 focus:ring-2 focus:ring-[#CC561E] text-xs md:text-sm font-medium text-slate-700 dark:text-slate-200 cursor-pointer hover:border-slate-300 dark:hover:border-slate-600"
                                 >
                                     <option value="ALL">All</option>
                                     <option value="FAVORITES">Favorites</option>
@@ -741,7 +741,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                                 <select
                                     value={sortOption}
                                     onChange={(e) => setSortOption(e.target.value as 'date_desc' | 'date_asc' | 'title_asc')}
-                                    className="w-full pl-7 md:pl-9 pr-6 md:pr-8 py-1.5 md:py-2 border border-slate-200 dark:border-slate-700 rounded-lg appearance-none bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500 text-xs md:text-sm font-medium text-slate-700 dark:text-slate-200 cursor-pointer hover:border-slate-300 dark:hover:border-slate-600"
+                                    className="w-full pl-7 md:pl-9 pr-6 md:pr-8 py-1.5 md:py-2 border border-slate-200 dark:border-slate-700 rounded-lg appearance-none bg-white dark:bg-slate-800 focus:ring-2 focus:ring-[#CC561E] text-xs md:text-sm font-medium text-slate-700 dark:text-slate-200 cursor-pointer hover:border-slate-300 dark:hover:border-slate-600"
                                 >
                                     <option value="date_desc">Newest</option>
                                     <option value="date_asc">Oldest</option>
@@ -755,7 +755,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                                     placeholder={activeTab === 'ARTICLE' ? "Journal..." : "Publisher..."}
                                     value={publisherFilter}
                                     onChange={(e) => setPublisherFilter(e.target.value)}
-                                    className="hidden md:block px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm min-w-[140px] bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500"
+                                    className="hidden md:block px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-[#CC561E] text-sm min-w-[140px] bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500"
                                 />
                             )}
                         </div>

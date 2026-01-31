@@ -43,4 +43,7 @@ class Settings:
         self.EMBEDDING_MODEL_VERSION = os.getenv("EMBEDDING_MODEL_VERSION", "v2")
         self.LLM_MODEL_VERSION = os.getenv("LLM_MODEL_VERSION", "v1")
 
+        # Observability
+        self.SENTRY_DSN = os.getenv("SENTRY_DSN")
+
 settings = Settings()

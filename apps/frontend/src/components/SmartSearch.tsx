@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Search, Loader2, BookOpen, AlertCircle, Sparkles, Wand2, Type, ArrowLeft } from 'lucide-react';
+import { Search, Loader2, BookOpen, AlertCircle, Sparkles, Wand2, Type, ChevronLeft } from 'lucide-react';
 
 interface SmartSearchProps {
     userId: string;
@@ -107,27 +107,31 @@ export default function SmartSearch({ userId, onBack }: SmartSearchProps) {
     };
 
     return (
-        <div className="flex flex-col h-full space-y-8 p-6 max-w-5xl mx-auto w-full animate-in fade-in duration-500">
+        <div className="flex flex-col h-full space-y-8 p-6 max-w-[1100px] mx-auto w-full animate-in fade-in duration-500">
             {/* Header - Compact when results are shown */}
             {!searched ? (
                 <div className="text-center space-y-3 pt-6 relative">
                     {/* Back Button */}
                     {onBack && (
-                        <button
-                            onClick={onBack}
-                            className="absolute left-0 top-6 flex items-center gap-2 text-gray-500 hover:text-indigo-600 transition-colors font-medium"
-                        >
-                            <ArrowLeft className="w-5 h-5" />
-                            <span className="hidden sm:inline">Back</span>
-                        </button>
+                        <div className="absolute left-0 top-6">
+                            <button
+                                onClick={onBack}
+                                className="group flex items-center gap-2 text-slate-500 hover:text-[#CC561E] transition-all duration-300"
+                            >
+                                <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
+                                    <ChevronLeft size={16} />
+                                </div>
+                                <span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">Back to Home</span>
+                            </button>
+                        </div>
                     )}
-                    <div className="inline-flex items-center justify-center p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl mb-2">
-                        <Wand2 className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
+                    <div className="inline-flex items-center justify-center p-3 bg-[rgba(204,86,30,0.1)] dark:bg-[rgba(204,86,30,0.2)] rounded-2xl mb-2">
+                        <Wand2 className="w-8 h-8 text-[#CC561E]" />
                     </div>
-                    <h2 className="text-4xl font-extrabold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent tracking-tight">
+                    <h2 className="text-4xl font-extrabold bg-gradient-to-r from-[#CC561E] to-[#e66a2e] bg-clip-text text-transparent tracking-tight">
                         Smart Search
                     </h2>
-                    <p className="text-gray-500 dark:text-gray-400 text-lg max-w-2xl mx-auto font-medium">
+                    <p className="text-gray-500 dark:text-gray-400 text-lg mx-auto font-medium">
                         Layer 2: AI-Enhanced retrieval that understands context, fixes typos, and expands your query.
                     </p>
                 </div>
@@ -136,15 +140,17 @@ export default function SmartSearch({ userId, onBack }: SmartSearchProps) {
                     {onBack && (
                         <button
                             onClick={onBack}
-                            className="flex items-center gap-2 text-gray-500 hover:text-indigo-600 transition-colors font-medium"
+                            className="group flex items-center gap-2 text-slate-500 hover:text-[#CC561E] transition-all duration-300"
                         >
-                            <ArrowLeft className="w-5 h-5" />
-                            <span className="hidden sm:inline">Back</span>
+                            <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
+                                <ChevronLeft size={16} />
+                            </div>
+                            <span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">Back to Home</span>
                         </button>
                     )}
                     <div className="flex items-center gap-2">
-                        <Wand2 className="w-6 h-6 text-indigo-600" />
-                        <h2 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                        <Wand2 className="w-6 h-6 text-[#CC561E]" />
+                        <h2 className="text-2xl font-bold bg-gradient-to-r from-[#CC561E] to-[#e66a2e] bg-clip-text text-transparent">
                             Smart Search
                         </h2>
                     </div>
@@ -168,7 +174,7 @@ export default function SmartSearch({ userId, onBack }: SmartSearchProps) {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white px-8 py-4 rounded-xl font-bold text-base transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                            className="bg-[#CC561E] hover:bg-[#b34b1a] active:bg-[#b34b1a] text-white px-8 py-4 rounded-xl font-bold text-base transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed shadow-lg shadow-[#CC561E]/20"
                         >
                             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <span>Search</span>}
                         </button>
@@ -200,8 +206,8 @@ export default function SmartSearch({ userId, onBack }: SmartSearchProps) {
                             {results.map((result, index) => (
                                 <div key={index} className="group bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm hover:shadow-xl hover:-translate-y-1 border border-gray-100 dark:border-gray-700 transition-all duration-300">
                                     <div className="flex justify-between items-start mb-4">
-                                        <h3 className="font-bold text-xl text-gray-900 dark:text-gray-100 flex items-center gap-3 group-hover:text-indigo-600 transition-colors">
-                                            <BookOpen className="w-5 h-5 text-indigo-500" />
+                                        <h3 className="font-bold text-xl text-gray-900 dark:text-gray-100 flex items-center gap-3 group-hover:text-[#CC561E] transition-colors">
+                                            <BookOpen className="w-5 h-5 text-[#CC561E]" />
                                             {highlightMatches(result.title, query)}
                                         </h3>
                                         <div className="flex items-center gap-2 shrink-0">
@@ -222,7 +228,7 @@ export default function SmartSearch({ userId, onBack }: SmartSearchProps) {
                                     </div>
 
                                     {/* Main Highlight/Text - Cleanest view */}
-                                    <div className="pl-5 border-l-4 border-gray-100 dark:border-gray-700 group-hover:border-indigo-500 transition-colors">
+                                    <div className="pl-5 border-l-4 border-gray-100 dark:border-gray-700 group-hover:border-[#CC561E] transition-colors">
                                         <p className="text-gray-700 dark:text-gray-200 leading-relaxed text-base whitespace-pre-wrap font-serif">
                                             {highlightMatches(result.content_chunk, query)}
                                         </p>
@@ -248,12 +254,12 @@ export default function SmartSearch({ userId, onBack }: SmartSearchProps) {
 
                                     {/* Personal Comment - Fixed Position at Bottom */}
                                     {result.personal_comment && (
-                                        <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 bg-indigo-50/10 dark:bg-indigo-900/10 -mx-6 px-6 py-4 rounded-b-2xl">
+                                        <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 bg-[rgba(204,86,30,0.05)] dark:bg-[rgba(204,86,30,0.1)] -mx-6 px-6 py-4 rounded-b-2xl">
                                             <div className="flex flex-col gap-2">
-                                                <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 dark:text-indigo-400">
+                                                <span className="text-[10px] font-bold uppercase tracking-widest text-[#CC561E]">
                                                     Personal comment:
                                                 </span>
-                                                <p className="text-sm text-gray-800 dark:text-gray-200 italic border-l-2 border-indigo-200 dark:border-indigo-800 pl-3">
+                                                <p className="text-sm text-gray-800 dark:text-gray-200 italic border-l-2 border-[#CC561E]/30 dark:border-[#CC561E]/50 pl-3">
                                                     {highlightMatches(result.personal_comment, query)}
                                                 </p>
                                             </div>

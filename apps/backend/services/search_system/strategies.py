@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import oracledb
 
 # Import DatabaseManager
@@ -16,7 +16,7 @@ class SearchStrategy(ABC):
     """
     
     @abstractmethod
-    def search(self, query: str, firebase_uid: str, limit: int = 20) -> List[Dict[str, Any]]:
+    def search(self, query: str, firebase_uid: str, limit: int = 20, resource_type: Optional[str] = None) -> List[Dict[Any, Any]]:
         """
         Execute search.
         Returns a list of standardized result dictionaries.
@@ -29,11 +29,15 @@ class ExactMatchStrategy(SearchStrategy):
     Strategies for Exact De-accented Match.
     Fastest, high precision.
     """
-    def search(self, query: str, firebase_uid: str, limit: int = 20) -> List[Dict[str, Any]]:
+    def search(self, query: str, firebase_uid: str, limit: int = 20, resource_type: Optional[str] = None) -> List[Dict[Any, Any]]:
         try:
             with DatabaseManager.get_connection() as conn:
                 with conn.cursor() as cursor:
                     q_deaccented = deaccent_text(query)
+                    
+                    # Layer 4 Mapping
+                    source_type_map = {'BOOK': 'PDF', 'ARTICLE': 'ARTICLE', 'WEBSITE': 'WEBSITE', 'PERSONAL_NOTE': 'NOTE'}
+                    db_type = source_type_map.get(resource_type)
                     
                     sql = """
                         SELECT id, content_chunk, title, source_type, page_number, 
@@ -41,6 +45,20 @@ class ExactMatchStrategy(SearchStrategy):
                                normalized_content
                         FROM TOMEHUB_CONTENT
                         WHERE firebase_uid = :p_uid
+                    """
+                    
+                    params = {
+                        "p_uid": firebase_uid, 
+                        "p_term": q_deaccented, 
+                        "p_term_lower": query.lower(),
+                        "p_limit": limit
+                    }
+                    
+                    if db_type:
+                        sql += " AND source_type = :p_type "
+                        params["p_type"] = db_type
+                        
+                    sql += """
                         AND (
                             text_deaccented LIKE '%' || :p_term || '%'
                             OR LOWER(content_chunk) LIKE '%' || :p_term_lower || '%'
@@ -48,12 +66,7 @@ class ExactMatchStrategy(SearchStrategy):
                         FETCH FIRST :p_limit ROWS ONLY
                     """
                     
-                    cursor.execute(sql, {
-                        "p_uid": firebase_uid, 
-                        "p_term": q_deaccented, 
-                        "p_term_lower": query.lower(),
-                        "p_limit": limit
-                    })
+                    cursor.execute(sql, params)
                     rows = cursor.fetchall()
                     
                     results = []
@@ -86,7 +99,7 @@ class LemmaMatchStrategy(SearchStrategy):
     """
     Strategy for Lemma-based matching (Fuzzy-ish).
     """
-    def search(self, query: str, firebase_uid: str, limit: int = 20) -> List[Dict[str, Any]]:
+    def search(self, query: str, firebase_uid: str, limit: int = 20, resource_type: Optional[str] = None) -> List[Dict[Any, Any]]:
         lemmas = get_lemmas(query)
         if not lemmas:
             return []
@@ -94,49 +107,61 @@ class LemmaMatchStrategy(SearchStrategy):
         try:
             with DatabaseManager.get_connection() as conn:
                 with conn.cursor() as cursor:
+                    # Layer 4 Mapping
+                    source_type_map = {'BOOK': 'PDF', 'ARTICLE': 'ARTICLE', 'WEBSITE': 'WEBSITE', 'PERSONAL_NOTE': 'NOTES'}
+                    db_type = source_type_map.get(resource_type)
+
                     results = []
                     
-                    # We enforce ALL lemmas must be present? Or ANY? 
-                    # Smart Search used "ANY" but iterated. Let's do ANY for broader recall or ALL for precision.
-                    # Let's try to match ANY lemma first.
+                    # Build bulk query for up to 5 lemmas
+                    # We match ANY lemma but Oracle doesn't have native "count matches" easily in LIKE OR
+                    # So we use a search pattern that matches the JSON structure ["lemma1", "lemma2"]
                     
-                    # Since Oracle doesn't have native array overlap easily without types, 
-                    # we iterate Python side or use LIKE on JSON array stored in DB?
-                    # DB has `lemma_tokens` (CLOB or JSON).
+                    sql = """
+                        SELECT id, content_chunk, title, source_type, page_number,
+                               tags, summary, personal_note
+                        FROM TOMEHUB_CONTENT
+                        WHERE firebase_uid = :p_uid
+                    """
+                    params = {"p_uid": firebase_uid, "p_limit": limit}
                     
-                    # Simplified: Check for first 3 lemmas
-                    for lemma in lemmas[:3]: 
-                        sql = """
-                            SELECT id, content_chunk, title, source_type, page_number,
-                                   tags, summary, personal_note
-                            FROM TOMEHUB_CONTENT
-                            WHERE firebase_uid = :p_uid
-                            AND lemma_tokens LIKE '%' || :p_lemma || '%'
-                            FETCH FIRST :p_limit ROWS ONLY
-                        """
-                        cursor.execute(sql, {"p_uid": firebase_uid, "p_lemma": f'"{lemma}"', "p_limit": limit})
-                        rows = cursor.fetchall()
+                    if db_type:
+                        sql += " AND source_type = :p_type "
+                        params["p_type"] = db_type
+                    
+                    lemma_conditions = []
+                    for i, lemma in enumerate(lemmas[:5]):
+                        p_name = f"p_lemma_{i}"
+                        lemma_conditions.append(f"lemma_tokens LIKE :{p_name}")
+                        params[p_name] = f'%"{lemma}"%'
+                    
+                    if lemma_conditions:
+                        sql += " AND (" + " OR ".join(lemma_conditions) + ")"
+                    
+                    sql += " FETCH FIRST :p_limit ROWS ONLY"
+                    
+                    cursor.execute(sql, params)
+                    rows = cursor.fetchall()
+                    
+                    for r in rows:
+                        content = r[1].read() if r[1] else ""
+                        tags = r[5].read() if r[5] else ""
+                        summary = r[6].read() if r[6] else ""
+                        note = r[7].read() if r[7] else ""
                         
-                        for r in rows:
-                            content = r[1].read() if r[1] else ""
-                            tags = r[5].read() if r[5] else ""
-                            summary = r[6].read() if r[6] else ""
-                            note = r[7].read() if r[7] else ""
-                            
-                            results.append({
-                                'id': r[0],
-                                'title': r[2],
-                                'content_chunk': content,
-                                'source_type': r[3],
-                                'page_number': r[4],
-                                'tags': tags,
-                                'summary': summary,
-                                'personal_note': note,
-                                'score': 90.0, # Base score for lemma
-                                'match_type': 'lemma_fuzzy',
-                                'match_term': lemma
-                            })
-                    return results # Orchestrator handles deduplication
+                        results.append({
+                            'id': r[0],
+                            'title': r[2],
+                            'content_chunk': content,
+                            'source_type': r[3],
+                            'page_number': r[4],
+                            'tags': tags,
+                            'summary': summary,
+                            'personal_note': note,
+                            'score': 90.0,
+                            'match_type': 'lemma_fuzzy'
+                        })
+                    return results
 
         except Exception as e:
             logger.error(f"LemmaMatchStrategy failed: {e}", exc_info=True)
@@ -149,7 +174,7 @@ class SemanticMatchStrategy(SearchStrategy):
     def __init__(self, embedding_service_fn):
         self.get_embedding = embedding_service_fn
         
-    def search(self, query: str, firebase_uid: str, limit: int = 20, intent: str = 'SYNTHESIS') -> List[Dict[str, Any]]:
+    def search(self, query: str, firebase_uid: str, limit: int = 20, intent: str = 'SYNTHESIS', resource_type: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Executes semantic search with Content-Aware Filtering.
         
@@ -167,6 +192,10 @@ class SemanticMatchStrategy(SearchStrategy):
                 with conn.cursor() as cursor:
                     results = []
                     
+                    # Layer 4 Mapping
+                    source_type_map = {'BOOK': 'PDF', 'ARTICLE': 'ARTICLE', 'WEBSITE': 'WEBSITE', 'PERSONAL_NOTE': 'NOTE'}
+                    db_type = source_type_map.get(resource_type)
+
                     # Helper to run query
                     def run_query(custom_limit, length_filter=None):
                         sql = """
@@ -179,6 +208,10 @@ class SemanticMatchStrategy(SearchStrategy):
                         
                         params = {"p_uid": firebase_uid, "vec": emb, "p_limit": custom_limit}
                         
+                        if db_type:
+                            sql += " AND source_type = :p_type "
+                            params["p_type"] = db_type
+
                         # Apply Content-Aware Filters
                         if length_filter:
                             if length_filter == 'SHORT':

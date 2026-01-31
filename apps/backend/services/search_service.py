@@ -11,8 +11,9 @@ Date: 2026-01-07
 
 import os
 import time
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
 import oracledb
 import google.generativeai as genai
@@ -31,6 +32,10 @@ from services.epistemic_service import (
 # Load environment variables - go up one level from services/ to backend/
 env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env')
 load_dotenv(dotenv_path=env_path)
+
+# Initialize logger
+from utils.logger import get_logger
+logger = get_logger("search_service")
 
 
 from infrastructure.db_manager import DatabaseManager, safe_read_clob
@@ -53,6 +58,8 @@ from services.graph_service import get_graph_candidates
 # Import Re-rank Service
 from services.rerank_service import rerank_candidates
 from services.network_classifier import classify_network_status
+from services.network_classifier import classify_network_status
+from services.monitoring import GRAPH_BRIDGES_FOUND, SEARCH_DIVERSITY_COUNT, SEARCH_RESULT_COUNT
 
 def get_graph_enriched_context(base_results: List[Dict], firebase_uid: str) -> str:
     """
@@ -130,7 +137,9 @@ def get_graph_enriched_context(base_results: List[Dict], firebase_uid: str) -> s
                     # Filter to keep only if one side is in our original concept set?
                     # The graph query ensures at least one side is. This bridge connects them.
                     bridges.append(f"🔗 {c1_name} is connected to {c2_name} via '{rtype}' relationship.")
-                        
+        
+        GRAPH_BRIDGES_FOUND.observe(len(bridges))
+        
         if bridges:
             return "\nSEMANTIC BRIDGES (Graph Insights):\n" + "\n".join(set(bridges))
         return ""
@@ -274,32 +283,45 @@ def search_similar_content(query_text: str, firebase_uid: str, top_k: int = 5) -
                                 if current_sim > candidate_pool[key]['vector_score']:
                                     candidate_pool[key]['vector_score'] = current_sim
 
-                    # B. Keyword/SQL Retrieval (Broad sweep for exact matches)
-                    # Only run for original query to avoid noise
+                    # B. Keyword/SQL Retrieval (Tokenized Lemma Search)
+                    # Uses lemmatized tokens to catch morphological variations
                     if q == query_text:
-                        keyword_sql = """
-                        SELECT content_chunk, page_number, title, source_type
-                        FROM TOMEHUB_CONTENT
-                        WHERE firebase_uid = :p_uid
-                        AND LOWER(content_chunk) LIKE :p_kw
-                        FETCH FIRST 15 ROWS ONLY
-                        """
-                        cursor.execute(keyword_sql, {"p_uid": firebase_uid, "p_kw": f"%{q.lower()}%"})
-                        k_rows = cursor.fetchall()
+                        from utils.text_utils import get_lemmas
+                        lemmas = get_lemmas(q)
+                        # Filter out very short or stop words
+                        keywords = [l for l in lemmas if len(l) > 2][:5]  # Max 5 keywords
                         
-                        for r in k_rows:
-                            content = safe_read_clob(r[0])
-                            key = f"{r[2]}_{r[1]}_{content[:30]}"
-                            if key not in candidate_pool:
-                                candidate_pool[key] = {
-                                    'content': content,
-                                    'page': r[1],
-                                    'title': r[2],
-                                    'type': r[3],
-                                    'vector_score': 0.0, # Not found by vector
-                                    'bm25_score': 0.0,
-                                    'graph_score': 0.0
-                                }
+                        if keywords:
+                            # Build OR conditions for each keyword
+                            conditions = []
+                            params = {"p_uid": firebase_uid}
+                            for i, kw in enumerate(keywords):
+                                conditions.append(f"LOWER(content_chunk) LIKE :kw{i}")
+                                params[f"kw{i}"] = f"%{kw.lower()}%"
+                            
+                            keyword_sql = f"""
+                            SELECT content_chunk, page_number, title, source_type
+                            FROM TOMEHUB_CONTENT
+                            WHERE firebase_uid = :p_uid
+                            AND ({" OR ".join(conditions)})
+                            FETCH FIRST 25 ROWS ONLY
+                            """
+                            cursor.execute(keyword_sql, params)
+                            k_rows = cursor.fetchall()
+                            
+                            for r in k_rows:
+                                content = safe_read_clob(r[0])
+                                key = f"{r[2]}_{r[1]}_{content[:30]}"
+                                if key not in candidate_pool:
+                                    candidate_pool[key] = {
+                                        'content': content,
+                                        'page': r[1],
+                                        'title': r[2],
+                                        'type': r[3],
+                                        'vector_score': 0.0,
+                                        'bm25_score': 0.0,
+                                        'graph_score': 0.0
+                                    }
                 
                 logger.info("Base Retrieval Complete", extra={
                     "candidates_count": len(candidate_pool),
@@ -355,8 +377,8 @@ def search_similar_content(query_text: str, firebase_uid: str, top_k: int = 5) -
                 graph_ranking = sorted([k for k, v in candidate_pool.items() if v['graph_score'] > 0], 
                                      key=lambda k: candidate_pool[k]['graph_score'], reverse=True)
                 
-                # Fuse 3 Lists
-                rrf_scores = compute_rrf([vector_ranking, bm25_ranking, graph_ranking], k=60)
+                # Fuse 3 Lists (Order matters: BM25 first for weighted RRF)
+                rrf_scores = compute_rrf([bm25_ranking, vector_ranking, graph_ranking], k=60)
                 
                 # Attach RRF scores
                 final_results = []
@@ -441,9 +463,16 @@ def search_similar_content(query_text: str, firebase_uid: str, top_k: int = 5) -
                         'title': res['title'],
                         'similarity_score': res.get('rerank_score', 0), # New score
                         'final_score': res['rrf_score'], # Keep original for debug
+                        'final_score': res['rrf_score'], # Keep original for debug
                         'source_type': res['type']
                     })
                     
+                # [Observability] Record Metrics
+                SEARCH_RESULT_COUNT.observe(len(reranked_results))
+                
+                unique_books = set(c.get('title') for c in selected_chunks)
+                SEARCH_DIVERSITY_COUNT.observe(len(unique_books))
+                
                 logger.info("Hybrid Search Finished", extra={
                     "final_count": len(selected_chunks),
                     "total_duration_ms": int((time.time() - start_time) * 1000)
@@ -493,7 +522,7 @@ def rewrite_query_with_history(question: str, history: List[Dict]) -> str:
         print(f"[WARNING] Query rewriting failed: {e}")
         return question
 
-def get_rag_context(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, mode: str = 'STANDARD') -> Optional[Dict[str, Any]]:
+def get_rag_context(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, mode: str = 'STANDARD', resource_type: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
     Retrieves and processes context for RAG.
     Shared by Legacy Search and Dual-AI Chat.
@@ -529,7 +558,7 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         # Pass intent to guide filtering (Short/Long bias)
         # Returns (results, metadata)
         search_depth = 'deep' if mode == 'EXPLORER' else 'normal'
-        return perform_smart_search(effective_query, firebase_uid, intent=intent, book_id=context_book_id, search_depth=search_depth)
+        return perform_smart_search(effective_query, firebase_uid, intent=intent, book_id=context_book_id, search_depth=search_depth, resource_type=resource_type)
         
     def run_graph_search():
         try:
@@ -540,20 +569,17 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
     graph_results = []
     question_results = []
     
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        future_vec = executor.submit(run_vector_search)
+    # Replaced Sentry Spans with Standard Threading
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        future_vector = executor.submit(run_vector_search)
         future_graph = executor.submit(run_graph_search)
-        
+
         try:
             # Result is now (list, dict)
-            vec_res, vec_meta = future_vec.result()
-            question_results = vec_res or []
-            
-            # Extract log id
-            search_log_id = vec_meta.get('search_log_id')
-            if search_log_id:
-                print(f"[RAG] Search Log ID: {search_log_id}")
-                
+            res_v, meta_v = future_vector.result()
+            question_results = res_v or []
+            vec_meta = meta_v
+            search_log_id = meta_v.get('search_log_id')
         except Exception as e:
             print(f"[ERROR] Vector: {e}")
             vec_meta = {}

@@ -144,13 +144,22 @@ def generate_query_variations(query: str) -> list[str]:
 def score_with_bm25(documents: list[str], query: str) -> list[float]:
     """
     Scores a list of documents against a query using BM25.
+    Uses Zeyrek lemmatization to handle Turkish morphology.
     Returns a list of scores corresponding to the documents.
     """
     if not documents or not query:
         return []
-        
-    tokenized_corpus = [normalize_text(doc).split() for doc in documents]
-    tokenized_query = normalize_text(query).split()
+    
+    def _lemmatize_tokens(text: str) -> list:
+        """Tokenize with lemmatization for BM25."""
+        lemmas = get_lemmas(text)
+        if lemmas:
+            return lemmas
+        # Fallback: normalized split
+        return normalize_text(text).split()
+    
+    tokenized_corpus = [_lemmatize_tokens(doc) for doc in documents]
+    tokenized_query = _lemmatize_tokens(query)
     
     bm25 = BM25Okapi(tokenized_corpus)
     scores = bm25.get_scores(tokenized_query)
@@ -161,7 +170,7 @@ def score_with_bm25(documents: list[str], query: str) -> list[float]:
 from services.search_system.orchestrator import SearchOrchestrator
 from services.search_system.search_utils import compute_rrf # Re-export for compatibility
 
-def perform_smart_search(query, firebase_uid, book_id=None, intent='SYNTHESIS', search_depth='normal'):
+def perform_smart_search(query, firebase_uid, book_id=None, intent='SYNTHESIS', search_depth='normal', resource_type=None):
     """
     Delegates to the new SearchOrchestrator (Phase 3 Architecture).
     search_depth: 'normal' (default, limit 50) or 'deep' (limit 100)
@@ -175,7 +184,7 @@ def perform_smart_search(query, firebase_uid, book_id=None, intent='SYNTHESIS', 
         
         # Initialize Orchestrator with embedding function and cache
         orchestrator = SearchOrchestrator(embedding_fn=get_embedding, cache=cache)
-        result = orchestrator.search(query, firebase_uid, limit=limit, book_id=book_id, intent=intent)
+        result = orchestrator.search(query, firebase_uid, limit=limit, book_id=book_id, intent=intent, resource_type=resource_type)
         
         if result is None:
             print("[ERROR] Orchestrator returned None")

@@ -30,6 +30,7 @@ import {
 import { useBatchEnrichment } from "./hooks/useBatchEnrichment";
 
 import { RAGSearch } from "./components/RAGSearch";
+import { FlowContainer } from "./components/FlowContainer";
 import { getIngestedBooks, addTextItem } from "./services/backendApiService";
 
 // ----------------- LAYOUT (ANA UYGULAMA) -----------------
@@ -51,7 +52,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<
-    ResourceType | "NOTES" | "DASHBOARD" | "PROFILE" | "RAG_SEARCH" | "SMART_SEARCH"
+    ResourceType | "NOTES" | "DASHBOARD" | "PROFILE" | "RAG_SEARCH" | "SMART_SEARCH" | "FLOW"
   >("DASHBOARD");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [itemsLoading, setItemsLoading] = useState(true);
@@ -348,7 +349,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
 
   const editingBook = books.find((b) => b.id === editingBookId);
 
-  const handleTabChange = useCallback((newTab: ResourceType | "NOTES" | "DASHBOARD" | "PROFILE" | "RAG_SEARCH" | "SMART_SEARCH") => {
+  const handleTabChange = useCallback((newTab: ResourceType | "NOTES" | "DASHBOARD" | "PROFILE" | "RAG_SEARCH" | "SMART_SEARCH" | "FLOW") => {
     setActiveTab(newTab);
     setView("list");
     setSelectedBookId(null);
@@ -402,6 +403,13 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
           <SmartSearch userId={userId} onBack={() => handleTabChange("DASHBOARD")} />
         ) : activeTab === "RAG_SEARCH" ? (
           <RAGSearch userId={userId} userEmail={userEmail} onBack={() => handleTabChange("DASHBOARD")} />
+        ) : activeTab === "FLOW" ? (
+          <FlowContainer
+            firebaseUid={userId}
+            anchorType="topic"
+            anchorId="General Discovery" // Default anchor if user just clicks sidebar
+            onClose={() => handleTabChange("DASHBOARD")}
+          />
         ) : view === "list" ? (
           <BookList
             books={books}

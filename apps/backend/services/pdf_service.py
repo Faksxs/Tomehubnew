@@ -15,6 +15,7 @@ from typing import List, Dict, Optional
 from datetime import datetime
 from dotenv import load_dotenv
 import oci
+import re
 
 # Load environment variables
 env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env')
@@ -65,6 +66,59 @@ def get_oci_config() -> dict:
     required_vars["key_file"] = key_file
     
     return required_vars
+
+
+def clean_text_artifacts(text: str) -> str:
+    """
+    Clean common OCR and encoding artifacts from extracted text,
+    specifically targeting Turkish character corruptions.
+    """
+    if not text:
+        return text
+        
+    # 1. Fix numeric '1' acting as 'ı' or 'l' inside words
+    # e.g., "Anlam1" -> "Anlamı", "h1z" -> "hız"
+    # Strategy: 1 between letters is usually ı
+    text = re.sub(r'(?<=[a-zA-ZçğıöşüÇĞİÖŞÜ])1(?=[a-zA-ZçğıöşüÇĞİÖŞÜ])', 'ı', text)
+    # End of word '1' (e.g. "Anlam1")
+    text = re.sub(r'(?<=[a-zçğıöşü])1\b', 'ı', text)
+
+    # 2. Fix Tilde '~' usages (likely 'ç' or 'ş' or 'ğ')
+    # High frequency map
+    replacements = {
+        r'\b~ok\b': 'çok',
+        r'~ok\b': 'çok',
+        r'\bi~in\b': 'için',
+        r'\bi~inde': 'içinde',
+        r'\bge~me': 'geçme',
+        r'~ünkü': 'çünkü',
+        r'~ıkış': 'çıkış',
+        r'~alış': 'çalış',
+        r'ka~Tn': 'kaçın',  # heuristic
+        r'sonu~': 'sonuç',
+        r'ama~': 'amaç',
+        r'b~r': 'bir',      # maybe?
+        r'olu~tur': 'oluştur',
+        r'geli~': 'geliş',
+        r'deği~': 'değiş',
+        r'konu~': 'konuş',
+        r'ya~a': 'yaşa',
+        r'dönu~': 'dönüş',
+    }
+    
+    for pattern, replacement in replacements.items():
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+
+    # 3. Generic fallback for ~
+    # If ~ follows a/o/u -> likely ç ? (aç, çok, uç)
+    # If ~ follows e/i/ö/ü -> likely ç/ş?
+    # This is dangerous. Better to just handle the explicit ones above logic 
+    # and maybe valid single char errors.
+    
+    # 4. Remove excessive whitespace
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    return text
 
 
 def extract_pdf_content(pdf_path: str) -> Optional[List[Dict[str, any]]]:
@@ -171,8 +225,9 @@ def extract_pdf_content(pdf_path: str) -> Optional[List[Dict[str, any]]]:
             # Process lines (paragraphs)
             if hasattr(page, 'lines') and page.lines:
                 for line_idx, line in enumerate(page.lines):
+                    cleaned_text = clean_text_artifacts(line.text)
                     chunk = {
-                        'text': line.text,
+                        'text': cleaned_text,
                         'page_num': page_num,
                         'type': 'paragraph',  # Default type
                         'confidence': line.confidence if hasattr(line, 'confidence') else 1.0,

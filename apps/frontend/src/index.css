@@ -4,8 +4,24 @@
 
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-size: 101%;
+  --brand-primary: #CC561E;
+  --brand-primary-light: #e66a2e;
+  --brand-primary-dark: #b34b1a;
+}
+
+@media (max-width: 768px) {
+  :root {
+    font-size: 99%;
+  }
 }
 
 body {
-    @apply bg-slate-50 text-slate-900 dark:bg-slate-900 dark:text-white transition-colors duration-300;
+  @apply bg-slate-50 text-slate-900 dark:bg-slate-900 dark:text-white transition-colors duration-300;
+}
+
+/* Custom Selection Color */
+::selection {
+  background-color: rgba(204, 86, 30, 0.2);
+  color: #CC561E;
 }

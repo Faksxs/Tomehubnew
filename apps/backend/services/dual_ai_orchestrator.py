@@ -121,6 +121,7 @@ async def generate_evaluated_answer(
             logger.info(f"[DualAI] Attempt {attempt}/{max_attempts} for '{question[:30]}...' (Mode: {answer_mode})")
             
             # 1. Work AI Generation
+            logger.info(f"[DualAI] Starting Work AI Generation (Attempt {attempt})")
             try:
                 work_result = await generate_work_ai_answer(
                     question=question,
@@ -139,6 +140,7 @@ async def generate_evaluated_answer(
                 return _create_error_response(e)
                 
             # 2. Judge AI Evaluation
+            logger.info(f"[DualAI] Starting Judge AI Evaluation (Attempt {attempt})")
             try:
                 eval_result = await evaluate_answer(
                     question=question,

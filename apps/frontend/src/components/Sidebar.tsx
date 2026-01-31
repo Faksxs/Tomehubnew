@@ -4,8 +4,8 @@ import { ResourceType } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 
 interface SidebarProps {
-  activeTab: ResourceType | 'NOTES' | 'DASHBOARD' | 'PROFILE' | 'RAG_SEARCH' | 'INGEST' | 'SMART_SEARCH';
-  onTabChange: (tab: ResourceType | 'NOTES' | 'DASHBOARD' | 'PROFILE' | 'RAG_SEARCH' | 'INGEST' | 'SMART_SEARCH') => void;
+  activeTab: ResourceType | 'NOTES' | 'DASHBOARD' | 'PROFILE' | 'RAG_SEARCH' | 'INGEST' | 'SMART_SEARCH' | 'FLOW';
+  onTabChange: (tab: ResourceType | 'NOTES' | 'DASHBOARD' | 'PROFILE' | 'RAG_SEARCH' | 'INGEST' | 'SMART_SEARCH' | 'FLOW') => void;
   isOpen: boolean;
   onClose: () => void;
 }
@@ -16,6 +16,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen
     { id: 'DASHBOARD', label: 'Dashboard', icon: BarChart2 },
     { id: 'SMART_SEARCH', label: 'Smart Search (Layer 2)', icon: Wand2 },
     { id: 'RAG_SEARCH', label: 'Deep Chatbot (Layer 3)', icon: Search },
+    { id: 'FLOW', label: 'Knowledge Stream (Layer 4)', icon: Globe },
     { id: 'BOOK', label: 'Books', icon: Book },
     { id: 'ARTICLE', label: 'Articles', icon: FileText },
     { id: 'WEBSITE', label: 'Websites', icon: Globe },
@@ -35,7 +36,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen
 
       {/* Sidebar Container */}
       <aside className={`
-        fixed lg:static inset-y-0 left-0 z-50 w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transform transition-transform duration-300 ease-in-out flex flex-col shadow-xl lg:shadow-none h-full
+        fixed lg:static inset-y-0 left-0 z-50 w-[269px] bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transform transition-transform duration-300 ease-in-out flex flex-col shadow-xl lg:shadow-none h-full
         ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
         {/* Logo Area */}
@@ -64,13 +65,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen
                   onClose(); // Close on mobile when clicked
                 }}
                 className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-200 group ${isActive
-                  ? 'bg-indigo-50 text-indigo-700 shadow-sm dark:bg-indigo-900/20 dark:text-indigo-300'
+                  ? 'bg-[rgba(204,86,30,0.1)] text-[#CC561E] shadow-sm dark:bg-[rgba(204,86,30,0.2)] dark:text-[#f3a47b]'
                   : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
                   }`}
               >
                 <Icon
                   size={20}
-                  className={`transition-colors ${isActive ? 'text-indigo-600' : 'text-slate-400 group-hover:text-slate-500'}`}
+                  className={`transition-colors ${isActive ? 'text-[#CC561E]' : 'text-slate-400 group-hover:text-slate-500'}`}
                 />
                 {item.label}
               </button>
@@ -86,13 +87,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen
               onClose();
             }}
             className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-200 group ${activeTab === 'PROFILE'
-              ? 'bg-indigo-50 text-indigo-700 shadow-sm dark:bg-indigo-900/20 dark:text-indigo-300'
+              ? 'bg-[rgba(204,86,30,0.1)] text-[#CC561E] shadow-sm dark:bg-[rgba(204,86,30,0.2)] dark:text-[#f3a47b]'
               : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
               }`}
           >
             <User
               size={20}
-              className={`transition-colors ${activeTab === 'PROFILE' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 group-hover:text-slate-500 dark:text-slate-500 dark:group-hover:text-slate-400'}`}
+              className={`transition-colors ${activeTab === 'PROFILE' ? 'text-[#CC561E] dark:text-[#f3a47b]' : 'text-slate-400 group-hover:text-slate-500 dark:text-slate-500 dark:group-hover:text-slate-400'}`}
             />
             Profile
           </button>

@@ -107,7 +107,7 @@ class QueryExpander:
             return []
             
         except Exception as e:
-            logger.warning(f"Query expansion failed: {e}")
+            logger.exception(f"Query expansion failed: {e}")
             return []
 
 if __name__ == "__main__":

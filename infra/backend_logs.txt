@@ -1,0 +1,923 @@
+=== TomeHub Backend Startup ===
+[1/4] Discovering public IP...
+      Public IP: 77.172.137.106
+[2/4] Generating Caddyfile...
+      Domain: https://77.172.137.106.nip.io
+77.172.137.106.nip.io {
+    reverse_proxy localhost:5000
+}
+[3/4] Starting Caddy...
+{"level":"info","ts":1769530500.5993736,"msg":"maxprocs: Leaving GOMAXPROCS=12: CPU quota undefined"}
+{"level":"info","ts":1769530500.599843,"msg":"GOMEMLIMIT is updated","package":"github.com/KimMachineGun/automemlimit/memlimit","GOMEMLIMIT":7303628390,"previous":9223372036854775807}
+{"level":"info","ts":1769530500.5999131,"msg":"using config from file","file":"/etc/caddy/Caddyfile"}
+{"level":"info","ts":1769530500.6007314,"msg":"adapted config to JSON","adapter":"caddyfile"}
+{"level":"warn","ts":1769530500.6007533,"msg":"Caddyfile input is not formatted; run 'caddy fmt --overwrite' to fix inconsistencies","adapter":"caddyfile","file":"/etc/caddy/Caddyfile","line":2}
+{"level":"info","ts":1769530500.6043088,"logger":"admin","msg":"admin endpoint started","address":"localhost:2019","enforce_origin":false,"origins":["//localhost:2019","//[::1]:2019","//127.0.0.1:2019"]}
+{"level":"info","ts":1769530500.6044967,"logger":"http.auto_https","msg":"server is listening only on the HTTPS port but has no TLS connection policies; adding one to enable TLS","server_name":"srv0","https_port":443}
+{"level":"info","ts":1769530500.6045597,"logger":"tls.cache.maintenance","msg":"started background certificate maintenance","cache":"0xc000289080"}
+{"level":"info","ts":1769530500.6045618,"logger":"http.auto_https","msg":"enabling automatic HTTP->HTTPS redirects","server_name":"srv0"}
+{"level":"info","ts":1769530500.604948,"logger":"http","msg":"enabling HTTP/3 listener","addr":":443"}
+{"level":"info","ts":1769530500.6051037,"msg":"failed to sufficiently increase receive buffer size (was: 208 kiB, wanted: 7168 kiB, got: 416 kiB). See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details."}
+{"level":"info","ts":1769530500.605365,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+{"level":"warn","ts":1769530500.6054316,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":80"}
+{"level":"warn","ts":1769530500.6054363,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":80"}
+{"level":"info","ts":1769530500.6054385,"logger":"http.log","msg":"server running","name":"remaining_auto_https_redirects","protocols":["h1","h2","h3"]}
+{"level":"info","ts":1769530500.6054552,"logger":"http","msg":"enabling automatic TLS certificate management","domains":["77.172.137.106.nip.io"]}
+{"level":"info","ts":1769530500.606642,"msg":"autosaved config (load with --resume flag)","file":"/root/.config/caddy/autosave.json"}
+{"level":"info","ts":1769530500.6066628,"msg":"serving initial configuration"}
+Successfully started Caddy (pid=26) - Caddy is running in the background
+[4/4] Starting Flask backend...
+=== Ready! Backend available at https://77.172.137.106.nip.io ===
+{"level":"info","ts":1769530500.609463,"logger":"tls.obtain","msg":"acquiring lock","identifier":"77.172.137.106.nip.io"}
+{"level":"info","ts":1769530500.610545,"logger":"tls","msg":"cleaning storage unit","storage":"FileStorage:/root/.local/share/caddy"}
+{"level":"info","ts":1769530500.6118908,"logger":"tls.obtain","msg":"lock acquired","identifier":"77.172.137.106.nip.io"}
+{"level":"info","ts":1769530500.6119547,"logger":"tls.obtain","msg":"obtaining certificate","identifier":"77.172.137.106.nip.io"}
+{"level":"info","ts":1769530500.6124828,"logger":"http","msg":"creating new account because no account for configured email is known to us","email":"","ca":"https://acme-v02.api.letsencrypt.org/directory","error":"open /root/.local/share/caddy/acme/acme-v02.api.letsencrypt.org-directory/users/default/default.json: no such file or directory"}
+{"level":"info","ts":1769530500.6125343,"logger":"http","msg":"ACME account has empty status; registering account with ACME server","contact":[],"location":""}
+{"level":"info","ts":1769530500.6135066,"logger":"tls","msg":"finished cleaning storage units"}
+{"level":"info","ts":1769530500.6144624,"logger":"http","msg":"creating new account because no account for configured email is known to us","email":"","ca":"https://acme-v02.api.letsencrypt.org/directory","error":"open /root/.local/share/caddy/acme/acme-v02.api.letsencrypt.org-directory/users/default/default.json: no such file or directory"}
+[2026-01-27 16:15:01 +0000] [1] [INFO] Starting gunicorn 24.1.1
+[2026-01-27 16:15:01 +0000] [1] [INFO] Listening at: http://0.0.0.0:5000 (1)
+[2026-01-27 16:15:01 +0000] [1] [INFO] Using worker: uvicorn.workers.UvicornWorker
+[2026-01-27 16:15:01 +0000] [40] [INFO] Booting worker with pid: 40
+[2026-01-27 16:15:01 +0000] [41] [INFO] Booting worker with pid: 41
+[2026-01-27 16:15:01 +0000] [40] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/arbiter.py", line 641, in spawn_worker
+    worker.init_process()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 135, in init_process
+    self.load_wsgi()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 147, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/util.py", line 366, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/app/app.py", line 31, in <module>
+    from middleware.auth_middleware import verify_firebase_token
+  File "/app/middleware/auth_middleware.py", line 4, in <module>
+    from firebase_admin import auth, credentials, initialize_app
+ModuleNotFoundError: No module named 'firebase_admin'
+No module named 'firebase_admin'
+[2026-01-27 16:15:01 +0000] [40] [INFO] Worker exiting (pid: 40)
+[2026-01-27 16:15:01 +0000] [1] [ERROR] Worker (pid:40) exited with code 3.
+[2026-01-27 16:15:01 +0000] [1] [INFO] Worker (pid:41) was sent SIGTERM!
+{"level":"info","ts":1769530501.4123454,"logger":"http","msg":"new ACME account registered","contact":[],"status":"valid"}
+{"level":"info","ts":1769530501.4188793,"logger":"http","msg":"waiting on internal rate limiter","identifiers":["77.172.137.106.nip.io"],"ca":"https://acme-v02.api.letsencrypt.org/directory","account":""}
+{"level":"info","ts":1769530501.4189155,"logger":"http","msg":"done waiting on internal rate limiter","identifiers":["77.172.137.106.nip.io"],"ca":"https://acme-v02.api.letsencrypt.org/directory","account":""}
+{"level":"info","ts":1769530501.4189332,"logger":"http","msg":"using ACME account","account_id":"https://acme-v02.api.letsencrypt.org/acme/acct/3004368876","account_contact":[]}
+[2026-01-27 16:15:01 +0000] [1] [ERROR] Shutting down: Master
+[2026-01-27 16:15:01 +0000] [1] [ERROR] Reason: Worker failed to boot.
+=== TomeHub Backend Startup ===
+[1/4] Discovering public IP...
+      Public IP: 77.172.137.106
+[2/4] Generating Caddyfile...
+      Domain: https://77.172.137.106.nip.io
+77.172.137.106.nip.io {
+    reverse_proxy localhost:5000
+}
+[3/4] Starting Caddy...
+{"level":"info","ts":1769530502.3376007,"msg":"maxprocs: Leaving GOMAXPROCS=12: CPU quota undefined"}
+{"level":"info","ts":1769530502.3378215,"msg":"GOMEMLIMIT is updated","package":"github.com/KimMachineGun/automemlimit/memlimit","GOMEMLIMIT":7303628390,"previous":9223372036854775807}
+{"level":"info","ts":1769530502.337879,"msg":"using config from file","file":"/etc/caddy/Caddyfile"}
+{"level":"info","ts":1769530502.338358,"msg":"adapted config to JSON","adapter":"caddyfile"}
+{"level":"warn","ts":1769530502.338379,"msg":"Caddyfile input is not formatted; run 'caddy fmt --overwrite' to fix inconsistencies","adapter":"caddyfile","file":"/etc/caddy/Caddyfile","line":2}
+{"level":"info","ts":1769530502.3412447,"logger":"admin","msg":"admin endpoint started","address":"localhost:2019","enforce_origin":false,"origins":["//localhost:2019","//[::1]:2019","//127.0.0.1:2019"]}
+{"level":"info","ts":1769530502.3413606,"logger":"http.auto_https","msg":"server is listening only on the HTTPS port but has no TLS connection policies; adding one to enable TLS","server_name":"srv0","https_port":443}
+{"level":"info","ts":1769530502.341388,"logger":"http.auto_https","msg":"enabling automatic HTTP->HTTPS redirects","server_name":"srv0"}
+{"level":"info","ts":1769530502.3414595,"logger":"tls.cache.maintenance","msg":"started background certificate maintenance","cache":"0xc00098a600"}
+{"level":"info","ts":1769530502.3416593,"logger":"http","msg":"enabling HTTP/3 listener","addr":":443"}
+{"level":"info","ts":1769530502.3417685,"msg":"failed to sufficiently increase receive buffer size (was: 208 kiB, wanted: 7168 kiB, got: 416 kiB). See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details."}
+{"level":"info","ts":1769530502.3419282,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+{"level":"warn","ts":1769530502.3420126,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":80"}
+{"level":"warn","ts":1769530502.3420181,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":80"}
+{"level":"info","ts":1769530502.3420203,"logger":"http.log","msg":"server running","name":"remaining_auto_https_redirects","protocols":["h1","h2","h3"]}
+{"level":"info","ts":1769530502.3420231,"logger":"http","msg":"enabling automatic TLS certificate management","domains":["77.172.137.106.nip.io"]}
+{"level":"info","ts":1769530502.34232,"msg":"autosaved config (load with --resume flag)","file":"/root/.config/caddy/autosave.json"}
+{"level":"info","ts":1769530502.3423467,"msg":"serving initial configuration"}
+Successfully started Caddy (pid=24) - Caddy is running in the background
+{"level":"info","ts":1769530502.3436687,"logger":"tls","msg":"storage cleaning happened too recently; skipping for now","storage":"FileStorage:/root/.local/share/caddy","instance":"c0c36cc0-85dd-48d9-85b1-81b6b879dbd5","try_again":1769616902.3436677,"try_again_in":86399.99999978}
+{"level":"info","ts":1769530502.3437395,"logger":"tls","msg":"finished cleaning storage units"}
+{"level":"info","ts":1769530502.344653,"logger":"tls.obtain","msg":"acquiring lock","identifier":"77.172.137.106.nip.io"}
+[4/4] Starting Flask backend...
+=== Ready! Backend available at https://77.172.137.106.nip.io ===
+[2026-01-27 16:15:02 +0000] [1] [INFO] Starting gunicorn 24.1.1
+[2026-01-27 16:15:02 +0000] [1] [INFO] Listening at: http://0.0.0.0:5000 (1)
+[2026-01-27 16:15:02 +0000] [1] [INFO] Using worker: uvicorn.workers.UvicornWorker
+[2026-01-27 16:15:02 +0000] [37] [INFO] Booting worker with pid: 37
+[2026-01-27 16:15:02 +0000] [38] [INFO] Booting worker with pid: 38
+[2026-01-27 16:15:02 +0000] [37] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/arbiter.py", line 641, in spawn_worker
+    worker.init_process()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 135, in init_process
+    self.load_wsgi()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 147, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/util.py", line 366, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/app/app.py", line 31, in <module>
+    from middleware.auth_middleware import verify_firebase_token
+  File "/app/middleware/auth_middleware.py", line 4, in <module>
+    from firebase_admin import auth, credentials, initialize_app
+ModuleNotFoundError: No module named 'firebase_admin'
+No module named 'firebase_admin'
+[2026-01-27 16:15:02 +0000] [37] [INFO] Worker exiting (pid: 37)
+[2026-01-27 16:15:02 +0000] [1] [ERROR] Worker (pid:37) exited with code 3.
+[2026-01-27 16:15:03 +0000] [1] [INFO] Worker (pid:38) was sent SIGTERM!
+[2026-01-27 16:15:03 +0000] [1] [ERROR] Shutting down: Master
+[2026-01-27 16:15:03 +0000] [1] [ERROR] Reason: Worker failed to boot.
+=== TomeHub Backend Startup ===
+[1/4] Discovering public IP...
+      Public IP: 77.172.137.106
+[2/4] Generating Caddyfile...
+      Domain: https://77.172.137.106.nip.io
+77.172.137.106.nip.io {
+    reverse_proxy localhost:5000
+}
+[3/4] Starting Caddy...
+{"level":"info","ts":1769530503.9994504,"msg":"maxprocs: Leaving GOMAXPROCS=12: CPU quota undefined"}
+{"level":"info","ts":1769530503.999699,"msg":"GOMEMLIMIT is updated","package":"github.com/KimMachineGun/automemlimit/memlimit","GOMEMLIMIT":7303628390,"previous":9223372036854775807}
+{"level":"info","ts":1769530503.9997644,"msg":"using config from file","file":"/etc/caddy/Caddyfile"}
+{"level":"info","ts":1769530504.000483,"msg":"adapted config to JSON","adapter":"caddyfile"}
+{"level":"warn","ts":1769530504.000505,"msg":"Caddyfile input is not formatted; run 'caddy fmt --overwrite' to fix inconsistencies","adapter":"caddyfile","file":"/etc/caddy/Caddyfile","line":2}
+{"level":"info","ts":1769530504.0042672,"logger":"admin","msg":"admin endpoint started","address":"localhost:2019","enforce_origin":false,"origins":["//localhost:2019","//[::1]:2019","//127.0.0.1:2019"]}
+{"level":"info","ts":1769530504.0044537,"logger":"http.auto_https","msg":"server is listening only on the HTTPS port but has no TLS connection policies; adding one to enable TLS","server_name":"srv0","https_port":443}
+{"level":"info","ts":1769530504.0044794,"logger":"http.auto_https","msg":"enabling automatic HTTP->HTTPS redirects","server_name":"srv0"}
+{"level":"info","ts":1769530504.0045693,"logger":"tls.cache.maintenance","msg":"started background certificate maintenance","cache":"0xc000475d00"}
+{"level":"info","ts":1769530504.0047429,"logger":"http","msg":"enabling HTTP/3 listener","addr":":443"}
+{"level":"info","ts":1769530504.0048501,"msg":"failed to sufficiently increase receive buffer size (was: 208 kiB, wanted: 7168 kiB, got: 416 kiB). See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details."}
+{"level":"info","ts":1769530504.0050051,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+{"level":"warn","ts":1769530504.0051334,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":80"}
+{"level":"warn","ts":1769530504.0051565,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":80"}
+{"level":"info","ts":1769530504.0051615,"logger":"http.log","msg":"server running","name":"remaining_auto_https_redirects","protocols":["h1","h2","h3"]}
+{"level":"info","ts":1769530504.005165,"logger":"http","msg":"enabling automatic TLS certificate management","domains":["77.172.137.106.nip.io"]}
+{"level":"info","ts":1769530504.0054002,"msg":"autosaved config (load with --resume flag)","file":"/root/.config/caddy/autosave.json"}
+{"level":"info","ts":1769530504.0054207,"msg":"serving initial configuration"}
+Successfully started Caddy (pid=24) - Caddy is running in the background
+{"level":"info","ts":1769530504.0070014,"logger":"tls","msg":"storage cleaning happened too recently; skipping for now","storage":"FileStorage:/root/.local/share/caddy","instance":"c0c36cc0-85dd-48d9-85b1-81b6b879dbd5","try_again":1769616904.007,"try_again_in":86399.999999729}
+{"level":"info","ts":1769530504.0070105,"logger":"tls.obtain","msg":"acquiring lock","identifier":"77.172.137.106.nip.io"}
+{"level":"info","ts":1769530504.0071938,"logger":"tls","msg":"finished cleaning storage units"}
+[4/4] Starting Flask backend...
+=== Ready! Backend available at https://77.172.137.106.nip.io ===
+[2026-01-27 16:15:04 +0000] [1] [INFO] Starting gunicorn 24.1.1
+[2026-01-27 16:15:04 +0000] [1] [INFO] Listening at: http://0.0.0.0:5000 (1)
+[2026-01-27 16:15:04 +0000] [1] [INFO] Using worker: uvicorn.workers.UvicornWorker
+[2026-01-27 16:15:04 +0000] [38] [INFO] Booting worker with pid: 38
+[2026-01-27 16:15:04 +0000] [39] [INFO] Booting worker with pid: 39
+[2026-01-27 16:15:04 +0000] [38] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/arbiter.py", line 641, in spawn_worker
+    worker.init_process()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 135, in init_process
+    self.load_wsgi()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 147, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/util.py", line 366, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/app/app.py", line 31, in <module>
+    from middleware.auth_middleware import verify_firebase_token
+  File "/app/middleware/auth_middleware.py", line 4, in <module>
+    from firebase_admin import auth, credentials, initialize_app
+ModuleNotFoundError: No module named 'firebase_admin'
+No module named 'firebase_admin'
+[2026-01-27 16:15:04 +0000] [38] [INFO] Worker exiting (pid: 38)
+[2026-01-27 16:15:04 +0000] [39] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/arbiter.py", line 641, in spawn_worker
+    worker.init_process()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 135, in init_process
+    self.load_wsgi()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 147, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/util.py", line 366, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/app/app.py", line 31, in <module>
+    from middleware.auth_middleware import verify_firebase_token
+  File "/app/middleware/auth_middleware.py", line 4, in <module>
+    from firebase_admin import auth, credentials, initialize_app
+ModuleNotFoundError: No module named 'firebase_admin'
+No module named 'firebase_admin'
+[2026-01-27 16:15:04 +0000] [39] [INFO] Worker exiting (pid: 39)
+[2026-01-27 16:15:04 +0000] [1] [ERROR] Worker (pid:38) exited with code 3.
+[2026-01-27 16:15:04 +0000] [1] [INFO] Worker (pid:39) was sent SIGTERM!
+[2026-01-27 16:15:04 +0000] [1] [ERROR] Shutting down: Master
+[2026-01-27 16:15:04 +0000] [1] [ERROR] Reason: Worker failed to boot.
+=== TomeHub Backend Startup ===
+[1/4] Discovering public IP...
+      Public IP: 77.172.137.106
+[2/4] Generating Caddyfile...
+      Domain: https://77.172.137.106.nip.io
+77.172.137.106.nip.io {
+    reverse_proxy localhost:5000
+}
+[3/4] Starting Caddy...
+{"level":"info","ts":1769530505.8530579,"msg":"maxprocs: Leaving GOMAXPROCS=12: CPU quota undefined"}
+{"level":"info","ts":1769530505.8533223,"msg":"GOMEMLIMIT is updated","package":"github.com/KimMachineGun/automemlimit/memlimit","GOMEMLIMIT":7303628390,"previous":9223372036854775807}
+{"level":"info","ts":1769530505.8533945,"msg":"using config from file","file":"/etc/caddy/Caddyfile"}
+{"level":"info","ts":1769530505.8542683,"msg":"adapted config to JSON","adapter":"caddyfile"}
+{"level":"warn","ts":1769530505.854294,"msg":"Caddyfile input is not formatted; run 'caddy fmt --overwrite' to fix inconsistencies","adapter":"caddyfile","file":"/etc/caddy/Caddyfile","line":2}
+{"level":"info","ts":1769530505.857602,"logger":"admin","msg":"admin endpoint started","address":"localhost:2019","enforce_origin":false,"origins":["//localhost:2019","//[::1]:2019","//127.0.0.1:2019"]}
+{"level":"info","ts":1769530505.8577094,"logger":"http.auto_https","msg":"server is listening only on the HTTPS port but has no TLS connection policies; adding one to enable TLS","server_name":"srv0","https_port":443}
+{"level":"info","ts":1769530505.857738,"logger":"http.auto_https","msg":"enabling automatic HTTP->HTTPS redirects","server_name":"srv0"}
+{"level":"info","ts":1769530505.857834,"logger":"tls.cache.maintenance","msg":"started background certificate maintenance","cache":"0xc00004f200"}
+{"level":"info","ts":1769530505.8579514,"logger":"http","msg":"enabling HTTP/3 listener","addr":":443"}
+{"level":"info","ts":1769530505.8580413,"msg":"failed to sufficiently increase receive buffer size (was: 208 kiB, wanted: 7168 kiB, got: 416 kiB). See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details."}
+{"level":"info","ts":1769530505.8581555,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+{"level":"warn","ts":1769530505.858231,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":80"}
+{"level":"warn","ts":1769530505.8582492,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":80"}
+{"level":"info","ts":1769530505.858253,"logger":"http.log","msg":"server running","name":"remaining_auto_https_redirects","protocols":["h1","h2","h3"]}
+{"level":"info","ts":1769530505.858256,"logger":"http","msg":"enabling automatic TLS certificate management","domains":["77.172.137.106.nip.io"]}
+{"level":"info","ts":1769530505.858499,"msg":"autosaved config (load with --resume flag)","file":"/root/.config/caddy/autosave.json"}
+{"level":"info","ts":1769530505.8585243,"msg":"serving initial configuration"}
+Successfully started Caddy (pid=24) - Caddy is running in the background
+{"level":"info","ts":1769530505.8601208,"logger":"tls","msg":"storage cleaning happened too recently; skipping for now","storage":"FileStorage:/root/.local/share/caddy","instance":"c0c36cc0-85dd-48d9-85b1-81b6b879dbd5","try_again":1769616905.8601196,"try_again_in":86399.9999998}
+{"level":"info","ts":1769530505.8601859,"logger":"tls.obtain","msg":"acquiring lock","identifier":"77.172.137.106.nip.io"}
+{"level":"info","ts":1769530505.8601935,"logger":"tls","msg":"finished cleaning storage units"}
+[4/4] Starting Flask backend...
+=== Ready! Backend available at https://77.172.137.106.nip.io ===
+[2026-01-27 16:15:06 +0000] [1] [INFO] Starting gunicorn 24.1.1
+[2026-01-27 16:15:06 +0000] [1] [INFO] Listening at: http://0.0.0.0:5000 (1)
+[2026-01-27 16:15:06 +0000] [1] [INFO] Using worker: uvicorn.workers.UvicornWorker
+[2026-01-27 16:15:06 +0000] [37] [INFO] Booting worker with pid: 37
+[2026-01-27 16:15:06 +0000] [38] [INFO] Booting worker with pid: 38
+[2026-01-27 16:15:06 +0000] [37] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/arbiter.py", line 641, in spawn_worker
+    worker.init_process()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 135, in init_process
+    self.load_wsgi()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 147, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/util.py", line 366, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/app/app.py", line 31, in <module>
+    from middleware.auth_middleware import verify_firebase_token
+  File "/app/middleware/auth_middleware.py", line 4, in <module>
+    from firebase_admin import auth, credentials, initialize_app
+ModuleNotFoundError: No module named 'firebase_admin'
+No module named 'firebase_admin'
+[2026-01-27 16:15:06 +0000] [37] [INFO] Worker exiting (pid: 37)
+[2026-01-27 16:15:06 +0000] [38] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/arbiter.py", line 641, in spawn_worker
+    worker.init_process()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 135, in init_process
+    self.load_wsgi()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 147, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/util.py", line 366, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/app/app.py", line 31, in <module>
+    from middleware.auth_middleware import verify_firebase_token
+  File "/app/middleware/auth_middleware.py", line 4, in <module>
+    from firebase_admin import auth, credentials, initialize_app
+ModuleNotFoundError: No module named 'firebase_admin'
+No module named 'firebase_admin'
+[2026-01-27 16:15:06 +0000] [38] [INFO] Worker exiting (pid: 38)
+[2026-01-27 16:15:06 +0000] [1] [ERROR] Worker (pid:37) exited with code 3.
+[2026-01-27 16:15:06 +0000] [1] [INFO] Worker (pid:38) was sent SIGTERM!
+[2026-01-27 16:15:06 +0000] [1] [ERROR] Shutting down: Master
+[2026-01-27 16:15:06 +0000] [1] [ERROR] Reason: Worker failed to boot.
+=== TomeHub Backend Startup ===
+[1/4] Discovering public IP...
+      Public IP: 77.172.137.106
+[2/4] Generating Caddyfile...
+      Domain: https://77.172.137.106.nip.io
+77.172.137.106.nip.io {
+    reverse_proxy localhost:5000
+}
+[3/4] Starting Caddy...
+{"level":"info","ts":1769530508.1380053,"msg":"maxprocs: Leaving GOMAXPROCS=12: CPU quota undefined"}
+{"level":"info","ts":1769530508.1382058,"msg":"GOMEMLIMIT is updated","package":"github.com/KimMachineGun/automemlimit/memlimit","GOMEMLIMIT":7303628390,"previous":9223372036854775807}
+{"level":"info","ts":1769530508.1382651,"msg":"using config from file","file":"/etc/caddy/Caddyfile"}
+{"level":"info","ts":1769530508.1387682,"msg":"adapted config to JSON","adapter":"caddyfile"}
+{"level":"warn","ts":1769530508.1387887,"msg":"Caddyfile input is not formatted; run 'caddy fmt --overwrite' to fix inconsistencies","adapter":"caddyfile","file":"/etc/caddy/Caddyfile","line":2}
+{"level":"info","ts":1769530508.142261,"logger":"admin","msg":"admin endpoint started","address":"localhost:2019","enforce_origin":false,"origins":["//localhost:2019","//[::1]:2019","//127.0.0.1:2019"]}
+{"level":"info","ts":1769530508.1424437,"logger":"http.auto_https","msg":"server is listening only on the HTTPS port but has no TLS connection policies; adding one to enable TLS","server_name":"srv0","https_port":443}
+{"level":"info","ts":1769530508.1424727,"logger":"http.auto_https","msg":"enabling automatic HTTP->HTTPS redirects","server_name":"srv0"}
+{"level":"info","ts":1769530508.142548,"logger":"tls.cache.maintenance","msg":"started background certificate maintenance","cache":"0xc000511780"}
+{"level":"info","ts":1769530508.142742,"logger":"http","msg":"enabling HTTP/3 listener","addr":":443"}
+{"level":"info","ts":1769530508.1428337,"msg":"failed to sufficiently increase receive buffer size (was: 208 kiB, wanted: 7168 kiB, got: 416 kiB). See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details."}
+{"level":"info","ts":1769530508.1429653,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+{"level":"warn","ts":1769530508.1430442,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":80"}
+{"level":"warn","ts":1769530508.1430619,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":80"}
+{"level":"info","ts":1769530508.1430655,"logger":"http.log","msg":"server running","name":"remaining_auto_https_redirects","protocols":["h1","h2","h3"]}
+{"level":"info","ts":1769530508.143069,"logger":"http","msg":"enabling automatic TLS certificate management","domains":["77.172.137.106.nip.io"]}
+{"level":"info","ts":1769530508.1432707,"msg":"autosaved config (load with --resume flag)","file":"/root/.config/caddy/autosave.json"}
+{"level":"info","ts":1769530508.1432896,"msg":"serving initial configuration"}
+Successfully started Caddy (pid=24) - Caddy is running in the background
+{"level":"info","ts":1769530508.1450229,"logger":"tls","msg":"storage cleaning happened too recently; skipping for now","storage":"FileStorage:/root/.local/share/caddy","instance":"c0c36cc0-85dd-48d9-85b1-81b6b879dbd5","try_again":1769616908.1450222,"try_again_in":86399.99999984}
+{"level":"info","ts":1769530508.1450944,"logger":"tls","msg":"finished cleaning storage units"}
+{"level":"info","ts":1769530508.145254,"logger":"tls.obtain","msg":"acquiring lock","identifier":"77.172.137.106.nip.io"}
+[4/4] Starting Flask backend...
+=== Ready! Backend available at https://77.172.137.106.nip.io ===
+[2026-01-27 16:15:08 +0000] [1] [INFO] Starting gunicorn 24.1.1
+[2026-01-27 16:15:08 +0000] [1] [INFO] Listening at: http://0.0.0.0:5000 (1)
+[2026-01-27 16:15:08 +0000] [1] [INFO] Using worker: uvicorn.workers.UvicornWorker
+[2026-01-27 16:15:08 +0000] [37] [INFO] Booting worker with pid: 37
+[2026-01-27 16:15:08 +0000] [38] [INFO] Booting worker with pid: 38
+[2026-01-27 16:15:08 +0000] [37] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/arbiter.py", line 641, in spawn_worker
+    worker.init_process()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 135, in init_process
+    self.load_wsgi()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 147, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/util.py", line 366, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/app/app.py", line 31, in <module>
+    from middleware.auth_middleware import verify_firebase_token
+  File "/app/middleware/auth_middleware.py", line 4, in <module>
+    from firebase_admin import auth, credentials, initialize_app
+ModuleNotFoundError: No module named 'firebase_admin'
+No module named 'firebase_admin'
+[2026-01-27 16:15:08 +0000] [37] [INFO] Worker exiting (pid: 37)
+[2026-01-27 16:15:08 +0000] [1] [ERROR] Worker (pid:37) exited with code 3.
+[2026-01-27 16:15:08 +0000] [1] [INFO] Worker (pid:38) was sent SIGTERM!
+[2026-01-27 16:15:08 +0000] [1] [ERROR] Shutting down: Master
+[2026-01-27 16:15:08 +0000] [1] [ERROR] Reason: Worker failed to boot.
+=== TomeHub Backend Startup ===
+[1/4] Discovering public IP...
+      Public IP: 77.172.137.106
+[2/4] Generating Caddyfile...
+      Domain: https://77.172.137.106.nip.io
+77.172.137.106.nip.io {
+    reverse_proxy localhost:5000
+}
+[3/4] Starting Caddy...
+{"level":"info","ts":1769530510.9784033,"msg":"maxprocs: Leaving GOMAXPROCS=12: CPU quota undefined"}
+{"level":"info","ts":1769530510.9786012,"msg":"GOMEMLIMIT is updated","package":"github.com/KimMachineGun/automemlimit/memlimit","GOMEMLIMIT":7303628390,"previous":9223372036854775807}
+{"level":"info","ts":1769530510.9786673,"msg":"using config from file","file":"/etc/caddy/Caddyfile"}
+{"level":"info","ts":1769530510.979254,"msg":"adapted config to JSON","adapter":"caddyfile"}
+{"level":"warn","ts":1769530510.9792788,"msg":"Caddyfile input is not formatted; run 'caddy fmt --overwrite' to fix inconsistencies","adapter":"caddyfile","file":"/etc/caddy/Caddyfile","line":2}
+{"level":"info","ts":1769530510.9823682,"logger":"admin","msg":"admin endpoint started","address":"localhost:2019","enforce_origin":false,"origins":["//localhost:2019","//[::1]:2019","//127.0.0.1:2019"]}
+{"level":"info","ts":1769530510.9824917,"logger":"http.auto_https","msg":"server is listening only on the HTTPS port but has no TLS connection policies; adding one to enable TLS","server_name":"srv0","https_port":443}
+{"level":"info","ts":1769530510.9825146,"logger":"http.auto_https","msg":"enabling automatic HTTP->HTTPS redirects","server_name":"srv0"}
+{"level":"info","ts":1769530510.9825673,"logger":"tls.cache.maintenance","msg":"started background certificate maintenance","cache":"0xc000411a00"}
+{"level":"info","ts":1769530510.9827297,"logger":"http","msg":"enabling HTTP/3 listener","addr":":443"}
+{"level":"info","ts":1769530510.9828064,"msg":"failed to sufficiently increase receive buffer size (was: 208 kiB, wanted: 7168 kiB, got: 416 kiB). See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details."}
+{"level":"info","ts":1769530510.9829617,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+{"level":"warn","ts":1769530510.9830706,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":80"}
+{"level":"warn","ts":1769530510.9830887,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":80"}
+{"level":"info","ts":1769530510.9830923,"logger":"http.log","msg":"server running","name":"remaining_auto_https_redirects","protocols":["h1","h2","h3"]}
+{"level":"info","ts":1769530510.9830947,"logger":"http","msg":"enabling automatic TLS certificate management","domains":["77.172.137.106.nip.io"]}
+{"level":"info","ts":1769530510.983324,"msg":"autosaved config (load with --resume flag)","file":"/root/.config/caddy/autosave.json"}
+{"level":"info","ts":1769530510.9833438,"msg":"serving initial configuration"}
+Successfully started Caddy (pid=23) - Caddy is running in the background
+{"level":"info","ts":1769530510.9851542,"logger":"tls.obtain","msg":"acquiring lock","identifier":"77.172.137.106.nip.io"}
+{"level":"info","ts":1769530510.9851701,"logger":"tls","msg":"storage cleaning happened too recently; skipping for now","storage":"FileStorage:/root/.local/share/caddy","instance":"c0c36cc0-85dd-48d9-85b1-81b6b879dbd5","try_again":1769616910.985169,"try_again_in":86399.9999998}
+{"level":"info","ts":1769530510.9852383,"logger":"tls","msg":"finished cleaning storage units"}
+1.769530510985243e+09	info	[FileStorage:/root/.local/share/caddy] Lock for 'issue_cert_77.172.137.106.nip.io' is stale (created: 2026-01-27 16:15:00.609546938 +0000 UTC, last update: 2026-01-27 16:15:00.609546938 +0000 UTC); removing then retrying: /root/.local/share/caddy/locks/issue_cert_77.172.137.106.nip.io.lock
+[4/4] Starting Flask backend...
+=== Ready! Backend available at https://77.172.137.106.nip.io ===
+{"level":"info","ts":1769530510.9866438,"logger":"tls.obtain","msg":"lock acquired","identifier":"77.172.137.106.nip.io"}
+{"level":"info","ts":1769530510.9866898,"logger":"tls.obtain","msg":"obtaining certificate","identifier":"77.172.137.106.nip.io"}
+{"level":"info","ts":1769530510.9871488,"logger":"http","msg":"waiting on internal rate limiter","identifiers":["77.172.137.106.nip.io"],"ca":"https://acme-v02.api.letsencrypt.org/directory","account":""}
+{"level":"info","ts":1769530510.9871824,"logger":"http","msg":"done waiting on internal rate limiter","identifiers":["77.172.137.106.nip.io"],"ca":"https://acme-v02.api.letsencrypt.org/directory","account":""}
+{"level":"info","ts":1769530510.9871926,"logger":"http","msg":"using ACME account","account_id":"https://acme-v02.api.letsencrypt.org/acme/acct/3004368876","account_contact":[]}
+[2026-01-27 16:15:11 +0000] [1] [INFO] Starting gunicorn 24.1.1
+[2026-01-27 16:15:11 +0000] [1] [INFO] Listening at: http://0.0.0.0:5000 (1)
+[2026-01-27 16:15:11 +0000] [1] [INFO] Using worker: uvicorn.workers.UvicornWorker
+[2026-01-27 16:15:11 +0000] [37] [INFO] Booting worker with pid: 37
+[2026-01-27 16:15:11 +0000] [38] [INFO] Booting worker with pid: 38
+[2026-01-27 16:15:11 +0000] [37] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/arbiter.py", line 641, in spawn_worker
+    worker.init_process()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 135, in init_process
+    self.load_wsgi()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 147, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/util.py", line 366, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/app/app.py", line 31, in <module>
+    from middleware.auth_middleware import verify_firebase_token
+  File "/app/middleware/auth_middleware.py", line 4, in <module>
+    from firebase_admin import auth, credentials, initialize_app
+ModuleNotFoundError: No module named 'firebase_admin'
+No module named 'firebase_admin'
+[2026-01-27 16:15:11 +0000] [37] [INFO] Worker exiting (pid: 37)
+[2026-01-27 16:15:11 +0000] [1] [ERROR] Worker (pid:37) exited with code 3.
+[2026-01-27 16:15:11 +0000] [1] [INFO] Worker (pid:38) was sent SIGTERM!
+[2026-01-27 16:15:11 +0000] [1] [ERROR] Shutting down: Master
+[2026-01-27 16:15:11 +0000] [1] [ERROR] Reason: Worker failed to boot.
+=== TomeHub Backend Startup ===
+[1/4] Discovering public IP...
+      Public IP: 77.172.137.106
+[2/4] Generating Caddyfile...
+      Domain: https://77.172.137.106.nip.io
+77.172.137.106.nip.io {
+    reverse_proxy localhost:5000
+}
+[3/4] Starting Caddy...
+{"level":"info","ts":1769530515.4552453,"msg":"maxprocs: Leaving GOMAXPROCS=12: CPU quota undefined"}
+{"level":"info","ts":1769530515.4554465,"msg":"GOMEMLIMIT is updated","package":"github.com/KimMachineGun/automemlimit/memlimit","GOMEMLIMIT":7303628390,"previous":9223372036854775807}
+{"level":"info","ts":1769530515.4555104,"msg":"using config from file","file":"/etc/caddy/Caddyfile"}
+{"level":"info","ts":1769530515.4560392,"msg":"adapted config to JSON","adapter":"caddyfile"}
+{"level":"warn","ts":1769530515.4560602,"msg":"Caddyfile input is not formatted; run 'caddy fmt --overwrite' to fix inconsistencies","adapter":"caddyfile","file":"/etc/caddy/Caddyfile","line":2}
+{"level":"info","ts":1769530515.4598012,"logger":"admin","msg":"admin endpoint started","address":"localhost:2019","enforce_origin":false,"origins":["//localhost:2019","//[::1]:2019","//127.0.0.1:2019"]}
+{"level":"info","ts":1769530515.4599736,"logger":"http.auto_https","msg":"server is listening only on the HTTPS port but has no TLS connection policies; adding one to enable TLS","server_name":"srv0","https_port":443}
+{"level":"info","ts":1769530515.4599986,"logger":"http.auto_https","msg":"enabling automatic HTTP->HTTPS redirects","server_name":"srv0"}
+{"level":"info","ts":1769530515.4600928,"logger":"tls.cache.maintenance","msg":"started background certificate maintenance","cache":"0xc0003b2b00"}
+{"level":"warn","ts":1769530515.4602294,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":80"}
+{"level":"warn","ts":1769530515.46025,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":80"}
+{"level":"info","ts":1769530515.4602544,"logger":"http.log","msg":"server running","name":"remaining_auto_https_redirects","protocols":["h1","h2","h3"]}
+{"level":"info","ts":1769530515.4603143,"logger":"http","msg":"enabling HTTP/3 listener","addr":":443"}
+{"level":"info","ts":1769530515.4604237,"msg":"failed to sufficiently increase receive buffer size (was: 208 kiB, wanted: 7168 kiB, got: 416 kiB). See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details."}
+{"level":"info","ts":1769530515.4605694,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+{"level":"info","ts":1769530515.4606047,"logger":"http","msg":"enabling automatic TLS certificate management","domains":["77.172.137.106.nip.io"]}
+{"level":"info","ts":1769530515.4609022,"msg":"autosaved config (load with --resume flag)","file":"/root/.config/caddy/autosave.json"}
+{"level":"info","ts":1769530515.4609287,"msg":"serving initial configuration"}
+Successfully started Caddy (pid=24) - Caddy is running in the background
+{"level":"info","ts":1769530515.4626975,"logger":"tls.obtain","msg":"acquiring lock","identifier":"77.172.137.106.nip.io"}
+[4/4] Starting Flask backend...
+=== Ready! Backend available at https://77.172.137.106.nip.io ===
+{"level":"info","ts":1769530515.463829,"logger":"tls","msg":"storage cleaning happened too recently; skipping for now","storage":"FileStorage:/root/.local/share/caddy","instance":"c0c36cc0-85dd-48d9-85b1-81b6b879dbd5","try_again":1769616915.4638274,"try_again_in":86399.99999978}
+{"level":"info","ts":1769530515.4639118,"logger":"tls","msg":"finished cleaning storage units"}
+[2026-01-27 16:15:15 +0000] [1] [INFO] Starting gunicorn 24.1.1
+[2026-01-27 16:15:15 +0000] [1] [INFO] Listening at: http://0.0.0.0:5000 (1)
+[2026-01-27 16:15:15 +0000] [1] [INFO] Using worker: uvicorn.workers.UvicornWorker
+[2026-01-27 16:15:15 +0000] [37] [INFO] Booting worker with pid: 37
+[2026-01-27 16:15:15 +0000] [38] [INFO] Booting worker with pid: 38
+[2026-01-27 16:15:15 +0000] [37] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/arbiter.py", line 641, in spawn_worker
+    worker.init_process()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 135, in init_process
+    self.load_wsgi()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 147, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/util.py", line 366, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/app/app.py", line 31, in <module>
+    from middleware.auth_middleware import verify_firebase_token
+  File "/app/middleware/auth_middleware.py", line 4, in <module>
+    from firebase_admin import auth, credentials, initialize_app
+ModuleNotFoundError: No module named 'firebase_admin'
+No module named 'firebase_admin'
+[2026-01-27 16:15:15 +0000] [37] [INFO] Worker exiting (pid: 37)
+[2026-01-27 16:15:16 +0000] [38] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/arbiter.py", line 641, in spawn_worker
+    worker.init_process()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 135, in init_process
+    self.load_wsgi()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 147, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/util.py", line 366, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/app/app.py", line 31, in <module>
+    from middleware.auth_middleware import verify_firebase_token
+  File "/app/middleware/auth_middleware.py", line 4, in <module>
+    from firebase_admin import auth, credentials, initialize_app
+ModuleNotFoundError: No module named 'firebase_admin'
+No module named 'firebase_admin'
+[2026-01-27 16:15:16 +0000] [38] [INFO] Worker exiting (pid: 38)
+[2026-01-27 16:15:16 +0000] [1] [ERROR] Worker (pid:37) exited with code 3.
+[2026-01-27 16:15:16 +0000] [1] [INFO] Worker (pid:38) was sent SIGTERM!
+[2026-01-27 16:15:16 +0000] [1] [ERROR] Shutting down: Master
+[2026-01-27 16:15:16 +0000] [1] [ERROR] Reason: Worker failed to boot.
+=== TomeHub Backend Startup ===
+[1/4] Discovering public IP...
+      Public IP: 77.172.137.106
+[2/4] Generating Caddyfile...
+      Domain: https://77.172.137.106.nip.io
+77.172.137.106.nip.io {
+    reverse_proxy localhost:5000
+}
+[3/4] Starting Caddy...
+{"level":"info","ts":1769530523.0974126,"msg":"maxprocs: Leaving GOMAXPROCS=12: CPU quota undefined"}
+{"level":"info","ts":1769530523.0976799,"msg":"GOMEMLIMIT is updated","package":"github.com/KimMachineGun/automemlimit/memlimit","GOMEMLIMIT":7303628390,"previous":9223372036854775807}
+{"level":"info","ts":1769530523.0977395,"msg":"using config from file","file":"/etc/caddy/Caddyfile"}
+{"level":"info","ts":1769530523.0991702,"msg":"adapted config to JSON","adapter":"caddyfile"}
+{"level":"warn","ts":1769530523.0992148,"msg":"Caddyfile input is not formatted; run 'caddy fmt --overwrite' to fix inconsistencies","adapter":"caddyfile","file":"/etc/caddy/Caddyfile","line":2}
+{"level":"info","ts":1769530523.102187,"logger":"admin","msg":"admin endpoint started","address":"localhost:2019","enforce_origin":false,"origins":["//[::1]:2019","//127.0.0.1:2019","//localhost:2019"]}
+{"level":"info","ts":1769530523.102307,"logger":"http.auto_https","msg":"server is listening only on the HTTPS port but has no TLS connection policies; adding one to enable TLS","server_name":"srv0","https_port":443}
+{"level":"info","ts":1769530523.102331,"logger":"http.auto_https","msg":"enabling automatic HTTP->HTTPS redirects","server_name":"srv0"}
+{"level":"info","ts":1769530523.1024454,"logger":"tls.cache.maintenance","msg":"started background certificate maintenance","cache":"0xc000618d00"}
+{"level":"info","ts":1769530523.1025548,"logger":"http","msg":"enabling HTTP/3 listener","addr":":443"}
+{"level":"info","ts":1769530523.1026714,"msg":"failed to sufficiently increase receive buffer size (was: 208 kiB, wanted: 7168 kiB, got: 416 kiB). See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details."}
+{"level":"info","ts":1769530523.1028028,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+{"level":"warn","ts":1769530523.1028838,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":80"}
+{"level":"warn","ts":1769530523.1029017,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":80"}
+{"level":"info","ts":1769530523.1029053,"logger":"http.log","msg":"server running","name":"remaining_auto_https_redirects","protocols":["h1","h2","h3"]}
+{"level":"info","ts":1769530523.1029086,"logger":"http","msg":"enabling automatic TLS certificate management","domains":["77.172.137.106.nip.io"]}
+{"level":"info","ts":1769530523.1031651,"msg":"autosaved config (load with --resume flag)","file":"/root/.config/caddy/autosave.json"}
+{"level":"info","ts":1769530523.103185,"msg":"serving initial configuration"}
+Successfully started Caddy (pid=25) - Caddy is running in the background
+{"level":"info","ts":1769530523.1050422,"logger":"tls","msg":"storage cleaning happened too recently; skipping for now","storage":"FileStorage:/root/.local/share/caddy","instance":"c0c36cc0-85dd-48d9-85b1-81b6b879dbd5","try_again":1769616923.1050415,"try_again_in":86399.99999983}
+{"level":"info","ts":1769530523.1050563,"logger":"tls.obtain","msg":"acquiring lock","identifier":"77.172.137.106.nip.io"}
+{"level":"info","ts":1769530523.1051114,"logger":"tls","msg":"finished cleaning storage units"}
+1.7695305231051345e+09	info	[FileStorage:/root/.local/share/caddy] Lock for 'issue_cert_77.172.137.106.nip.io' is stale (created: 2026-01-27 16:15:10.985396616 +0000 UTC, last update: 2026-01-27 16:15:10.985396616 +0000 UTC); removing then retrying: /root/.local/share/caddy/locks/issue_cert_77.172.137.106.nip.io.lock
+[4/4] Starting Flask backend...
+=== Ready! Backend available at https://77.172.137.106.nip.io ===
+{"level":"info","ts":1769530523.1065154,"logger":"tls.obtain","msg":"lock acquired","identifier":"77.172.137.106.nip.io"}
+{"level":"info","ts":1769530523.1065736,"logger":"tls.obtain","msg":"obtaining certificate","identifier":"77.172.137.106.nip.io"}
+{"level":"info","ts":1769530523.1072173,"logger":"http","msg":"waiting on internal rate limiter","identifiers":["77.172.137.106.nip.io"],"ca":"https://acme-v02.api.letsencrypt.org/directory","account":""}
+{"level":"info","ts":1769530523.107274,"logger":"http","msg":"done waiting on internal rate limiter","identifiers":["77.172.137.106.nip.io"],"ca":"https://acme-v02.api.letsencrypt.org/directory","account":""}
+{"level":"info","ts":1769530523.1073143,"logger":"http","msg":"using ACME account","account_id":"https://acme-v02.api.letsencrypt.org/acme/acct/3004368876","account_contact":[]}
+[2026-01-27 16:15:23 +0000] [1] [INFO] Starting gunicorn 24.1.1
+[2026-01-27 16:15:23 +0000] [1] [INFO] Listening at: http://0.0.0.0:5000 (1)
+[2026-01-27 16:15:23 +0000] [1] [INFO] Using worker: uvicorn.workers.UvicornWorker
+[2026-01-27 16:15:23 +0000] [38] [INFO] Booting worker with pid: 38
+[2026-01-27 16:15:23 +0000] [39] [INFO] Booting worker with pid: 39
+[2026-01-27 16:15:23 +0000] [38] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/arbiter.py", line 641, in spawn_worker
+    worker.init_process()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 135, in init_process
+    self.load_wsgi()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 147, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/util.py", line 366, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/app/app.py", line 31, in <module>
+    from middleware.auth_middleware import verify_firebase_token
+  File "/app/middleware/auth_middleware.py", line 4, in <module>
+    from firebase_admin import auth, credentials, initialize_app
+ModuleNotFoundError: No module named 'firebase_admin'
+No module named 'firebase_admin'
+[2026-01-27 16:15:23 +0000] [38] [INFO] Worker exiting (pid: 38)
+[2026-01-27 16:15:23 +0000] [39] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/arbiter.py", line 641, in spawn_worker
+    worker.init_process()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 135, in init_process
+    self.load_wsgi()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 147, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/util.py", line 366, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/app/app.py", line 31, in <module>
+    from middleware.auth_middleware import verify_firebase_token
+  File "/app/middleware/auth_middleware.py", line 4, in <module>
+    from firebase_admin import auth, credentials, initialize_app
+ModuleNotFoundError: No module named 'firebase_admin'
+No module named 'firebase_admin'
+[2026-01-27 16:15:23 +0000] [39] [INFO] Worker exiting (pid: 39)
+[2026-01-27 16:15:23 +0000] [1] [ERROR] Worker (pid:38) exited with code 3.
+[2026-01-27 16:15:23 +0000] [1] [INFO] Worker (pid:39) was sent SIGTERM!
+[2026-01-27 16:15:23 +0000] [1] [ERROR] Shutting down: Master
+[2026-01-27 16:15:23 +0000] [1] [ERROR] Reason: Worker failed to boot.
+=== TomeHub Backend Startup ===
+[1/4] Discovering public IP...
+      Public IP: 77.172.137.106
+[2/4] Generating Caddyfile...
+      Domain: https://77.172.137.106.nip.io
+77.172.137.106.nip.io {
+    reverse_proxy localhost:5000
+}
+[3/4] Starting Caddy...
+{"level":"info","ts":1769530537.219365,"msg":"maxprocs: Leaving GOMAXPROCS=12: CPU quota undefined"}
+{"level":"info","ts":1769530537.2195556,"msg":"GOMEMLIMIT is updated","package":"github.com/KimMachineGun/automemlimit/memlimit","GOMEMLIMIT":7303628390,"previous":9223372036854775807}
+{"level":"info","ts":1769530537.2196176,"msg":"using config from file","file":"/etc/caddy/Caddyfile"}
+{"level":"info","ts":1769530537.220268,"msg":"adapted config to JSON","adapter":"caddyfile"}
+{"level":"warn","ts":1769530537.220289,"msg":"Caddyfile input is not formatted; run 'caddy fmt --overwrite' to fix inconsistencies","adapter":"caddyfile","file":"/etc/caddy/Caddyfile","line":2}
+{"level":"info","ts":1769530537.223789,"logger":"admin","msg":"admin endpoint started","address":"localhost:2019","enforce_origin":false,"origins":["//localhost:2019","//[::1]:2019","//127.0.0.1:2019"]}
+{"level":"info","ts":1769530537.2239578,"logger":"http.auto_https","msg":"server is listening only on the HTTPS port but has no TLS connection policies; adding one to enable TLS","server_name":"srv0","https_port":443}
+{"level":"info","ts":1769530537.223983,"logger":"http.auto_https","msg":"enabling automatic HTTP->HTTPS redirects","server_name":"srv0"}
+{"level":"info","ts":1769530537.2240613,"logger":"tls.cache.maintenance","msg":"started background certificate maintenance","cache":"0xc00045d800"}
+{"level":"info","ts":1769530537.2241337,"logger":"http","msg":"enabling HTTP/3 listener","addr":":443"}
+{"level":"info","ts":1769530537.2242157,"msg":"failed to sufficiently increase receive buffer size (was: 208 kiB, wanted: 7168 kiB, got: 416 kiB). See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details."}
+{"level":"info","ts":1769530537.224318,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+{"level":"warn","ts":1769530537.2244394,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":80"}
+{"level":"warn","ts":1769530537.2244647,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":80"}
+{"level":"info","ts":1769530537.2244718,"logger":"http.log","msg":"server running","name":"remaining_auto_https_redirects","protocols":["h1","h2","h3"]}
+{"level":"info","ts":1769530537.2244775,"logger":"http","msg":"enabling automatic TLS certificate management","domains":["77.172.137.106.nip.io"]}
+{"level":"info","ts":1769530537.2247834,"msg":"autosaved config (load with --resume flag)","file":"/root/.config/caddy/autosave.json"}
+{"level":"info","ts":1769530537.224803,"msg":"serving initial configuration"}
+Successfully started Caddy (pid=24) - Caddy is running in the background
+[4/4] Starting Flask backend...
+=== Ready! Backend available at https://77.172.137.106.nip.io ===
+{"level":"info","ts":1769530537.2287533,"logger":"tls","msg":"storage cleaning happened too recently; skipping for now","storage":"FileStorage:/root/.local/share/caddy","instance":"c0c36cc0-85dd-48d9-85b1-81b6b879dbd5","try_again":1769616937.2287452,"try_again_in":86399.99999978}
+{"level":"info","ts":1769530537.2287712,"logger":"tls.obtain","msg":"acquiring lock","identifier":"77.172.137.106.nip.io"}
+{"level":"info","ts":1769530537.2288394,"logger":"tls","msg":"finished cleaning storage units"}
+1.7695305372288644e+09	info	[FileStorage:/root/.local/share/caddy] Lock for 'issue_cert_77.172.137.106.nip.io' is stale (created: 2026-01-27 16:15:23.105221337 +0000 UTC, last update: 2026-01-27 16:15:23.105221337 +0000 UTC); removing then retrying: /root/.local/share/caddy/locks/issue_cert_77.172.137.106.nip.io.lock
+{"level":"info","ts":1769530537.2303503,"logger":"tls.obtain","msg":"lock acquired","identifier":"77.172.137.106.nip.io"}
+{"level":"info","ts":1769530537.230409,"logger":"tls.obtain","msg":"obtaining certificate","identifier":"77.172.137.106.nip.io"}
+{"level":"info","ts":1769530537.2310052,"logger":"http","msg":"waiting on internal rate limiter","identifiers":["77.172.137.106.nip.io"],"ca":"https://acme-v02.api.letsencrypt.org/directory","account":""}
+{"level":"info","ts":1769530537.2310274,"logger":"http","msg":"done waiting on internal rate limiter","identifiers":["77.172.137.106.nip.io"],"ca":"https://acme-v02.api.letsencrypt.org/directory","account":""}
+{"level":"info","ts":1769530537.2310376,"logger":"http","msg":"using ACME account","account_id":"https://acme-v02.api.letsencrypt.org/acme/acct/3004368876","account_contact":[]}
+[2026-01-27 16:15:37 +0000] [1] [INFO] Starting gunicorn 24.1.1
+[2026-01-27 16:15:37 +0000] [1] [INFO] Listening at: http://0.0.0.0:5000 (1)
+[2026-01-27 16:15:37 +0000] [1] [INFO] Using worker: uvicorn.workers.UvicornWorker
+[2026-01-27 16:15:37 +0000] [37] [INFO] Booting worker with pid: 37
+[2026-01-27 16:15:37 +0000] [38] [INFO] Booting worker with pid: 38
+[2026-01-27 16:15:37 +0000] [37] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/arbiter.py", line 641, in spawn_worker
+    worker.init_process()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 135, in init_process
+    self.load_wsgi()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 147, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/util.py", line 366, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/app/app.py", line 31, in <module>
+    from middleware.auth_middleware import verify_firebase_token
+  File "/app/middleware/auth_middleware.py", line 4, in <module>
+    from firebase_admin import auth, credentials, initialize_app
+ModuleNotFoundError: No module named 'firebase_admin'
+No module named 'firebase_admin'
+[2026-01-27 16:15:37 +0000] [37] [INFO] Worker exiting (pid: 37)
+[2026-01-27 16:15:37 +0000] [38] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/arbiter.py", line 641, in spawn_worker
+    worker.init_process()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 135, in init_process
+    self.load_wsgi()
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 147, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/gunicorn/util.py", line 366, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/app/app.py", line 31, in <module>
+    from middleware.auth_middleware import verify_firebase_token
+  File "/app/middleware/auth_middleware.py", line 4, in <module>
+    from firebase_admin import auth, credentials, initialize_app
+ModuleNotFoundError: No module named 'firebase_admin'
+No module named 'firebase_admin'
+[2026-01-27 16:15:37 +0000] [38] [INFO] Worker exiting (pid: 38)
+[2026-01-27 16:15:37 +0000] [1] [ERROR] Worker (pid:37) exited with code 3.
+[2026-01-27 16:15:38 +0000] [1] [INFO] Worker (pid:38) was sent SIGTERM!
+[2026-01-27 16:15:38 +0000] [1] [ERROR] Shutting down: Master
+[2026-01-27 16:15:38 +0000] [1] [ERROR] Reason: Worker failed to boot.
