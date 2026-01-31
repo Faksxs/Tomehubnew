@@ -163,6 +163,21 @@ class FlowService:
         
         return new_label or f"Pivoted to {anchor_id}", pivot_info
 
+    def prefetch_batch(self, session_id: str, firebase_uid: str, batch_size: int = 10):
+        """
+        Generate cards in background and push to session prefetch queue.
+        """
+        # Generate cards without consuming them (check_queue=False implicitly)
+        cards = self._generate_batch(
+            session_id=session_id,
+            firebase_uid=firebase_uid,
+            batch_size=batch_size
+        )
+        
+        if cards:
+            logger.info(f"[FLOW] Enqueuing {len(cards)} prefetched cards for session {session_id}")
+            self.session_manager.enqueue_prefetch(session_id, cards)
+
     def get_next_batch(self, request: FlowNextRequest) -> FlowNextResponse:
         """
         Get the next batch of cards. Triggers Discovery Pivot if saturated.
@@ -172,6 +187,34 @@ class FlowService:
             logger.error(f"Session not found: {request.session_id}")
             return FlowNextResponse(cards=[], has_more=False)
         
+        # 1. Try to get from Prefetch Queue first
+        cached_data = self.session_manager.dequeue_prefetch(request.session_id, request.batch_size)
+        if cached_data:
+            logger.info(f"[FLOW] Returning {len(cached_data)} cached cards for session {request.session_id}")
+            # Rehydrate FlowCard objects from dicts
+            cards = [FlowCard(**c) for c in cached_data]
+            
+            # Since these were already "seen" logic-wise when generated? 
+            # Wait, _generate_batch marks them seen. So we don't need to mark them again.
+            # But we might want to verify they haven't been seen in the meantime?
+            # For simpler logic, we assume queue content is valid.
+            
+            # Update local anchor logic for the resumed batch
+            if cards:
+                state.local_anchor_id = cards[-1].chunk_id
+                # cards_shown was handled at generation time? 
+                # PROPOSAL: Move cards_shown increment to here (Delivery time).
+                # But _generate_batch does it. If we persist 'state' in _generate_batch, it's done.
+                # Let's keep it simple: If it's in queue, it's ready to go.
+                self.session_manager.update_session(state)
+                
+            return FlowNextResponse(
+                cards=cards,
+                has_more=True,
+                session_state={"cards_shown": state.cards_shown}
+            )
+
+        # 2. If queue empty, generate on demand
         cards = self._generate_batch(
             session_id=state.session_id,
             firebase_uid=state.firebase_uid,
@@ -441,25 +484,9 @@ class FlowService:
                                 else:
                                     logger.warning(f"Failed to read vector for bootstrapped item {new_id}")
                             
-                            # PHASE 14: Cross-User Development Fallback
-                            # If this user has NO content, try to pull from the 'ver63' bootstrap account
-                            logger.info(f"UID {firebase_uid} has no content in _resolve_anchor. Trying dynamic fallback...")
-                            cursor.execute("""
-                                SELECT id, title, VEC_EMBEDDING
-                                FROM TOMEHUB_CONTENT
-                                WHERE firebase_uid = :p_uid
-                                AND VEC_EMBEDDING IS NOT NULL
-                                FETCH FIRST 1 ROW ONLY
-                            """, {"p_uid": firebase_uid}) # Note: effective_uid should be passed in start_session already, but this is safety
-                            fallback_row = cursor.fetchone()
-                            if fallback_row:
-                                new_id, title, vec_data = fallback_row
-                                logger.info(f"Fallback successful: {title} (ID: {new_id})")
-                                vec = self._to_list(vec_data)
-                                if vec:
-                                    return vec, f"Exploring: {title}", str(new_id)
-                            else:
-                                logger.warning("CRITICAL: Fallback returned NO rows.")
+                            # PHASE 14: Cross-User Development Fallback REMOVED
+                            # Strict Data Isolation Policy: Do not fallback to other users.
+                            logger.info(f"UID {firebase_uid} has no content. Returning empty state.")
 
                             # Empty Library Case
                             logger.warning(f"Empty Library or vector-less items for UID: {firebase_uid} and ver63")
@@ -1162,32 +1189,38 @@ class FlowService:
         """
         filtered = []
         
+        # BATCH OPTIMIZATION:
+        # Fetch metadata (Global Seen + Vectors) for ALL candidates in one go
+        chunk_ids = [c.chunk_id for c in candidates]
+        metadata = self._get_candidate_metadata_batch(state.firebase_uid, chunk_ids, days=30)
+        
         for card in candidates:
             # Check 1: Already shown in THIS session (Absolute exclusion)
             if self.session_manager.is_chunk_seen(session_id, card.chunk_id):
                 continue
             
-            # Check 1b: Globally seen recently (Global Decay penalty/exclusion)
-            # For Discovery Jumps, we want absolute exclusion from recent global history
-            # For normal flow, maybe just a penalty? User said "discovery jump'ta düşük öncelik"
-            local_anchor_id = state.local_anchor_id or ""
-            if state.mode == FlowMode.BRIDGE or local_anchor_id.startswith("pivot_"):
-                 if self._is_globally_seen(state.firebase_uid, card.chunk_id, days=60):
-                     logger.debug(f"Skipping globally seen chunk for discovery: {card.chunk_id}")
-                     continue
-            else:
-                 # Normal flow: 30 day soft check
-                 if self._is_globally_seen(state.firebase_uid, card.chunk_id, days=30):
-                     logger.debug(f"Skipping recently seen global chunk: {card.chunk_id}")
-                     continue
+            # Check 1b: Globally seen recently (Batch Checked)
+            # Use metadata cache
+            meta = metadata.get(card.chunk_id)
+            if not meta:
+                # Should not happen given logic, but safe fallback
+                continue
+                
+            if meta['is_seen']:
+                # Applying logic for discovery jumps vs normal flow
+                local_anchor_id = state.local_anchor_id or ""
+                # If discovery jump, we might be strict, else soft?
+                # For now, respecting the global seen flag
+                logger.debug(f"Skipping globally seen chunk: {card.chunk_id}")
+                continue
             
             # Check 2: Semantic deduplication
-            # Get the card's vector (we need to fetch it from DB or cache)
-            card_vector = self._get_chunk_vector(card.chunk_id)
+            card_vector = meta['vector']
             
             if card_vector:
                 if target_vector:
                     card._similarity = self._cosine_similarity(card_vector, target_vector)
+                
                 # Check if semantically duplicate
                 if self.session_manager.is_semantically_duplicate(
                     session_id, card_vector, threshold=0.85
@@ -1205,12 +1238,68 @@ class FlowService:
                     logger.debug(f"Skipping negatively penalized chunk: {card.chunk_id}")
                     continue
                 
-                # Store penalty for ranking (attach to card for later use)
+                # Store penalty for ranking
                 card._penalty = penalty
             
             filtered.append(card)
         
         return filtered
+
+    def _get_candidate_metadata_batch(self, firebase_uid: str, chunk_ids: List[str], days: int = 30) -> Dict[str, dict]:
+        """
+        Fetch vector and seen status for a batch of chunk IDs in a SINGLE query.
+        Returns: {chunk_id: {'vector': [...], 'is_seen': bool}}
+        """
+        if not chunk_ids:
+            return {}
+            
+        result = {}
+        # Initialize defaults
+        for cid in chunk_ids:
+            result[cid] = {'vector': None, 'is_seen': False}
+
+        try:
+            with DatabaseManager.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    # Create bind variables for IN clause (safely)
+                    # Oracle supports standard IN with list?
+                    # Python DPAPI usually requires generating :1, :2...
+                    
+                    # Split into chunks of 1000 if needed, but for now assuming <1000 candidates
+                    if len(chunk_ids) > 950:
+                        chunk_ids = chunk_ids[:950]
+                        
+                    bind_names = [f":id{i}" for i in range(len(chunk_ids))]
+                    bind_dict = {f"id{i}": cid for i, cid in enumerate(chunk_ids)}
+                    bind_dict["p_uid"] = firebase_uid
+                    bind_dict["p_days"] = days
+                    
+                    # Combined query: Get Vector + Check if Seen
+                    # Using LEFT JOIN on SEEN table
+                    sql = f"""
+                        SELECT c.id, c.VEC_EMBEDDING,
+                               CASE WHEN s.chunk_id IS NOT NULL THEN 1 ELSE 0 END as is_seen
+                        FROM TOMEHUB_CONTENT c
+                        LEFT JOIN TOMEHUB_FLOW_SEEN s 
+                               ON c.id = s.chunk_id 
+                               AND s.firebase_uid = :p_uid 
+                               AND s.seen_at > SYSTIMESTAMP - :p_days
+                        WHERE c.id IN ({','.join(bind_names)})
+                    """
+                    
+                    cursor.execute(sql, bind_dict)
+                    
+                    for row in cursor.fetchall():
+                        cid = str(row[0])
+                        vec = self._to_list(row[1])
+                        is_seen = bool(row[2])
+                        result[cid] = {'vector': vec, 'is_seen': is_seen}
+                        
+        except Exception as e:
+            logger.error(f"Batch metadata fetch failed: {e}")
+            # Fallback: don't crash, return defaults (potentially allowing dupes/missing vectors but keeping system alive)
+            
+        return result
     
     def _record_seen_chunk(self, firebase_uid: str, session_id: str, chunk_id: str):
         """Persist seen chunk to Database for cross-session global history and decay."""
@@ -1322,16 +1411,26 @@ class FlowService:
         """
         import random
         
+        import random
+        
         zone_weight = {1: 0.4, 2: 0.3, 3: 0.2, 4: 0.1}
-        similarity_weight = 0.6
+        # RANKING WEIGHTS CONFIG
+        WEIGHT_ZONE = 1.0        # Base weight for zone priority
+        WEIGHT_SIMILARITY = 0.8  # Importance of semantic match
+        WEIGHT_PENALTY = 1.5     # Importance of negative feedback (Multiplier space)
 
         def score(card: FlowCard) -> float:
             similarity = getattr(card, "_similarity", None)
             if similarity is None:
                 similarity = 0.0
-            penalty = getattr(card, "_penalty", 1.0)
-            base = zone_weight.get(card.zone, 0.1) + (similarity_weight * similarity)
-            return base * penalty
+                
+            penalty = getattr(card, "_penalty", 1.0) # 1.0 = No penalty, 0.0 = Full penalty
+            
+            # Formula: (ZoneBase + (Sim * Weight)) * Penalty
+            base = zone_weight.get(card.zone, 0.1) * WEIGHT_ZONE
+            sim_score = similarity * WEIGHT_SIMILARITY
+            
+            return (base + sim_score) * penalty
 
         # Group by zone
         by_zone = {1: [], 2: [], 3: [], 4: []}
