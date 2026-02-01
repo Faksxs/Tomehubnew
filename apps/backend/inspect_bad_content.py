@@ -1,37 +1,30 @@
 
 import os
 import sys
-
-# Setup path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from infrastructure.db_manager import DatabaseManager
 
-def inspect_content():
-    print("Initializing DB Pool...")
+def inspect():
     DatabaseManager.init_pool()
-    
-    try:
-        with DatabaseManager.get_connection() as conn:
-            with conn.cursor() as cursor:
-                print("Fetching content samples...")
-                cursor.execute("""
-                    SELECT content_chunk 
-                    FROM TOMEHUB_CONTENT 
-                    WHERE title LIKE 'Hayatin Anlami - Terry Eagleton%' 
-                    FETCH FIRST 5 ROWS ONLY
-                """)
-                
-                rows = cursor.fetchall()
-                print(f"Found {len(rows)} rows.")
-                for i, row in enumerate(rows):
-                    print(f"\n--- Chunk {i+1} ---")
-                    print(row[0])
-                    
-    except Exception as e:
-        print(f"Query failed: {e}")
-    finally:
-        DatabaseManager.close_pool()
+    with DatabaseManager.get_connection() as conn:
+        with conn.cursor() as cursor:
+            # Query the specific page from the screenshot
+            cursor.execute("""
+                SELECT content_chunk 
+                FROM TOMEHUB_CONTENT 
+                WHERE title LIKE '%Ahlak Felsefesinin Sorunları%' 
+                AND page_number = 203
+            """)
+            row = cursor.fetchone()
+            if row:
+                content = row[0].read() if hasattr(row[0], 'read') else str(row[0])
+                print(f"--- PAGE 203 CONTENT ---\n{content[:500]}...\n...{content[-300:]}")
+            else:
+                print("Page 203 not found. Trying another page.")
+                cursor.execute("SELECT content_chunk, page_number FROM TOMEHUB_CONTENT WHERE title LIKE '%Ahlak Felsefesinin Sorunları%' FETCH FIRST 3 ROWS ONLY")
+                for r in cursor.fetchall():
+                    c = r[0].read() if hasattr(r[0], 'read') else str(r[0])
+                    print(f"--- PAGE {r[1]} CONTENT ---\n{c[:300]}...\n")
 
 if __name__ == "__main__":
-    inspect_content()
+    inspect()

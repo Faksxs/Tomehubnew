@@ -56,7 +56,7 @@ export const FlowCard: React.FC<FlowCardProps> = ({
                     <span className="zone-dot" style={{ backgroundColor: zone.color }}></span>
                     <span className="zone-label">{zone.label}</span>
                 </div>
-                {card.page_number && (
+                {(card.page_number !== undefined && card.page_number !== null && card.page_number > 0) && (
                     <div className="flow-card__meta-item">
                         <span className="text-slate-500 mr-1.5 opacity-50">#</span>
                         <span>Page {card.page_number}</span>
@@ -79,39 +79,42 @@ export const FlowCard: React.FC<FlowCardProps> = ({
                 <p>{card.content}</p>
             </div>
 
-            {/* Reason Tag - Minimalist */}
-            <div className="flow-card__reason">
-                <div className="reason-icon">💭</div>
-                <p>{card.reason}</p>
-            </div>
-
             {/* Footer with Actions */}
             <div className="flow-card__footer">
-                <div className="flow-card__feedback">
-                    <button
-                        className={`feedback-btn ${feedbackGiven === 'like' ? 'active like' : ''}`}
-                        onClick={() => handleFeedback('like')}
-                        disabled={!!feedbackGiven}
-                        title="Relevant"
-                    >
-                        <span className="btn-icon">✨</span>
-                    </button>
-                    <button
-                        className={`feedback-btn ${feedbackGiven === 'dislike' ? 'active dislike' : ''}`}
-                        onClick={() => handleFeedback('dislike')}
-                        disabled={!!feedbackGiven}
-                        title="Not relevant"
-                    >
-                        <span className="btn-icon">✕</span>
-                    </button>
-                    <button
-                        className={`feedback-btn ${feedbackGiven === 'save' ? 'active save' : ''}`}
-                        onClick={() => handleFeedback('save')}
-                        disabled={!!feedbackGiven}
-                        title="Keep in Library"
-                    >
-                        <span className="btn-icon">🔖</span>
-                    </button>
+                <div className="flex items-center gap-4">
+                    <div className="flow-card__feedback">
+                        <button
+                            className={`feedback-btn ${feedbackGiven === 'like' ? 'active like' : ''}`}
+                            onClick={() => handleFeedback('like')}
+                            disabled={!!feedbackGiven}
+                            title="Relevant"
+                        >
+                            <span className="btn-icon">✨</span>
+                        </button>
+                        <button
+                            className={`feedback-btn ${feedbackGiven === 'dislike' ? 'active dislike' : ''}`}
+                            onClick={() => handleFeedback('dislike')}
+                            disabled={!!feedbackGiven}
+                            title="Not relevant"
+                        >
+                            <span className="btn-icon">✕</span>
+                        </button>
+                        <button
+                            className={`feedback-btn ${feedbackGiven === 'save' ? 'active save' : ''}`}
+                            onClick={() => handleFeedback('save')}
+                            disabled={!!feedbackGiven}
+                            title="Keep in Library"
+                        >
+                            <span className="btn-icon">🔖</span>
+                        </button>
+                    </div>
+
+                    {/* Minimalist Reason in footer */}
+                    {card.reason && (
+                        <div className="flow-card__footer-reason">
+                            {card.reason}
+                        </div>
+                    )}
                 </div>
 
                 <button
@@ -250,28 +253,13 @@ export const FlowCard: React.FC<FlowCardProps> = ({
                     color: #e2e8f0;
                 }
 
-                .flow-card__reason {
-                    margin-top: 20px;
-                    padding: 16px;
-                    background: rgba(255, 255, 255, 0.03);
-                    border-radius: 12px;
-                    display: flex;
-                    gap: 12px;
-                    align-items: flex-start;
-                }
-
-                .reason-icon {
-                    font-size: 18px;
-                    opacity: 0.8;
-                }
-
-                .flow-card__reason p {
-                    margin: 0;
-                    font-size: 13px;
+                .flow-card__footer-reason {
+                    font-size: 12px;
                     line-height: 1.5;
-                    color: rgba(204, 86, 30, 0.8);
-                    font-weight: 500;
+                    color: rgba(204, 86, 30, 0.7);
+                    font-weight: 600;
                     font-style: italic;
+                    letter-spacing: 0.02em;
                 }
 
                 .flow-card__footer {

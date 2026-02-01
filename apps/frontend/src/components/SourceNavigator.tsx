@@ -33,19 +33,16 @@ const SourceNavigator: React.FC<SourceNavigatorProps> = ({ activeFilter, onFilte
                         <button
                             key={cat.id}
                             onClick={() => onFilterChange(cat.id as SourceFilter)}
-                            className={`w-full flex items-center justify-between p-3.5 rounded-2xl transition-all duration-500 group relative overflow-hidden ${isActive
-                                ? 'bg-[rgba(204,86,30,0.1)] shadow-[0_0_20px_rgba(204,86,30,0.15)] border border-[#CC561E]/30'
-                                : 'hover:bg-white/5 border border-transparent'
+                            className={`w-full flex items-center justify-between px-3 py-3 rounded-xl transition-all duration-300 group relative overflow-hidden ${isActive
+                                ? 'bg-[rgba(204,86,30,0.1)] dark:bg-[rgba(204,86,30,0.2)] border border-[#CC561E]/30 shadow-sm'
+                                : 'hover:bg-slate-50 dark:hover:bg-slate-800 border border-transparent'
                                 }`}
                         >
-                            {/* Hover/Active Glow */}
-                            <div className={`absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent transition-transform duration-1000 translate-x-[-100%] group-hover:translate-x-[100%]`} />
-
-                            <div className="flex items-center gap-4 relative z-10">
-                                <div className={`p-2.5 rounded-xl transition-all duration-300 ${isActive ? 'bg-[#CC561E] text-white shadow-lg shadow-[#CC561E]/40' : 'bg-slate-800/50 text-slate-500 group-hover:text-slate-300'}`}>
-                                    <Icon className="w-4 h-4" />
+                            <div className="flex items-center gap-3 relative z-10">
+                                <div className={`p-2 rounded-lg transition-all duration-300 ${isActive ? 'text-[#CC561E] dark:text-[#f3a47b]' : 'text-slate-400 group-hover:text-slate-500 dark:text-slate-500'}`}>
+                                    <Icon size={20} />
                                 </div>
-                                <span className={`text-sm font-semibold tracking-tight ${isActive ? 'text-[#CC561E] dark:text-white' : 'text-slate-500 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-200'}`}>
+                                <span className={`text-sm font-medium tracking-tight ${isActive ? 'text-[#CC561E] dark:text-[#f3a47b]' : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:group-hover:text-slate-200'}`}>
                                     {cat.label}
                                 </span>
                             </div>

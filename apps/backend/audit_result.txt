@@ -1,0 +1,283 @@
+========== COMPLETE DATABASE AUDIT ==========
+
+--- COUNTS BY SOURCE_TYPE ---
+NOTES: 1290 items
+PDF: 986 items
+ARTICLE: 57 items
+PERSONAL_NOTE: 12 items
+
+--- ALL TITLES BY TYPE ---
+
+=== ARTICLE ===
+  [  3 chunks] Being and Time
+  [  2 chunks] Computer Environments as Cognitive Tools for Enhancing Learning - Unknown
+  [  2 chunks] Folklore, fantasy and indigenous fantasy - Unknown
+  [  2 chunks] Mathematical Theory of Communication - Unknown
+  [  2 chunks] On the Dangers of Stochastic Parrots - Emily M. Bender
+  [  2 chunks] Overcoming AI ethics, towards AI realism - Michele Murgia
+  [  2 chunks] Reflections on the scholarly contributions of Professor David H. Jonassen - Thomas C. Reeves
+  [ 21 chunks] fas - das
+  [ 21 chunks] rent a car - faks
+
+=== NOTES ===
+  [  4 chunks] 12. Business ethics - Jonathan Herring
+  [  1 chunks] 1984 - Michael Dean, George Orwell
+  [  2 chunks] Acımak Yok - Alfred Döblin
+  [  2 chunks] Advancing Racial Justice Research In Architecture, Urban Planning, and Allied Fields - Massachusetts Institute of Technology
+  [  2 chunks] Ahlak Felsefesi - Alexis Bertrand
+  [  1 chunks] Ahlak Felsefesinin Sorunları - Theodor W. Adorno
+  [ 24 chunks] Ahlak felsefesi (Highlight)
+  [  2 chunks] Ahlak felsefesi - Alexis Bertrand
+  [  6 chunks] Akil Cagi (Highlight)
+  [  1 chunks] Akil Cagi - Thomas Paine
+  [  8 chunks] Altin Gözlü Kiz (Highlight)
+  [  2 chunks] Altin Gözlü Kiz - Honore de Balzac ( de Balzac)
+  [  2 chunks] Altıncı Koğuş - Anton Çehov
+  [  2 chunks] Amok Koşucusu - Stefan Zweig
+  [  2 chunks] Anadolu'da İslamiyet - Mehmet Fuat Köprülü
+  [  2 chunks] Anahtar Sözcükler - Raymond Williams
+  [  2 chunks] Anayurt Oteli - Yusuf Atilgan
+  [  2 chunks] Andrey Tarkovski - Sean Martin
+  [  8 chunks] Antonius ve Kleopatra (Highlight)
+  [  2 chunks] Antonius ve Kleopatra - William Shakespeare
+  [  2 chunks] Aptalı Tanımak - A. M. Celal Sengor
+  [  2 chunks] Asiye Kabahat’ten Şarkılar Dinlediniz - Karin Karakasli
+  [  2 chunks] Aydınlanma Nedir? - John White
+  [  2 chunks] Aydınlanma Rüyası: Modern Felsefenin Yükselişi - Anthony Kenny
+  [  2 chunks] Aylak Adam - Yusuf Atilgan
+  [  2 chunks] Aşk Olmayan - Bejan Matur
+  [  2 chunks] Aşkın Metafiziği - Arthur Schopenhauer
+  [  2 chunks] Balıkçılar - Dmitri Vasilyeviç Grigoroviç
+  [  2 chunks] Başkaldıran İnsan - Albert Camus
+  [  2 chunks] Behçet Necatigil/ Şiirler Bütün Yapıtları - Nurullah Çetin
+  [  8 chunks] Belki yine gelirim (Highlight)
+  [  2 chunks] Belki yine gelirim - Ahmet Telli
+  [  2 chunks] Bilinçaltının Gücü - Joseph Murphy
+  [  2 chunks] Bin Muhteşem Güneş - Khaled Hosseini
+  [ 10 chunks] Binboğalar efsanesi (Highlight)
+  [  2 chunks] Binboğalar efsanesi - Yaşar Kemal
+  [ 12 chunks] Bir Havva Kizi - Hasan Ali Yücel Klasikleri (Highlight)
+  [  2 chunks] Bir Havva Kizi - Hasan Ali Yücel Klasikleri - Honoré de Balzac
+  [  2 chunks] Biz - Sara Novic
+  [  2 chunks] Boğulmamak İçin - George Orwell
+  [  2 chunks] Burma Günleri - George Orwell
+  [  2 chunks] Bülbülü Öldürmek - Mazhar Bagli
+  [  2 chunks] Bütün Şiirleri - Orhan Veli Kanik
+  [ 10 chunks] Caligula and Three Other Plays (Highlight)
+  [  2 chunks] Caligula and Three Other Plays - Albert Camus
+  [  2 chunks] Cehennemdeki Üniversiteliler - A. M. Celâl Sengör
+  [  2 chunks] Cehenneme Övgü - Gündelik Hayatta Totalitarizm - Gündüz Vassaf, Zehra Gencosman, Ömer Madra
+  [ 18 chunks] Cekilme Sulari (Highlight)
+  [  2 chunks] Cekilme Sulari - Sükrü Erbas
+  [  2 chunks] Cennetin Dibi - Gunduz Vassaf
+  [ 22 chunks] Daha Dun (Highlight)
+  [  2 chunks] Daha Dun - Selim Ileri
+  [  2 chunks] Damızlık Kızın Öyküsü - Margaret Atwood
+  [  2 chunks] Dava - Kirthana Ramisetti
+  [  2 chunks] Delifişek - Jose Mauro De Vasconcelos
+  [ 14 chunks] Demian (Highlight)
+  [  2 chunks] Demian - Hermann Hesse
+  [ 38 chunks] Devrim Uzerine (Highlight)
+  [  2 chunks] Devrim Uzerine - Hannah Arendt
+  [  2 chunks] Dilin Kökeni Üzerine - Ernest Renan
+  [  2 chunks] Dolayımsız Erotik veya Müzikal Erotik Evreler - Søren Kierkegaard
+  [  2 chunks] Dorian Gray'in Portresi - Oscar Wilde
+  [  2 chunks] Doğu Düşüncesi - Mahmut Aslan
+  [  2 chunks] Doğunun Limanları - Amin Maalouf
+  [  2 chunks] Dublinliler - James Joyce
+  [  2 chunks] Dur Ağlama Gözlerim - Yusuf Hayaloglu
+  [ 26 chunks] Düşüş (Highlight)
+  [  2 chunks] Düşüş - Albert Camus
+  [  2 chunks] Dönüşüm - Franz Kafka
+  [  2 chunks] Dövüş Kulübü - Chuck Palahniuk
+  [  2 chunks] Dünya Ağrısı - Ayfer Tunç
+  [  2 chunks] Dünya Edebiyatının Ekolojisi: İlkçağlardan Günümüze - Alexander Beecroft
+  [  2 chunks] Düşüş - Lauren Kate
+  [  2 chunks] Ermiş - Halil Cibran
+  [  2 chunks] Ermişin Bahçesi - Halil Cibran
+  [ 42 chunks] Esir Şehrin İnsanları (Esir Şehir Üçlemesi 1.Kitap) (Highlight)
+  [  2 chunks] Esir Şehrin İnsanları (Esir Şehir Üçlemesi 1.Kitap) - Kemal Tahir
+  [  2 chunks] Evvel - Ömer Erdem
+  [  2 chunks] Eşitlik - Oncel Sencerman, Alex Callinicos
+  [  2 chunks] Faydacılık - John Stuart Mill
+  [ 26 chunks] Felsefenin tesellisi (Highlight)
+  [  2 chunks] Felsefenin tesellisi - Alain De Botton
+  [ 44 chunks] Felsefi Izlenimler (Highlight)
+  [  2 chunks] Felsefi Izlenimler - Taner Timur
+  [ 14 chunks] Felsefi inanç (Highlight)
+  [  2 chunks] Felsefi inanç - Karl Jaspers
+  [  2 chunks] Gazap Üzümleri - John Steinbeck
+  [  2 chunks] Goriot Baba (Ciltli, İplik Dikişli) - Honore de Balzac
+  [  2 chunks] Gölgelerin Peşinde: 50 Portre - Taha Kilinc
+  [  2 chunks] Gömülü Şamdan - Stefan Zweig
+  [  2 chunks] Görme Biçimleri - John Berger
+  [  2 chunks] Görmek - José Saramago
+  [  2 chunks] Güneşi Uyandıralım - Jose Mauro De Vasconcelos
+  [ 12 chunks] Ham Toprak (Highlight)
+  [  2 chunks] Ham Toprak - Ivan Sergeevich Turgenev
+  [ 26 chunks] Hamlet (Highlight)
+  [  2 chunks] Hamlet - William Shakespeare
+  [  2 chunks] Hasretinden Prangalar Eskittim - Ahmed Arif
+  [ 14 chunks] Havva'nın Üç Kızı (Highlight)
+  [  2 chunks] Havva'nın Üç Kızı - Elif Safak
+  [ 56 chunks] Hayatin Anlami (Highlight)
+  [  2 chunks] Hayatin Anlami - Terry Eagleton
+  [ 42 chunks] Her Yönüyle Klasik Mitoloji (Highlight)
+  [  2 chunks] Her Yönüyle Klasik Mitoloji - Nancy Conner
+  [  2 chunks] Huzur - Ahmet Hamdi Tanpinar
+  [  2 chunks] Huzursuzluk - Zülfü Livaneli
+  [  2 chunks] Hürriyet Üstüne - John Stuart Mill
+  [ 22 chunks] Kadin ve Bedeni (Highlight)
+  [  2 chunks] Kadin ve Bedeni - Altan Kar - Yasemin Inceoglu
+  [ 40 chunks] Kadın antropolojisi (Highlight)
+  [  2 chunks] Kadın antropolojisi - Rayna R.. Reiter
+  [  2 chunks] Kalpazanlar - André Gide
+  [  2 chunks] Kamus-ı Türki - Semseddin Sami
+  [  2 chunks] Karanlık Çökerken Umutsuzluğa Karşı İyimserlik - Noam Chomsky
+  [ 30 chunks] Karilar Kogusu (Highlight)
+  [  2 chunks] Karilar Kogusu - Kemal Tahir
+  [ 12 chunks] Kaygi Kavrami - Hasan Ali Yücel Klasikleri (Highlight)
+  [  2 chunks] Kaygi Kavrami - Hasan Ali Yücel Klasikleri - Søren Kierkegaard
+  [  2 chunks] Kayıp Coğrafyanın İzinde: Doğu Türkistan Seyahatnamesi - Taha Kilinc
+  [  2 chunks] Kayıp Tanrılar Ülkesi - Ahmet Ümit
+  [  2 chunks] Kayıtdışı Tarih - Murat Kutlu
+  [  2 chunks] Kent Dindarlığı - Mehmet Altan
+  [  2 chunks] Kireç - Ömer Erdem
+  [ 16 chunks] Kirk Ambar 2 (Highlight)
+  [  2 chunks] Kirk Ambar 2 - Cemil Meric
+  [ 12 chunks] Kirmizi ve Siyah (Highlight)
+  [  2 chunks] Kirmizi ve Siyah - Stendhal (Henri Beyle )
+  [ 24 chunks] Komünist Manifesto (Highlight)
+  [  2 chunks] Komünist Manifesto - Karl Marx
+  [ 26 chunks] Kral Lear (Highlight)
+  [  2 chunks] Kral Lear - William Shakespeare
+  [  2 chunks] Kumarbaz - Fyodor Dostoyevski 
+  [  2 chunks] Kuyucaklı Yusuf - Sabahattin Ali
+  [  2 chunks] Kuşlar Yasına Gider - Hasan Ali Toptas
+  [  2 chunks] Kör - Terry Carr
+  [  2 chunks] Kötü Alışkanlıklara İyi Öneriler - Şermin Yaşar
+  [  2 chunks] Kültür Yorumları - Terry Eagleton
+  [  2 chunks] Kırlangıç Çığlığı - Ahmet Ümit
+  [  2 chunks] Kırmızı Pazartesi - Gabriel García Márquez
+  [  2 chunks] Kırmızı Saçlı Kadın - Orhan Pamuk
+  [  2 chunks] Kızıl Darı Tarlaları - Mo Yan
+  [  2 chunks] Leviathan - Thomas Hobbes
+  [  2 chunks] Liberalizm/Muhafazakarlık Kıskacında Kadın - Sibel Özbudun, Cahide Sarı, Temel Demirer
+  [ 20 chunks] Macbeth (Highlight)
+  [  2 chunks] Macbeth - Venedik Taciri - William Shakespeare
+  [  2 chunks] Macbeth - William Shakespeare
+  [  2 chunks] Madun Konuşabilir mi? - Gayatri Chakravorty Spivak
+  [ 14 chunks] Mahur beste (Highlight)
+  [  1 chunks] Mahur beste - Ahmet Hamdi Tanpınar
+  [  2 chunks] Masumiyet Müzesi - Orhan Pamuk, Rafael Carpintero;
+  [ 72 chunks] Medeniyet Tarihi 2 (Highlight)
+  [  2 chunks] Medeniyet Tarihi 2 - Ali Seriati
+  [ 40 chunks] Medeniyet Tarihi I (Highlight)
+  [  2 chunks] Medeniyet Tarihi I - Ali Seriati
+  [  2 chunks] Milena'ya Mektuplar - Franz Kafka
+  [  2 chunks] Modern Dünyanın Bunalımı - René Guénon
+  [  2 chunks] Momo - Michael Ende
+  [  2 chunks] Muhteşem Gatsby - F. Scott Fitsgerald
+  [  2 chunks] Mutlu Ölüm - Nora Roberts
+  [  2 chunks] Mülksüzler - Daniel Bensaid
+  [  2 chunks] Mürebbiye - Hüseyin Rahmi Gürpınar
+  [  2 chunks] Müzik Seni Çağırıyor - Erdal Atatbek
+  [  2 chunks] Nasbü'r Raye Hadislerle Fıkıh - Yazar Bilgisi Yok
+  [  2 chunks] Neoliberal Finansallaşmanın Politik Kökenleri - Greta R. Krippner
+  [  2 chunks] Ninatta'nın Bileziği - Ahmet Ümit
+  [  2 chunks] Notes from the Underground - Dostoyevski
+  [  2 chunks] Orhan Gencebay Filmlerini Anlatıyor - Vadullah Taş
+  [  2 chunks] Orta Malı - Selahattin Enis
+  [  2 chunks] Osmanlıca-Türkçe Ansiklopedik Lugat - Ferit Devellioğlu
+  [  2 chunks] Otorite ile Yorum Arasında Hukukun Doğası - Joseph Raz
+  [  2 chunks] Pal Sokağı Çocukları - French Molnar
+  [  2 chunks] Paradan Haber Ver! - Esteve Calzada
+  [  2 chunks] Prokrastineyşın - Timothy A. Pychyl
+  [  2 chunks] Puslu Kıtalar Atlası - Ihsan Oktay Anar
+  [  2 chunks] Rızanın İmalatı - Edward S. Herman
+  [  2 chunks] Semerkant - Amin Maalouf
+  [  2 chunks] Sen U Ben - Muhsin Kızılkaya
+  [  2 chunks] Sevme Sanatı - Erich Fromm
+  [ 20 chunks] Siddet Uzerine Secme Eserler 6 (Highlight)
+  [  2 chunks] Siddet Uzerine Secme Eserler 6 - Hannah Arendt
+  [  2 chunks] Sisifos Söyleni - Albert Camus
+  [  2 chunks] Siyasetin Temel Kavramları - Andrew Heywood
+  [  2 chunks] Siyasi İdeolojiler - Andrew Heywood
+  [  2 chunks] Snowden Dosyası - Luke Harding
+  [  2 chunks] Sorgulayan Denemeler - Bertrand Russell
+  [  2 chunks] Suat’ın Mektubu - Ahmet Hamdi Tanpinar
+  [  2 chunks] Suçluyorum - Émile Zola
+  [  2 chunks] Swastika Geceleri - Katharine Burdekin
+  [  2 chunks] Sırça Köşk - Sabahattin Ali
+  [ 38 chunks] Tanrı'nın Ölümü ve Kültür (Highlight)
+  [  2 chunks] Tanrı'nın Ölümü ve Kültür - TERRY EAGLETON
+  [  2 chunks] Tespih Ağacının Gölgesinde - Harper Lee
+  [  2 chunks] Theodor Adorno: Kültür Endüstrisinin Kıskacında Kültür - Onder Kulak
+  [  2 chunks] Toplumu Savunmak Gerekir - Michel Foucault
+  [  2 chunks] Toza Sor - John Fante
+  [  2 chunks] Türk Tarih-i Dinisi - Mehmed Fuad Koprulu
+  [  2 chunks] Türk'ün Ateşle İmtihanı - Halide Edib AdÄ±var
+  [  2 chunks] Türkçe Sözlük - Türk Dil Kurumu
+  [  2 chunks] Ulus Nedir? - Ernest Renan
+  [  2 chunks] Ulusların Düşüşü - Daron Acemoglu
+  [  2 chunks] Uygarlıkların Grameri - Fernand Braudel
+  [  2 chunks] Uzak - Oruc Aruoba
+  [  2 chunks] Uğultulu Tepeler - Emily Brontë
+  [  2 chunks] Vatan Yahut Silistre (Günümüz Türkçesiyle) - Namik Kemal
+  [  2 chunks] Veba Geceleri - Orhan Pamuk
+  [  2 chunks] Vitrinde Yaşamak - Nurdan Gürbilek
+  [  2 chunks] Yabani Manolyalar - Ahmet Altan
+  [  2 chunks] Yargılama Fakültesi - Jacques Derrida, V. Descombres, G. Kortian, Philippe Lacoue Labarthe
+  [  2 chunks] Yaşam Sanatı - Zygmunt Bauman
+  [  2 chunks] Yeraltından Notlar - Фёдор Михайлович Достоевский
+  [  2 chunks] Yeryüzünün Lanetlileri - Frantz Fanon
+  [  2 chunks] Yüzbaşının Kızı - Aleksandr Puskin
+  [  2 chunks] Yıllık Yazıhane - Kaan Kural
+  [  2 chunks] denmeme - Unknown
+  [  2 chunks] Çanta - Marcial Lafuente Estefanía
+  [  2 chunks] Çavdar Tarlasında Çocuklar - J. D. Salinger
+  [  2 chunks] Çevre Politikası - Aykut Çoban
+  [ 14 chunks] Çivisi Çıkmış Dünya (Highlight)
+  [  2 chunks] Çivisi Çıkmış Dünya - Amin Maalouf
+  [  2 chunks] Çiçek Açmış Genç Kızların Gölgesinde /Kayıp Zamanın İzinde - Marcel Proust
+  [  2 chunks] Çöle İnen Nur (kod39) - Yazar Bilgisi Yok
+  [  2 chunks] Çürümenin Kitabı - E. M. Cioran
+  [  2 chunks] Öyle miymiş? - Sule GÃ¼rbÃ¼z
+  [  2 chunks] Özgürlükten Kaçış - Erich Fromm
+  [  2 chunks] Üç Kağıtçı  - Orhan Kemal
+  [  2 chunks] İbn Tufeyl: Aklın Yaşamı - Taneli Kukkonen
+  [  2 chunks] İki Şehrin Hikayesi (Kısaltılmış Metin) - Charles Dickens
+  [  2 chunks] İlahi Komedya - Araf - Dante Alighieri
+  [  2 chunks] İlm-i Tedbir-i Mülk : Devlet Yönetme Bilimi - Charles Wells
+  [  2 chunks] İnsan Denen Meçhul - Alexis Carrel
+  [  2 chunks] İnsanı Tanıma Sanatı - Alfred Adler
+  [  2 chunks] İnsanın Anlam Arayışı - Viktor E. Frankl
+  [  2 chunks] İnsanın Taşrası - Elias Canetti
+  [  2 chunks] İntibah - Namik Kemal
+  [  2 chunks] İslam - Karen Armstrong
+  [  2 chunks] İslam Felsefesi Üzerine - Ahmet Arslan
+  [  2 chunks] İslam'da Yönetim Biçimi - Abdulkadir Macit
+  [  2 chunks] İslam'ın Hukuk İlmine Katkıları - Muhammed Hamidullah
+  [  2 chunks] İslamla Damgalanmış Varoluş - İsmet Özel
+  [  2 chunks] İsyan Ahlakı - NURETTIN TOPCU
+  [  2 chunks] İtibarlar - Juan Gabriel Vasquez
+  [  2 chunks] İtiraflarım - Tolstoy, Leo, graf, 1828-1910
+  [  2 chunks] İçimizdeki Şeytan (Ciltli, İplik Dikişli) - C. Terry Cline
+
+=== PDF ===
+  [335 chunks] 1984 - Michael Dean, George Orwell
+  [164 chunks] Ahlak Felsefesinin Sorunları - Theodor W. Adorno
+  [176 chunks] Akil Cagi - Thomas Paine
+  [118 chunks] Hayatin Anlami - Terry Eagleton
+  [192 chunks] Mahur beste - Ahmet Hamdi Tanpınar
+  [  1 chunks] Sync Test Book SYNC_1768859352 - Verifier
+
+=== PERSONAL_NOTE ===
+  [  3 chunks] Being and Time Notes
+  [  1 chunks] Dogum gunu - Self
+  [  1 chunks] Kutlama - Self
+  [  3 chunks] Stoicism Notes
+  [  1 chunks] dogum 2 - Self
+  [  1 chunks] klutlama - Self
+  [  1 chunks] ktlma2 - Self
+  [  1 chunks] ku8tlam 2 - Self
