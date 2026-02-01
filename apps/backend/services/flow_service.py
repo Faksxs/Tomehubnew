@@ -137,7 +137,8 @@ class FlowService:
             anchor_vector=anchor_vector,
             horizon_value=request.horizon_value,
             mode=request.mode,
-            resource_type=request.resource_type
+            resource_type=request.resource_type,
+            category=request.category
         )
         
         # Step 3: Generate initial cards
@@ -159,7 +160,7 @@ class FlowService:
             topic_label=anchor_label or "Knowledge Stream"
         )
     
-    def reset_anchor(self, session_id: str, anchor_type: str, anchor_id: str, firebase_uid: str, resource_type: Optional[str] = None) -> Tuple[str, Optional[PivotInfo]]:
+    def reset_anchor(self, session_id: str, anchor_type: str, anchor_id: str, firebase_uid: str, resource_type: Optional[str] = None, category: Optional[str] = None) -> Tuple[str, Optional[PivotInfo]]:
         """
         Manually pivot the session to a new anchor.
         Supports 'discovery' type for automated discovery jumps.
@@ -179,7 +180,7 @@ class FlowService:
         else:
             # Standard Manual Pivot
             new_vector, new_label, resolved_id = self._resolve_anchor(
-                anchor_type, anchor_id, firebase_uid, resource_type
+                anchor_type, anchor_id, firebase_uid, resource_type, category
             )
             if not new_vector:
                 raise ValueError(f"Could not resolve new anchor: {anchor_id}")
@@ -433,12 +434,27 @@ class FlowService:
             params["p_type"] = resource_type
         return sql, params
 
+    @staticmethod
+    def _apply_category_filter(
+        sql: str,
+        params: dict,
+        category: Optional[str]
+    ) -> Tuple[str, dict]:
+        """
+        Append category filter if active. Uses LIKE for multi-category support.
+        """
+        if category:
+            sql += " AND categories LIKE :p_cat_filter "
+            params["p_cat_filter"] = f"%{category}%"
+        return sql, params
+
     def _resolve_anchor(
         self, 
         anchor_type: str, 
         anchor_id: str, 
         firebase_uid: str,
-        resource_type: Optional[str] = None
+        resource_type: Optional[str] = None,
+        category: Optional[str] = None
     ) -> Tuple[Optional[List[float]], Optional[str], Optional[str]]:
         """
         Resolve an anchor to its embedding vector, label, and database ID.
@@ -504,6 +520,7 @@ class FlowService:
                             params = {"p_uid": firebase_uid}
                             
                             sql, params = self._apply_resource_filter(sql, params, resource_type)
+                            sql, params = self._apply_category_filter(sql, params, category)
                                 
                             sql += " ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY "
                             cursor.execute(sql, params)
@@ -538,6 +555,202 @@ class FlowService:
         return None, None, anchor_id
     
     # -------------------------------------------------------------------------
+    # FEED SEEDING ARCHITECTURE (SEED-FIRST LOGIC)
+    # -------------------------------------------------------------------------
+
+    def _seed_candidates(
+        self,
+        firebase_uid: str,
+        session_id: str,
+        target_vector: Optional[List[float]],
+        resource_type: Optional[str],
+        category: Optional[str] = None,
+        limit: int = 15
+    ) -> List[FlowCard]:
+        """
+        Generate candidates using a Multi-Seed approach (Feed Logic).
+        3 Pools:
+        1. Gravity (Semantic match to anchor) - Only if target_vector exists
+        2. Recency (New highlights/notes)
+        3. Serendipity (Random quality chunks)
+        """
+        seeds = []
+        
+        # 1. Gravity Seed (if applicable)
+        if target_vector:
+            gravity_candidates = self._fetch_seed_gravity(
+                firebase_uid, session_id, target_vector, resource_type, category, limit=5
+            )
+            seeds.extend(gravity_candidates)
+            
+        # 2. Recency Seed (Contextual Anchoring)
+        recency_candidates = self._fetch_seed_recency(
+            firebase_uid, session_id, resource_type, category, limit=5
+        )
+        seeds.extend(recency_candidates)
+        
+        # 3. Serendipity Seed (Discovery)
+        # If we have very few gravity matches, boost serendipity
+        needed = limit - len(seeds)
+        if needed > 0:
+            # Always fetch at least 5 random to ensure variety
+            fetch_count = max(needed, 5) 
+            serendipity_candidates = self._fetch_seed_serendipity(
+                firebase_uid, session_id, resource_type, category, limit=fetch_count
+            )
+            seeds.extend(serendipity_candidates)
+            
+        return seeds
+
+    def _fetch_seed_gravity(
+        self, uid: str, sid: str, vec: List[float], r_type: Optional[str], category: Optional[str], limit: int
+    ) -> List[FlowCard]:
+        """Fetch semantically related items (Soft thresholds)."""
+        # We reuse Zone 1/2 logic but with relaxed constraints
+        # Effectively finding "Related" content
+        # For simplicity, we blindly fetch nearest neighbors regardless of zone
+        vec_array = array.array('f', vec)
+        params = {"p_uid": uid, "p_vec": vec_array, "p_sid": sid, "p_limit": limit}
+        
+        sql = """
+            SELECT id, content_chunk, title, source_type, page_number,
+                   VECTOR_DISTANCE(VEC_EMBEDDING, :p_vec, COSINE) as distance
+            FROM TOMEHUB_CONTENT
+            WHERE firebase_uid = :p_uid
+            AND VEC_EMBEDDING IS NOT NULL
+            AND DBMS_LOB.GETLENGTH(content_chunk) > 12
+            AND source_type NOT IN ('PERSONAL_NOTE', 'personal')
+            AND title NOT LIKE '% - Self'
+            AND id NOT IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE session_id = :p_sid)
+        """
+        if r_type == 'BOOK':
+             # Books = PDFs + Highlights
+             sql += " AND source_type IN ('PDF','EPUB','PDF_CHUNK','NOTES') AND title NOT LIKE '% - Self' "
+        elif r_type in (None, 'ALL_NOTES', 'ALL'):
+             # All Notes = Highlights ONLY (No PDFs, No Articles, No Personal Notes)
+             sql += " AND source_type = 'NOTES' "
+        else:
+             sql += " AND source_type = :p_type "
+             params["p_type"] = r_type
+             
+        # Apply Category Filter
+        sql, params = self._apply_category_filter(sql, params, category)
+             
+        sql += " ORDER BY distance ASC FETCH FIRST :p_limit ROWS ONLY "
+        
+        cards = []
+        with DatabaseManager.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, params)
+                for row in cursor.fetchall():
+                    raw_content = safe_read_clob(row[1])
+                    content = extract_note_content(raw_content)
+                    sim = 1 - row[5]
+                    
+                    # Tag based on similarity (No drop!)
+                    tag = "🎯 Precision" if sim > 0.6 else "🔗 Related" if sim > 0.3 else "🌊 Flow"
+                    
+                    cards.append(FlowCard(
+                        flow_id=str(uuid.uuid4()),
+                        chunk_id=str(row[0]),
+                        content=content,
+                        title=row[2] or "Untitled",
+                        page_number=row[4],
+                        source_type="pdf_chunk" if row[3] in ['PDF','PDF_CHUNK','EPUB'] else 'personal',
+                        zone=1, # Treat as "Gravity" zone
+                        epistemic_level="A",
+                        reason=f"{tag} ({sim:.0%})"
+                    ))
+                    # Attach sim for ranking
+                    cards[-1]._similarity = sim
+        return cards
+
+    def _fetch_seed_recency(self, uid: str, sid: str, r_type: Optional[str], category: Optional[str], limit: int) -> List[FlowCard]:
+        """Fetch recently added content (Highlights/Notes)."""
+        sql = """
+            SELECT id, content_chunk, title, source_type, page_number
+            FROM TOMEHUB_CONTENT
+            WHERE firebase_uid = :p_uid
+            AND source_type NOT IN ('PERSONAL_NOTE', 'personal')
+            AND title NOT LIKE '% - Self'
+            AND DBMS_LOB.GETLENGTH(content_chunk) > 12
+            AND id NOT IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE session_id = :p_sid)
+        """
+        params = {"p_uid": uid, "p_sid": sid, "p_limit": limit}
+        
+        if r_type == 'BOOK':
+             # Books = Highlights + PDFs
+             sql += " AND source_type IN ('PDF','EPUB','NOTES') AND title NOT LIKE '% - Self' "
+        elif r_type in (None, 'ALL_NOTES', 'ALL'):
+             # All Notes = Highlights ONLY
+             sql += " AND source_type = 'NOTES' "
+        elif r_type:
+             sql += " AND source_type = :p_type "
+             params["p_type"] = r_type
+
+        # Apply Category Filter
+        sql, params = self._apply_category_filter(sql, params, category)
+             
+        sql += " ORDER BY id DESC FETCH FIRST :p_limit ROWS ONLY "
+        
+        # Recency = Zone 2 (High priority but below strong semantic matches)
+        return self._execute_simple_fetch(sql, params, "✨ Recent", zone=2)
+
+    def _fetch_seed_serendipity(self, uid: str, sid: str, r_type: Optional[str], category: Optional[str], limit: int) -> List[FlowCard]:
+        """Fetch random high-quality chunks."""
+        sql = """
+            SELECT id, content_chunk, title, source_type, page_number
+            FROM TOMEHUB_CONTENT
+            WHERE firebase_uid = :p_uid
+            AND source_type NOT IN ('PERSONAL_NOTE', 'personal')
+            AND title NOT LIKE '% - Self'
+            AND DBMS_LOB.GETLENGTH(content_chunk) > 12
+            AND id NOT IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE session_id = :p_sid)
+        """
+        params = {"p_uid": uid, "p_sid": sid, "p_limit": limit}
+
+        if r_type == 'BOOK':
+             # Books = Highlights + PDFs
+             sql += " AND source_type IN ('PDF','EPUB','PDF_CHUNK','NOTES') AND title NOT LIKE '% - Self' "
+        elif r_type in (None, 'ALL_NOTES', 'ALL'):
+             # All Notes = Highlights ONLY
+             sql += " AND source_type = 'NOTES' "
+        elif r_type:
+             sql += " AND source_type = :p_type "
+             params["p_type"] = r_type
+
+        # Apply Category Filter
+        sql, params = self._apply_category_filter(sql, params, category)
+
+        sql += " ORDER BY DBMS_RANDOM.VALUE FETCH FIRST :p_limit ROWS ONLY "
+        
+        # Serendipity = Zone 4 (Discovery / Low priority)
+        return self._execute_simple_fetch(sql, params, "🎲 Serendipity", zone=4)
+
+    def _execute_simple_fetch(self, sql: str, params: dict, reason_prefix: str, zone: int) -> List[FlowCard]:
+         cards = []
+         with DatabaseManager.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, params)
+                for row in cursor.fetchall():
+                    raw_content = safe_read_clob(row[1])
+                    content = extract_note_content(raw_content)
+                    cards.append(FlowCard(
+                        flow_id=str(uuid.uuid4()),
+                        chunk_id=str(row[0]),
+                        content=content,
+                        title=row[2] or "Untitled",
+                        page_number=row[4],
+                        source_type="pdf_chunk" if row[3] in ['PDF','PDF_CHUNK','EPUB'] else 'personal',
+                        zone=zone, 
+                        epistemic_level="B",
+                        reason=reason_prefix
+                    ))
+                    # Zero similarity (pure diversity)
+                    cards[-1]._similarity = 0.0
+         return cards
+
+    # -------------------------------------------------------------------------
     # INTERNAL: CANDIDATE GENERATION
     # -------------------------------------------------------------------------
     
@@ -554,31 +767,35 @@ class FlowService:
         if not state:
             return []
         
-        # SPECIAL CASE: Personal Notes - Simple Random Fetch
-        if state.resource_type == 'PERSONAL_NOTE':
-            return self._fetch_personal_notes_simple(firebase_uid, session_id, batch_size)
-        
-        # Calculate target vector using Dual Anchor
-        target_vector = self._calculate_target_vector(state)
-        
-        # Determine active zones based on horizon value
-        active_zones = self._get_active_zones(state.horizon_value)
-        
-        # 1. Fetch Candidates from Zones
-        all_candidates = []
-        zone_stats = {}
-        for zone in active_zones:
-            candidates = self._fetch_zone_candidates(
-                zone=zone,
-                target_vector=target_vector,
-                state=state,
-                firebase_uid=firebase_uid,
-                resource_type=state.resource_type
+        # SPECIAL CASE: Sparse Categories (Bypass Vector Flow)
+        # If user selects Personal Notes, Websites, or Articles, just show what we have randomly.
+        if state.resource_type in ['PERSONAL_NOTE', 'WEBSITE', 'ARTICLE']:
+            return self._fetch_simple_random_by_type(
+                firebase_uid, session_id, state.resource_type, batch_size
             )
-            zone_stats[zone] = len(candidates)
-            all_candidates.extend(candidates)
+
         
-        logger.info(f"[FLOW-METRICS] Funnel Start: {len(all_candidates)} candidates. Zones: {zone_stats}")
+        # Determine Flow Mode (Gravity vs Zero Gravity)
+        target_vector = None
+        is_zero_gravity = (state.global_anchor_id == "General Discovery") or (not state.global_anchor_id)
+        
+        if not is_zero_gravity:
+             # Calculate target vector using Dual Anchor
+             target_vector = self._calculate_target_vector(state)
+        else:
+             logger.info("[FLOW] Zero Gravity Mode (General Discovery) - Skipping vector bias")
+        
+        # 1. Fetch Candidates (Seed-First Architecture)
+        all_candidates = self._seed_candidates(
+            firebase_uid=firebase_uid,
+            session_id=session_id,
+            target_vector=target_vector,
+            resource_type=state.resource_type,
+            category=state.category,
+            limit=batch_size * 3  # Fetch 3x to allow for filtering/ranking fallout
+        )
+        
+        logger.info(f"[FLOW-METRICS] Funnel Start: {len(all_candidates)} candidates via Seeding.")
         
         # Source Distribution Analysis
         source_dist = {"highlights": 0, "pdf_chunks": 0}
@@ -613,14 +830,12 @@ class FlowService:
         final_cards = ranked[:batch_size]
         
         logger.info(f"[FLOW-METRICS] Funnel Final: {len(final_cards)} cards returned")
-
         
         # Update session state
         for card in final_cards:
             self.session_manager.add_seen_chunk(session_id, card.chunk_id)
             self._record_seen_chunk(firebase_uid, session_id, card.chunk_id)
-            # Update centroid with the card's vector if available
-            # (This would require storing vectors with cards - simplified here)
+            # Update centroid if available (future)
         
         # Update local anchor to the last shown card
         if final_cards:
@@ -629,6 +844,7 @@ class FlowService:
             self.session_manager.update_session(state)
         
         return final_cards
+
     
     def _calculate_target_vector(self, state: FlowSessionState) -> Optional[List[float]]:
         """
@@ -730,26 +946,43 @@ class FlowService:
     # PERSONAL NOTES SIMPLE FETCHER
     # -------------------------------------------------------------------------
     
-    def _fetch_personal_notes_simple(
-        self, firebase_uid: str, session_id: str, batch_size: int
+    def _fetch_simple_random_by_type(
+        self, firebase_uid: str, session_id: str, resource_type: str, batch_size: int
     ) -> List[FlowCard]:
         """
-        Simple fetcher for Personal Notes: Get random unseen personal notes.
-        Personal Notes are identified by: source_type='PDF' AND title LIKE '% - Self'
+        Simple fetcher for Sparse Categories (Personal Notes, Websites, Articles).
+        Bypasses vector search and returns random unseen content from that category.
         """
         cards = []
         try:
             with DatabaseManager.get_connection() as conn:
                 with conn.cursor() as cursor:
-                    # Fetch random personal notes that haven't been seen yet
-                    # PERSONAL_NOTE Filter: Only show items with "- Self" suffix
-                    # source_type='NOTES' contains ALL book highlights, not personal notes
-                    # True personal notes have title ending with " - Self"
                     sql = """
                         SELECT id, content_chunk, title, page_number, source_type
                         FROM TOMEHUB_CONTENT
                         WHERE firebase_uid = :p_uid
-                        AND title LIKE '% - Self'
+                    """
+                    
+                    params = {
+                        "p_uid": firebase_uid,
+                        "p_sid": session_id,
+                        "p_limit": batch_size
+                    }
+
+                    # Category specific filters
+                    if resource_type == 'PERSONAL_NOTE':
+                         # Personal Notes identified by suffix
+                         sql += " AND title LIKE '% - Self' "
+                    elif resource_type == 'WEBSITE':
+                         sql += " AND source_type = 'WEBSITE' "
+                    elif resource_type == 'ARTICLE':
+                         sql += " AND source_type = 'ARTICLE' "
+                    elif resource_type:
+                         # Generic fallback
+                         sql += " AND source_type = :p_type "
+                         params["p_type"] = resource_type
+
+                    sql += """
                         AND id NOT IN (
                             SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
                             WHERE session_id = :p_sid
@@ -758,37 +991,25 @@ class FlowService:
                         FETCH FIRST :p_limit ROWS ONLY
                     """
                     
-                    cursor.execute(sql, {
-                        "p_uid": firebase_uid,
-                        "p_sid": session_id,
-                        "p_limit": batch_size
-                    })
-                    
+                    cursor.execute(sql, params)
                     
                     for row in cursor.fetchall():
                         raw_content = safe_read_clob(row[1])
-                        # Extract clean content (remove Title/Author prefix)
                         clean_content = extract_note_content(raw_content)
                         
                         cards.append(FlowCard(
                             flow_id=str(uuid.uuid4()),
                             chunk_id=str(row[0]),
-                            content=clean_content,  # Full content, no truncation
-                            title=row[2] or "Untitled Note",
-                            page_number=row[3],
-                            source_type="personal",
+                            content=clean_content,
+                            title=row[2] or "Untitled",
+                            page_number=row[3], # Correct index for page_number if it is 4th col? No, row[3] is page_number in SELECT list
+                            source_type="personal" if resource_type == 'PERSONAL_NOTE' else row[4].lower(),
                             zone=1,
                             epistemic_level="A",
-                            reason="📝 Personal Note"
+                            reason=f"🎲 Random {resource_type.title().replace('_', ' ')}"
                         ))
-
-                    
-                    logger.info(f"[FLOW] Fetched {len(cards)} personal notes")
-                    
         except Exception as e:
-            logger.error(f"Failed to fetch personal notes: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Simple fetch failed for {resource_type}: {e}")
         
         return cards
     

@@ -22,6 +22,8 @@ from services.pdf_service import extract_pdf_content
 from services.epub_service import extract_epub_content
 from services.embedding_service import get_embedding, batch_get_embeddings
 from services.correction_service import repair_ocr_text
+from services.data_health_service import DataHealthService
+from services.data_cleaner_service import DataCleanerService
 from utils.text_utils import normalize_text, deaccent_text, get_lemmas
 import json
 from concurrent.futures import ThreadPoolExecutor
@@ -251,11 +253,12 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
                         'normalized': normalize_text(chunk_text),
                         'deaccented': deaccent_text(chunk_text),
                         'lemmas': json.dumps(get_lemmas(chunk_text), ensure_ascii=False),
-                        'classification': classify_passage_fast(chunk_text)
+                        'classification': classify_passage_fast(chunk_text),
+                        'decluttered_text': DataCleanerService.clean_with_ai(chunk_text, title=title, author=author)
                     }
 
                 # Filter out empty/short chunks before processing
-                valid_chunks = [(i, c) for i, c in enumerate(chunks) if c['text'] and len(c['text'].strip()) >= 10]
+                valid_chunks = [(i, c) for i, c in enumerate(chunks) if DataHealthService.validate_content(c.get('text'))]
                 
                 if not valid_chunks:
                     logger.warning(f"No valid chunks found (length >= 10) out of {len(chunks)} extracted chunks.")
@@ -286,7 +289,7 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
                                 "p_uid": firebase_uid,
                                 "p_type": "PDF" if file_ext == '.pdf' else "EPUB",
                                 "p_title": f"{title} - {author}",
-                                "p_content": res['text_used'],
+                                "p_content": res['decluttered_text'],
                                 "p_chunk_type": chunk.get('type', 'paragraph'),
                                 "p_page": chunk.get('page_num', 0),
                                 "p_chunk_idx": res['index'],
@@ -370,6 +373,11 @@ def ingest_text_item(text: str, title: str, author: str, source_type: str = "NOT
     try:
         with DatabaseManager.get_connection() as connection:
             with connection.cursor() as cursor:
+                # Gatekeeper: Validation
+                if not DataHealthService.validate_content(text):
+                    print(f"[SKIPPED] Content too short or empty: {title}")
+                    return False
+
                 # NLP Processing
                 normalized_text = normalize_text(text)
                 deaccented_text = deaccent_text(text)
@@ -426,6 +434,8 @@ def process_bulk_items_logic(items: list, firebase_uid: str) -> dict:
                 for item in items:
                     try:
                         text = item.get('text', '')
+                        if not DataHealthService.validate_content(text):
+                            continue
                         
                         # NLP Processing
                         normalized_text = normalize_text(text)
@@ -461,6 +471,7 @@ def process_bulk_items_logic(items: list, firebase_uid: str) -> dict:
     return {"success": success}
 
 if __name__ == "__main__":
+    DatabaseManager.init_pool()
     if len(sys.argv) >= 5:
         # python ingest_book.py <path> <title> <author> [uid] [book_id]
         path = sys.argv[1]

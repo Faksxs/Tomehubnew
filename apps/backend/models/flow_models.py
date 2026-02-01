@@ -26,6 +26,7 @@ class FlowStartRequest(BaseModel):
     mode: FlowMode = FlowMode.FOCUS
     horizon_value: float = Field(default=0.25, ge=0.0, le=1.0)  # 0.0 to 1.0
     resource_type: Optional[str] = None
+    category: Optional[str] = None
 
 
 class FlowNextRequest(BaseModel):
@@ -70,6 +71,7 @@ class FlowSessionState(BaseModel):
     mode: FlowMode = FlowMode.FOCUS
     cards_shown: int = 0
     resource_type: Optional[str] = None
+    category: Optional[str] = None
     created_at: str
 
 

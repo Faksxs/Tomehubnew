@@ -65,7 +65,8 @@ class FlowSessionManager:
         anchor_vector: Optional[List[float]] = None,
         horizon_value: float = 0.25,
         mode: FlowMode = FlowMode.FOCUS,
-        resource_type: Optional[str] = None
+        resource_type: Optional[str] = None,
+        category: Optional[str] = None
     ) -> FlowSessionState:
         """Create a new Flow session."""
         session_id = str(uuid.uuid4())
@@ -81,6 +82,7 @@ class FlowSessionManager:
             horizon_value=horizon_value,
             mode=mode,
             resource_type=resource_type,
+            category=category,
             cards_shown=0,
             created_at=datetime.utcnow().isoformat()
         )

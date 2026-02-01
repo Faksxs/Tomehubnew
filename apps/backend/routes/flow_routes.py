@@ -180,6 +180,7 @@ async def flow_reset_anchor(
     anchor_id: str = Body(...),
     firebase_uid: str = Body(...),
     resource_type: Optional[str] = Body(None),
+    category: Optional[str] = Body(None),
     user_id: str = Depends(verify_firebase_token)
 ):
     """
@@ -196,7 +197,8 @@ async def flow_reset_anchor(
             anchor_type=anchor_type,
             anchor_id=anchor_id,
             firebase_uid=effective_uid,
-            resource_type=resource_type
+            resource_type=resource_type,
+            category=category
         )
         
         return {

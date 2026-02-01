@@ -59,6 +59,7 @@ export interface FlowStartRequest {
     mode?: FlowMode;
     horizon_value?: number; // 0.0 to 1.0
     resource_type?: string;
+    category?: string;
 }
 
 export interface FlowStartResponse {
@@ -211,7 +212,8 @@ export async function resetFlowAnchor(
     anchorType: string,
     anchorId: string,
     firebaseUid: string,
-    resourceType?: string
+    resourceType?: string,
+    category?: string
 ): Promise<{ success: boolean; topic_label: string; pivot_info?: PivotInfo }> {
     const idToken = await getAuthToken();
 
@@ -227,6 +229,7 @@ export async function resetFlowAnchor(
             anchor_id: anchorId,
             firebase_uid: firebaseUid,
             resource_type: resourceType,
+            category: category
         }),
     });
 

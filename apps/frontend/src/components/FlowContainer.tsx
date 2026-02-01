@@ -5,9 +5,10 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ChevronLeft, SlidersHorizontal, Settings2, X } from 'lucide-react';
+import { ChevronLeft, SlidersHorizontal, Settings2, X, ChevronDown } from 'lucide-react';
 import { FlowCard } from './FlowCard';
 import { HorizonSlider } from './HorizonSlider';
+import { CategorySelector } from './CategorySelector';
 import {
     FlowCard as FlowCardType,
     FlowMode,
@@ -38,7 +39,8 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
     const [sessionId, setSessionId] = useState<string | null>(null);
     const [cards, setCards] = useState<FlowCardType[]>([]);
     const [topicLabel, setTopicLabel] = useState(anchorLabel || 'Knowledge Stream');
-    const [horizonValue, setHorizonValue] = useState(0.25); // Start at Author zone
+    const [activeCategory, setActiveCategory] = useState<string | null>(null);
+    const [horizon, setHorizon] = useState(0.25); // Start at Author zone
     const [isLoading, setIsLoading] = useState(false);
     const [hasMore, setHasMore] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -52,35 +54,39 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
     const observerRef = useRef<IntersectionObserver | null>(null);
     const loadMoreRef = useRef<HTMLDivElement>(null);
 
-    // Start session on mount
+    // Function to initialize or re-initialize the flow session
+    const initializeFlow = useCallback(async (filter: SourceFilter, category: string | null = null) => {
+        setIsLoading(true);
+        setError(null);
+        setCards([]); // Clear cards when initializing new filter/anchor
+        setHasMore(true); // Reset hasMore for new session
+
+        try {
+            const response = await startFlowSession({
+                firebase_uid: firebaseUid,
+                anchor_type: anchorType,
+                anchor_id: anchorId,
+                mode: 'FOCUS',
+                horizon_value: horizon,
+                resource_type: filter === 'ALL' ? undefined : filter,
+                category: category || undefined
+            });
+
+            setSessionId(response.session_id);
+            setCards(response.initial_cards);
+            setTopicLabel(response.topic_label);
+            setPivotInfo(null); // Clear pivot info on new session start
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to start session');
+        } finally {
+            setIsLoading(false);
+        }
+    }, [firebaseUid, anchorType, anchorId, horizon]);
+
+    // Start session on mount or when dependencies change
     useEffect(() => {
-        const initSession = async () => {
-            setIsLoading(true);
-            setError(null);
-            setCards([]); // Clear cards when initializing new filter/anchor
-
-            try {
-                const response = await startFlowSession({
-                    firebase_uid: firebaseUid,
-                    anchor_type: anchorType,
-                    anchor_id: anchorId,
-                    mode: 'FOCUS',
-                    horizon_value: horizonValue,
-                    resource_type: activeFilter === 'ALL' ? 'ALL_NOTES' : activeFilter
-                });
-
-                setSessionId(response.session_id);
-                setCards(response.initial_cards);
-                setTopicLabel(response.topic_label);
-            } catch (err) {
-                setError(err instanceof Error ? err.message : 'Failed to start session');
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        initSession();
-    }, [firebaseUid, anchorType, anchorId, activeFilter]);
+        initializeFlow(activeFilter, activeCategory);
+    }, [firebaseUid, anchorType, anchorId, activeFilter, activeCategory, initializeFlow]);
 
     // Load more cards
     const loadMore = useCallback(async () => {
@@ -110,34 +116,11 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
     }, [sessionId, firebaseUid, isLoading, hasMore]);
 
     // Infinite scroll observer
-    useEffect(() => {
-        if (observerRef.current) {
-            observerRef.current.disconnect();
-        }
-
-        observerRef.current = new IntersectionObserver(
-            (entries) => {
-                if (entries[0].isIntersecting && hasMore && !isLoading) {
-                    loadMore();
-                }
-            },
-            { threshold: 0.1 }
-        );
-
-        if (loadMoreRef.current) {
-            observerRef.current.observe(loadMoreRef.current);
-        }
-
-        return () => {
-            if (observerRef.current) {
-                observerRef.current.disconnect();
-            }
-        };
-    }, [loadMore, hasMore, isLoading]);
+    // Manual Load More Implementation - Observer removed
 
     // Handle horizon change
     const handleHorizonChange = async (newValue: number) => {
-        setHorizonValue(newValue);
+        setHorizon(newValue);
 
         if (sessionId) {
             try {
@@ -163,7 +146,8 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                 'topic',
                 'General Discovery',
                 firebaseUid,
-                activeFilter === 'ALL' ? 'ALL_NOTES' : activeFilter
+                activeFilter === 'ALL' ? undefined : activeFilter,
+                activeCategory || undefined
             );
 
             setTopicLabel(result.topic_label);
@@ -190,6 +174,50 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
         } finally {
             setIsLoading(false);
             setIsJumping(false);
+        }
+    };
+
+    const handleCategoryChange = (category: string | null) => {
+        if (category === activeCategory) return;
+
+        setActiveCategory(category);
+
+        if (sessionId) {
+            setIsLoading(true);
+            resetFlowAnchor(
+                sessionId,
+                'topic',
+                'General Discovery',
+                firebaseUid || '',
+                activeFilter === 'ALL' ? undefined : activeFilter,
+                category || undefined
+            ).then((resp) => {
+                setCards([]);
+                setTopicLabel(resp.topic_label);
+                setPivotInfo(resp.pivot_info || null);
+                setHasMore(true);
+                // Kick off loading for the new anchor
+                getNextFlowBatch({
+                    session_id: sessionId,
+                    firebase_uid: firebaseUid,
+                    batch_size: 5
+                }).then(nextBatch => {
+                    setCards(nextBatch.cards);
+                    setHasMore(nextBatch.has_more);
+                    if (nextBatch.pivot_info) {
+                        setPivotInfo(nextBatch.pivot_info);
+                    }
+                }).catch(err => {
+                    console.error("Failed to load initial batch after category pivot:", err);
+                    setError(err instanceof Error ? err.message : 'Failed to load cards after category change');
+                }).finally(() => {
+                    setIsLoading(false);
+                });
+            }).catch(err => {
+                console.error("Failed to pivot category:", err);
+                setError(err instanceof Error ? err.message : 'Failed to change category');
+                setIsLoading(false);
+            });
         }
     };
 
@@ -225,13 +253,23 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                             </div>
 
                             <div className="flow-badge">Knowledge Stream</div>
-                            <h2 className="flow-container__title">{topicLabel}</h2>
-                            <div className="flow-container__meta">
-                                <span className="meta-dot"></span>
-                                <span className="flow-container__subtitle">
-                                    {cards.length} thoughts explored
-                                </span>
-                            </div>
+
+                            {(activeFilter === 'ALL' || activeFilter === 'BOOKS') ? (
+                                <CategorySelector
+                                    activeCategory={activeCategory}
+                                    onCategoryChange={handleCategoryChange}
+                                />
+                            ) : (
+                                <>
+                                    <h2 className="flow-container__title">{topicLabel}</h2>
+                                    <div className="flow-container__meta">
+                                        <span className="meta-dot"></span>
+                                        <span className="flow-container__subtitle">
+                                            {cards.length} thoughts explored
+                                        </span>
+                                    </div>
+                                </>
+                            )}
                         </div>
                         {onClose && (
                             <button className="flow-container__close" onClick={onClose} title="Close Stream">
@@ -288,17 +326,27 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                             </div>
                         )}
 
-                        {/* Load More Trigger - Only render if we have cards or are loading */}
+                        {/* Manual Load More Trigger */}
                         {(cards.length > 0 || isLoading) && (
-                            <div ref={loadMoreRef} className="flow-container__load-more">
-                                {isLoading && (
-                                    <div className="flow-container__loader">
-                                        <div className="spinner" />
-                                        <span>{isJumping ? 'Jumping to something new...' : 'Exploring thoughts...'}</span>
+                            <div className="flow-container__load-more py-8 flex justify-center">
+                                {isLoading ? (
+                                    <div className="flex items-center gap-3 text-slate-500">
+                                        <div className="w-5 h-5 border-2 border-[#CC561E] border-t-transparent rounded-full animate-spin" />
+                                        <span className="text-sm font-medium">{isJumping ? 'Topic is shifting...' : 'Loading more thoughts...'}</span>
                                     </div>
+                                ) : (
+                                    hasMore && (
+                                        <button
+                                            onClick={loadMore}
+                                            className="px-8 py-3 bg-white border border-slate-200 hover:border-[#CC561E]/50 text-slate-700 hover:text-[#CC561E] font-medium rounded-full shadow-sm hover:shadow-md transition-all duration-300 flex items-center gap-2 group"
+                                        >
+                                            <span>Daha Fazla Göster</span>
+                                            <ChevronDown className="w-4 h-4 group-hover:translate-y-0.5 transition-transform" />
+                                        </button>
+                                    )
                                 )}
                                 {!hasMore && cards.length > 0 && (
-                                    <div className="flow-container__end">
+                                    <div className="text-center text-slate-400 text-sm py-4">
                                         <span>🎉 You've explored all related thoughts</span>
                                     </div>
                                 )}
@@ -338,12 +386,16 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                                 onFilterChange={setActiveFilter}
                             />
 
-                            <HorizonSlider
-                                value={horizonValue}
-                                onChange={handleHorizonChange}
-                                disabled={isLoading}
-                            />
+                            {/* Horizon Slider */}
+                            <div className="mb-0">
+                                <HorizonSlider
+                                    value={horizon}
+                                    onChange={handleHorizonChange}
+                                    disabled={isLoading}
+                                />
+                            </div>
 
+                            {/* Cards List */}
                             <button
                                 className="flow-sidebar__pivot-button"
                                 onClick={handleResetAnchor}
@@ -374,7 +426,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     height: 100%;
                     background: transparent;
                     position: relative;
-                    padding: 20px 0;
+                    padding: 24px;
                 }
 
                 .flow-container::before {
@@ -393,10 +445,12 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
 
                 .flow-layout {
                     display: grid;
-                    grid-template-columns: 1fr 280px;
-                    gap: 32px;
+                    grid-template-columns: 1fr 300px;
+                    gap: 64px;
                     align-items: flex-start;
                     padding-top: 20px;
+                    max-width: 1100px;
+                    margin: 0 auto;
                 }
 
                 @media (max-width: 1024px) {
