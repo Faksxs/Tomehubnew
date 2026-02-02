@@ -986,7 +986,6 @@ class FlowService:
 
                     # Apply Category Filter
                     sql, params = self._apply_category_filter(sql, params, category)
-
                     sql += """
                         AND id NOT IN (
                             SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
