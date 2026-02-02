@@ -27,9 +27,10 @@ Current Data:
 {json_data}
 
 CRITICAL LANGUAGE INSTRUCTION:
-1. DETECT the language of the book title and author.
-2. IF the book is clearly English, generate 'summary' and 'tags' in ENGLISH.
-3. IF the book is Turkish OR the language is unclear/ambiguous, generate 'summary' and 'tags' in TURKISH (Default).
+1. DETECT the language of the book TITLE and AUTHOR.
+2. IF the book is clearly English (e.g., 'The Great Gatsby'), generate 'summary' and 'tags' in ENGLISH.
+3. IF the book is Turkish (e.g., 'Hayatın Anlamı', 'Sabahattin Ali') OR the language is ambiguous, generate 'summary' and 'tags' in TURKISH. 
+4. DO NOT mix languages. For a Turkish book, the summary and ALL tags must be in Turkish.
 
 Return the COMPLETE updated JSON object.
 - Ensure 'summary' is detailed (at least 3 sentences).
@@ -47,7 +48,9 @@ Return ONLY valid JSON. No markdown.
 """
 
 PROMPT_GENERATE_TAGS = """
-Generate 3-5 relevant tags for this note. Return ONLY a JSON array of strings.
+Generate 3-5 relevant tags for this note. 
+CRITICAL: The tags MUST be in the same language as the note content (e.g., if note is Turkish, tags must be Turkish).
+Return ONLY a JSON array of strings.
 
 Note: "{note_content}"
 """
@@ -62,7 +65,8 @@ Return ONLY the URL string. If not found, return "null".
 """
 
 PROMPT_ANALYZE_HIGHLIGHTS = """
-Analyze these book highlights and provide a concise summary of the key themes and insights:
+Analyze these book highlights and provide a concise summary of the key themes and insights.
+CRITICAL: The summary MUST be in the same language as the highlights (Default to Turkish if mixed).
 
 {highlights_text}
 

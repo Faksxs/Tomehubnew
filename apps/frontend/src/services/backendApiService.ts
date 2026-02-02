@@ -183,7 +183,8 @@ export async function ingestDocument(
     title: string,
     author: string,
     firebaseUid: string,
-    bookId?: string
+    bookId?: string,
+    tags?: string
 ): Promise<IngestResponse> {
     if (!firebaseUid) {
         throw new Error('User must be authenticated to ingest documents');
@@ -196,6 +197,9 @@ export async function ingestDocument(
     formData.append('firebase_uid', firebaseUid);
     if (bookId) {
         formData.append('book_id', bookId);
+    }
+    if (tags) {
+        formData.append('tags', tags);
     }
 
     const response = await fetch(`${API_BASE_URL}/api/ingest`, {

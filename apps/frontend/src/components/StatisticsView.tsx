@@ -2,6 +2,7 @@
 import React from 'react';
 import { LibraryItem } from '../types';
 import { Book, FileText, Globe, PenTool, Quote, StickyNote, PieChart, CheckCircle, Clock, BookOpen, Archive, AlertTriangle } from 'lucide-react';
+import { CATEGORIES } from './CategorySelector';
 
 interface StatisticsViewProps {
     items: LibraryItem[];
@@ -155,6 +156,50 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({ items }) => {
                         </div>
                     </div>
                 </div>
+            </div>
+
+            {/* Category Distribution */}
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <Archive size={20} className="text-[#CC561E]" />
+                        Category Distribution
+                    </h3>
+                    <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded-full">
+                        {books.length} Total Books
+                    </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {CATEGORIES.map(category => {
+                        const count = books.filter(b => b.tags?.includes(category)).length;
+                        const percentage = books.length > 0 ? (count / books.length) * 100 : 0;
+
+                        return (
+                            <div key={category} className="space-y-2 group">
+                                <div className="flex justify-between items-center text-sm">
+                                    <span className="font-semibold text-slate-700 group-hover:text-[#CC561E] transition-colors">{category}</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-slate-400 text-xs">{percentage.toFixed(0)}%</span>
+                                        <span className="font-bold text-slate-900">{count}</span>
+                                    </div>
+                                </div>
+                                <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                                    <div
+                                        className="bg-[#CC561E] h-full rounded-full transition-all duration-1000 ease-out opacity-80 group-hover:opacity-100"
+                                        style={{ width: `${percentage}%` }}
+                                    ></div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {books.length === 0 && (
+                    <div className="py-10 text-center">
+                        <p className="text-slate-400 text-sm italic">No books in library to categorize.</p>
+                    </div>
+                )}
             </div>
         </div>
     );
