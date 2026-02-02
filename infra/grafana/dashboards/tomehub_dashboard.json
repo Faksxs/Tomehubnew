@@ -30,8 +30,50 @@
         "y": 0
       },
       "id": 16,
-      "title": "System Health",
+      "title": "System Health & Memory",
       "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 2
+              }
+            ]
+          }
+        }
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 4,
+        "x": 0,
+        "y": 1
+      },
+      "id": 22,
+      "title": "Circuit Breakers",
+      "targets": [
+        {
+          "expr": "tomehub_circuit_breaker_state",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "type": "gauge"
     },
     {
       "datasource": "Prometheus",
@@ -42,7 +84,7 @@
       },
       "gridPos": {
         "h": 6,
-        "w": 8,
+        "w": 10,
         "x": 4,
         "y": 1
       },
@@ -57,6 +99,24 @@
       "type": "timeseries"
     },
     {
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 6,
+        "w": 10,
+        "x": 14,
+        "y": 1
+      },
+      "id": 24,
+      "title": "AI Service Latency (Internal)",
+      "targets": [
+        {
+          "expr": "rate(tomehub_ai_service_duration_seconds_sum[5m]) / rate(tomehub_ai_service_duration_seconds_count[5m])",
+          "legendFormat": "{{service}} ({{operation}})"
+        }
+      ],
+      "type": "timeseries"
+    },
+    {
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -64,7 +124,7 @@
         "y": 7
       },
       "id": 18,
-      "title": "Epistemic Quality (Judge AI)",
+      "title": "Database Resilience",
       "type": "row"
     },
     {
@@ -74,6 +134,112 @@
         "w": 12,
         "x": 0,
         "y": 8
+      },
+      "id": 26,
+      "title": "DB Pool Utilization (Read)",
+      "targets": [
+        {
+          "expr": "tomehub_db_pool_utilization{pool_type=\"read\", metric_type=\"active\"}",
+          "legendFormat": "Active"
+        },
+        {
+          "expr": "tomehub_db_pool_utilization{pool_type=\"read\", metric_type=\"max\"}",
+          "legendFormat": "Max Cap"
+        }
+      ],
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "id": 28,
+      "title": "DB Pool Utilization (Write)",
+      "targets": [
+        {
+          "expr": "tomehub_db_pool_utilization{pool_type=\"write\", metric_type=\"active\"}",
+          "legendFormat": "Active"
+        },
+        {
+          "expr": "tomehub_db_pool_utilization{pool_type=\"write\", metric_type=\"max\"}",
+          "legendFormat": "Max Cap"
+        }
+      ],
+      "type": "timeseries"
+    },
+    {
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "id": 20,
+      "title": "Ingestion Pipeline",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 17
+      },
+      "id": 30,
+      "title": "Ingestion Success vs Fail",
+      "targets": [
+        {
+          "expr": "sum(increase(tomehub_ingestion_duration_seconds_count{status=\"success\"}[1h]))",
+          "legendFormat": "Success"
+        },
+        {
+          "expr": "sum(increase(tomehub_ingestion_duration_seconds_count{status=\"fail\"}[1h]))",
+          "legendFormat": "Fail"
+        }
+      ],
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 17
+      },
+      "id": 32,
+      "title": "Ingestion Latency Distribution",
+      "targets": [
+        {
+          "expr": "sum(rate(tomehub_ingestion_duration_seconds_bucket[5m])) by (le)",
+          "format": "heatmap"
+        }
+      ],
+      "type": "heatmap"
+    },
+    {
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 25
+      },
+      "id": 34,
+      "title": "Epistemic Quality (Judge AI)",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 26
       },
       "id": 6,
       "title": "Judge AI Score Distribution",
@@ -91,7 +257,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 8
+        "y": 26
       },
       "id": 8,
       "title": "Judge Verdicts (Pass vs Regenerate)",
@@ -108,53 +274,6 @@
         {
           "expr": "sum(increase(tomehub_judge_score_count{verdict=\"DECLINE\"}[1h]))",
           "legendFormat": "DECLINE"
-        }
-      ]
-    },
-    {
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 16
-      },
-      "id": 20,
-      "title": "Search & Graph Performance",
-      "type": "row"
-    },
-    {
-      "datasource": "Prometheus",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 17
-      },
-      "id": 10,
-      "title": "Graph Bridges Found per Query",
-      "type": "heatmap",
-      "targets": [
-        {
-          "expr": "sum(rate(tomehub_graph_bridges_found_bucket[5m])) by (le)",
-          "format": "heatmap"
-        }
-      ]
-    },
-    {
-      "datasource": "Prometheus",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 17
-      },
-      "id": 12,
-      "title": "Result Diversity (Unique Sources)",
-      "type": "heatmap",
-      "targets": [
-        {
-          "expr": "sum(rate(tomehub_search_diversity_source_count_bucket[5m])) by (le)",
-          "format": "heatmap"
         }
       ]
     }
@@ -174,8 +293,8 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "TomeHub Epistemic Dashboard",
+  "title": "TomeHub Unified Observability",
   "uid": "tomehub-main",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

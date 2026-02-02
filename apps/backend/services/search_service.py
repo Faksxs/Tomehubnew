@@ -19,7 +19,7 @@ import oracledb
 import google.generativeai as genai
 
 # Import TomeHub services
-from services.embedding_service import get_embedding
+from services.embedding_service import get_embedding, batch_get_embeddings
 from services.epistemic_service import (
     extract_core_concepts, 
     classify_chunk, 
@@ -53,7 +53,7 @@ from services.smart_search_service import (
 )
 
 # Import Graph Service
-from services.graph_service import get_graph_candidates
+from services.graph_service import get_graph_candidates, GraphRetrievalError
 
 # Import Re-rank Service
 from services.rerank_service import rerank_candidates
@@ -81,7 +81,7 @@ def get_graph_enriched_context(base_results: List[Dict], firebase_uid: str) -> s
 
         bridges = []
         
-        with DatabaseManager.get_connection() as conn:
+        with DatabaseManager.get_read_connection() as conn:
             with conn.cursor() as cursor:
                 # 1. BATCH FETCH: Concepts for these chunks
                 # Dynamically build bind variables for IN clause
@@ -162,7 +162,7 @@ def get_book_context(book_id: str, query_text: str, firebase_uid: str) -> List[D
     print(f"\n[CTX] Fetching context for Book: {book_id} | Query: {query_text}")
     
     try:
-        with DatabaseManager.get_connection() as conn:
+        with DatabaseManager.get_read_connection() as conn:
             with conn.cursor() as cursor:
                 # 1. Generate Embeddings & Patterns
                 query_embedding = get_embedding(query_text)
@@ -229,7 +229,7 @@ def search_similar_content(query_text: str, firebase_uid: str, top_k: int = 5) -
     logger.info("Hybrid Search Started", extra={"query": query_text, "uid": firebase_uid})
     
     try:
-        with DatabaseManager.get_connection() as connection:
+        with DatabaseManager.get_read_connection() as connection:
             with connection.cursor() as cursor:
                 # 1. QUERY EXPANSION
                 t0 = time.time()
@@ -247,9 +247,12 @@ def search_similar_content(query_text: str, firebase_uid: str, top_k: int = 5) -
                 t1 = time.time()
                 candidate_pool = {} # content_hash -> row_data
                 
-                for q in set(queries): # Unique queries only
+                # B3: Batch get embeddings for all query variations (N+1 Elimination)
+                unique_queries = list(set(queries))
+                q_embeddings = batch_get_embeddings(unique_queries, task_type="retrieval_query")
+                
+                for q, q_emb in zip(unique_queries, q_embeddings):
                     # A. Vector Retrieval
-                    q_emb = get_embedding(q)
                     if q_emb:
                         vector_sql = """
                         SELECT content_chunk, page_number, title, source_type,
@@ -522,7 +525,7 @@ def rewrite_query_with_history(question: str, history: List[Dict]) -> str:
         print(f"[WARNING] Query rewriting failed: {e}")
         return question
 
-def get_rag_context(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, mode: str = 'STANDARD', resource_type: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def get_rag_context(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, mode: str = 'STANDARD', resource_type: Optional[str] = None, limit: Optional[int] = None, offset: int = 0) -> Optional[Dict[str, Any]]:
     """
     Retrieves and processes context for RAG.
     Shared by Legacy Search and Dual-AI Chat.
@@ -558,16 +561,18 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         # Pass intent to guide filtering (Short/Long bias)
         # Returns (results, metadata)
         search_depth = 'deep' if mode == 'EXPLORER' else 'normal'
-        return perform_smart_search(effective_query, firebase_uid, intent=intent, book_id=context_book_id, search_depth=search_depth, resource_type=resource_type)
+        return perform_smart_search(effective_query, firebase_uid, intent=intent, book_id=context_book_id, search_depth=search_depth, resource_type=resource_type, limit=limit, offset=offset)
         
     def run_graph_search():
         try:
-            return get_graph_candidates(effective_query, firebase_uid)
+            return get_graph_candidates(effective_query, firebase_uid, limit=limit or 15, offset=offset)
         except:
             return []
 
     graph_results = []
     question_results = []
+    
+    degradations = []
     
     # Replaced Sentry Spans with Standard Threading
     with ThreadPoolExecutor(max_workers=3) as executor:
@@ -581,14 +586,21 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
             vec_meta = meta_v
             search_log_id = meta_v.get('search_log_id')
         except Exception as e:
-            print(f"[ERROR] Vector: {e}")
+            logger.error(f"Vector search failed: {e}")
+            degradations.append({"component": "VECTOR_SEARCH", "reason": str(e), "severity": "HIGH"})
             vec_meta = {}
             search_log_id = None
             
         try:
             graph_results = future_graph.result()
+        except GraphRetrievalError as gre:
+            logger.error(f"Graph retrieval failed (Fail Loud): {gre}")
+            degradations.append({"component": "GRAPH_SERVICE", "reason": str(gre), "severity": "HIGH"})
+            graph_results = []
         except Exception as e:
-            print(f"[ERROR] Graph: {e}")
+            logger.error(f"Graph retrieval unexpected error: {e}")
+            degradations.append({"component": "GRAPH_SERVICE", "reason": str(e), "severity": "HIGH"})
+            graph_results = []
 
     # Merge Results
     if question_results:
@@ -714,18 +726,23 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         "level_counts": {
             'A': sum(1 for c in final_chunks if c.get('epistemic_level') == 'A'),
             'B': sum(1 for c in final_chunks if c.get('epistemic_level') == 'B'),
+        },
+        "metadata": {
+            "degradations": degradations,
+            "status": "partial" if degradations else "healthy",
+            "search_log_id": search_log_id
         }
     }
 
 
-def generate_answer(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, session_summary: str = "") -> Tuple[Optional[str], Optional[List[Dict]]]:
+def generate_answer(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, session_summary: str = "", limit: Optional[int] = None, offset: int = 0) -> Tuple[Optional[str], Optional[List[Dict]], Dict]:
     """
     RAG generation pipeline with Memory Layer support.
     """
     # 1. Retrieve Context
-    ctx = get_rag_context(question, firebase_uid, context_book_id, chat_history=chat_history)
+    ctx = get_rag_context(question, firebase_uid, context_book_id, chat_history=chat_history, limit=limit, offset=offset)
     if not ctx:
-        return "Üzgünüm, şu an cevap üretemiyorum. İlgili içerik bulunamadı.", []
+        return "Üzgünüm, şu an cevap üretemiyorum. İlgili içerik bulunamadı.", [], {"status": "failed"}
         
     chunks = ctx['chunks']
     answer_mode = ctx['mode']
@@ -791,10 +808,14 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
         model = genai.GenerativeModel('gemini-flash-latest')
         response = model.generate_content(prompt)
         answer = response.text if response else "Cevap üretilemedi."
-        return answer, sources
+        
+        # Merge degradations from context
+        meta = ctx.get('metadata', {})
+        
+        return answer, sources, meta
     except Exception as e:
         print(f"[ERROR] Generate Answer failed: {e}")
-        return "Bir hata oluştu.", sources
+        return "Bir hata oluştu.", sources, {"status": "error", "error": str(e)}
 
 
 # ============================================================================

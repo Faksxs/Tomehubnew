@@ -298,7 +298,7 @@ class FlowService:
         3. Epistemic Gaps (High centrality concepts unseen by this user)
         """
         try:
-            with DatabaseManager.get_connection() as conn:
+            with DatabaseManager.get_read_connection() as conn:
                 with conn.cursor() as cursor:
                     # PRIORITY 1: Epistemic Gaps (High centrality concepts NOT in seen history)
                     # This satisfies "hiç dokunulmamış ama merkezi concept"
@@ -464,7 +464,7 @@ class FlowService:
         Returns: (vector, label, resolved_id)
         """
         try:
-            with DatabaseManager.get_connection() as conn:
+            with DatabaseManager.get_read_connection() as conn:
                 with conn.cursor() as cursor:
                     if anchor_type == "note":
                         # Fetch the note's content and existing vector
@@ -641,7 +641,7 @@ class FlowService:
         sql += " ORDER BY distance ASC FETCH FIRST :p_limit ROWS ONLY "
         
         cards = []
-        with DatabaseManager.get_connection() as conn:
+        with DatabaseManager.get_read_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(sql, params)
                 for row in cursor.fetchall():
@@ -731,7 +731,7 @@ class FlowService:
 
     def _execute_simple_fetch(self, sql: str, params: dict, reason_prefix: str, zone: int) -> List[FlowCard]:
          cards = []
-         with DatabaseManager.get_connection() as conn:
+         with DatabaseManager.get_read_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(sql, params)
                 for row in cursor.fetchall():
@@ -909,7 +909,7 @@ class FlowService:
         
         candidates = []
         try:
-            with DatabaseManager.get_connection() as conn:
+            with DatabaseManager.get_read_connection() as conn:
                 with conn.cursor() as cursor:
                     if zone == 1:
                         # ZONE 1: Tight Context (Same book, nearby pages)
@@ -957,7 +957,7 @@ class FlowService:
         """
         cards = []
         try:
-            with DatabaseManager.get_connection() as conn:
+            with DatabaseManager.get_read_connection() as conn:
                 with conn.cursor() as cursor:
                     sql = """
                         SELECT id, content_chunk, title, page_number, source_type
@@ -1528,7 +1528,7 @@ class FlowService:
             result[cid] = {'vector': None, 'is_seen': False}
 
         try:
-            with DatabaseManager.get_connection() as conn:
+            with DatabaseManager.get_read_connection() as conn:
                 with conn.cursor() as cursor:
                     # Create bind variables for IN clause (safely)
                     # Oracle supports standard IN with list?
@@ -1573,7 +1573,7 @@ class FlowService:
     def _record_seen_chunk(self, firebase_uid: str, session_id: str, chunk_id: str):
         """Persist seen chunk to Database for cross-session global history and decay."""
         try:
-            with DatabaseManager.get_connection() as conn:
+            with DatabaseManager.get_write_connection() as conn:
                 with conn.cursor() as cursor:
                     # Ensure table exists/columns exist (In Oracle we'd usually have this pre-created)
                     cursor.execute("""
@@ -1588,7 +1588,7 @@ class FlowService:
     def _is_globally_seen(self, firebase_uid: str, chunk_id: str, days: int = 30) -> bool:
         """Check if chunk was seen by this user globally within X days (Decay)."""
         try:
-            with DatabaseManager.get_connection() as conn:
+            with DatabaseManager.get_read_connection() as conn:
                 with conn.cursor() as cursor:
                     # Note: Oracle date subtraction 'TIMESTAMP - NUMBER' results in days
                     cursor.execute("""
@@ -1605,7 +1605,7 @@ class FlowService:
         Retrieve the embedding vector for a chunk from the database.
         """
         try:
-            with DatabaseManager.get_connection() as conn:
+            with DatabaseManager.get_read_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
                         SELECT VEC_EMBEDDING FROM TOMEHUB_CONTENT WHERE id = :p_id

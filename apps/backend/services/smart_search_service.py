@@ -170,7 +170,7 @@ def score_with_bm25(documents: list[str], query: str) -> list[float]:
 from services.search_system.orchestrator import SearchOrchestrator
 from services.search_system.search_utils import compute_rrf # Re-export for compatibility
 
-def perform_smart_search(query, firebase_uid, book_id=None, intent='SYNTHESIS', search_depth='normal', resource_type=None):
+def perform_smart_search(query, firebase_uid, book_id=None, intent='SYNTHESIS', search_depth='normal', resource_type=None, limit=None, offset=0):
     """
     Delegates to the new SearchOrchestrator (Phase 3 Architecture).
     search_depth: 'normal' (default, limit 50) or 'deep' (limit 100)
@@ -179,12 +179,13 @@ def perform_smart_search(query, firebase_uid, book_id=None, intent='SYNTHESIS', 
         from services.cache_service import get_cache
         cache = get_cache()
         
-        # Determine limit based on depth
-        limit = 100 if search_depth == 'deep' else 50
+        # Determine limit based on depth if not explicitly provided
+        if limit is None:
+            limit = 100 if search_depth == 'deep' else 50
         
         # Initialize Orchestrator with embedding function and cache
         orchestrator = SearchOrchestrator(embedding_fn=get_embedding, cache=cache)
-        result = orchestrator.search(query, firebase_uid, limit=limit, book_id=book_id, intent=intent, resource_type=resource_type)
+        result = orchestrator.search(query, firebase_uid, limit=limit, offset=offset, book_id=book_id, intent=intent, resource_type=resource_type)
         
         if result is None:
             print("[ERROR] Orchestrator returned None")

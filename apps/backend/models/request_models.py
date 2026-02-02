@@ -6,6 +6,8 @@ class SearchRequest(BaseModel):
     firebase_uid: str
     book_id: Optional[str] = None
     mode: Optional[str] = "STANDARD" # STANDARD or EXPLORER
+    limit: Optional[int] = 5
+    offset: Optional[int] = 0
     
 class SearchResponse(BaseModel):
     answer: str
@@ -68,6 +70,8 @@ class ChatRequest(BaseModel):
     book_id: Optional[str] = None # Optional focus context
     resource_type: Optional[str] = None # Layer 4 Filter: BOOK, ARTICLE, WEBSITE, PERSONAL_NOTE
     mode: Optional[str] = "STANDARD" # STANDARD (Default) or EXPLORER
+    limit: Optional[int] = 5
+    offset: Optional[int] = 0
 
 class ChatResponse(BaseModel):
     answer: str
@@ -76,4 +80,5 @@ class ChatResponse(BaseModel):
     timestamp: str
     conversation_state: Optional[dict] = None  # Structured state for Context Bar
     thinking_history: Optional[List[Any]] = None  # Process logs for UI
+    metadata: Optional[dict] = None  # Degradation info and other metadata
 

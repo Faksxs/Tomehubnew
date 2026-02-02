@@ -254,7 +254,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
 
                             <div className="flow-badge">Knowledge Stream</div>
 
-                            {(activeFilter === 'ALL' || activeFilter === 'BOOKS') ? (
+                            {(activeFilter === 'ALL' || activeFilter === 'BOOK') ? (
                                 <CategorySelector
                                     activeCategory={activeCategory}
                                     onCategoryChange={handleCategoryChange}

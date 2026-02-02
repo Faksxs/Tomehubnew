@@ -235,7 +235,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, on
     if (selectedPdf && user) {
       setIsIngesting(true);
       try {
-        await ingestDocument(selectedPdf, formData.title, formData.author, user.uid, newBookId);
+        await ingestDocument(selectedPdf, formData.title, formData.author, user.uid, newBookId, formData.tags);
       } catch (err) {
         console.error("PDF Ingestion failed:", err);
         // We still continue to save the metadata even if PDF fails

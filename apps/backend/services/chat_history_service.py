@@ -16,7 +16,7 @@ logger = logging.getLogger("chat_history_service")
 def create_session(firebase_uid: str, title: str = "New Chat") -> int:
     """Create a new chat session and return its ID."""
     try:
-        with DatabaseManager.get_connection() as conn:
+        with DatabaseManager.get_write_connection() as conn:
             with conn.cursor() as cursor:
                 id_var = cursor.var(int)
                 cursor.execute("""
@@ -35,7 +35,7 @@ def add_message(session_id: int, role: str, content: str, citations: Optional[Li
     """Save a message to the history."""
     try:
         citations_json = json.dumps(citations or [], ensure_ascii=False)
-        with DatabaseManager.get_connection() as conn:
+        with DatabaseManager.get_write_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
                     INSERT INTO TOMEHUB_CHAT_MESSAGES (SESSION_ID, ROLE, CONTENT, CITATIONS)
@@ -57,7 +57,7 @@ def get_session_history(session_id: int, limit: int = 10) -> List[Dict]:
     """Retrieve last N messages for context."""
     messages = []
     try:
-        with DatabaseManager.get_connection() as conn:
+        with DatabaseManager.get_read_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
                     SELECT ROLE, CONTENT, CITATIONS
@@ -90,7 +90,7 @@ def get_session_context(session_id: int) -> Dict:
         "recent_messages": []
     }
     try:
-        with DatabaseManager.get_connection() as conn:
+        with DatabaseManager.get_read_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("SELECT RUNNING_SUMMARY FROM TOMEHUB_CHAT_SESSIONS WHERE ID = :p_sid", {"p_sid": session_id})
                 row = cursor.fetchone()
@@ -106,7 +106,7 @@ def get_session_context(session_id: int) -> Dict:
 def update_session_summary(session_id: int, summary: str):
     """Update the running summary of the session (legacy, still supports text)."""
     try:
-        with DatabaseManager.get_connection() as conn:
+        with DatabaseManager.get_write_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
                     UPDATE TOMEHUB_CHAT_SESSIONS 

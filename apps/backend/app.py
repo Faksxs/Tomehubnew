@@ -11,6 +11,7 @@ Date: 2026-01-18
 import sys
 import os
 import uvicorn
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Request, BackgroundTasks
@@ -57,6 +58,9 @@ from slowapi.errors import RateLimitExceeded
 from config import settings
 from infrastructure.db_manager import DatabaseManager
 from services.cache_service import get_cache, generate_cache_key
+from services.monitoring import DB_POOL_UTILIZATION, CIRCUIT_BREAKER_STATE
+from services.memory_monitor_service import MemoryMonitor
+from services.embedding_service import get_circuit_breaker_status
 
 # Configure Sentry - REPLACED BY LOKI (Standard Logging)
 # (Sentry code removed)
@@ -86,10 +90,43 @@ logging.getLogger().addHandler(fileHandler)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Init Helper Services
+    logger.info("🚀 Startup: Initializing TomeHub API...")
+    
+    # 0. Validate Model Versions (Phase 3)
+    logger.info("Validating model versions...")
+    try:
+        # This will raise ValueError if versions are invalid or not bumped
+        settings._validate_model_versions()
+        logger.info(f"✓ Model versions validated successfully")
+    except ValueError as e:
+        error_msg = f"❌ Configuration Error: {e}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg)
+    
+    # 1. Check Firebase Auth
+    logger.info(f"Environment: {settings.ENVIRONMENT}")
+    if settings.ENVIRONMENT == "production":
+        if not settings.FIREBASE_READY:
+            error_msg = (
+                "CRITICAL: Firebase Admin SDK not initialized. "
+                "Set GOOGLE_APPLICATION_CREDENTIALS and ensure credentials file exists. "
+                "Firebase Auth is required for production."
+            )
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        logger.info("✓ Firebase Auth ready for production")
+    else:
+        if settings.FIREBASE_READY:
+            logger.info("✓ Firebase Auth configured (development mode)")
+        else:
+            logger.warning("⚠️ Firebase Auth not configured (OK for local development only)")
+    
+    # 2. Init Database Pool
     logger.info("Starting up: Initializing DB Pool...")
     DatabaseManager.init_pool()
+    logger.info(f"✓ Database pools initialized (Read Max={settings.DB_READ_POOL_MAX}, Write Max={settings.DB_WRITE_POOL_MAX})")
     
-    # Initialize Cache
+    # 3. Initialize Cache
     if settings.CACHE_ENABLED:
         logger.info("Starting up: Initializing Cache...")
         from services.cache_service import init_cache
@@ -99,14 +136,59 @@ async def lifespan(app: FastAPI):
             redis_url=settings.REDIS_URL
         )
         app.state.cache = cache
-        logger.info("Cache initialized successfully")
+        logger.info("✓ Cache initialized successfully")
     else:
         logger.info("Cache disabled (CACHE_ENABLED=false)")
         app.state.cache = None
     
+    # 4. Start Memory Monitor (Task A2)
+    logger.info("Starting up: Initializing Memory Monitor...")
+    from services.auto_restart_service import auto_restart_manager
+    memory_task = asyncio.create_task(auto_restart_manager.monitor())
+    app.state.memory_task = memory_task
+    logger.info("✓ Memory monitor started")
+    
+    # 5. Start Background Metrics Updater (Phase D)
+    async def metrics_background_updater():
+        """Periodically updates custom tech Gauges for Prometheus."""
+        logger.info("Metrics Updater Background Task started")
+        while True:
+            try:
+                # DB Pool Stats
+                stats = DatabaseManager.get_pool_stats()
+                for pool_type in ["read", "write"]:
+                    pool = stats[pool_type]
+                    DB_POOL_UTILIZATION.labels(pool_type=pool_type, metric_type="active").set(pool["active"])
+                    DB_POOL_UTILIZATION.labels(pool_type=pool_type, metric_type="opened").set(pool["opened"])
+                    DB_POOL_UTILIZATION.labels(pool_type=pool_type, metric_type="max").set(pool["max"])
+                
+                # Circuit Breaker Status
+                cb_status = get_circuit_breaker_status()
+                state_map = {"CLOSED": 0, "HALF_OPEN": 1, "OPEN": 2}
+                CIRCUIT_BREAKER_STATE.labels(service="embedding").set(state_map.get(cb_status["state"], 0))
+                
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in metrics updater: {e}")
+                await asyncio.sleep(10)
+
+    metrics_task = asyncio.create_task(metrics_background_updater())
+    app.state.metrics_task = metrics_task
+    logger.info("✓ Metrics updater started (10s interval)")
+    
     yield
     # Shutdown: Clean up
-    logger.info("Shutting down: Closing DB Pool...")
+    logger.info("🛑 Shutdown: Cancelling background tasks...")
+    memory_task.cancel()
+    metrics_task.cancel()
+    try:
+        await asyncio.gather(memory_task, metrics_task, return_exceptions=True)
+    except asyncio.CancelledError:
+        pass
+    
+    logger.info("🛑 Shutdown: Closing DB Pool...")
     DatabaseManager.close_pool()
 
 # Initialize FastAPI
@@ -118,7 +200,17 @@ app = FastAPI(
 )
 
 # Initialize Limiter
-limiter = Limiter(key_func=get_remote_address)
+# Custom key function for rate limiting (User ID > IP)
+def get_rate_limit_key(request: Request):
+    # Try to get UID from header (set by auth middleware or client)
+    # Note: Using header instead of body for standard limiter compatibility
+    uid = request.headers.get("X-Firebase-UID")
+    if uid:
+        return uid
+    return get_remote_address(request)
+
+# Initialize Limiter
+limiter = Limiter(key_func=get_rate_limit_key)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -134,12 +226,12 @@ app.add_middleware(
 )
 
 # Include Layer 4 Flow Routes (MUST BE BEFORE Instrumentator)
-# Include Layer 4 Flow Routes (MUST BE BEFORE Instrumentator)
 # We import explicitly to fail fast if there's an issue
 print("[FLOW] Importing flow_routes...")
-from routes.flow_routes import router as flow_router
-app.include_router(flow_router)
-print(f"[FLOW] Router registered with {len(flow_router.routes)} routes")
+# Include Flow Router (Layer 4)
+from routes import flow_routes
+app.include_router(flow_routes.router)
+print(f"[FLOW] Router registered with {len(flow_routes.router.routes)} routes")
 
 # Prometheus Instrumentation (must be AFTER all routers are added)
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -160,6 +252,7 @@ async def health_check():
         "version": "2.0.0",
         "timestamp": datetime.now().isoformat()
     }
+
 
 @app.get("/api/cache/status")
 async def cache_status():
@@ -194,129 +287,151 @@ async def cache_status():
             "error": str(e)
         }
 
+@app.get("/api/health/circuit-breaker")
+async def circuit_breaker_status():
+    """Check circuit breaker status for embedding API."""
+    try:
+        from services.embedding_service import get_circuit_breaker_status
+        status = get_circuit_breaker_status()
+        
+        return {
+            "status": "ok",
+            "circuit_breaker": status
+        }
+    except Exception as e:
+        logger.error(f"Error getting circuit breaker status: {e}")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+@app.get("/api/health/memory")
+async def health_memory():
+    """Get memory usage statistics and health status (Task A2)."""
+    try:
+        from services.memory_monitor_service import MemoryMonitor
+        
+        stats = MemoryMonitor.get_memory_stats()
+        status = MemoryMonitor.check_memory_health()
+        
+        return {
+            "status": "ok",
+            "memory": stats,
+            "health": status,
+            "health_emoji": MemoryMonitor.get_status_emoji(status)
+        }
+    except Exception as e:
+        logger.error(f"Error getting memory health: {e}")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+@app.get("/api/health/restart")
+async def health_restart():
+    """Get auto-restart status and memory pressure state (Task A2)."""
+    try:
+        from services.auto_restart_service import auto_restart_manager
+        
+        status = await auto_restart_manager.get_status()
+        
+        return status
+    except Exception as e:
+        logger.error(f"Error getting restart status: {e}")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
 # ============================================================================
 # SEARCH ENDPOINTS
 # ============================================================================
 
 @app.post("/api/search", response_model=SearchResponse)
-async def search(request: SearchRequest):
+@limiter.limit("100/minute")
+async def search(
+    request: Request,
+    search_request: SearchRequest,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+):
+    # Determine authoritative UID (JWT or request body in dev mode)
+    if firebase_uid_from_jwt:
+        # Production: JWT is authoritative
+        firebase_uid = firebase_uid_from_jwt
+        logger.info(f"Using JWT-verified UID: {firebase_uid}")
+    else:
+        # Development mode: use request body UID (with warning)
+        firebase_uid = search_request.firebase_uid
+        if settings.ENVIRONMENT == "development":
+            logger.warning(f"⚠️ Dev mode: Using unverified UID from request body: {firebase_uid}")
+        else:
+            logger.error("SECURITY: Auth failed but ENVIRONMENT != development. Rejecting request.")
+            raise HTTPException(status_code=401, detail="Authentication required")
+    
     # Log search start
-    print(f"\n[SEARCH] Started for UID: {request.firebase_uid}")
-    print(f"[SEARCH] Question: {request.question}")
+    print(f"\n[SEARCH] Started for UID: {firebase_uid}")
+    print(f"[SEARCH] Question: {search_request.question}")
     
     try:
         import asyncio
         from functools import partial
+        
         loop = asyncio.get_running_loop()
         
-        # Route based on mode:
-        # - STANDARD: Use fast legacy flow (original architecture)
-        # - EXPLORER: Use Dual-AI Orchestrator (new deep analysis)
-        use_explorer_mode = request.mode == 'EXPLORER'
+        # Run synchronous RAG search in thread pool
+        result = await loop.run_in_executor(
+            None, 
+            partial(
+                generate_answer, 
+                search_request.question, 
+                firebase_uid, 
+                search_request.book_id,
+                None, # chat_history
+                "", # session_summary
+                search_request.limit,
+                search_request.offset
+            )
+        )
         
-        if use_explorer_mode:
-            print("[SEARCH] Using Dual-AI Orchestrator Flow")
-            
-            # 1. Retrieve Context
-            rag_ctx = await loop.run_in_executor(
-                None, 
-                partial(
-                    get_rag_context, 
-                    request.question, 
-                    request.firebase_uid, 
-                    request.book_id,
-                    None, # chat_history
-                    request.mode # Pass mode
-                )
-            )
-            
-            if not rag_ctx:
-                return {
-                    "answer": "Üzgünüm, ilgili içerik bulunamadı.",
-                    "sources": [],
-                    "timestamp": datetime.now().isoformat()
-                }
-                
-            # 2. Evaluate & Generate
-            # For CITATION_SEEKING intent, override to QUOTE mode to show authorial definitions
-            # Otherwise, force EXPLORER mode if requested
-            intent = rag_ctx.get('intent', 'SYNTHESIS')
-            if intent == 'CITATION_SEEKING':
-                effective_mode = 'QUOTE'  # Show author quotes directly
-                print("[EXPLORER] CITATION_SEEKING detected - using QUOTE mode for authorial definitions")
-            elif request.mode == 'EXPLORER':
-                effective_mode = 'EXPLORER'
-            else:
-                effective_mode = rag_ctx['mode']
-            
-            result = await generate_evaluated_answer(
-                question=request.question,
-                chunks=rag_ctx['chunks'],
-                answer_mode=effective_mode,
-                confidence_score=rag_ctx['confidence'],
-                network_status=rag_ctx.get('network_status', 'IN_NETWORK')
-            )
-            
-            # 3. Format Response
-            sources = []
-            for c in rag_ctx['chunks']:
-                sources.append({
-                    'title': c.get('title', 'Unknown'),
-                    'page_number': c.get('page_number', 0),
-                    'similarity_score': c.get('score', 0)
-                })
-                
-            final_ans = result['final_answer']
-            verdict = result['metadata'].get('verdict')
-            
-            if verdict == "DECLINE":
-                 final_ans = f"[⚠️ Yetersiz Güvenilirlik] {final_ans}\n\n(Not: Bu cevap kalite standartlarını tam karşılamamış olabilir.)"
-            
-            return {
-                "answer": final_ans,
-                "sources": sources,
-                "timestamp": datetime.now().isoformat()
-            }
-            
-        else:
-            # Legacy Flow
-            answer, sources = await loop.run_in_executor(
-                None, 
-                partial(
-                    generate_answer, 
-                    request.question, 
-                    request.firebase_uid, 
-                    context_book_id=request.book_id
-                )
-            )
-            
-            print(f"[SEARCH] Finished. Sources found: {len(sources) if sources else 0}")
-            
-            if answer is None:
-                return {
-                    "answer": "I couldn't find any relevant information.",
-                    "sources": [],
-                    "timestamp": datetime.now().isoformat()
-                }
-                
-            return {
-                "answer": answer,
-                "sources": sources or [],
-                "timestamp": datetime.now().isoformat()
-            }
+        # Unpack result (answer, sources, metadata)
+        answer, sources, metadata = result
         
+        return {
+            "answer": answer,
+            "sources": sources or [],
+            "timestamp": datetime.now().isoformat(),
+            "metadata": metadata
+        }
     except Exception as e:
         print(f"[ERROR] Search failed: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/chat", response_model=ChatResponse)
-async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks):
+@limiter.limit("50/minute")
+async def chat_endpoint(
+    request: Request,
+    chat_request: ChatRequest,
+    background_tasks: BackgroundTasks,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+):
     """
     Stateful Chat Endpoint (Memory Layer).
     Orchestrates session, history, and RAG search.
     """
-    print(f"\n[CHAT] Started for Session: {request.session_id} UID: {request.firebase_uid}")
+    # Determine authoritative UID (JWT or request body in dev mode)
+    if firebase_uid_from_jwt:
+        firebase_uid = firebase_uid_from_jwt
+        logger.info(f"Using JWT-verified UID: {firebase_uid}")
+    else:
+        firebase_uid = chat_request.firebase_uid
+        if settings.ENVIRONMENT == "development":
+            logger.warning(f"⚠️ Dev mode: Using unverified UID from request body: {firebase_uid}")
+        else:
+            logger.error("SECURITY: Auth failed but ENVIRONMENT != development. Rejecting request.")
+            raise HTTPException(status_code=401, detail="Authentication required")
+    
+    print(f"\n[CHAT] Started for Session: {chat_request.session_id} UID: {firebase_uid}")
     
     try:
         import asyncio
@@ -328,10 +443,10 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks)
         loop = asyncio.get_running_loop()
         
         # 1. Handle Session Creation
-        session_id = request.session_id
+        session_id = chat_request.session_id
         if not session_id:
-            new_title = f"Chat: {request.message[:40]}..."
-            session_id = await loop.run_in_executor(None, create_session, request.firebase_uid, new_title)
+            new_title = f"Chat: {chat_request.message[:40]}..."
+            session_id = await loop.run_in_executor(None, create_session, firebase_uid, new_title)
             if not session_id:
                 raise HTTPException(status_code=500, detail="Failed to create session")
             
@@ -339,18 +454,19 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks)
         ctx_data = await loop.run_in_executor(None, get_session_context, session_id)
         
         # 3. Save User Message
-        await loop.run_in_executor(None, add_message, session_id, 'user', request.message)
+        await loop.run_in_executor(None, add_message, session_id, 'user', chat_request.message)
         
         # 4. Generate Answer (Using RAG with history)
         # Route based on mode:
         # - STANDARD: Use fast legacy flow (generate_answer)
         # - EXPLORER: Use Dual-AI Orchestrator (deep dialectical analysis)
-        use_explorer_mode = request.mode == 'EXPLORER'
+        use_explorer_mode = chat_request.mode == 'EXPLORER'
         
         answer = "Üzgünüm, ilgili içerik bulunamadı."
         sources = []
         conversation_state = None  # To return in response
         thinking_history = []      # To return in response
+        final_metadata = {}
         
         if use_explorer_mode:
             # EXPLORER Mode: Dual-AI Orchestrator with conversation state
@@ -369,11 +485,13 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks)
                 None, 
                 partial(
                     get_rag_context,
-                    request.message, 
-                    request.firebase_uid, 
+                    chat_request.message, 
+                    firebase_uid, 
                     chat_history=ctx_data['recent_messages'],
                     mode='EXPLORER',
-                    resource_type=request.resource_type
+                    resource_type=chat_request.resource_type,
+                    limit=chat_request.limit,
+                    offset=chat_request.offset
                 )
             )
             
@@ -381,7 +499,7 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks)
                 from services.dual_ai_orchestrator import generate_evaluated_answer
                 
                 final_result = await generate_evaluated_answer(
-                    question=request.message,
+                    question=chat_request.message,
                     chunks=rag_ctx['chunks'],
                     answer_mode='EXPLORER',
                     confidence_score=rag_ctx['confidence'],
@@ -391,6 +509,17 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks)
                 
                 answer = final_result['final_answer']
                 thinking_history = final_result['metadata'].get('history', [])
+                
+                # Merge RAG degradations with Orchestrator metadata
+                rag_meta = rag_ctx.get('metadata', {})
+                if rag_meta: 
+                    # Ensure final_result metadata has these too
+                    if 'degradations' in rag_meta:
+                        if 'degradations' not in final_result['metadata']:
+                            final_result['metadata']['degradations'] = []
+                        final_result['metadata']['degradations'].extend(rag_meta['degradations'])
+                        
+                final_metadata = final_result['metadata']
                 
                 # Use the exact sources seen by the LLM
                 used_chunks = final_result['metadata'].get('used_chunks', [])
@@ -404,19 +533,24 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks)
                     })
         else:
             # STANDARD Mode: Fast legacy flow
-            answer_result, sources_result = await loop.run_in_executor(
+            answer_result, sources_result, meta_result = await loop.run_in_executor(
                 None,
                 partial(
                     generate_answer,
-                    request.message,
-                    request.firebase_uid,
-                    context_book_id=request.book_id
+                    chat_request.message,
+                    firebase_uid,
+                    chat_request.book_id,
+                    ctx_data['recent_messages'],
+                    ctx_data['summary'] or "",
+                    chat_request.limit,
+                    chat_request.offset
                 )
             )
             
             if answer_result:
                 answer = answer_result
                 sources = sources_result or []
+                final_metadata = meta_result or {}
         
         # 5. Save Assistant Message
         await loop.run_in_executor(None, add_message, session_id, 'assistant', answer, sources)
@@ -431,7 +565,8 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks)
             "sources": sources or [],
             "timestamp": datetime.now().isoformat(),
             "conversation_state": conversation_state,
-            "thinking_history": thinking_history
+            "thinking_history": thinking_history,
+            "metadata": final_metadata
         }
         
     except Exception as e:
@@ -440,13 +575,26 @@ async def chat_endpoint(request: ChatRequest, background_tasks: BackgroundTasks)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/smart-search")
-def smart_search(request: SearchRequest):
+def smart_search(
+    request: SearchRequest,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+):
     """
     Pure weighted search (Layer 2).
     """
+    # Determine authoritative UID
+    if firebase_uid_from_jwt:
+        firebase_uid = firebase_uid_from_jwt
+    else:
+        firebase_uid = request.firebase_uid
+        if settings.ENVIRONMENT == "development":
+            logger.warning(f"⚠️ Dev mode: Using unverified UID from request body: {firebase_uid}")
+        else:
+            raise HTTPException(status_code=401, detail="Authentication required")
+    
     try:
         from services.smart_search_service import perform_smart_search
-        results = perform_smart_search(request.question, request.firebase_uid)
+        results = perform_smart_search(request.question, firebase_uid)
         
         return {
             "results": results,
@@ -458,10 +606,24 @@ def smart_search(request: SearchRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/feedback")
-def feedback(request: FeedbackRequest):
+def feedback(
+    request: FeedbackRequest,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+):
+    # Determine authoritative UID
+    if firebase_uid_from_jwt:
+        firebase_uid = firebase_uid_from_jwt
+    else:
+        firebase_uid = request.firebase_uid
+        if settings.ENVIRONMENT == "development":
+            logger.warning(f"⚠️ Dev mode: Using unverified UID from request body: {firebase_uid}")
+        else:
+            raise HTTPException(status_code=401, detail="Authentication required")
+    
     try:
         # Pydantic model dump
         data = request.model_dump()
+        data['firebase_uid'] = firebase_uid  # Ensure verified UID is used
         success = submit_feedback(data)
         if success:
             return {"success": True}
@@ -475,8 +637,11 @@ def feedback(request: FeedbackRequest):
 # ============================================================================
 
 @app.post("/api/extract-metadata")
-async def extract_metadata_endpoint(file: UploadFile = File(...)):
-    # ... (keep async as it uses await file.read())
+async def extract_metadata_endpoint(
+    file: UploadFile = File(...),
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+):
+    # JWT verified, firebase_uid_from_jwt can be used if needed for logging/tracking
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
         
@@ -532,10 +697,21 @@ async def ingest_endpoint(
     author: str = Form(...),
     firebase_uid: str = Form(...),
     book_id: Optional[str] = Form(None),
-    tags: Optional[str] = Form(None)
+    tags: Optional[str] = Form(None),
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
     # Log ingestion start
     print(f"Ingesting file: {file.filename} Title: {title}")
+    
+    # Verify firebase_uid from JWT in production, fall back to form data in development
+    if firebase_uid_from_jwt:
+        verified_firebase_uid = firebase_uid_from_jwt
+    else:
+        verified_firebase_uid = firebase_uid
+        if settings.ENVIRONMENT == "production":
+            raise HTTPException(status_code=401, detail="Authentication required")
+        else:
+            logger.warning(f"⚠️ Dev mode: Using unverified UID from form data for ingestion {file.filename}")
     
     upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
     os.makedirs(upload_dir, exist_ok=True)
@@ -547,22 +723,18 @@ async def ingest_endpoint(
     unique_filename = f"{uuid.uuid4()}_{original_filename}"
     temp_path = os.path.join(upload_dir, unique_filename)
     
-    # Ensure ID exists for Memory Layer tracking
-    if not book_id:
-        book_id = str(uuid.uuid4())
-    
     try:
         with open(temp_path, "wb") as buffer:
             content = await file.read()
             buffer.write(content)
-            
+        
         # Add to background tasks
         background_tasks.add_task(
             run_ingestion_background, 
             temp_path, 
             title, 
             author, 
-            firebase_uid, 
+            verified_firebase_uid, 
             book_id,
             categories=tags
         )
@@ -582,14 +754,27 @@ async def ingest_endpoint(
 
 
 @app.post("/api/add-item")
-def add_item_endpoint(request: AddItemRequest):
+async def add_item_endpoint(
+    request: AddItemRequest,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+):
     try:
+        # Verify firebase_uid from JWT in production, fall back to request body in development
+        if firebase_uid_from_jwt:
+            verified_firebase_uid = firebase_uid_from_jwt
+        else:
+            verified_firebase_uid = request.firebase_uid
+            if settings.ENVIRONMENT == "production":
+                raise HTTPException(status_code=401, detail="Authentication required")
+            else:
+                logger.warning(f"⚠️ Dev mode: Using unverified UID from request body for add-item")
+        
         success = ingest_text_item(
             text=request.text,
             title=request.title,
             author=request.author,
             source_type=request.type,
-            firebase_uid=request.firebase_uid
+            firebase_uid=verified_firebase_uid
         )
         if success:
             return {"success": True, "message": "Item added"}
@@ -598,9 +783,22 @@ def add_item_endpoint(request: AddItemRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/migrate_bulk")
-def migrate_bulk_endpoint(request: BatchMigrateRequest):
+async def migrate_bulk_endpoint(
+    request: BatchMigrateRequest,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+):
     try:
-        result = process_bulk_items_logic(request.items, request.firebase_uid)
+        # Verify firebase_uid from JWT in production, fall back to request body in development
+        if firebase_uid_from_jwt:
+            verified_firebase_uid = firebase_uid_from_jwt
+        else:
+            verified_firebase_uid = request.firebase_uid
+            if settings.ENVIRONMENT == "production":
+                raise HTTPException(status_code=401, detail="Authentication required")
+            else:
+                logger.warning(f"⚠️ Dev mode: Using unverified UID from request body for bulk migration")
+        
+        result = process_bulk_items_logic(request.items, verified_firebase_uid)
         return {
             "success": True,
             "processed": len(request.items),
@@ -610,8 +808,20 @@ def migrate_bulk_endpoint(request: BatchMigrateRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/ingested-books")
-def get_ingested_books_endpoint(firebase_uid: str):
+async def get_ingested_books_endpoint(
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+):
     try:
+        # Verify firebase_uid from JWT in production
+        if firebase_uid_from_jwt:
+            verified_firebase_uid = firebase_uid_from_jwt
+        else:
+            if settings.ENVIRONMENT == "production":
+                raise HTTPException(status_code=401, detail="Authentication required")
+            else:
+                # In dev mode, firebase_uid must be provided as query parameter
+                raise HTTPException(status_code=400, detail="firebase_uid query parameter required")
+        
         with DatabaseManager.get_connection() as connection:
             with connection.cursor() as cursor:
                 query = """
@@ -619,7 +829,7 @@ def get_ingested_books_endpoint(firebase_uid: str):
                 FROM TOMEHUB_CONTENT 
                 WHERE firebase_uid = :p_uid AND source_type = 'PDF'
                 """
-                cursor.execute(query, {"p_uid": firebase_uid})
+                cursor.execute(query, {"p_uid": verified_firebase_uid})
                 rows = cursor.fetchall()
                 
                 books = []
@@ -681,6 +891,10 @@ async def enrich_batch_endpoint(
         
         if not books:
              raise HTTPException(status_code=400, detail="No books provided")
+             
+        if len(books) > 50:
+             logger.warning(f"Large batch enrichment requested ({len(books)}). Capping at 50.")
+             books = books[:50]
              
         # Use StreamingResponse for SSE
         return StreamingResponse(
@@ -748,5 +962,5 @@ async def search_resources_endpoint(
 
 
 if __name__ == "__main__":
-    print("[INFO] Starting FastAPI Server on port 5001...")
-    uvicorn.run(app, host="0.0.0.0", port=5001)
+    print("[INFO] Starting FastAPI Server on port 5000 (DIRECT)...")
+    uvicorn.run("app:app", host="0.0.0.0", port=5000, reload=True)
