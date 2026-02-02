@@ -38,7 +38,7 @@ class DataHealthService:
         }
         
         DatabaseManager.init_pool()
-        with DatabaseManager.get_connection() as conn:
+        with DatabaseManager.get_read_connection() as conn:
             with conn.cursor() as cursor:
                 # 1. Counts
                 cursor.execute("SELECT source_type, COUNT(*) FROM TOMEHUB_CONTENT GROUP BY source_type")
@@ -65,7 +65,7 @@ class DataHealthService:
         results = {"deleted_ghosts": 0, "fixed_labels": 0}
         
         DatabaseManager.init_pool()
-        with DatabaseManager.get_connection() as conn:
+        with DatabaseManager.get_write_connection() as conn:
             with conn.cursor() as cursor:
                 # 1. Delete Ghosts
                 cursor.execute(f"DELETE FROM TOMEHUB_CONTENT WHERE DBMS_LOB.GETLENGTH(content_chunk) < {self.MIN_CONTENT_LENGTH} OR content_chunk IS NULL")

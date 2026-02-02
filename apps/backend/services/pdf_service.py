@@ -120,37 +120,138 @@ def clean_text_artifacts(text: str) -> str:
     
     return text
 
+    # ... (Keep existing code above) ...
+
+def calculate_sis(text: str) -> dict:
+    """
+    Calculate Sentence Integrity Score (SIS) for a text chunk.
+    Returns a dict with score and decision.
+    """
+    score = 0.0
+    details = []
+
+    if not text:
+        return {'score': 0, 'decision': 'QUARANTINE', 'details': ['empty']}
+
+    # 1. Ends with sentence terminator (Strongest signal)
+    if re.search(r'[.!?…"]\s*$', text):
+        score += 0.4
+        details.append("valid_ending")
+    else:
+        details.append("missing_ending")
+
+    # 2. Starts with capital letter
+    if text and text[0].isupper():
+        score += 0.3
+        details.append("valid_start")
+    else:
+        details.append("lowercase_start")
+
+    # 3. Word count sanity check (e.g. > 3 words)
+    words = text.split()
+    if len(words) > 3:
+        score += 0.3
+        details.append("valid_length")
+    else:
+        details.append("too_short")
+
+    # Normalize float
+    score = round(score, 2)
+
+    # Decision Logic
+    if score >= 0.7:
+        decision = 'EMBED'
+    elif score >= 0.4:
+        decision = 'REVIEW' # Potentially mergeable but isolated here
+    else:
+        decision = 'QUARANTINE'
+
+    return {'score': score, 'decision': decision, 'details': details}
+
+
+class ChunkReconstructor:
+    """
+    Stateful class to buffer and reconstruct broken PDF chunks across pages.
+    """
+    def __init__(self):
+        self.buffer_chunk = None
+        self.final_chunks = []
+        self.merge_stats = 0
+
+    def add(self, new_chunk: dict):
+        """
+        Add a new raw chunk candidate. Decides whether to buffer, merge, or finalize.
+        """
+        text = new_chunk.get('text', '').strip()
+        if not text:
+            return
+
+        # Condition 1: Check if we have a buffer waiting
+        if self.buffer_chunk:
+            buffer_text = self.buffer_chunk['text']
+            
+            # MERGE CRITERIA:
+            # 1. Buffer implies continuation (no sentence end punctuation)
+            # 2. New chunk implies continuation (starts lowercase or connector)
+            
+            buffer_needs_continuation = not re.search(r'[.!?…"]\s*$', buffer_text)
+            
+            # Check for suffixes or conjunctions at start of new text
+            # e.g., "-dan", "ve", "ile"
+            lower_start = text[0].islower()
+            starts_with_connector = re.match(r'^(-|ve\b|ile\b|ama\b|ki\b|de\b|da\b)', text, re.IGNORECASE)
+            
+            should_merge = buffer_needs_continuation and (lower_start or starts_with_connector)
+
+            if should_merge:
+                # MERGE!
+                # If starts with hyphen (suffix), join directly without space ideally, or handle hyphen logic
+                # For now, simplistic join with space, but if hyphen, maybe remove space?
+                # Case: "kaynaklan-" + "an" -> "kaynaklanan" (If PDF cut word)
+                # Case: "bitiyor" + "-dan" -> "bitiyor -dan" (Bad OCR?) or "bitiyor" + " ve"
+                
+                separator = " "
+                if text.startswith("-"):
+                    separator = "" # Join suffix directly? Or keep hyphen? 
+                    # Usually "-dan" in new line implies separate word in English wrap, but in Turkish PDF extract?
+                    # Let's assume space for safety unless we do sophisticated word reconstruction
+                
+                merged_text = buffer_text + separator + text
+                
+                # Update buffer with merged content
+                self.buffer_chunk['text'] = merged_text
+                # Keep page_num of start (or range?) - Keep start page
+                # Update confidence (min? avg?)
+                self.buffer_chunk['confidence'] = min(self.buffer_chunk['confidence'], new_chunk['confidence'])
+                self.merge_stats += 1
+                return
+            else:
+                # No merge. Flush buffer, start new buffer.
+                self._finalize_buffer()
+        
+        # If we are here, either buffer was flushed or didn't exist.
+        # Set this new chunk as the current buffer
+        self.buffer_chunk = new_chunk
+
+    def _finalize_buffer(self):
+        if self.buffer_chunk:
+            # Calculate SIS before finalizing
+            sis = calculate_sis(self.buffer_chunk['text'])
+            self.buffer_chunk['sis'] = sis
+            self.final_chunks.append(self.buffer_chunk)
+            self.buffer_chunk = None
+
+    def flush(self):
+        """Finalize any remaining buffer."""
+        self._finalize_buffer()
+
 
 def extract_pdf_content(pdf_path: str) -> Optional[List[Dict[str, any]]]:
     """
     Extract structured content from a PDF file using OCI Document Understanding.
-    
-    This function sends the PDF to OCI for analysis and returns structured chunks
-    with text, page numbers, and content types (paragraph, heading, footnote, etc.).
-    
-    Args:
-        pdf_path (str): Path to the PDF file to process
-    
-    Returns:
-        List[Dict] or None: List of content chunks, each containing:
-            - text (str): The extracted text content
-            - page_num (int): Page number (1-indexed)
-            - type (str): Content type ('paragraph', 'heading', 'footnote', 'table', etc.)
-            - confidence (float): OCR confidence score (0-1)
-            - bbox (dict): Bounding box coordinates (optional)
-        Returns None if extraction fails.
-    
-    Example:
-        >>> chunks = extract_pdf_content("book.pdf")
-        >>> print(chunks[0])
-        {
-            'text': 'Chapter 1: Introduction',
-            'page_num': 1,
-            'type': 'heading',
-            'confidence': 0.99
-        }
+    Includes Smart Chunk Reconstruction and SIS Scoring.
     """
-    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Starting PDF extraction...")
+    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Starting PDF extraction (Smart Mode)...")
     print(f"[INFO] File: {pdf_path}")
     
     # Validate file exists
@@ -212,16 +313,16 @@ def extract_pdf_content(pdf_path: str) -> Optional[List[Dict[str, any]]]:
         
         print(f"[{datetime.now().strftime('%H:%M:%S')}] Analysis complete!")
         
-        # Extract structured chunks
-        chunks = []
+        # Extract structured chunks using Smart Reconstructor
+        reconstructor = ChunkReconstructor()
+        
         total_pages = len(response.data.pages)
         print(f"[INFO] Processing {total_pages} pages...")
         
         for page in response.data.pages:
             page_num = page.page_number
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] Processing page {page_num}/{total_pages}...")
+            # print(f"[{datetime.now().strftime('%H:%M:%S')}] Processing page {page_num}/{total_pages}...")
             
-            # Process lines (paragraphs)
             # Process lines (paragraphs)
             if hasattr(page, 'lines') and page.lines:
                 for line_idx, line in enumerate(page.lines):
@@ -234,33 +335,25 @@ def extract_pdf_content(pdf_path: str) -> Optional[List[Dict[str, any]]]:
                         'line_index': line_idx
                     }
                     
-                    # --- SMART CHUNKING (MERGE PARAGRAPHS IF PAGE SPLIT) ---
-                    # Logic: If a page ends with a sentence fragment, we should ideally merge it with next page.
-                    # Current simplifiction: Just append chunks. Merging is handled by logic layer or implicit in Vector retrieval.
-                    # For now, we focus on clean extraction.
-                    
                     # Add bounding box if available
                     if hasattr(line, 'bounding_polygon'):
                         chunk['bbox'] = {
                             'points': [(p.x, p.y) for p in line.bounding_polygon.normalized_vertices]
                         }
                     
-                    chunks.append(chunk)
+                    # Feed to reconstructor
+                    reconstructor.add(chunk)
 
-            # --- HEADER/FOOTER REMOVAL (Heuristic) ---
-            # Most PDF headers are at top 5% Y-coordinate. We can flag them or remove.
-            # Implemented iteratively if needed.
-            
-            # Process words (for more granular control if needed)
-            if hasattr(page, 'words') and page.words:
-                # Group words into sentences/paragraphs
-                # This is optional - you can enable if you need word-level granularity
-                pass
+            # Optional: Process words if needed (skipped for now)
+        
+        # Finalize any remaining buffer
+        reconstructor.flush()
+        final_chunks = reconstructor.final_chunks
         
         print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Extraction complete!")
-        print(f"[SUCCESS] Extracted {len(chunks)} chunks from {total_pages} pages")
+        print(f"[SUCCESS] Extracted {len(final_chunks)} chunks from {total_pages} pages (Merged {reconstructor.merge_stats} splits)")
         
-        return chunks
+        return final_chunks
         
     except oci.exceptions.ServiceError as e:
         print(f"\n[{datetime.now().strftime('%H:%M:%S')}] [WARNING] OCI Service Error:")

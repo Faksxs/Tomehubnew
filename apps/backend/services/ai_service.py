@@ -19,6 +19,8 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
+from services.monitoring import AI_SERVICE_LATENCY
+
 # Constants for Prompts (Replicated from geminiService.ts)
 PROMPT_ENRICH_BOOK = """
 Enrich this book data with missing details (summary, tags, publisher, publication year, page count).
@@ -113,10 +115,11 @@ async def enrich_book_async(book_data: Dict[str, Any]) -> Dict[str, Any]:
         model = genai.GenerativeModel('gemini-2.0-flash')
         prompt = PROMPT_ENRICH_BOOK.format(json_data=json.dumps(book_data, ensure_ascii=False))
         
-        response = await asyncio.wait_for(
-            asyncio.to_thread(model.generate_content, prompt), 
-            timeout=30.0
-        )
+        with AI_SERVICE_LATENCY.labels(service="gemini_flash", operation="generate").time():
+            response = await asyncio.wait_for(
+                asyncio.to_thread(model.generate_content, prompt), 
+                timeout=30.0
+            )
         text = response.text
         
         try:
@@ -151,10 +154,11 @@ async def generate_tags_async(note_content: str) -> List[str]:
         model = genai.GenerativeModel('gemini-2.0-flash')
         prompt = PROMPT_GENERATE_TAGS.format(note_content=note_content)
         
-        response = await asyncio.wait_for(
-            asyncio.to_thread(model.generate_content, prompt), 
-            timeout=30.0
-        )
+        with AI_SERVICE_LATENCY.labels(service="gemini_flash", operation="generate").time():
+            response = await asyncio.wait_for(
+                asyncio.to_thread(model.generate_content, prompt), 
+                timeout=30.0
+            )
         text = clean_json_response(response.text)
         
         return json.loads(text)
@@ -168,10 +172,11 @@ async def verify_cover_async(title: str, author: str, isbn: str = "") -> Optiona
         model = genai.GenerativeModel('gemini-2.0-flash')
         prompt = PROMPT_VERIFY_COVER.format(title=title, author=author, isbn=isbn or 'N/A')
         
-        response = await asyncio.wait_for(
-            asyncio.to_thread(model.generate_content, prompt), 
-            timeout=20.0
-        )
+        with AI_SERVICE_LATENCY.labels(service="gemini_flash", operation="generate").time():
+            response = await asyncio.wait_for(
+                asyncio.to_thread(model.generate_content, prompt), 
+                timeout=20.0
+            )
         url = response.text.strip()
         
         if url.lower() == "null" or "http" not in url:
@@ -191,10 +196,11 @@ async def analyze_highlights_async(highlights: List[str]) -> str:
         text_block = "\n---\n".join(highlights)
         prompt = PROMPT_ANALYZE_HIGHLIGHTS.format(highlights_text=text_block)
         
-        response = await asyncio.wait_for(
-            asyncio.to_thread(model.generate_content, prompt), 
-            timeout=35.0
-        )
+        with AI_SERVICE_LATENCY.labels(service="gemini_flash", operation="generate").time():
+            response = await asyncio.wait_for(
+                asyncio.to_thread(model.generate_content, prompt), 
+                timeout=35.0
+            )
         return response.text.strip()
     except Exception as e:
         logger.error(f"Highlight analysis failed: {e}")
@@ -206,10 +212,11 @@ async def search_resources_async(query: str, resource_type: str) -> List[Dict[st
         model = genai.GenerativeModel('gemini-2.0-flash')
         prompt = PROMPT_SEARCH_RESOURCES.format(query=query, resource_type=resource_type)
         
-        response = await asyncio.wait_for(
-            asyncio.to_thread(model.generate_content, prompt), 
-            timeout=30.0
-        )
+        with AI_SERVICE_LATENCY.labels(service="gemini_flash", operation="generate").time():
+            response = await asyncio.wait_for(
+                asyncio.to_thread(model.generate_content, prompt), 
+                timeout=30.0
+            )
         clean = clean_json_response(response.text)
         return json.loads(clean)
     except Exception as e:
@@ -233,10 +240,11 @@ async def extract_metadata_from_text_async(text: str) -> Dict[str, Optional[str]
         # Truncate text to avoid token limits (first 2000 chars is usually enough for title page)
         prompt = PROMPT_EXTRACT_METADATA.format(text=text[:2000])
         
-        response = await asyncio.wait_for(
-            asyncio.to_thread(model.generate_content, prompt), 
-            timeout=25.0
-        )
+        with AI_SERVICE_LATENCY.labels(service="gemini_flash", operation="generate").time():
+            response = await asyncio.wait_for(
+                asyncio.to_thread(model.generate_content, prompt), 
+                timeout=25.0
+            )
         clean = clean_json_response(response.text)
         return json.loads(clean)
     except Exception as e:
@@ -246,19 +254,30 @@ async def extract_metadata_from_text_async(text: str) -> Dict[str, Optional[str]
 
 # --- Batch Streaming Logic ---
 
-async def stream_enrichment(books: List[Dict[str, Any]]):
+async def stream_enrichment(books: List[Dict[str, Any]], max_total_bytes: int = 1048576):
     """
     Generator that yields SSE (Server-Sent Events) data for each enriched book.
+    Includes a safety limit on total volume for backpressure control.
     """
+    total_bytes_sent = 0
     for book in books:
         try:
             # Enrich one book
             enriched = await enrich_book_async(book)
-            yield json.dumps(enriched) + "\n"
+            chunk = json.dumps(enriched, ensure_ascii=False) + "\n"
         except Exception as e:
             # If failed, yield original with error flag
             book['error'] = str(e)
-            yield json.dumps(book) + "\n"
+            chunk = json.dumps(book, ensure_ascii=False) + "\n"
         
-        # Small delay to prevent rate limit spikes if Tenacity didn't catch it
+        chunk_bytes = len(chunk.encode('utf-8'))
+        if total_bytes_sent + chunk_bytes > max_total_bytes:
+            logger.warning(f"Stream volume limit reached ({max_total_bytes}). Closing stream.")
+            yield json.dumps({"status": "limit_reached", "message": "Maximum stream volume exceeded"}) + "\n"
+            break
+            
+        yield chunk
+        total_bytes_sent += chunk_bytes
+        
+        # Small delay to prevent rate limit spikes
         await asyncio.sleep(0.5)

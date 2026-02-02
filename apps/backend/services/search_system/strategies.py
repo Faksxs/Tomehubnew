@@ -31,7 +31,7 @@ class ExactMatchStrategy(SearchStrategy):
     """
     def search(self, query: str, firebase_uid: str, limit: int = 20, resource_type: Optional[str] = None) -> List[Dict[Any, Any]]:
         try:
-            with DatabaseManager.get_connection() as conn:
+            with DatabaseManager.get_read_connection() as conn:
                 with conn.cursor() as cursor:
                     q_deaccented = deaccent_text(query)
                     
@@ -105,7 +105,7 @@ class LemmaMatchStrategy(SearchStrategy):
             return []
             
         try:
-            with DatabaseManager.get_connection() as conn:
+            with DatabaseManager.get_read_connection() as conn:
                 with conn.cursor() as cursor:
                     # Layer 4 Mapping
                     source_type_map = {'BOOK': 'PDF', 'ARTICLE': 'ARTICLE', 'WEBSITE': 'WEBSITE', 'PERSONAL_NOTE': 'NOTES'}
@@ -188,7 +188,7 @@ class SemanticMatchStrategy(SearchStrategy):
             return []
             
         try:
-            with DatabaseManager.get_connection() as conn:
+            with DatabaseManager.get_read_connection() as conn:
                 with conn.cursor() as cursor:
                     results = []
                     

@@ -1,0 +1,40 @@
+Total Unique Titles in Database: 54
+
+Breakdown by Source Type:
+------------------------------
+NOTES           |    37 books |    880 chunks
+PERSONAL_NOTE   |     8 books |     12 chunks
+PDF             |     6 books |    986 chunks
+ARTICLE         |     3 books |     43 chunks
+
+List of PDF Books found:
+------------------------------------------------------------
+1. 1984 - Michael Dean, George Orwell
+2. Ahlak Felsefesinin Sorunları - Theodor W. Adorno
+3. Akil Cagi - Thomas Paine
+4. Hayatin Anlami - Terry Eagleton
+5. Mahur beste - Ahmet Hamdi Tanpınar
+6. Sync Test Book SYNC_1768859352 - Verifier
+
+Sample of NOTES titles:
+------------------------------------------------------------
+1. Ahlak felsefesi (Highlight)
+2. Antonius ve Kleopatra (Highlight)
+3. Bir Havva Kizi - Hasan Ali Yücel Klasikleri (Highlight)
+4. Caligula and Three Other Plays (Highlight)
+5. Daha Dun (Highlight)
+6. Devrim Uzerine (Highlight)
+7. Düşüş (Highlight)
+8. Felsefi Izlenimler (Highlight)
+9. Havva'nın Üç Kızı (Highlight)
+10. Hayatin Anlami (Highlight)
+11. Her Yönüyle Klasik Mitoloji (Highlight)
+12. Kadin ve Bedeni (Highlight)
+13. Kadın antropolojisi (Highlight)
+14. Karilar Kogusu (Highlight)
+15. Kirk Ambar 2 (Highlight)
+16. Kirmizi ve Siyah (Highlight)
+17. Komünist Manifesto (Highlight)
+18. Macbeth (Highlight)
+19. Mahur beste (Highlight)
+20. Medeniyet Tarihi I (Highlight)

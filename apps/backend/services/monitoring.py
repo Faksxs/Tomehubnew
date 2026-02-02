@@ -6,7 +6,7 @@ Defines custom Prometheus metrics for "Epistemic Observability".
 These metrics track the quality, intent, and diversity of the system's "brain".
 """
 
-from prometheus_client import Counter, Histogram
+from prometheus_client import Counter, Histogram, Gauge
 
 # ==============================================================================
 # 1. JUDGE AI METRICS (Quality Control)
@@ -46,4 +46,42 @@ SEARCH_RESULT_COUNT = Histogram(
     'tomehub_search_result_count',
     'Total number of chunks retrieved before filtering',
     buckets=(0, 5, 10, 30, 50, 100)
+)
+
+# ==============================================================================
+# 3. TECHNICAL METRICS (Resilience & Traffic)
+# ==============================================================================
+
+# DB Pool Utilization (Gauge)
+# Labels: pool_type (read, write), metric_type (active, idle, max)
+DB_POOL_UTILIZATION = Gauge(
+    'tomehub_db_pool_utilization',
+    'Database connection pool statistics',
+    labelnames=['pool_type', 'metric_type']
+)
+
+# Ingestion Processing (Histogram)
+# Labels: status (success, fail), source_type (PDF, EPUB, etc.)
+INGESTION_LATENCY = Histogram(
+    'tomehub_ingestion_duration_seconds',
+    'Latency of document ingestion in seconds',
+    labelnames=['status', 'source_type'],
+    buckets=(1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0)
+)
+
+# AI Service (Gemini/Embedding) Latency (Histogram)
+# Labels: service (gemini_flash, google_embedding), operation (generate, embed)
+AI_SERVICE_LATENCY = Histogram(
+    'tomehub_ai_service_duration_seconds',
+    'Latency of external AI service calls',
+    labelnames=['service', 'operation'],
+    buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0)
+)
+
+# Circuit Breaker Status (Gauge)
+# 0 = Closed (All good), 1 = Half-Open, 2 = Open (Blocked)
+CIRCUIT_BREAKER_STATE = Gauge(
+    'tomehub_circuit_breaker_state',
+    'Current state of the embedding API circuit breaker',
+    labelnames=['service']
 )

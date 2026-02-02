@@ -31,7 +31,7 @@ def get_book_chunks(book_id: str, firebase_uid: str) -> List[Dict]:
     """Retrieve all text chunks for a book, sorted by sequence."""
     chunks = []
     try:
-        with DatabaseManager.get_connection() as conn:
+        with DatabaseManager.get_read_connection() as conn:
             with conn.cursor() as cursor:
                 query = """
                     SELECT CONTENT_CHUNK, PAGE_NUMBER, CHUNK_INDEX
@@ -147,7 +147,7 @@ def generate_file_report(book_id: str, firebase_uid: str):
         entities = json.dumps(data.get("entities", []), ensure_ascii=False)
         
         # 4. Save to DB
-        with DatabaseManager.get_connection() as conn:
+        with DatabaseManager.get_write_connection() as conn:
             with conn.cursor() as cursor:
                 # Merge logic using DELETE then INSERT (Simpler for cross-db compatibility logic if needed, but merge is proper)
                 # We'll use MERGE for Oracle

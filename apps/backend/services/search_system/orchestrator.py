@@ -35,7 +35,7 @@ class SearchOrchestrator:
         if self.embedding_fn:
             self.strategies.append(SemanticMatchStrategy(self.embedding_fn))
             
-    def search(self, query: str, firebase_uid: str, limit: int = 50, book_id: str = None, intent: str = 'SYNTHESIS', resource_type: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    def search(self, query: str, firebase_uid: str, limit: int = 50, offset: int = 0, book_id: str = None, intent: str = 'SYNTHESIS', resource_type: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         start_time = time.time()
         logger.info(f"Orchestrator: Search started for query='{query}' UID='{firebase_uid}' intent='{intent}'")
         
@@ -49,7 +49,7 @@ class SearchOrchestrator:
                 limit=limit,
                 version=settings.EMBEDDING_MODEL_VERSION
             )
-            cache_key += f"_int:{intent}"
+            cache_key += f"_int:{intent}_off:{offset}"
             
             cached_result = self.cache.get(cache_key)
             if cached_result:
@@ -208,7 +208,7 @@ class SearchOrchestrator:
             
         # Sort by RRF
         final_list.sort(key=lambda x: x['rrf_score'], reverse=True)
-        top_candidates = final_list[:limit]
+        top_candidates = final_list[offset : offset + limit]
         
         # Store in cache
         if self.cache:
@@ -220,6 +220,7 @@ class SearchOrchestrator:
                 limit=limit,
                 version=settings.EMBEDDING_MODEL_VERSION
             )
+            cache_key += f"_int:{intent}_off:{offset}"
             # TTL: 1 hour (3600 seconds) for search results
             self.cache.set(cache_key, top_candidates, ttl=3600)
             logger.info(f"Cached search results for key: {cache_key[:50]}...")
@@ -255,7 +256,7 @@ class SearchOrchestrator:
             top_id = results[0]['id'] if results else None
             top_score = results[0].get('rrf_score', 0) if results else 0
             
-            with DatabaseManager.get_connection() as conn:
+            with DatabaseManager.get_write_connection() as conn:
                 with conn.cursor() as cursor:
                     weights_str = "vec:1.0, bm25:1.0, graph:1.0" 
                     id_var = cursor.var(int)

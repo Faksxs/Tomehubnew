@@ -7,16 +7,16 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 class DatabaseManager:
-    _pool = None
+    _read_pool = None
+    _write_pool = None
 
     @classmethod
     def init_pool(cls):
         """
-        Initializes the OracleDB Session Pool using settings.
-        Should be called once at application startup.
+        Initializes separate OracleDB Session Pools for Read and Write operations.
         """
-        if cls._pool is not None:
-             logger.warning("Database pool already initialized.")
+        if cls._read_pool is not None or cls._write_pool is not None:
+             logger.warning("Database pools already initialized.")
              return
 
         try:
@@ -24,89 +24,115 @@ class DatabaseManager:
             password = settings.DB_PASSWORD
             dsn = settings.DB_DSN
             
-            # Locate wallet if needed (assuming it's in a standard place relative to backend)
-            # Adjust path logic as per original get_database_connection
             backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             wallet_location = os.path.join(backend_dir, 'wallet')
 
-            logger.info(f"Initializing Database Pool for user: {user} with DSN: {dsn}")
+            logger.info(f"Initializing Parallel Database Pools (Read/Write) for user: {user}")
 
-            cls._pool = oracledb.create_pool(
+            # 1. READ POOL (Optimized for search/retrieval)
+            cls._read_pool = oracledb.create_pool(
                 user=user,
                 password=password,
                 dsn=dsn,
-                min=2,
-                max=20,  # Increased from 10 to 20 for better concurrency
+                min=max(2, settings.DB_POOL_MIN // 2),
+                max=settings.DB_READ_POOL_MAX,
                 increment=1,
                 config_dir=wallet_location,
                 wallet_location=wallet_location,
-                wallet_password=password
+                wallet_password=password,
+                getmode=oracledb.POOL_GETMODE_WAIT
             )
-            logger.info("Database Pool initialized successfully.")
+
+            # 2. WRITE POOL (Optimized for ingestion/logs)
+            cls._write_pool = oracledb.create_pool(
+                user=user,
+                password=password,
+                dsn=dsn,
+                min=max(1, settings.DB_POOL_MIN // 4),
+                max=settings.DB_WRITE_POOL_MAX,
+                increment=1,
+                config_dir=wallet_location,
+                wallet_location=wallet_location,
+                wallet_password=password,
+                getmode=oracledb.POOL_GETMODE_WAIT
+            )
+
+            logger.info(
+                f"✓ Database Pools initialized successfully.\n"
+                f"  Read Pool: max={settings.DB_READ_POOL_MAX}\n"
+                f"  Write Pool: max={settings.DB_WRITE_POOL_MAX}"
+            )
             
         except Exception as e:
-            logger.error(f"Failed to initialize Database Pool: {e}")
+            logger.error(f"Failed to initialize Database Pools: {e}")
             raise e
 
     @classmethod
     def close_pool(cls):
         """
-        Closes the pool. Should be called at application shutdown.
+        Closes all pools. Should be called at application shutdown.
         """
-        if cls._pool:
-            cls._pool.close()
-            cls._pool = None
-            logger.info("Database Pool closed.")
+        if cls._read_pool:
+            cls._read_pool.close()
+            cls._read_pool = None
+        if cls._write_pool:
+            cls._write_pool.close()
+            cls._write_pool = None
+        logger.info("Database Pools (Read/Write) closed.")
+
+    @classmethod
+    def get_read_connection(cls, timeout: int = 5):
+        """Acquires a connection from the READ pool."""
+        if cls._read_pool is None:
+            cls.init_pool()
+        return cls._acquire_from_pool(cls._read_pool, "READ", timeout)
+
+    @classmethod
+    def get_write_connection(cls, timeout: int = 5):
+        """Acquires a connection from the WRITE pool."""
+        if cls._write_pool is None:
+            cls.init_pool()
+        return cls._acquire_from_pool(cls._write_pool, "WRITE", timeout)
 
     @classmethod
     def get_connection(cls, timeout: int = 5):
+        """Standard acquisition (defaults to READ for safety)."""
+        return cls.get_read_connection(timeout)
+
+    @classmethod
+    def get_pool_stats(cls):
         """
-        Acquires a connection from the pool with optional timeout.
-        
-        Args:
-            timeout: Maximum seconds to wait for a connection (default: 5)
-        
-        RECOMMENDED USAGE (Context Manager):
-            with DatabaseManager.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute(...)
-                    
-        Legacy Usage:
-            conn = DatabaseManager.get_connection()
-            try:
-                ...
-            finally:
-                conn.close()
+        Returns statistics for both Read and Write pools.
         """
-        if cls._pool is None:
-            raise RuntimeError("Database Pool is not initialized. Call init_pool() first.")
+        stats = {
+            "read": {"active": 0, "opened": 0, "max": settings.DB_READ_POOL_MAX},
+            "write": {"active": 0, "opened": 0, "max": settings.DB_WRITE_POOL_MAX}
+        }
         
+        if cls._read_pool:
+            stats["read"]["active"] = cls._read_pool.busy
+            stats["read"]["opened"] = cls._read_pool.opened
+            
+        if cls._write_pool:
+            stats["write"]["active"] = cls._write_pool.busy
+            stats["write"]["opened"] = cls._write_pool.opened
+            
+        return stats
+
+    @classmethod
+    def _acquire_from_pool(cls, pool, pool_name: str, timeout: int):
         try:
-            # oracledb Pool.acquire doesn't take timeout in all versions
-            # and PoolTimeout is often under oracledb.exceptions
-            return cls._pool.acquire()
+            return pool.acquire()
         except Exception as e:
-            # Check for timeout in a version-agnostic way
             if "PoolTimeout" in str(type(e)) or "timeout" in str(e).lower():
-                logger.error(f"Database pool exhausted, wait timeout: {timeout}s")
-                raise RuntimeError(f"Database temporarily unavailable (pool exhausted, timeout: {timeout}s)")
+                logger.error(f"Database {pool_name} pool exhausted, wait timeout: {timeout}s")
+                raise RuntimeError(f"Database {pool_name} temporarily unavailable (pool exhausted)")
             raise e
 
 # Dependency for FastAPI routes
 def get_db_connection():
-    """
-    FastAPI dependency generator.
-    Usage:
-        def my_route(conn = Depends(get_db_connection)):
-            ...
-    
-    Yields a connection and ensures it is closed/returned to pool after request.
-    """
-    if DatabaseManager._pool is None:
-         # Fallback or initialization (though init_pool should be called at startup)
-         DatabaseManager.init_pool()
-         
-    connection = DatabaseManager.get_connection()
+    """FastAPI dependency generator. Default to Read pool."""
+    connection = DatabaseManager.get_read_connection()
     try:
         yield connection
     finally:

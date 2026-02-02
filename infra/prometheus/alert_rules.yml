@@ -1,0 +1,42 @@
+groups:
+  - name: tomehub_alerts
+    rules:
+      # 1. Database Pool Exhaustion
+      - alert: DBPoolExhaustion
+        expr: (tomehub_db_pool_utilization{metric_type="active"} / tomehub_db_pool_utilization{metric_type="max"}) > 0.9
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Database Pool Exhaustion ({{ $labels.pool_type }})"
+          description: "Pool utilization is above 90% for 2 minutes. High risk of timeouts."
+
+      # 2. High Ingestion Failures
+      - alert: HighIngestionFailure
+        expr: (rate(tomehub_ingestion_duration_seconds_count{status="fail"}[10m]) / rate(tomehub_ingestion_duration_seconds_count[10m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Ingestion Failure Rate"
+          description: "Ingestion failure rate is above 10% for the last 5 minutes."
+
+      # 3. Memory Pressure (Critical)
+      - alert: MemoryCritical
+        expr: process_resident_memory_bytes / 1024 / 1024 / 1024 > 1.8 # Example: 1.8GB if limit is 2GB
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Memory Critical Threshold Reached"
+          description: "Process memory is approaching critical limits. Auto-restart imminent."
+
+      # 4. Circuit Breaker Open
+      - alert: CircuitBreakerOpen
+        expr: tomehub_circuit_breaker_state == 2
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "AI Service Circuit Breaker OPEN"
+          description: "The embedding API circuit breaker has tripped. Semantic search is globally disabled."

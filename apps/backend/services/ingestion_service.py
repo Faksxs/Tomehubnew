@@ -30,6 +30,8 @@ from concurrent.futures import ThreadPoolExecutor
 from utils.logger import get_logger
 
 logger = get_logger("ingestion_service")
+from services.monitoring import INGESTION_LATENCY
+import time
 
 # Phase 6: Semantic Classification at Ingest Time
 try:
@@ -56,7 +58,7 @@ def check_book_exists(title: str, author: str, firebase_uid: str, conn=None) -> 
     should_close = False
     try:
         if conn is None:
-            conn = DatabaseManager.get_connection()
+            conn = DatabaseManager.get_write_connection()
             should_close = True
             
         # If we created the connection, we own the cursor cycle. 
@@ -84,7 +86,7 @@ def check_book_exists(title: str, author: str, firebase_uid: str, conn=None) -> 
         return False
     finally:
         # Only close if we opened it (Legacy support)
-        # Note: DatabaseManager.get_connection() usually returns a pooled conn 
+        # Note: DatabaseManager.get_write_connection() usually returns a pooled conn 
         # that needs .close() to return to pool.
         if should_close and conn:
             conn.close()
@@ -97,7 +99,7 @@ def delete_book_content(title: str, author: str, firebase_uid: str, conn=None) -
     should_close = False
     try:
         if conn is None:
-            conn = DatabaseManager.get_connection()
+            conn = DatabaseManager.get_write_connection()
             should_close = True
             
         with conn.cursor() as cursor:
@@ -136,8 +138,10 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
     if categories:
         categories = ",".join([c.strip() for c in categories.replace("\n", ",").split(",") if c.strip()])
     # DEBUG: Verify file exists at start
-    print(f"[DEBUG] ingest_book called with file_path: {file_path}")
     print(f"[DEBUG] File exists at start: {os.path.exists(file_path)}")
+    
+    start_time = time.time()
+    source_type = "PDF" if file_path.lower().endswith(".pdf") else "EPUB"
     
     # Step 0: Duplicate Check / Overwrite
     # Step 0: Optimistic Duplicate Check (Fast fail, but not atomic)
@@ -186,7 +190,7 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
     print(f"{'='*70}")
     
     try:
-        with DatabaseManager.get_connection() as connection:
+        with DatabaseManager.get_write_connection() as connection:
             with connection.cursor() as cursor:
                 # A. ACQUIRE LOCK (The critical section starts here)
                 # Task 6.1: Deterministic Lock Name
@@ -334,6 +338,16 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
                     print(f"[PROGRESS] Processed {min(i + BATCH_SIZE, len(valid_chunks))}/{len(valid_chunks)} chunks...")
                 
                 # Step 4: Commit (Releases Lock)
+                # Fail Loud Check: Abort if "Swiss Cheese" (Too many missing embeddings)
+                total_processed = successful_inserts + failed_embeddings
+                if total_processed > 0:
+                    failure_rate = failed_embeddings / total_processed
+                    if failure_rate > 0.10: # >10% failure
+                        error_msg = f"Ingestion Aborted: High embedding failure rate ({failure_rate:.1%}). threshold=10%"
+                        logger.error(error_msg, extra={"failed": failed_embeddings, "total": total_processed})
+                        connection.rollback()
+                        raise Exception(error_msg)
+
                 print(f"\n{'='*70}")
                 print("Step 4: Committing to Database (Releases Lock)")
                 print(f"{'='*70}")
@@ -371,9 +385,11 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
         print(f"[ERROR] Failed to delete file: {e}")
     
     if successful_inserts == 0:
+        INGESTION_LATENCY.labels(status="fail", source_type=source_type).observe(time.time() - start_time)
         logger.error(f"Ingestion failed: 0 chunks were successfully inserted (valid_chunks: {len(valid_chunks)})")
         return False
     
+    INGESTION_LATENCY.labels(status="success", source_type=source_type).observe(time.time() - start_time)
     # Invalidate cache for this user (new content added)
     try:
         from services.cache_service import get_cache
@@ -402,7 +418,7 @@ def ingest_text_item(text: str, title: str, author: str, source_type: str = "NOT
         categories = ",".join([c.strip() for c in categories.replace("\n", ",").split(",") if c.strip()])
     print(f"\n[INFO] Text Ingestion: {title}")
     try:
-        with DatabaseManager.get_connection() as connection:
+        with DatabaseManager.get_write_connection() as connection:
             with connection.cursor() as cursor:
                 # Gatekeeper: Validation
                 if not DataHealthService.validate_content(text):
@@ -460,7 +476,7 @@ def process_bulk_items_logic(items: list, firebase_uid: str) -> dict:
     success = 0
     
     try:
-        with DatabaseManager.get_connection() as conn:
+        with DatabaseManager.get_write_connection() as conn:
             with conn.cursor() as cursor:
                 import time
                 for item in items:

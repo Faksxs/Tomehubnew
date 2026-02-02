@@ -34,6 +34,9 @@ lxml>=5.0.0
 # Environment
 python-dotenv>=1.0.0
 
+# System Monitoring (Task A2)
+psutil>=5.9.5
+
 # Production WSGI Server
 gunicorn>=21.0.0
 
@@ -51,3 +54,4 @@ redis>=5.0.0
 
 # Observability
 prometheus-fastapi-instrumentator>=6.0.0
+psutil>=5.9.0
