@@ -131,7 +131,10 @@ def delete_book_content(title: str, author: str, firebase_uid: str, conn=None) -
             conn.close()
 
 
-def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "test_user_001", book_id: str = None) -> bool:
+def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "test_user_001", book_id: str = None, categories: Optional[str] = None) -> bool:
+    # Normalize categories: remove newlines and extra spaces
+    if categories:
+        categories = ",".join([c.strip() for c in categories.replace("\n", ",").split(",") if c.strip()])
     # DEBUG: Verify file exists at start
     print(f"[DEBUG] ingest_book called with file_path: {file_path}")
     print(f"[DEBUG] File exists at start: {os.path.exists(file_path)}")
@@ -215,8 +218,8 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
                 
                 insert_sql = """
                 INSERT INTO TOMEHUB_CONTENT 
-                (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, book_id, normalized_content, text_deaccented, lemma_tokens)
-                VALUES (:p_uid, :p_type, :p_title, :p_content, :p_chunk_type, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm_content, :p_deaccent, :p_lemmas)
+                (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, book_id, normalized_content, text_deaccented, lemma_tokens, categories)
+                VALUES (:p_uid, :p_type, :p_title, :p_content, :p_chunk_type, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm_content, :p_deaccent, :p_lemmas, :p_cats)
                 """
                 
                 successful_inserts = 0
@@ -227,12 +230,29 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
                 def process_single_chunk_nlp(idx_chunk_tuple):
                     idx, chunk = idx_chunk_tuple
                     chunk_text = chunk['text']
+                    skip_chunk = False
+                    
+                    # Phase 14: SIS Integration (Smart Chunking Quality Gate)
+                    sis = chunk.get('sis', {})
+                    if sis:
+                        score = sis.get('score', 0)
+                        decision = sis.get('decision', 'EMBED')
+                        
+                        if decision == 'QUARANTINE':
+                            logger.warning("Chunk Quarantined due to low SIS", extra={
+                                "sis_score": score,
+                                "decision": decision,
+                                "details": sis.get('details'),
+                                "page": chunk.get('page_num')
+                            })
+                            skip_chunk = True
                     
                     # Phase 13 Optimization: OCR Quality Gating & Automated Repair
                     confidence = chunk.get('confidence', 1.0)
                     repaired = False
                     
-                    if confidence < 0.7:
+                    # Only repair/embed if not skipped
+                    if not skip_chunk and confidence < 0.7:
                         logger.warning("Low OCR Confidence detected. Triggering automated repair.", extra={
                             "confidence": confidence, 
                             "page": chunk.get('page_num'),
@@ -254,7 +274,8 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
                         'deaccented': deaccent_text(chunk_text),
                         'lemmas': json.dumps(get_lemmas(chunk_text), ensure_ascii=False),
                         'classification': classify_passage_fast(chunk_text),
-                        'decluttered_text': DataCleanerService.clean_with_ai(chunk_text, title=title, author=author)
+                        'decluttered_text': DataCleanerService.clean_with_ai(chunk_text, title=title, author=author),
+                        'skip': skip_chunk
                     }
 
                 # Filter out empty/short chunks before processing
@@ -270,13 +291,19 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
                     # 1. Parallel NLP processing for the batch
                     with ThreadPoolExecutor(max_workers=5) as executor:
                         nlp_results = list(executor.map(process_single_chunk_nlp, batch))
+                    
+                    # Filter out skipped (Quarantined) chunks
+                    valid_nlp_results = [r for r in nlp_results if not r.get('skip')]
+                    
+                    if not valid_nlp_results:
+                        continue
                         
                     # 2. Batch Embedding generation (Using Repaired Text)
-                    batch_texts = [r['text_used'] for r in nlp_results]
+                    batch_texts = [r['text_used'] for r in valid_nlp_results]
                     embeddings = batch_get_embeddings(batch_texts)
                     
                     # 3. Database Insertion (Batch)
-                    for idx, res in enumerate(nlp_results):
+                    for idx, res in enumerate(valid_nlp_results):
                         chunk = res['chunk']
                         embedding = embeddings[idx]
                         
@@ -297,7 +324,8 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
                                 "p_book_id": book_id,
                                 "p_norm_content": res['normalized'],
                                 "p_deaccent": res['deaccented'],
-                                "p_lemmas": res['lemmas']
+                                "p_lemmas": res['lemmas'],
+                                "p_cats": categories
                             })
                             successful_inserts += 1
                         except Exception as e:
@@ -368,7 +396,10 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
     return True
 
 # (Keep ingest_text_item and process_bulk_items_logic as is, just ensuring imports)
-def ingest_text_item(text: str, title: str, author: str, source_type: str = "NOTE", firebase_uid: str = "test_user_001") -> bool:
+def ingest_text_item(text: str, title: str, author: str, source_type: str = "NOTE", firebase_uid: str = "test_user_001", categories: Optional[str] = None) -> bool:
+    # Normalize categories
+    if categories:
+        categories = ",".join([c.strip() for c in categories.replace("\n", ",").split(",") if c.strip()])
     print(f"\n[INFO] Text Ingestion: {title}")
     try:
         with DatabaseManager.get_connection() as connection:
@@ -396,8 +427,8 @@ def ingest_text_item(text: str, title: str, author: str, source_type: str = "NOT
                     
                     cursor.execute("""
                         INSERT INTO TOMEHUB_CONTENT 
-                        (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, book_id, normalized_content, text_deaccented, lemma_tokens)
-                        VALUES (:p_uid, :p_type, :p_title, :p_content, :p_chunk_type, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_deaccent, :p_lemmas)
+                        (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, book_id, normalized_content, text_deaccented, lemma_tokens, categories)
+                        VALUES (:p_uid, :p_type, :p_title, :p_content, :p_chunk_type, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_deaccent, :p_lemmas, :p_cats)
                     """, {
                         "p_uid": firebase_uid,
                         "p_type": db_source_type,
@@ -410,7 +441,8 @@ def ingest_text_item(text: str, title: str, author: str, source_type: str = "NOT
                         "p_book_id": book_id,
                         "p_norm": normalized_text,
                         "p_deaccent": deaccented_text,
-                        "p_lemmas": lemmas_json
+                        "p_lemmas": lemmas_json,
+                        "p_cats": categories
                     })
                     connection.commit()
                     print(f"[SUCCESS] Text Item Ingested: {title} (Type: {db_source_type})")
@@ -441,13 +473,17 @@ def process_bulk_items_logic(items: list, firebase_uid: str) -> dict:
                         normalized_text = normalize_text(text)
                         deaccented_text = deaccent_text(text)
                         lemmas_json = json.dumps(get_lemmas(text), ensure_ascii=False)
-                        
-                        embedding = get_embedding(text)
+
+                        # Normalize categories if present in item
+                        cats = item.get('categories')
+                        if cats:
+                            cats = ",".join([c.strip() for c in cats.replace("\n", ",").split(",") if c.strip()])
+
                         if embedding:
                             cursor.execute("""
                                 INSERT INTO TOMEHUB_CONTENT 
-                                (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, normalized_content, text_deaccented, lemma_tokens)
-                                VALUES (:p_uid, :p_type, :p_title, :p_content, 'full_text', 1, 0, :p_vec, :p_norm, :p_deaccent, :p_lemmas)
+                                (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, normalized_content, text_deaccented, lemma_tokens, categories)
+                                VALUES (:p_uid, :p_type, :p_title, :p_content, 'full_text', 1, 0, :p_vec, :p_norm, :p_deaccent, :p_lemmas, :p_cats)
                             """, {
                                 "p_uid": firebase_uid,
                                 "p_type": item.get('type', 'NOTE'),
@@ -456,7 +492,8 @@ def process_bulk_items_logic(items: list, firebase_uid: str) -> dict:
                                 "p_vec": embedding,
                                 "p_norm": normalized_text,
                                 "p_deaccent": deaccented_text,
-                                "p_lemmas": lemmas_json
+                                "p_lemmas": lemmas_json,
+                                "p_cats": cats
                             })
                             success += 1
                             time.sleep(0.5) # Rate limit

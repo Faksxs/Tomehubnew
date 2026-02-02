@@ -500,13 +500,13 @@ async def extract_metadata_endpoint(file: UploadFile = File(...)):
 
 from services.report_service import generate_file_report
 
-def run_ingestion_background(temp_path: str, title: str, author: str, firebase_uid: str, book_id: str):
+def run_ingestion_background(temp_path: str, title: str, author: str, firebase_uid: str, book_id: str, categories: Optional[str] = None):
     """
     Background task wrapper for book ingestion.
     """
     try:
         logger.info(f"Starting background ingestion for: {title}")
-        success = ingest_book(temp_path, title, author, firebase_uid, book_id)
+        success = ingest_book(temp_path, title, author, firebase_uid, book_id, categories=categories)
         
         if success:
             logger.info(f"Background ingestion success: {title}")
@@ -531,7 +531,8 @@ async def ingest_endpoint(
     title: str = Form(...),
     author: str = Form(...),
     firebase_uid: str = Form(...),
-    book_id: Optional[str] = Form(None)
+    book_id: Optional[str] = Form(None),
+    tags: Optional[str] = Form(None)
 ):
     # Log ingestion start
     print(f"Ingesting file: {file.filename} Title: {title}")
@@ -562,7 +563,8 @@ async def ingest_endpoint(
             title, 
             author, 
             firebase_uid, 
-            book_id
+            book_id,
+            categories=tags
         )
         
         return {

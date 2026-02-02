@@ -117,7 +117,7 @@ class FlowService:
         effective_uid = request.firebase_uid
 
         anchor_vector, anchor_label, resolved_id = self._resolve_anchor(
-            request.anchor_type, request.anchor_id, effective_uid, request.resource_type
+            request.anchor_type, request.anchor_id, effective_uid, request.resource_type, request.category
         )
         
         if anchor_vector is None:
@@ -319,6 +319,7 @@ class FlowService:
                         )
                     """
                     sql, params = self._apply_resource_filter(sql, params, state.resource_type)
+                    sql, params = self._apply_category_filter(sql, params, state.category)
                         
                     sql += " ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY "
                     cursor.execute(sql, params)
@@ -349,6 +350,7 @@ class FlowService:
                         )
                     """
                     sql, params = self._apply_resource_filter(sql, params, state.resource_type)
+                    sql, params = self._apply_category_filter(sql, params, state.category)
                         
                     sql += " ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY "
                     cursor.execute(sql, params)
@@ -771,7 +773,7 @@ class FlowService:
         # If user selects Personal Notes, Websites, or Articles, just show what we have randomly.
         if state.resource_type in ['PERSONAL_NOTE', 'WEBSITE', 'ARTICLE']:
             return self._fetch_simple_random_by_type(
-                firebase_uid, session_id, state.resource_type, batch_size
+                firebase_uid, session_id, state.resource_type, batch_size, state.category
             )
 
         
@@ -912,25 +914,25 @@ class FlowService:
                     if zone == 1:
                         # ZONE 1: Tight Context (Same book, nearby pages)
                         candidates = self._fetch_zone1_tight_context(
-                            cursor, state, firebase_uid, limit, resource_type
+                            cursor, state, firebase_uid, limit, resource_type, state.category
                         )
                     
                     elif zone == 2:
                         # ZONE 2: Author's Mind (Same author, graph 1-hop)
                         candidates = self._fetch_zone2_authors_mind(
-                            cursor, state, firebase_uid, limit, resource_type
+                            cursor, state, firebase_uid, limit, resource_type, state.category
                         )
                     
                     elif zone == 3:
                         # ZONE 3: Syntopic Debate (Vector similarity to Global Anchor)
                         candidates = self._fetch_zone3_syntopic(
-                            cursor, target_vector, firebase_uid, state.session_id, limit, resource_type
+                            cursor, target_vector, firebase_uid, state.session_id, limit, resource_type, state.category
                         )
                     
                     elif zone == 4:
                         # ZONE 4: Discovery Bridge (Looser similarity, high centrality)
                         candidates = self._fetch_zone4_discovery(
-                            cursor, target_vector, firebase_uid, state.session_id, limit, state.cards_shown, resource_type
+                            cursor, target_vector, firebase_uid, state.session_id, limit, state.cards_shown, resource_type, state.category
                         )
         
         except Exception as e:
@@ -947,7 +949,7 @@ class FlowService:
     # -------------------------------------------------------------------------
     
     def _fetch_simple_random_by_type(
-        self, firebase_uid: str, session_id: str, resource_type: str, batch_size: int
+        self, firebase_uid: str, session_id: str, resource_type: str, batch_size: int, category: Optional[str] = None
     ) -> List[FlowCard]:
         """
         Simple fetcher for Sparse Categories (Personal Notes, Websites, Articles).
@@ -982,6 +984,8 @@ class FlowService:
                          sql += " AND source_type = :p_type "
                          params["p_type"] = resource_type
 
+                    # Apply Category Filter
+                    sql, params = self._apply_category_filter(sql, params, category)
                     sql += """
                         AND id NOT IN (
                             SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
@@ -1019,7 +1023,7 @@ class FlowService:
     
     def _fetch_zone1_tight_context(
         self, cursor, state: FlowSessionState, firebase_uid: str, limit: int,
-        resource_type: Optional[str] = None
+        resource_type: Optional[str] = None, category: Optional[str] = None
     ) -> List[FlowCard]:
         """
         Zone 1: Fetch chunks from the same book, near the anchor's page.
@@ -1058,6 +1062,7 @@ class FlowService:
                 """
                 # Apply filters
                 sql, params = self._apply_resource_filter(sql, params, resource_type)
+                sql, params = self._apply_category_filter(sql, params, category)
                 
                 sql += " ORDER BY distance FETCH FIRST :p_limit ROWS ONLY "
                 cursor.execute(sql, params)
@@ -1113,6 +1118,7 @@ class FlowService:
             )
         """
         sql, params = self._apply_resource_filter(sql, params, resource_type)
+        sql, params = self._apply_category_filter(sql, params, category)
             
         sql += " ORDER BY ABS(NVL(page_number, 1) - :p_page) FETCH FIRST :p_limit ROWS ONLY "
         cursor.execute(sql, params)
@@ -1136,7 +1142,7 @@ class FlowService:
     
     def _fetch_zone2_authors_mind(
         self, cursor, state: FlowSessionState, firebase_uid: str, limit: int,
-        resource_type: Optional[str] = None
+        resource_type: Optional[str] = None, category: Optional[str] = None
     ) -> List[FlowCard]:
         """
         Zone 2: Fetch from the same author or graph 1-hop neighbors.
@@ -1184,6 +1190,7 @@ class FlowService:
             """
 
             sql, params = self._apply_resource_filter(sql, params, resource_type)
+            sql, params = self._apply_category_filter(sql, params, category)
                 
             sql += " ORDER BY DBMS_RANDOM.VALUE FETCH FIRST :p_limit ROWS ONLY "
             cursor.execute(sql, params)
@@ -1226,6 +1233,7 @@ class FlowService:
                 )
             """
             sql, params = self._apply_resource_filter(sql, params, resource_type)
+            sql, params = self._apply_category_filter(sql, params, category)
                 
             sql += " ORDER BY distance OFFSET :p_offset ROWS FETCH NEXT :p_limit ROWS ONLY "
             cursor.execute(sql, params)
@@ -1251,7 +1259,7 @@ class FlowService:
     
     def _fetch_zone3_syntopic(
         self, cursor, target_vector: Optional[List[float]], firebase_uid: str, session_id: str, limit: int,
-        resource_type: Optional[str] = None
+        resource_type: Optional[str] = None, category: Optional[str] = None
     ) -> List[FlowCard]:
         """
         Zone 3: Vector similarity search (Syntopic Debate).
@@ -1280,6 +1288,7 @@ class FlowService:
             )
         """
         sql, params = self._apply_resource_filter(sql, params, resource_type)
+        sql, params = self._apply_category_filter(sql, params, category)
             
         sql += " ORDER BY distance FETCH FIRST :p_limit ROWS ONLY "
         cursor.execute(sql, params)
@@ -1310,7 +1319,8 @@ class FlowService:
     def _fetch_zone4_discovery(
         self, cursor, target_vector: Optional[List[float]], firebase_uid: str, session_id: str, limit: int,
         cards_shown: int = 0,
-        resource_type: Optional[str] = None
+        resource_type: Optional[str] = None,
+        category: Optional[str] = None
     ) -> List[FlowCard]:
         """
         Zone 4: Discovery Bridge (prioritize high-centrality bridge nodes).
@@ -1345,6 +1355,8 @@ class FlowService:
             elif resource_type in ('ARTICLE', 'WEBSITE'):
                 sql += " AND ct.source_type = :p_type "
                 params["p_type"] = resource_type
+            
+            sql, params = self._apply_category_filter(sql, params, category)
                 
             sql += " ORDER BY c.centrality_score DESC, DBMS_RANDOM.VALUE FETCH FIRST :p_limit ROWS ONLY "
             cursor.execute(sql, params)
@@ -1393,8 +1405,8 @@ class FlowService:
                     WHERE session_id = :p_sid
                 )
             """
-            
             sql, params = self._apply_resource_filter(sql, params, resource_type)
+            sql, params = self._apply_category_filter(sql, params, category)
                 
             sql += " ORDER BY distance OFFSET :p_offset ROWS FETCH NEXT :p_limit ROWS ONLY "
             cursor.execute(sql, params)
