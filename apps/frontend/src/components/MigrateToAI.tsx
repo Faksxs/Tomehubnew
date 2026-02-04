@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Database, Play, Loader2, CheckCircle, AlertCircle, BarChart } from 'lucide-react';
 import { LibraryItem } from '../types';
-import { addTextItem, migrateBulkItems } from '../services/backendApiService';
+import { addTextItem, migrateBulkItems, syncHighlights } from '../services/backendApiService';
 
 interface MigrateToAIProps {
     books: LibraryItem[];
@@ -45,7 +45,9 @@ export const MigrateToAI: React.FC<MigrateToAIProps> = ({ books, userId }) => {
                 text: textContent,
                 title: item.title,
                 author: item.author,
-                type: item.type
+                type: item.type,
+                book_id: item.id,
+                tags: item.tags
             };
         }).filter(item => item.text.length > 20); // Filter out empty/short items
 
@@ -85,6 +87,19 @@ export const MigrateToAI: React.FC<MigrateToAIProps> = ({ books, userId }) => {
                 success: successCount,
                 failed: failCount + (books.length - totalItemsToProcess)
             }));
+        }
+
+        // After bulk migration, sync highlights/insights for books with highlights
+        const highlightSources = books.filter(b => b.highlights && b.highlights.length > 0);
+        if (highlightSources.length > 0) {
+            setCurrentTitle('Syncing highlights...');
+            for (const item of highlightSources) {
+                try {
+                    await syncHighlights(userId, item.id, item.title, item.author, item.highlights || []);
+                } catch (err) {
+                    console.error(`Highlight sync failed for ${item.title}:`, err);
+                }
+            }
         }
 
         setIsMigrating(false);

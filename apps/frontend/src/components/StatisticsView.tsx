@@ -6,9 +6,10 @@ import { CATEGORIES } from './CategorySelector';
 
 interface StatisticsViewProps {
     items: LibraryItem[];
+    onCategorySelect?: (category: string) => void;
 }
 
-export const StatisticsView: React.FC<StatisticsViewProps> = ({ items }) => {
+export const StatisticsView: React.FC<StatisticsViewProps> = ({ items, onCategorySelect }) => {
     const books = items.filter(i => i.type === 'BOOK');
     const articles = items.filter(i => i.type === 'ARTICLE');
     const websites = items.filter(i => i.type === 'WEBSITE');
@@ -33,14 +34,14 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({ items }) => {
     const onShelfCount = books.filter(i => i.status === 'On Shelf').length;
 
     const StatCard = ({ title, count, icon: Icon, color, subtext }: any) => (
-        <div className="bg-white p-3 md:p-6 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3 md:gap-5 hover:shadow-md transition-shadow">
-            <div className={`p-2 md:p-4 rounded-full ${color} bg-opacity-10`}>
-                <Icon size={20} className={`${color.replace('bg-', 'text-')} md:w-8 md:h-8`} />
+        <div className="bg-white p-3 md:p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-2 md:gap-4 hover:shadow-md transition-shadow">
+            <div className={`p-2 md:p-3.5 rounded-full ${color} bg-opacity-10 shrink-0`}>
+                <Icon size={20} className={`${color.replace('bg-', 'text-')} md:w-7 md:h-7`} />
             </div>
-            <div>
-                <p className="text-[10px] md:text-sm text-slate-500 font-medium uppercase tracking-wide">{title}</p>
-                <h3 className="text-xl md:text-3xl font-bold text-slate-900">{count}</h3>
-                {subtext && <p className="text-[10px] md:text-xs text-slate-400 mt-1">{subtext}</p>}
+            <div className="flex-1 text-center pr-2 md:pr-4">
+                <p className="text-[10px] md:text-xs text-slate-500 font-medium uppercase tracking-wide truncate">{title}</p>
+                <h3 className="text-xl md:text-3xl font-bold text-slate-900 leading-tight">{count}</h3>
+                {subtext && <p className="text-[10px] md:text-xs text-slate-400 mt-0.5">{subtext}</p>}
             </div>
         </div>
     );
@@ -66,7 +67,7 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({ items }) => {
                         <Quote size={16} className="text-indigo-600 md:w-5 md:h-5" />
                         Content Collection
                     </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:gap-4">
+                    <div className="grid grid-cols-1 gap-2 md:gap-4">
                         <div className="p-3 md:p-5 bg-yellow-50 rounded-xl border border-yellow-100">
                             <div className="flex items-center gap-2 md:gap-3 mb-1 md:mb-2">
                                 <div className="p-1.5 md:p-2 bg-yellow-100 rounded-lg">
@@ -77,21 +78,11 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({ items }) => {
                             <p className="text-2xl md:text-4xl font-bold text-yellow-700 mt-1 md:mt-2">{quotes.length}</p>
                             <p className="text-[10px] md:text-xs text-yellow-600/80 mt-0.5 md:mt-1">Passages saved from books & articles</p>
                         </div>
-                        <div className="p-3 md:p-5 bg-indigo-50 rounded-xl border border-indigo-100">
-                            <div className="flex items-center gap-2 md:gap-3 mb-1 md:mb-2">
-                                <div className="p-1.5 md:p-2 bg-indigo-100 rounded-lg">
-                                    <StickyNote className="text-indigo-600" size={16} />
-                                </div>
-                                <span className="font-semibold text-indigo-900 text-xs md:text-base">Attached Notes</span>
-                            </div>
-                            <p className="text-2xl md:text-4xl font-bold text-indigo-700 mt-1 md:mt-2">{attachedNotes.length}</p>
-                            <p className="text-[10px] md:text-xs text-indigo-600/80 mt-0.5 md:mt-1">Specific comments added to items</p>
-                        </div>
                     </div>
 
                     {/* Inventory Check (Books Only) */}
                     <div className="mt-4 md:mt-6 pt-4 md:pt-6 border-t border-slate-100">
-                        <h4 className="text-[10px] md:text-sm font-bold text-slate-500 uppercase tracking-wider mb-2 md:mb-4">Inventory Check (Books)</h4>
+                        <h4 className="text-[10px] md:text-sm font-bold text-slate-500 uppercase tracking-wider mb-2 md:mb-4">Books Inventory</h4>
                         <div className="grid grid-cols-3 gap-2 md:gap-4">
                             <div className="flex flex-col md:flex-row items-center md:items-center gap-1 md:gap-3 p-2 md:p-3 rounded-lg bg-slate-50 border border-slate-100 text-center md:text-left">
                                 <Archive size={14} className="text-slate-400 md:w-4 md:h-4" />
@@ -163,7 +154,7 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({ items }) => {
                 <div className="flex items-center justify-between mb-6">
                     <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                         <Archive size={20} className="text-[#CC561E]" />
-                        Category Distribution
+                        Category
                     </h3>
                     <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded-full">
                         {books.length} Total Books
@@ -176,7 +167,12 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({ items }) => {
                         const percentage = books.length > 0 ? (count / books.length) * 100 : 0;
 
                         return (
-                            <div key={category} className="space-y-2 group">
+                            <button
+                                key={category}
+                                type="button"
+                                className="space-y-2 group text-left focus:outline-none"
+                                onClick={() => onCategorySelect?.(category)}
+                            >
                                 <div className="flex justify-between items-center text-sm">
                                     <span className="font-semibold text-slate-700 group-hover:text-[#CC561E] transition-colors">{category}</span>
                                     <div className="flex items-center gap-2">
@@ -190,7 +186,7 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({ items }) => {
                                         style={{ width: `${percentage}%` }}
                                     ></div>
                                 </div>
-                            </div>
+                            </button>
                         );
                     })}
                 </div>

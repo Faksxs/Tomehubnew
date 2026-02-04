@@ -9,6 +9,22 @@ from utils.logger import get_logger
 
 logger = get_logger("search_strategies")
 
+def _apply_resource_type_filter(sql: str, params: dict, resource_type: Optional[str]) -> tuple[str, dict]:
+    """
+    Apply canonical source_type filters.
+    - BOOK: PDF/EPUB/PDF_CHUNK + BOOK + HIGHLIGHT/INSIGHT (+ legacy NOTES)
+    - PERSONAL_NOTE: PERSONAL_NOTE only
+    - ARTICLE/WEBSITE: strict match
+    """
+    if resource_type == 'BOOK':
+        sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'BOOK', 'HIGHLIGHT', 'INSIGHT', 'NOTES') "
+    elif resource_type == 'PERSONAL_NOTE':
+        sql += " AND source_type = 'PERSONAL_NOTE' "
+    elif resource_type in ('ARTICLE', 'WEBSITE'):
+        sql += " AND source_type = :p_type "
+        params["p_type"] = resource_type
+    return sql, params
+
 class SearchStrategy(ABC):
     """
     Abstract Base Class for Search Strategies.
@@ -35,10 +51,6 @@ class ExactMatchStrategy(SearchStrategy):
                 with conn.cursor() as cursor:
                     q_deaccented = deaccent_text(query)
                     
-                    # Layer 4 Mapping
-                    source_type_map = {'BOOK': 'PDF', 'ARTICLE': 'ARTICLE', 'WEBSITE': 'WEBSITE', 'PERSONAL_NOTE': 'NOTE'}
-                    db_type = source_type_map.get(resource_type)
-                    
                     sql = """
                         SELECT id, content_chunk, title, source_type, page_number, 
                                tags, summary, personal_note,
@@ -54,9 +66,7 @@ class ExactMatchStrategy(SearchStrategy):
                         "p_limit": limit
                     }
                     
-                    if db_type:
-                        sql += " AND source_type = :p_type "
-                        params["p_type"] = db_type
+                    sql, params = _apply_resource_type_filter(sql, params, resource_type)
                         
                     sql += """
                         AND (
@@ -107,10 +117,6 @@ class LemmaMatchStrategy(SearchStrategy):
         try:
             with DatabaseManager.get_read_connection() as conn:
                 with conn.cursor() as cursor:
-                    # Layer 4 Mapping
-                    source_type_map = {'BOOK': 'PDF', 'ARTICLE': 'ARTICLE', 'WEBSITE': 'WEBSITE', 'PERSONAL_NOTE': 'NOTES'}
-                    db_type = source_type_map.get(resource_type)
-
                     results = []
                     
                     # Build bulk query for up to 5 lemmas
@@ -125,9 +131,7 @@ class LemmaMatchStrategy(SearchStrategy):
                     """
                     params = {"p_uid": firebase_uid, "p_limit": limit}
                     
-                    if db_type:
-                        sql += " AND source_type = :p_type "
-                        params["p_type"] = db_type
+                    sql, params = _apply_resource_type_filter(sql, params, resource_type)
                     
                     lemma_conditions = []
                     for i, lemma in enumerate(lemmas[:5]):
@@ -192,10 +196,6 @@ class SemanticMatchStrategy(SearchStrategy):
                 with conn.cursor() as cursor:
                     results = []
                     
-                    # Layer 4 Mapping
-                    source_type_map = {'BOOK': 'PDF', 'ARTICLE': 'ARTICLE', 'WEBSITE': 'WEBSITE', 'PERSONAL_NOTE': 'NOTE'}
-                    db_type = source_type_map.get(resource_type)
-
                     # Helper to run query
                     def run_query(custom_limit, length_filter=None):
                         sql = """
@@ -208,9 +208,7 @@ class SemanticMatchStrategy(SearchStrategy):
                         
                         params = {"p_uid": firebase_uid, "vec": emb, "p_limit": custom_limit}
                         
-                        if db_type:
-                            sql += " AND source_type = :p_type "
-                            params["p_type"] = db_type
+                        sql, params = _apply_resource_type_filter(sql, params, resource_type)
 
                         # Apply Content-Aware Filters
                         if length_filter:

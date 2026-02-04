@@ -436,10 +436,13 @@ export const enrichBookWithAI = async (item: ItemDraft): Promise<ItemDraft> => {
       body: JSON.stringify(item)
     });
 
-    if (!response.ok) return item;
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Enrichment failed with status ${response.status}: ${errorText}`);
+      return item;
+    }
 
     const enrichedData = await response.json();
-    // Backend returns the merged/enriched item directly
     return enrichedData;
 
   } catch (e) {

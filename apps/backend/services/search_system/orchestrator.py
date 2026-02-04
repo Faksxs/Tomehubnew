@@ -35,7 +35,7 @@ class SearchOrchestrator:
         if self.embedding_fn:
             self.strategies.append(SemanticMatchStrategy(self.embedding_fn))
             
-    def search(self, query: str, firebase_uid: str, limit: int = 50, offset: int = 0, book_id: str = None, intent: str = 'SYNTHESIS', resource_type: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    def search(self, query: str, firebase_uid: str, limit: int = 50, offset: int = 0, book_id: str = None, intent: str = 'SYNTHESIS', resource_type: Optional[str] = None, session_id: Optional[int | str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         start_time = time.time()
         logger.info(f"Orchestrator: Search started for query='{query}' UID='{firebase_uid}' intent='{intent}'")
         
@@ -235,7 +235,8 @@ class SearchOrchestrator:
             intent=intent,
             rrf_scores=None, # Passed inside helper for now
             results=top_candidates,
-            duration=duration
+            duration=duration,
+            session_id=session_id
         )
         
         metadata = {
@@ -248,7 +249,7 @@ class SearchOrchestrator:
         return top_candidates, metadata
 
     # Helper for DB Logging
-    def _log_search(self, uid, query, intent, rrf_scores, results, duration):
+    def _log_search(self, uid, query, intent, rrf_scores, results, duration, session_id: Optional[int | str] = None):
         try:
             from infrastructure.db_manager import DatabaseManager
             import json
@@ -263,11 +264,12 @@ class SearchOrchestrator:
                     
                     cursor.execute("""
                         INSERT INTO TOMEHUB_SEARCH_LOGS 
-                        (FIREBASE_UID, QUERY_TEXT, INTENT, RRF_WEIGHTS, TOP_RESULT_ID, TOP_RESULT_SCORE, EXECUTION_TIME_MS)
-                        VALUES (:p_uid, :p_q, :p_intent, :p_w, :p_tid, :p_tscore, :p_dur)
+                        (FIREBASE_UID, SESSION_ID, QUERY_TEXT, INTENT, RRF_WEIGHTS, TOP_RESULT_ID, TOP_RESULT_SCORE, EXECUTION_TIME_MS)
+                        VALUES (:p_uid, :p_sid, :p_q, :p_intent, :p_w, :p_tid, :p_tscore, :p_dur)
                         RETURNING ID INTO :id_col
                     """, {
                         "p_uid": uid,
+                        "p_sid": str(session_id) if session_id is not None else None,
                         "p_q": query,
                         "p_intent": intent,
                         "p_w": weights_str,

@@ -27,10 +27,27 @@ def fix_schema():
                                 id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                                 firebase_uid VARCHAR2(255) NOT NULL,
                                 session_id VARCHAR2(255) NOT NULL,
-                                chunk_id VARCHAR2(255) NOT NULL,
+                                chunk_id NUMBER NOT NULL,
                                 seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                             )
                         """)
+                        cursor.execute("""
+                            CREATE INDEX IDX_FLOW_SEEN_CHECK
+                            ON TOMEHUB_FLOW_SEEN (firebase_uid, chunk_id)
+                        """)
+                        cursor.execute("""
+                            CREATE INDEX IDX_FLOW_SEEN_SESSION
+                            ON TOMEHUB_FLOW_SEEN (session_id)
+                        """)
+                        try:
+                            cursor.execute("""
+                                ALTER TABLE TOMEHUB_FLOW_SEEN
+                                ADD CONSTRAINT FK_FLOW_CHUNK
+                                FOREIGN KEY (CHUNK_ID) REFERENCES TOMEHUB_CONTENT(ID)
+                                ON DELETE CASCADE
+                            """)
+                        except Exception as fk_err:
+                            print(f"ℹ️ FK_FLOW_CHUNK not added (will retry in migration): {fk_err}")
                         conn.commit()
                         print("✅ TOMEHUB_FLOW_SEEN created.")
                     elif "ORA-00904" in err: # Column missing

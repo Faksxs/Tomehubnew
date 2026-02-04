@@ -18,7 +18,8 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
-from services.embedding_service import get_embedding
+from services.embedding_service import get_embedding, get_query_embedding
+from config import settings
 from services.cache_service import get_cache, generate_cache_key
 
 
@@ -47,7 +48,26 @@ def extract_concepts_and_relations(text: str):
             text_resp = re.search(r'```\s*(.*?)\s*```', text_resp, re.DOTALL).group(1)
             
         data = json.loads(text_resp)
-        return data.get('concepts', []), data.get('relations', [])
+        concepts = data.get('concepts', [])
+        relations = data.get('relations', [])
+
+        # Normalize concepts: accept list of strings or list of objects
+        normalized_concepts = []
+        for c in concepts:
+            if isinstance(c, str):
+                name = c.strip()
+                if name:
+                    normalized_concepts.append({"name": name, "type": "AUTOMATIC", "description": None})
+            elif isinstance(c, dict):
+                name = (c.get("name") or "").strip()
+                if not name:
+                    continue
+                normalized_concepts.append({
+                    "name": name,
+                    "type": (c.get("type") or "AUTOMATIC").strip(),
+                    "description": (c.get("description") or "").strip() or None
+                })
+        return normalized_concepts, relations
     except Exception as e:
         print(f"[ERROR] Extraction failed: {e}")
         return [], []
@@ -57,37 +77,111 @@ def save_to_graph(content_id: int, concepts: list, relations: list):
     try:
         with DatabaseManager.get_write_connection() as conn:
             with conn.cursor() as cursor:
-                concept_map = {} # name -> id
+                concept_map = {} # name_lower -> id
                 
                 # 1. Save Concepts & Link to Chunk
-                for name in concepts:
-                    name_clean = name.strip()[:255]
-                    if not name_clean: continue
-                    
-                    # Upsert Concept (Use a simpler MERGE or separate check)
-                    try:
-                        # First try to insert
-                        cursor.execute("""
-                            INSERT INTO TOMEHUB_CONCEPTS (name, concept_type)
-                            VALUES (:name, 'AUTOMATIC')
-                        """, {"name": name_clean})
-                    except oracledb.IntegrityError:
-                        # Already exists, just continue
-                        pass
+                for concept in concepts:
+                    if isinstance(concept, dict):
+                        name_clean = concept.get("name", "").strip()[:255]
+                        ctype = (concept.get("type") or "AUTOMATIC").strip()[:50]
+                        desc = concept.get("description")
+                    else:
+                        name_clean = str(concept).strip()[:255]
+                        ctype = "AUTOMATIC"
+                        desc = None
+                    if not name_clean:
+                        continue
+
+                    # Normalize bilingual format: "Düşüş (The Fall)" -> name="Düşüş", alias="The Fall"
+                    alias = None
+                    m = re.match(r"^(.+?)\\s*\\((.+)\\)\\s*$", name_clean)
+                    if m:
+                        name_clean = m.group(1).strip()[:255]
+                        alias = m.group(2).strip()[:255] if m.group(2) else None
+
+                    name_lower = name_clean.lower()
+                    desc_embedding = None
+                    if desc and isinstance(desc, str):
+                        desc_clean = desc.strip()
+                        if len(desc_clean) >= 20:
+                            desc_embedding = get_embedding(desc_clean)
+
+                    # Upsert Concept (case-insensitive)
+                    cursor.execute("""
+                        MERGE INTO TOMEHUB_CONCEPTS target
+                        USING (SELECT :name as name, :name_lower as name_lower, :ctype as ctype, :desc as descr FROM DUAL) src
+                        ON (LOWER(target.name) = src.name_lower)
+                        WHEN MATCHED THEN
+                            UPDATE SET
+                                CONCEPT_TYPE = COALESCE(target.CONCEPT_TYPE, src.ctype),
+                                DESCRIPTION = CASE
+                                    WHEN target.DESCRIPTION IS NULL THEN src.descr
+                                    ELSE target.DESCRIPTION
+                                END,
+                                DESCRIPTION_EMBEDDING = CASE
+                                    WHEN target.DESCRIPTION_EMBEDDING IS NULL THEN :p_desc_vec
+                                    ELSE target.DESCRIPTION_EMBEDDING
+                                END
+                        WHEN NOT MATCHED THEN
+                            INSERT (name, concept_type, description, description_embedding)
+                            VALUES (src.name, src.ctype, src.descr, :p_desc_vec)
+                    """, {"name": name_clean, "name_lower": name_lower, "ctype": ctype, "descr": desc, "p_desc_vec": desc_embedding})
                     
                     # Get ID
-                    cursor.execute("SELECT id FROM TOMEHUB_CONCEPTS WHERE name = :name", {"name": name_clean})
+                    cursor.execute("SELECT id FROM TOMEHUB_CONCEPTS WHERE LOWER(name) = :name_lower", {"name_lower": name_lower})
                     row = cursor.fetchone()
-                    if not row: continue
+                    if not row:
+                        continue
                     cid = row[0]
-                    concept_map[name_clean] = cid
+                    concept_map[name_lower] = cid
+
+                    # Insert alias if exists
+                    if alias:
+                        try:
+                            cursor.execute("""
+                                INSERT INTO TOMEHUB_CONCEPT_ALIASES (concept_id, alias)
+                                VALUES (:p_cid, :p_alias)
+                            """, {"p_cid": cid, "p_alias": alias})
+                        except oracledb.IntegrityError:
+                            pass
                     
                     # Link to Chunk
                     try:
+                        # Compute strength if embeddings available
+                        strength = None
+                        justification = None
+                        try:
+                            cursor.execute("""
+                                SELECT VEC_EMBEDDING, CONTENT_CHUNK
+                                FROM TOMEHUB_CONTENT
+                                WHERE ID = :p_id
+                            """, {"p_id": content_id})
+                            c_row = cursor.fetchone()
+                            if c_row:
+                                content_vec = c_row[0]
+                                content_text = safe_read_clob(c_row[1]) if c_row[1] else ""
+                                if desc_embedding is not None and content_vec is not None:
+                                    cursor.execute("""
+                                        SELECT 1 - VECTOR_DISTANCE(:p_desc, :p_vec, COSINE) FROM DUAL
+                                    """, {"p_desc": desc_embedding, "p_vec": content_vec})
+                                    strength = cursor.fetchone()[0]
+
+                                # Simple justification
+                                if content_text:
+                                    lowered = content_text.lower()
+                                    if name_clean.lower() in lowered:
+                                        justification = f"Exact match: '{name_clean}'"
+                                    elif alias and alias.lower() in lowered:
+                                        justification = f"Exact match: '{alias}'"
+                                    elif strength is not None:
+                                        justification = "Semantic match via embedding"
+                        except Exception:
+                            pass
+
                         cursor.execute("""
-                            INSERT INTO TOMEHUB_CONCEPT_CHUNKS (concept_id, content_id)
-                            VALUES (:cid, :ch_id)
-                        """, {"cid": cid, "ch_id": content_id})
+                            INSERT INTO TOMEHUB_CONCEPT_CHUNKS (concept_id, content_id, strength, justification)
+                            VALUES (:cid, :ch_id, :p_strength, :p_just)
+                        """, {"cid": cid, "ch_id": content_id, "p_strength": strength, "p_just": justification})
                     except oracledb.IntegrityError:
                         pass # Already linked
                     
@@ -98,16 +192,23 @@ def save_to_graph(content_id: int, concepts: list, relations: list):
                         src_name = rel[0]
                         rel_type = rel[1]
                         dst_name = rel[2]
-                        weight = float(rel[3]) if len(rel) > 3 else 1.0
+                        try:
+                            weight = float(rel[3]) if len(rel) > 3 else 1.0
+                        except (TypeError, ValueError):
+                            weight = 1.0
                         
-                        sid = concept_map.get(src_name)
-                        did = concept_map.get(dst_name)
+                        sid = concept_map.get(str(src_name).strip().lower())
+                        did = concept_map.get(str(dst_name).strip().lower())
                         
                         if sid and did:
-                            cursor.execute("""
-                                INSERT INTO TOMEHUB_RELATIONS (src_id, dst_id, rel_type, weight)
-                                VALUES (:sid, :did, :rtype, :wght)
-                            """, {"sid": sid, "did": did, "rtype": rel_type[:100], "wght": weight})
+                            try:
+                                cursor.execute("""
+                                    INSERT INTO TOMEHUB_RELATIONS (src_id, dst_id, rel_type, weight)
+                                    VALUES (:sid, :did, :rtype, :wght)
+                                """, {"sid": sid, "did": did, "rtype": rel_type[:100], "wght": weight})
+                            except oracledb.IntegrityError:
+                                # Duplicate relation (unique constraint) - safe to skip
+                                pass
                             
                 conn.commit()
     except Exception as e:
@@ -126,6 +227,14 @@ def find_concepts_by_text(text: str, cursor) -> list[int]:
     """, {"term": f"%{clean_text}%"})
     
     ids = [row[0] for row in cursor.fetchall()]
+
+    # 2. Alias Match
+    cursor.execute("""
+        SELECT concept_id FROM TOMEHUB_CONCEPT_ALIASES
+        WHERE LOWER(alias) LIKE :term
+        FETCH FIRST 5 ROWS ONLY
+    """, {"term": f"%{clean_text}%"})
+    ids.extend([row[0] for row in cursor.fetchall()])
     return ids
 
 def find_concepts_by_batch(names: list[str], cursor) -> list[int]:
@@ -143,7 +252,14 @@ def find_concepts_by_batch(names: list[str], cursor) -> list[int]:
     sql = f"SELECT id FROM TOMEHUB_CONCEPTS WHERE LOWER(name) IN ({bind_clause})"
     cursor.execute(sql, params)
     
-    return [row[0] for row in cursor.fetchall()]
+    ids = [row[0] for row in cursor.fetchall()]
+
+    # Alias batch match
+    sql_alias = f"SELECT concept_id FROM TOMEHUB_CONCEPT_ALIASES WHERE LOWER(alias) IN ({bind_clause})"
+    cursor.execute(sql_alias, params)
+    ids.extend([row[0] for row in cursor.fetchall()])
+
+    return ids
 
 
 class GraphRetrievalError(Exception):
@@ -189,11 +305,26 @@ def get_graph_candidates(query_text: str, firebase_uid: str, limit: int = 15, of
                 # For this function, let's keep it self-contained.
                 
                 if not concept_ids:
-                     # Fallback: Extract via Gemini if simple match fails
-                     concepts, _ = extract_concepts_and_relations(query_text)
-                     if concepts:
-                         # B3: Batch lookup concepts (N+1 Elimination)
-                         concept_ids.extend(find_concepts_by_batch(concepts, cursor))
+                    # Fallback: Extract via Gemini if simple match fails
+                    concepts, _ = extract_concepts_and_relations(query_text)
+                    if concepts:
+                        # B3: Batch lookup concepts (N+1 Elimination)
+                        concept_ids.extend(find_concepts_by_batch(
+                            [c.get("name") if isinstance(c, dict) else str(c) for c in concepts],
+                            cursor
+                        ))
+
+                # If still empty, use semantic search over DESCRIPTION_EMBEDDING
+                if not concept_ids:
+                    q_vec = get_query_embedding(query_text)
+                    if q_vec:
+                        cursor.execute("""
+                            SELECT id FROM TOMEHUB_CONCEPTS
+                            WHERE DESCRIPTION_EMBEDDING IS NOT NULL
+                            ORDER BY VECTOR_DISTANCE(DESCRIPTION_EMBEDDING, :p_vec, COSINE)
+                            FETCH FIRST 5 ROWS ONLY
+                        """, {"p_vec": q_vec})
+                        concept_ids.extend([row[0] for row in cursor.fetchall()])
                 
                 concept_ids = list(set(concept_ids)) # Dedupe
                 
@@ -218,7 +349,8 @@ def get_graph_candidates(query_text: str, firebase_uid: str, limit: int = 15, of
                         ct.content_chunk, ct.page_number, ct.title, ct.source_type,
                         c_neighbor.name as related_concept,
                         r.rel_type,
-                        r.weight
+                        r.weight,
+                        cc.strength
                     FROM TOMEHUB_RELATIONS r
                     JOIN TOMEHUB_CONCEPTS c_neighbor ON (r.dst_id = c_neighbor.id OR r.src_id = c_neighbor.id)
                     JOIN TOMEHUB_CONCEPT_CHUNKS cc ON c_neighbor.id = cc.concept_id
@@ -226,6 +358,7 @@ def get_graph_candidates(query_text: str, firebase_uid: str, limit: int = 15, of
                     WHERE (r.src_id IN ({SEQ}) OR r.dst_id IN ({SEQ}))
                     AND ct.firebase_uid = :p_uid
                     AND c_neighbor.id NOT IN ({SEQ}) 
+                    AND (cc.strength IS NULL OR cc.strength >= :p_strength)
                     OFFSET :p_offset ROWS FETCH FIRST :p_limit ROWS ONLY
                 """
                 
@@ -235,7 +368,7 @@ def get_graph_candidates(query_text: str, firebase_uid: str, limit: int = 15, of
                 
                 safe_sql = sql.replace("{SEQ}", bind_clause)
                 
-                params = {"p_uid": firebase_uid, "p_limit": limit, "p_offset": offset}
+                params = {"p_uid": firebase_uid, "p_limit": limit, "p_offset": offset, "p_strength": settings.CONCEPT_STRENGTH_MIN}
                 for i, cid in enumerate(concept_ids):
                     params[f"id_{i}"] = cid
                 
@@ -261,6 +394,7 @@ def get_graph_candidates(query_text: str, firebase_uid: str, limit: int = 15, of
                     neighbor_name = r[4]
                     rel_type = r[5]
                     link_weight = float(r[6]) if r[6] is not None else 1.0
+                    strength = float(r[7]) if r[7] is not None else None
                     
                     # Calculate Composite Score
                     # Use substring match for types (e.g., "IS_A_TYPE" matches "IS_A")
@@ -285,7 +419,7 @@ def get_graph_candidates(query_text: str, firebase_uid: str, limit: int = 15, of
                         'title': title,
                         'type': source_type,
                         'graph_score': final_graph_score,
-                        'reason': f"Linked via {neighbor_name} ({rel_type}, w={final_graph_score:.2f})"
+                        'reason': f"Linked via {neighbor_name} ({rel_type}, w={final_graph_score:.2f}, s={strength:.2f})" if strength is not None else f"Linked via {neighbor_name} ({rel_type}, w={final_graph_score:.2f})"
                     })
             
     except Exception as e:

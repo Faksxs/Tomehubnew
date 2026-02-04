@@ -75,9 +75,10 @@ def _call_gemini_api(text_or_list: Any, task_type: str = "retrieval_document") -
         # Call Gemini embedding API
         with AI_SERVICE_LATENCY.labels(service="google_embedding", operation="embed").time():
             result = genai.embed_content(
-                model="models/text-embedding-004",
+                model="models/gemini-embedding-001",
                 content=text_or_list,
                 task_type=task_type,
+                output_dimensionality=768,
                 request_options={'timeout': 30 if is_batch else 20}
             )
         

@@ -36,6 +36,8 @@ def submit_feedback(data: dict) -> bool:
     expected data keys: firebase_uid, query, answer, rating, comment
     """
     logger.info("Submitting feedback", extra={"uid": data.get('firebase_uid'), "rating": data.get('rating')})
+    if not data.get('search_log_id'):
+        logger.warning("Feedback missing search_log_id", extra={"uid": data.get('firebase_uid')})
     
     conn = None
     cursor = None

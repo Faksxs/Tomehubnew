@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Search, BookOpen, Loader2, AlertCircle, ExternalLink, User, ThumbsUp, ThumbsDown, MessageCircle, ChevronLeft } from 'lucide-react';
-import { searchLibrary, SearchResponse } from '../services/backendApiService';
+import { searchLibrary, submitFeedback, SearchResponse } from '../services/backendApiService';
 import { ExplorerChat } from './ExplorerChat';
 
 interface RAGSearchProps {
@@ -17,6 +17,7 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack 
     const [feedbackStatus, setFeedbackStatus] = useState<'none' | 'liked' | 'disliked'>('none');
     const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
     const [mode, setMode] = useState<'STANDARD' | 'EXPLORER'>('STANDARD');
+    const [lastQuestion, setLastQuestion] = useState('');
 
     // If Explorer mode is active, render the dedicated chat component
     if (mode === 'EXPLORER') {
@@ -83,6 +84,7 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack 
             // STANDARD Mode: Use search API (stateless)
             const response = await searchLibrary(question, userId, 'STANDARD');
             setResult(response);
+            setLastQuestion(question);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Search failed');
         } finally {
@@ -91,9 +93,22 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack 
     };
 
     const handleFeedback = async (rating: 1 | 0) => {
-        // ... (feedback logic unchanged)
         if (!result || isSubmittingFeedback) return;
-        // ...
+        setIsSubmittingFeedback(true);
+        try {
+            await submitFeedback({
+                firebase_uid: userId,
+                query: lastQuestion || question,
+                answer: result.answer,
+                rating,
+                search_log_id: result.metadata?.search_log_id,
+            });
+            setFeedbackStatus(rating === 1 ? 'liked' : 'disliked');
+        } catch (err) {
+            console.error('Feedback failed:', err);
+        } finally {
+            setIsSubmittingFeedback(false);
+        }
     };
 
     // Hide "AŞAMA 0" (Internal Self-Check) from user view
@@ -144,6 +159,9 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack 
                         className="w-full pl-12 pr-4 py-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#CC561E] focus:border-transparent transition-all"
                         disabled={isSearching}
                     />
+                </div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">
+                    Tip: Kelimeyi netleştirmek için <span className="font-medium text-slate-700 dark:text-slate-300">@zaman</span> gibi yazabilirsin.
                 </div>
 
                 <button

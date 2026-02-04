@@ -13,6 +13,7 @@ class SearchResponse(BaseModel):
     answer: str
     sources: List[Any]
     timestamp: str
+    metadata: Optional[dict] = None
 
 class FeedbackRequest(BaseModel):
     firebase_uid: str
@@ -20,6 +21,8 @@ class FeedbackRequest(BaseModel):
     answer: str
     rating: Optional[int] = None
     comment: Optional[str] = None
+    search_log_id: Optional[int] = None
+    book_id: Optional[str] = None
 
 class IngestRequest(BaseModel):
     # For file uploads, Pydantic is less useful directly in the endpoint signature 
@@ -35,6 +38,12 @@ class AddItemRequest(BaseModel):
     author: str
     type: str = "NOTE"
     firebase_uid: str
+    book_id: Optional[str] = None
+    page_number: Optional[int] = None
+    chunk_type: Optional[str] = None
+    chunk_index: Optional[int] = None
+    comment: Optional[str] = None
+    tags: Optional[List[str]] = None
 
 class BatchMigrateRequest(BaseModel):
     items: List[dict]
@@ -48,9 +57,10 @@ class EnrichBookRequest(BaseModel):
     isbn: Optional[str] = None
     summary: Optional[str] = None
     tags: Optional[List[str]] = None
-    # We might need to accept a whole ItemDraft-like object
-    # For now keep it flexible or align with frontend types
     
+    model_config = {
+        "extra": "allow"
+    }
 class GenerateTagsRequest(BaseModel):
     note_content: str
     
@@ -61,6 +71,24 @@ class VerifyCoverRequest(BaseModel):
 
 class AnalyzeHighlightsRequest(BaseModel):
     highlights: List[str]
+
+
+class HighlightItem(BaseModel):
+    id: Optional[str] = None
+    text: str
+    type: Optional[str] = "highlight"  # highlight | note (insight)
+    comment: Optional[str] = None
+    pageNumber: Optional[int] = None
+    tags: Optional[List[str]] = None
+    createdAt: Optional[int] = None
+
+
+class HighlightSyncRequest(BaseModel):
+    firebase_uid: str
+    title: str
+    author: str
+    resource_type: Optional[str] = None
+    highlights: List[HighlightItem]
 
 # --- Memory Layer Models ---
 class ChatRequest(BaseModel):

@@ -2,7 +2,9 @@
 # GraphRAG Prompts
 
 GRAPH_EXTRACTION_PROMPT = """Analyze the following text fragment and extract the key concepts and their relationships.
-Format your response as a valid JSON object with two keys: 'concepts' (list of strings) and 'relations' (list of [source, type, target, confidence]).
+Format your response as a valid JSON object with two keys:
+- 'concepts': list of objects {"name": "...", "type": "...", "description": "..."}
+- 'relations': list of [source, type, target, confidence]
 
 Text: "{text}"
 
@@ -36,15 +38,19 @@ Rules for Extraction:
 
 
 4. CONFIDENCE SCORE (0.0 - 1.0):
-   - 1.0: Explicitly stated in text ("A is B", "X'e göre Y").
-   - 0.8: Strongly implied.
+   - 1.0: Only if explicitly and directly stated in the text ("A is B", "X'e göre Y").
+   - 0.8: Strongly implied but not directly stated.
    - 0.5: Loose association or co-occurrence.
 
-5. Output ONLY the JSON.
+5. For each concept, provide a 1-2 sentence description to disambiguate meaning.
+6. Output ONLY the JSON.
 
 EXAMPLE OUTPUT:
 {{
-  "concepts": ["Camus", "insan", "isyan", "hayvan"],
+  "concepts": [
+    {"name": "Camus", "type": "PERSON", "description": "Albert Camus, existentialist philosopher and writer."},
+    {"name": "isyan", "type": "CONCEPT", "description": "The act of rebellion against meaninglessness or oppression."}
+  ],
   "relations": [
     ["Camus", "TANIMLAR", "insan isyan eden hayvandır", 1.0],
     ["isyan", "TEMELİDİR", "insan doğası", 0.8]

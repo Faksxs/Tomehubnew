@@ -1,0 +1,20 @@
+Starting Database Content Audit...
+
+--- CONTENT BY SOURCE TYPE ---
+Type: ARTICLE | Count: 43
+Type: NOTES | Count: 824
+Type: PERSONAL_NOTE | Count: 12
+
+--- PDF/EPUB BOOKS (Potential Garbage) ---
+TITLE                                              | TYPE       | CHUNKS  
+----------------------------------------------------------------------------------------------------
+
+--- ANOMALIES ---
+Empty/Tiny Chunks: 0
+Unknown Source Types Breakdown:
+Type: 'ARTICLE' | Count: 43
+Type: 'NOTES' | Count: 824
+Type: 'PERSONAL_NOTE' | Count: 12
+
+--- DEEP INSPECTION (Titles ending in .pdf) ---
+No titles ending in .pdf/.epub found.

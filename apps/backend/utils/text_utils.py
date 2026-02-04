@@ -126,3 +126,30 @@ def get_lemmas(text: str) -> list[str]:
         pass
         
     return list(lemmas)
+
+
+def get_lemma_frequencies(text: str) -> dict[str, int]:
+    """
+    Extracts lemma frequencies from text using Zeyrek.
+    Returns a dict of lemma -> count.
+    """
+    if not text or not _analyzer:
+        return {}
+
+    freqs: dict[str, int] = {}
+    try:
+        canonical = normalize_canonical(text)
+        results = _analyzer.analyze(canonical)
+        for word_analysis in results:
+            if not word_analysis:
+                continue
+            # Use the first parse for determinism
+            parse = word_analysis[0]
+            lemma = parse.lemma.lower() if parse.lemma else None
+            if not lemma or lemma in ['unk', 'unknown']:
+                continue
+            freqs[lemma] = freqs.get(lemma, 0) + 1
+    except Exception:
+        return {}
+
+    return freqs

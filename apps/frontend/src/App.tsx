@@ -31,7 +31,7 @@ import { useBatchEnrichment } from "./hooks/useBatchEnrichment";
 
 import { RAGSearch } from "./components/RAGSearch";
 import { FlowContainer } from "./components/FlowContainer";
-import { getIngestedBooks, addTextItem } from "./services/backendApiService";
+import { addTextItem, syncHighlights } from "./services/backendApiService";
 
 // ----------------- LAYOUT (ANA UYGULAMA) -----------------
 
@@ -58,6 +58,13 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   const [itemsLoading, setItemsLoading] = useState(true);
   const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
   const [hasMore, setHasMore] = useState(true);
+  const [activeCategoryFilter, setActiveCategoryFilter] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [listSearch, setListSearch] = useState('');
+  const [listStatusFilter, setListStatusFilter] = useState<string>('ALL');
+  const [listSortOption, setListSortOption] = useState<'date_desc' | 'date_asc' | 'title_asc'>('date_desc');
+  const [listPublisherFilter, setListPublisherFilter] = useState('');
+
 
   useEffect(() => {
     let active = true;
@@ -132,7 +139,11 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
               newItem.title,
               newItem.author,
               newItem.type,
-              userId
+              userId,
+              {
+                book_id: newItem.id,
+                tags: newItem.tags || [],
+              }
             );
             console.log("Synced new item to AI Backend:", newItem.title);
           }
@@ -274,6 +285,21 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
       } catch (err) {
         console.error("Failed to update highlights in Firestore:", err);
       }
+
+      // Sync highlights/insights to Oracle (replace existing for this book)
+      (async () => {
+        try {
+          await syncHighlights(
+            userId,
+            updatedItem.id,
+            updatedItem.title,
+            updatedItem.author,
+            updatedItem.highlights || []
+          );
+        } catch (err) {
+          console.error("Failed to sync highlights to AI Backend:", err);
+        }
+      })();
     }
   }
     , [selectedBookId, userId]);
@@ -353,6 +379,26 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     setActiveTab(newTab);
     setView("list");
     setSelectedBookId(null);
+    setCurrentPage(1);
+    setListSearch('');
+    setListStatusFilter('ALL');
+    setListPublisherFilter('');
+    if (newTab !== "BOOK") {
+      setActiveCategoryFilter(null);
+    }
+  }, []);
+
+  const handleNavigateToBooksWithCategory = useCallback((category: string) => {
+    setActiveCategoryFilter(category);
+    setActiveTab("BOOK");
+    setView("list");
+    setSelectedBookId(null);
+    setCurrentPage(1);
+    setListSearch('');
+    setListStatusFilter('ALL');
+    setListPublisherFilter('');
+    setOpenToHighlights(false);
+    setSelectedHighlightId(null);
   }, []);
 
   const handleLoadMore = useCallback(async () => {
@@ -415,6 +461,9 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
             books={books}
             activeTab={activeTab}
             userId={userId}
+            categoryFilter={activeCategoryFilter}
+            onCategoryFilterChange={setActiveCategoryFilter}
+            onCategoryNavigate={handleNavigateToBooksWithCategory}
             onSelectBook={(book) => {
               setSelectedBookId(book.id);
               setOpenToHighlights(false); // Default to info tab
@@ -437,6 +486,16 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
             onToggleHighlightFavorite={handleToggleHighlightFavorite}
             onLoadMore={handleLoadMore}
             hasMore={hasMore}
+            currentPage={currentPage}
+            onPageChange={setCurrentPage}
+            searchQuery={listSearch}
+            onSearchChange={setListSearch}
+            statusFilter={listStatusFilter}
+            onStatusFilterChange={setListStatusFilter}
+            sortOption={listSortOption as any}
+            onSortOptionChange={setListSortOption as any}
+            publisherFilter={listPublisherFilter}
+            onPublisherFilterChange={setListPublisherFilter}
           />
         ) : (
           selectedBook && (
@@ -456,6 +515,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
               }}
               onDelete={() => handleDeleteBook(selectedBook.id)}
               onUpdateHighlights={handleUpdateHighlights}
+              onBookUpdated={handleUpdateBookForEnrichment}
             />
           )
         )}

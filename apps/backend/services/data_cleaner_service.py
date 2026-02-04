@@ -54,6 +54,7 @@ class DataCleanerService:
         INSTRUCTIONS:
         - Keep the ACTUAL content/body of the text.
         - Strip "junk" like page numbers, publisher names (e.g. "METIS YAYINLARI"), and repeating title strings.
+        - CRITICAL: Remove any BIBLIOGRAPHY, REFERENCES, or INDEX lists if they appear. (e.g. Lists of authors, years, cities).
         - Do not summarize or change the tone. Just strip the clutter.
         - Return ONLY the cleaned text.
 

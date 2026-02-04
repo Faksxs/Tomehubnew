@@ -6,6 +6,7 @@ Orchestrates the "Expanding Horizons" algorithm with Dual Anchor gravity.
 """
 
 import logging
+import re
 from typing import List, Optional, Tuple, Set
 from datetime import datetime
 import numpy as np
@@ -22,6 +23,8 @@ from services.flow_session_service import (
 )
 from services.embedding_service import get_embedding, get_query_embedding
 from infrastructure.db_manager import DatabaseManager, safe_read_clob
+from config import settings
+from utils.text_utils import normalize_text
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +79,7 @@ SIMILARITY_THRESHOLDS = {
 }
 
 # Resource type helper constants
-BOOK_SOURCE_TYPES = ("PDF", "EPUB", "PDF_CHUNK", "NOTES")
+BOOK_SOURCE_TYPES = ("PDF", "EPUB", "PDF_CHUNK", "BOOK", "HIGHLIGHT", "INSIGHT", "NOTES")
 
 
 # ============================================================================
@@ -317,7 +320,9 @@ class FlowService:
                             SELECT concept_id FROM TOMEHUB_CONCEPT_CHUNKS 
                             WHERE content_id IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE firebase_uid = :p_uid)
                         )
+                        AND (cc.strength IS NULL OR cc.strength >= :p_strength)
                     """
+                    params["p_strength"] = settings.CONCEPT_STRENGTH_MIN
                     sql, params = self._apply_resource_filter(sql, params, state.resource_type)
                     sql, params = self._apply_category_filter(sql, params, state.category)
                         
@@ -419,18 +424,17 @@ class FlowService:
         """
         Append resource-type filters to a SQL query.
 
-        - BOOK: PDF/EPUB/PDF_CHUNK + NOTES (exclude personal notes)
-        - ALL_NOTES: NOTES only (exclude personal notes)
-        - PERSONAL_NOTE: titles ending with "- Self"
+        - BOOK: PDF/EPUB/PDF_CHUNK + BOOK + HIGHLIGHT/INSIGHT (+ legacy NOTES)
+        - ALL_NOTES: HIGHLIGHT/INSIGHT (+ legacy NOTES)
+        - PERSONAL_NOTE: PERSONAL_NOTE only
         - ARTICLE/WEBSITE: strict source_type match
         """
         if resource_type == 'PERSONAL_NOTE':
-            sql += " AND title LIKE '% - Self' "
+            sql += " AND source_type = 'PERSONAL_NOTE' "
         elif resource_type == 'ALL_NOTES':
-            sql += " AND source_type = 'NOTES' AND title NOT LIKE '% - Self' "
+            sql += " AND source_type IN ('HIGHLIGHT', 'INSIGHT', 'NOTES') "
         elif resource_type == 'BOOK':
-            sql += " AND title NOT LIKE '% - Self' "
-            sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'NOTES') "
+            sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'BOOK', 'HIGHLIGHT', 'INSIGHT', 'NOTES') "
         elif resource_type in ('ARTICLE', 'WEBSITE'):
             sql += " AND source_type = :p_type "
             params["p_type"] = resource_type
@@ -443,11 +447,30 @@ class FlowService:
         category: Optional[str]
     ) -> Tuple[str, dict]:
         """
-        Append category filter if active. Uses LIKE for multi-category support.
+        Append category filter if active using normalized category table.
         """
         if category:
-            sql += " AND categories LIKE :p_cat_filter "
-            params["p_cat_filter"] = f"%{category}%"
+            norm = normalize_text(category)
+            if not norm:
+                return sql, params
+
+            # Resolve content table alias (ct, c, t) or fallback to table name
+            alias = "TOMEHUB_CONTENT"
+            if re.search(r"\bTOMEHUB_CONTENT\s+ct\b", sql, re.IGNORECASE):
+                alias = "ct"
+            elif re.search(r"\bTOMEHUB_CONTENT\s+c\b", sql, re.IGNORECASE):
+                alias = "c"
+            elif re.search(r"\bTOMEHUB_CONTENT\s+t\b", sql, re.IGNORECASE):
+                alias = "t"
+
+            sql += f"""
+                AND EXISTS (
+                    SELECT 1 FROM TOMEHUB_CONTENT_CATEGORIES cc
+                    WHERE cc.content_id = {alias}.id
+                    AND cc.category_norm = :p_cat_norm
+                )
+            """
+            params["p_cat_norm"] = norm
         return sql, params
 
     def _resolve_anchor(
@@ -621,16 +644,16 @@ class FlowService:
             WHERE firebase_uid = :p_uid
             AND VEC_EMBEDDING IS NOT NULL
             AND DBMS_LOB.GETLENGTH(content_chunk) > 12
-            AND source_type NOT IN ('PERSONAL_NOTE', 'personal')
-            AND title NOT LIKE '% - Self'
             AND id NOT IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE session_id = :p_sid)
         """
         if r_type == 'BOOK':
              # Books = PDFs + Highlights
-             sql += " AND source_type IN ('PDF','EPUB','PDF_CHUNK','NOTES') AND title NOT LIKE '% - Self' "
+             sql += " AND source_type IN ('PDF','EPUB','PDF_CHUNK','BOOK','HIGHLIGHT','INSIGHT','NOTES') "
+        elif r_type == 'PERSONAL_NOTE':
+             sql += " AND source_type = 'PERSONAL_NOTE' "
         elif r_type in (None, 'ALL_NOTES', 'ALL'):
-             # All Notes = Highlights ONLY (No PDFs, No Articles, No Personal Notes)
-             sql += " AND source_type = 'NOTES' "
+             # All Notes = Highlights/Insights ONLY
+             sql += " AND source_type IN ('HIGHLIGHT','INSIGHT','NOTES') "
         else:
              sql += " AND source_type = :p_type "
              params["p_type"] = r_type
@@ -673,8 +696,6 @@ class FlowService:
             SELECT id, content_chunk, title, source_type, page_number
             FROM TOMEHUB_CONTENT
             WHERE firebase_uid = :p_uid
-            AND source_type NOT IN ('PERSONAL_NOTE', 'personal')
-            AND title NOT LIKE '% - Self'
             AND DBMS_LOB.GETLENGTH(content_chunk) > 12
             AND id NOT IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE session_id = :p_sid)
         """
@@ -682,10 +703,12 @@ class FlowService:
         
         if r_type == 'BOOK':
              # Books = Highlights + PDFs
-             sql += " AND source_type IN ('PDF','EPUB','NOTES') AND title NOT LIKE '% - Self' "
+             sql += " AND source_type IN ('PDF','EPUB','PDF_CHUNK','BOOK','HIGHLIGHT','INSIGHT','NOTES') "
+        elif r_type == 'PERSONAL_NOTE':
+             sql += " AND source_type = 'PERSONAL_NOTE' "
         elif r_type in (None, 'ALL_NOTES', 'ALL'):
-             # All Notes = Highlights ONLY
-             sql += " AND source_type = 'NOTES' "
+             # All Notes = Highlights/Insights ONLY
+             sql += " AND source_type IN ('HIGHLIGHT','INSIGHT','NOTES') "
         elif r_type:
              sql += " AND source_type = :p_type "
              params["p_type"] = r_type
@@ -704,8 +727,6 @@ class FlowService:
             SELECT id, content_chunk, title, source_type, page_number
             FROM TOMEHUB_CONTENT
             WHERE firebase_uid = :p_uid
-            AND source_type NOT IN ('PERSONAL_NOTE', 'personal')
-            AND title NOT LIKE '% - Self'
             AND DBMS_LOB.GETLENGTH(content_chunk) > 12
             AND id NOT IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE session_id = :p_sid)
         """
@@ -713,10 +734,12 @@ class FlowService:
 
         if r_type == 'BOOK':
              # Books = Highlights + PDFs
-             sql += " AND source_type IN ('PDF','EPUB','PDF_CHUNK','NOTES') AND title NOT LIKE '% - Self' "
+             sql += " AND source_type IN ('PDF','EPUB','PDF_CHUNK','BOOK','HIGHLIGHT','INSIGHT','NOTES') "
+        elif r_type == 'PERSONAL_NOTE':
+             sql += " AND source_type = 'PERSONAL_NOTE' "
         elif r_type in (None, 'ALL_NOTES', 'ALL'):
-             # All Notes = Highlights ONLY
-             sql += " AND source_type = 'NOTES' "
+             # All Notes = Highlights/Insights ONLY
+             sql += " AND source_type IN ('HIGHLIGHT','INSIGHT','NOTES') "
         elif r_type:
              sql += " AND source_type = :p_type "
              params["p_type"] = r_type
@@ -802,7 +825,7 @@ class FlowService:
         # Source Distribution Analysis
         source_dist = {"highlights": 0, "pdf_chunks": 0}
         for c in all_candidates:
-            if c.source_type == 'personal' or c.source_type == 'NOTES':
+            if c.source_type == 'personal':
                 source_dist["highlights"] += 1
             else:
                 source_dist["pdf_chunks"] += 1
@@ -973,8 +996,7 @@ class FlowService:
 
                     # Category specific filters
                     if resource_type == 'PERSONAL_NOTE':
-                         # Personal Notes identified by suffix
-                         sql += " AND title LIKE '% - Self' "
+                         sql += " AND source_type = 'PERSONAL_NOTE' "
                     elif resource_type == 'WEBSITE':
                          sql += " AND source_type = 'WEBSITE' "
                     elif resource_type == 'ARTICLE':
@@ -1078,7 +1100,7 @@ class FlowService:
                             content=content,
                             title=row[2] or "Untitled",
                             page_number=row[4],
-                            source_type="personal" if row[3] == 'NOTES' or (row[3] == 'PDF' and ' - Self' in (row[2] or '')) else "pdf_chunk",
+                            source_type="personal" if row[3] in ('HIGHLIGHT','INSIGHT','PERSONAL_NOTE','NOTES') else "pdf_chunk",
                             zone=1,
                             epistemic_level="B", # Contextual
                             reason=f"🎯 Konu Odaklı ({similarity:.0%})"
@@ -1346,12 +1368,11 @@ class FlowService:
             """
             
             if resource_type == 'PERSONAL_NOTE':
-                sql += " AND ct.title LIKE '% - Self' "
+                sql += " AND ct.source_type = 'PERSONAL_NOTE' "
             elif resource_type == 'ALL_NOTES':
-                sql += " AND ct.source_type = 'NOTES' AND ct.title NOT LIKE '% - Self' "
+                sql += " AND ct.source_type IN ('HIGHLIGHT', 'INSIGHT', 'NOTES') "
             elif resource_type == 'BOOK':
-                sql += " AND ct.title NOT LIKE '% - Self' "
-                sql += " AND ct.source_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'NOTES') "
+                sql += " AND ct.source_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'BOOK', 'HIGHLIGHT', 'INSIGHT', 'NOTES') "
             elif resource_type in ('ARTICLE', 'WEBSITE'):
                 sql += " AND ct.source_type = :p_type "
                 params["p_type"] = resource_type
@@ -1569,17 +1590,32 @@ class FlowService:
             # Fallback: don't crash, return defaults (potentially allowing dupes/missing vectors but keeping system alive)
             
         return result
+
+    def _coerce_chunk_id(self, chunk_id: str) -> Optional[int]:
+        """Coerce chunk_id to int for DB operations; return None if invalid."""
+        if chunk_id is None:
+            return None
+        if isinstance(chunk_id, (int, np.integer)):
+            return int(chunk_id)
+        chunk_str = str(chunk_id).strip()
+        if not chunk_str.isdigit():
+            return None
+        return int(chunk_str)
     
     def _record_seen_chunk(self, firebase_uid: str, session_id: str, chunk_id: str):
         """Persist seen chunk to Database for cross-session global history and decay."""
         try:
             with DatabaseManager.get_write_connection() as conn:
                 with conn.cursor() as cursor:
+                    coerced_id = self._coerce_chunk_id(chunk_id)
+                    if coerced_id is None:
+                        logger.debug(f"Skipping non-numeric chunk_id for seen record: {chunk_id}")
+                        return
                     # Ensure table exists/columns exist (In Oracle we'd usually have this pre-created)
                     cursor.execute("""
                         INSERT INTO TOMEHUB_FLOW_SEEN (firebase_uid, session_id, chunk_id, seen_at)
                         VALUES (:p_uid, :p_sid, :p_cid, CURRENT_TIMESTAMP)
-                    """, {"p_uid": firebase_uid, "p_sid": session_id, "p_cid": chunk_id})
+                    """, {"p_uid": firebase_uid, "p_sid": session_id, "p_cid": coerced_id})
                     conn.commit()
         except Exception as e:
             # Silently fail if DB not ready for tiered history yet
@@ -1588,6 +1624,9 @@ class FlowService:
     def _is_globally_seen(self, firebase_uid: str, chunk_id: str, days: int = 30) -> bool:
         """Check if chunk was seen by this user globally within X days (Decay)."""
         try:
+            coerced_id = self._coerce_chunk_id(chunk_id)
+            if coerced_id is None:
+                return False
             with DatabaseManager.get_read_connection() as conn:
                 with conn.cursor() as cursor:
                     # Note: Oracle date subtraction 'TIMESTAMP - NUMBER' results in days
@@ -1595,7 +1634,7 @@ class FlowService:
                         SELECT count(*) FROM TOMEHUB_FLOW_SEEN
                         WHERE firebase_uid = :p_uid AND chunk_id = :p_cid
                         AND seen_at > CURRENT_TIMESTAMP - :p_days
-                    """, {"p_uid": firebase_uid, "p_cid": chunk_id, "p_days": days})
+                    """, {"p_uid": firebase_uid, "p_cid": coerced_id, "p_days": days})
                     return cursor.fetchone()[0] > 0
         except Exception:
             return False
@@ -1605,11 +1644,14 @@ class FlowService:
         Retrieve the embedding vector for a chunk from the database.
         """
         try:
+            coerced_id = self._coerce_chunk_id(chunk_id)
+            if coerced_id is None:
+                return None
             with DatabaseManager.get_read_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
                         SELECT VEC_EMBEDDING FROM TOMEHUB_CONTENT WHERE id = :p_id
-                    """, {"p_id": chunk_id})
+                    """, {"p_id": coerced_id})
                     
                     row = cursor.fetchone()
                     if row and row[0]:

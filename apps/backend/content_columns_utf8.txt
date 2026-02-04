@@ -1,0 +1,25 @@
+COLUMN_NAME                    | DATA_TYPE
+------------------------------------------------------------
+ID                             | NUMBER
+FIREBASE_UID                   | VARCHAR2
+SOURCE_TYPE                    | VARCHAR2
+TITLE                          | VARCHAR2
+CONTENT_CHUNK                  | CLOB
+CHUNK_TYPE                     | VARCHAR2
+PAGE_NUMBER                    | NUMBER
+CHUNK_INDEX                    | NUMBER
+VEC_EMBEDDING                  | VECTOR
+CREATED_AT                     | TIMESTAMP(6)
+UPDATED_AT                     | TIMESTAMP(6)
+BOOK_ID                        | VARCHAR2
+NORMALIZED_CONTENT             | CLOB
+IS_NOTE                        | NUMBER
+TEXT_DEACCENTED                | CLOB
+LEMMA_TOKENS                   | CLOB
+PERSONAL_NOTE                  | CLOB
+TAGS                           | CLOB
+SUMMARY                        | CLOB
+NORMALIZED_STATUS              | VARCHAR2
+CATEGORIES                     | VARCHAR2
+SYS_NC00014$                   | RAW
+SYS_IME_OSON_E113277A42FF4F2ABF543A2A03E63CEA | RAW

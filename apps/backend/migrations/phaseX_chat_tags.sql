@@ -1,0 +1,7 @@
+-- Phase X: Chat Session Tags (JSON)
+
+ALTER TABLE TOMEHUB_CHAT_SESSIONS
+ADD (TAGS CLOB CHECK (TAGS IS JSON));
+
+-- JSON search index for tag filtering
+CREATE SEARCH INDEX idx_chat_tags_json ON TOMEHUB_CHAT_SESSIONS (TAGS) FOR JSON;

@@ -27,14 +27,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from models.request_models import (
     SearchRequest, SearchResponse, IngestRequest, 
     FeedbackRequest, AddItemRequest, BatchMigrateRequest,
-    ChatRequest, ChatResponse
+    ChatRequest, ChatResponse, HighlightSyncRequest
 )
 from middleware.auth_middleware import verify_firebase_token
 
 # Import Services (Legacy & New)
 from services.search_service import generate_answer, get_rag_context
 from services.dual_ai_orchestrator import generate_evaluated_answer
-from services.ingestion_service import ingest_book, ingest_text_item, process_bulk_items_logic
+from services.ingestion_service import ingest_book, ingest_text_item, process_bulk_items_logic, sync_highlights_for_item
 from services.feedback_service import submit_feedback
 from services.pdf_service import get_pdf_metadata
 from services.ai_service import (
@@ -44,6 +44,12 @@ from services.ai_service import (
     analyze_highlights_async, 
     search_resources_async,
     stream_enrichment
+)
+from services.analytics_service import (
+    is_analytic_word_count,
+    extract_target_term,
+    count_lemma_occurrences,
+    resolve_book_id_from_question,
 )
 from models.request_models import (
     EnrichBookRequest, GenerateTagsRequest, VerifyCoverRequest, AnalyzeHighlightsRequest
@@ -377,6 +383,62 @@ async def search(
         from functools import partial
         
         loop = asyncio.get_running_loop()
+
+        # Analytic short-circuit (Layer-3)
+        if is_analytic_word_count(search_request.question):
+            term = extract_target_term(search_request.question)
+            resolved_book_id = search_request.book_id
+            if not resolved_book_id:
+                resolved_book_id = resolve_book_id_from_question(firebase_uid, search_request.question)
+
+            if not resolved_book_id and not term:
+                return {
+                    "answer": "Analitik sayım için kitap ve kelime gerekli. Örn: \"Mahur Beste kitabında zaman kelimesi kaç defa geçiyor?\"",
+                    "sources": [],
+                    "timestamp": datetime.now().isoformat(),
+                    "metadata": {
+                        "status": "analytic",
+                        "analytics": {"type": "word_count", "error": "book_and_term_missing"},
+                    },
+                }
+            if not resolved_book_id:
+                return {
+                    "answer": "Analitik sayım için hangi kitabı soruyorsun? Örn: \"Mahur Beste kitabında zaman kelimesi kaç defa geçiyor?\"",
+                    "sources": [],
+                    "timestamp": datetime.now().isoformat(),
+                    "metadata": {
+                        "status": "analytic",
+                        "analytics": {"type": "word_count", "error": "book_id_required"},
+                    },
+                }
+            if not term:
+                return {
+                    "answer": "Sayılacak kelimeyi belirtir misin?",
+                    "sources": [],
+                    "timestamp": datetime.now().isoformat(),
+                    "metadata": {
+                        "status": "analytic",
+                        "analytics": {"type": "word_count", "error": "term_missing"},
+                    },
+                }
+            count = count_lemma_occurrences(firebase_uid, resolved_book_id, term)
+            return {
+                "answer": f"\"{term}\" kelimesi bu kitapta toplam {count} kez geçiyor.",
+                "sources": [],
+                "timestamp": datetime.now().isoformat(),
+                "metadata": {
+                    "status": "analytic",
+                    "analytics": {
+                        "type": "word_count",
+                        "term": term,
+                        "count": count,
+                        "match": "lemma",
+                        "scope": "book_chunks",
+                        "resolved_book_id": resolved_book_id,
+                        "debug": {"cache": "disabled"},
+                    },
+                },
+            }
         
         # Run synchronous RAG search in thread pool
         result = await loop.run_in_executor(
@@ -389,7 +451,8 @@ async def search(
                 None, # chat_history
                 "", # session_summary
                 search_request.limit,
-                search_request.offset
+                search_request.offset,
+                None # session_id
             )
         )
         
@@ -455,7 +518,83 @@ async def chat_endpoint(
         
         # 3. Save User Message
         await loop.run_in_executor(None, add_message, session_id, 'user', chat_request.message)
-        
+
+        # 3.5 Analytic short-circuit (Layer-3)
+        if is_analytic_word_count(chat_request.message):
+            term = extract_target_term(chat_request.message)
+            resolved_book_id = chat_request.book_id
+            if not resolved_book_id:
+                resolved_book_id = resolve_book_id_from_question(firebase_uid, chat_request.message)
+
+            if not resolved_book_id and not term:
+                answer = "Analitik sayım için kitap ve kelime gerekli. Örn: \"Mahur Beste kitabında zaman kelimesi kaç defa geçiyor?\""
+                await loop.run_in_executor(None, add_message, session_id, 'assistant', answer, [])
+                return {
+                    "answer": answer,
+                    "session_id": session_id,
+                    "sources": [],
+                    "timestamp": datetime.now().isoformat(),
+                    "conversation_state": {},
+                    "thinking_history": [],
+                    "metadata": {
+                        "status": "analytic",
+                        "analytics": {"type": "word_count", "error": "book_and_term_missing"},
+                    },
+                }
+            if not resolved_book_id:
+                answer = "Analitik sayım için hangi kitabı soruyorsun? Örn: \"Mahur Beste kitabında zaman kelimesi kaç defa geçiyor?\""
+                await loop.run_in_executor(None, add_message, session_id, 'assistant', answer, [])
+                return {
+                    "answer": answer,
+                    "session_id": session_id,
+                    "sources": [],
+                    "timestamp": datetime.now().isoformat(),
+                    "conversation_state": {},
+                    "thinking_history": [],
+                    "metadata": {
+                        "status": "analytic",
+                        "analytics": {"type": "word_count", "error": "book_id_required"},
+                    },
+                }
+            if not term:
+                answer = "Sayılacak kelimeyi belirtir misin?"
+                await loop.run_in_executor(None, add_message, session_id, 'assistant', answer, [])
+                return {
+                    "answer": answer,
+                    "session_id": session_id,
+                    "sources": [],
+                    "timestamp": datetime.now().isoformat(),
+                    "conversation_state": {},
+                    "thinking_history": [],
+                    "metadata": {
+                        "status": "analytic",
+                        "analytics": {"type": "word_count", "error": "term_missing"},
+                    },
+                }
+
+            count = count_lemma_occurrences(firebase_uid, resolved_book_id, term)
+            answer = f"\"{term}\" kelimesi bu kitapta toplam {count} kez geçiyor."
+            await loop.run_in_executor(None, add_message, session_id, 'assistant', answer, [])
+            return {
+                "answer": answer,
+                "session_id": session_id,
+                "sources": [],
+                "timestamp": datetime.now().isoformat(),
+                "conversation_state": {},
+                "thinking_history": [],
+                "metadata": {
+                    "status": "analytic",
+                    "analytics": {
+                        "type": "word_count",
+                        "term": term,
+                        "count": count,
+                        "match": "lemma",
+                        "scope": "book_chunks",
+                        "resolved_book_id": resolved_book_id,
+                    },
+                },
+            }
+
         # 4. Generate Answer (Using RAG with history)
         # Route based on mode:
         # - STANDARD: Use fast legacy flow (generate_answer)
@@ -543,7 +682,8 @@ async def chat_endpoint(
                     ctx_data['recent_messages'],
                     ctx_data['summary'] or "",
                     chat_request.limit,
-                    chat_request.offset
+                    chat_request.offset,
+                    session_id
                 )
             )
             
@@ -663,7 +803,86 @@ async def extract_metadata_endpoint(
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
-from services.report_service import generate_file_report
+@app.get("/api/reports/search")
+def search_reports(
+    topic: str,
+    limit: int = 20,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+    firebase_uid: str | None = None
+):
+    # Determine authoritative UID
+    if firebase_uid_from_jwt:
+        uid = firebase_uid_from_jwt
+    else:
+        uid = firebase_uid
+        if settings.ENVIRONMENT == "development":
+            logger.warning(f"⚠️ Dev mode: Using unverified UID from query: {uid}")
+        else:
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+    results = search_reports_by_topic(uid, topic, limit)
+    return {"topic": topic, "count": len(results), "results": results}
+
+from services.report_service import generate_file_report, search_reports_by_topic
+
+def upsert_ingestion_status(
+    book_id: str,
+    firebase_uid: str,
+    status: str,
+    file_name: Optional[str] = None,
+    chunk_count: Optional[int] = None,
+    embedding_count: Optional[int] = None
+):
+    """Upsert ingestion status for a book/user."""
+    if not book_id:
+        return
+    try:
+        with DatabaseManager.get_write_connection() as conn:
+            with conn.cursor() as cursor:
+                merge_sql = """
+                MERGE INTO TOMEHUB_INGESTED_FILES target
+                USING (SELECT :p_bid as book_id, :p_uid as firebase_uid FROM DUAL) src
+                ON (target.BOOK_ID = src.book_id AND target.FIREBASE_UID = src.firebase_uid)
+                WHEN MATCHED THEN
+                    UPDATE SET
+                        STATUS = :p_status,
+                        SOURCE_FILE_NAME = COALESCE(:p_file, target.SOURCE_FILE_NAME),
+                        CHUNK_COUNT = :p_chunk_count,
+                        EMBEDDING_COUNT = :p_embed_count,
+                        UPDATED_AT = CURRENT_TIMESTAMP
+                WHEN NOT MATCHED THEN
+                    INSERT (BOOK_ID, FIREBASE_UID, SOURCE_FILE_NAME, STATUS, CHUNK_COUNT, EMBEDDING_COUNT)
+                    VALUES (:p_bid, :p_uid, :p_file, :p_status, :p_chunk_count, :p_embed_count)
+                """
+                cursor.execute(merge_sql, {
+                    "p_bid": book_id,
+                    "p_uid": firebase_uid,
+                    "p_file": file_name,
+                    "p_status": status,
+                    "p_chunk_count": chunk_count,
+                    "p_embed_count": embedding_count
+                })
+                conn.commit()
+    except Exception as e:
+        logger.error(f"Failed to upsert ingestion status: {e}")
+
+def fetch_ingestion_status(book_id: str, firebase_uid: str):
+    """Fetch ingestion status for a book/user."""
+    try:
+        with DatabaseManager.get_read_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT STATUS, SOURCE_FILE_NAME, CHUNK_COUNT, EMBEDDING_COUNT, UPDATED_AT
+                    FROM TOMEHUB_INGESTED_FILES
+                    WHERE BOOK_ID = :p_bid AND FIREBASE_UID = :p_uid
+                    """,
+                    {"p_bid": book_id, "p_uid": firebase_uid}
+                )
+                return cursor.fetchone()
+    except Exception as e:
+        logger.error(f"Failed to fetch ingestion status: {e}")
+        return None
 
 def run_ingestion_background(temp_path: str, title: str, author: str, firebase_uid: str, book_id: str, categories: Optional[str] = None):
     """
@@ -675,6 +894,33 @@ def run_ingestion_background(temp_path: str, title: str, author: str, firebase_u
         
         if success:
             logger.info(f"Background ingestion success: {title}")
+            # Update ingestion status to COMPLETED with counts
+            if book_id:
+                try:
+                    with DatabaseManager.get_read_connection() as conn:
+                        with conn.cursor() as cursor:
+                            cursor.execute(
+                                """
+                                SELECT COUNT(*) as chunk_count,
+                                       SUM(CASE WHEN VEC_EMBEDDING IS NOT NULL THEN 1 ELSE 0 END) as embedding_count
+                                FROM TOMEHUB_CONTENT
+                                WHERE BOOK_ID = :p_bid AND FIREBASE_UID = :p_uid
+                                """,
+                                {"p_bid": book_id, "p_uid": firebase_uid}
+                            )
+                            row = cursor.fetchone()
+                            chunk_count = row[0] if row else 0
+                            embedding_count = row[1] if row and row[1] is not None else 0
+                    upsert_ingestion_status(
+                        book_id=book_id,
+                        firebase_uid=firebase_uid,
+                        status="COMPLETED",
+                        chunk_count=chunk_count,
+                        embedding_count=embedding_count
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to update ingestion status counts: {e}")
+
             # Trigger Memory Layer: File Report Generation
             logger.info(f"Generating File Report for {book_id}...")
             report_success = generate_file_report(book_id, firebase_uid)
@@ -684,9 +930,21 @@ def run_ingestion_background(temp_path: str, title: str, author: str, firebase_u
                 logger.error(f"File Report generation failed for {title}")
         else:
             logger.error(f"Background ingestion failed: {title}")
+            if book_id:
+                upsert_ingestion_status(
+                    book_id=book_id,
+                    firebase_uid=firebase_uid,
+                    status="FAILED"
+                )
             
     except Exception as e:
         logger.error(f"Background ingestion exception: {e}")
+        if book_id:
+            upsert_ingestion_status(
+                book_id=book_id,
+                firebase_uid=firebase_uid,
+                status="FAILED"
+            )
         # Note: We rely on ingest_book's internal logic for file cleanup (Task 1.3 will fix that logic next)
 
 @app.post("/api/ingest")
@@ -724,6 +982,15 @@ async def ingest_endpoint(
     temp_path = os.path.join(upload_dir, unique_filename)
     
     try:
+        # Upsert ingestion status as PROCESSING (if book_id provided)
+        if book_id:
+            upsert_ingestion_status(
+                book_id=book_id,
+                firebase_uid=verified_firebase_uid,
+                status="PROCESSING",
+                file_name=original_filename
+            )
+
         with open(temp_path, "wb") as buffer:
             content = await file.read()
             buffer.write(content)
@@ -752,6 +1019,69 @@ async def ingest_endpoint(
              os.remove(temp_path)
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/books/{book_id}/ingestion-status")
+async def get_ingestion_status(
+    book_id: str,
+    request: Request,
+    firebase_uid: Optional[str] = None,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+):
+    # Determine authoritative UID
+    if firebase_uid_from_jwt:
+        verified_firebase_uid = firebase_uid_from_jwt
+    else:
+        if settings.ENVIRONMENT == "production":
+            raise HTTPException(status_code=401, detail="Authentication required")
+        verified_firebase_uid = firebase_uid or request.headers.get("X-Firebase-UID")
+        if not verified_firebase_uid:
+            raise HTTPException(status_code=400, detail="firebase_uid is required in development")
+
+    row = fetch_ingestion_status(book_id, verified_firebase_uid)
+    if row:
+        status, file_name, chunk_count, embedding_count, updated_at = row
+        return {
+            "status": status,
+            "file_name": file_name,
+            "chunk_count": int(chunk_count) if chunk_count is not None else None,
+            "embedding_count": int(embedding_count) if embedding_count is not None else None,
+            "updated_at": updated_at.isoformat() if updated_at else None
+        }
+
+    # Fallback: check if content exists for this book
+    try:
+        with DatabaseManager.get_read_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT COUNT(*) as chunk_count,
+                           SUM(CASE WHEN VEC_EMBEDDING IS NOT NULL THEN 1 ELSE 0 END) as embedding_count
+                    FROM TOMEHUB_CONTENT
+                    WHERE BOOK_ID = :p_bid AND FIREBASE_UID = :p_uid
+                    """,
+                    {"p_bid": book_id, "p_uid": verified_firebase_uid}
+                )
+                row = cursor.fetchone()
+                chunk_count = row[0] if row else 0
+                embedding_count = row[1] if row and row[1] is not None else 0
+                if chunk_count > 0:
+                    return {
+                        "status": "COMPLETED",
+                        "file_name": None,
+                        "chunk_count": int(chunk_count),
+                        "embedding_count": int(embedding_count),
+                        "updated_at": datetime.now().isoformat()
+                    }
+    except Exception as e:
+        logger.error(f"Fallback ingestion status check failed: {e}")
+
+    return {
+        "status": "NOT_FOUND",
+        "file_name": None,
+        "chunk_count": None,
+        "embedding_count": None,
+        "updated_at": None
+    }
+
 
 @app.post("/api/add-item")
 async def add_item_endpoint(
@@ -774,11 +1104,47 @@ async def add_item_endpoint(
             title=request.title,
             author=request.author,
             source_type=request.type,
-            firebase_uid=verified_firebase_uid
+            firebase_uid=verified_firebase_uid,
+            book_id=request.book_id,
+            page_number=request.page_number,
+            chunk_type=request.chunk_type,
+            chunk_index=request.chunk_index,
+            comment=request.comment,
+            tags=request.tags
         )
         if success:
             return {"success": True, "message": "Item added"}
         raise HTTPException(status_code=500, detail="Failed to add item")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/books/{book_id}/sync-highlights")
+async def sync_highlights_endpoint(
+    book_id: str,
+    request: HighlightSyncRequest,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+):
+    try:
+        if firebase_uid_from_jwt:
+            verified_firebase_uid = firebase_uid_from_jwt
+        else:
+            verified_firebase_uid = request.firebase_uid
+            if settings.ENVIRONMENT == "production":
+                raise HTTPException(status_code=401, detail="Authentication required")
+            else:
+                logger.warning("⚠️ Dev mode: Using unverified UID for sync-highlights")
+
+        result = sync_highlights_for_item(
+            firebase_uid=verified_firebase_uid,
+            book_id=book_id,
+            title=request.title,
+            author=request.author,
+            highlights=[h.model_dump() for h in request.highlights],
+        )
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error", "Sync failed"))
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -807,50 +1173,7 @@ async def migrate_bulk_endpoint(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/ingested-books")
-async def get_ingested_books_endpoint(
-    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
-):
-    try:
-        # Verify firebase_uid from JWT in production
-        if firebase_uid_from_jwt:
-            verified_firebase_uid = firebase_uid_from_jwt
-        else:
-            if settings.ENVIRONMENT == "production":
-                raise HTTPException(status_code=401, detail="Authentication required")
-            else:
-                # In dev mode, firebase_uid must be provided as query parameter
-                raise HTTPException(status_code=400, detail="firebase_uid query parameter required")
-        
-        with DatabaseManager.get_connection() as connection:
-            with connection.cursor() as cursor:
-                query = """
-                SELECT DISTINCT title, book_id
-                FROM TOMEHUB_CONTENT 
-                WHERE firebase_uid = :p_uid AND source_type = 'PDF'
-                """
-                cursor.execute(query, {"p_uid": verified_firebase_uid})
-                rows = cursor.fetchall()
-                
-                books = []
-                for row in rows:
-                    raw_title = row[0]
-                    # Simple split logic from old app.py
-                    title_parts = raw_title.split(" - ")
-                    title = title_parts[0]
-                    author = title_parts[1] if len(title_parts) > 1 else "Unknown"
-                    
-                    books.append({
-                        'title': title,
-                        'author': author,
-                        'book_id': row[1]
-                    })
-            
-                return {"books": books}
-        
-    except Exception as e:
-        print(f"Error fetching books: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+
 
 # ============================================================================
 # NEW AI ENDPOINTS (NOT IN FLASK, MIGRATED FROM FIREBASE)
@@ -868,6 +1191,7 @@ async def enrich_book_endpoint(
     """
     Enrich a single book with metadata (Summary, Tags, etc.)
     """
+    logger.info(f"AI Enrichment requested for: {enrich_request.title}")
     try:
         # data = request.model_dump()
         # Passing dictionary as expected by service

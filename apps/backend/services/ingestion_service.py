@@ -21,10 +21,14 @@ import uuid
 from services.pdf_service import extract_pdf_content
 from services.epub_service import extract_epub_content
 from services.embedding_service import get_embedding, batch_get_embeddings
-from services.correction_service import repair_ocr_text
+from services.correction_service import LinguisticCorrectionService
+
+# Initialize the linguistic corrector (loads dictionary once)
+corrector_service = LinguisticCorrectionService()
 from services.data_health_service import DataHealthService
 from services.data_cleaner_service import DataCleanerService
-from utils.text_utils import normalize_text, deaccent_text, get_lemmas
+from utils.text_utils import normalize_text, deaccent_text, get_lemmas, get_lemma_frequencies
+from utils.tag_utils import prepare_labels
 import json
 from concurrent.futures import ThreadPoolExecutor
 from utils.logger import get_logger
@@ -49,6 +53,58 @@ load_dotenv(dotenv_path=env_path)
 from infrastructure.db_manager import DatabaseManager, acquire_lock
 
 # Removed local get_database_connection
+
+def _insert_content_categories(cursor, content_id: int, prepared_categories):
+    if not prepared_categories:
+        return
+    for raw, norm in prepared_categories:
+        try:
+            cursor.execute(
+                """
+                INSERT INTO TOMEHUB_CONTENT_CATEGORIES (content_id, category, category_norm)
+                VALUES (:p_cid, :p_cat, :p_norm)
+                """,
+                {"p_cid": content_id, "p_cat": raw, "p_norm": norm},
+            )
+        except oracledb.IntegrityError:
+            # Duplicate category for this content_id
+            pass
+
+
+def _insert_content_tags(cursor, content_id: int, prepared_tags):
+    if not prepared_tags:
+        return
+    for raw, norm in prepared_tags:
+        try:
+            cursor.execute(
+                """
+                INSERT INTO TOMEHUB_CONTENT_TAGS (content_id, tag, tag_norm)
+                VALUES (:p_cid, :p_tag, :p_norm)
+                """,
+                {"p_cid": content_id, "p_tag": raw, "p_norm": norm},
+            )
+        except oracledb.IntegrityError:
+            # Duplicate tag for this content_id
+            pass
+
+
+def normalize_source_type(source_type: Optional[str]) -> str:
+    """
+    Normalize incoming source types to canonical values.
+    Canonical set: PDF, EPUB, PDF_CHUNK, BOOK, ARTICLE, WEBSITE, PERSONAL_NOTE, HIGHLIGHT, INSIGHT
+    """
+    if not source_type:
+        return "PERSONAL_NOTE"
+    st = str(source_type).strip().upper()
+    if st in {"PDF", "EPUB", "PDF_CHUNK", "BOOK", "ARTICLE", "WEBSITE", "PERSONAL_NOTE", "HIGHLIGHT", "INSIGHT"}:
+        return st
+    if st in {"NOTE", "PERSONAL"}:
+        return "PERSONAL_NOTE"
+    if st in {"NOTES"}:
+        return "HIGHLIGHT"
+    # Unknown types default to PERSONAL_NOTE (safe semantic fallback)
+    logger.warning(f"[WARN] Unknown source_type '{source_type}', defaulting to PERSONAL_NOTE")
+    return "PERSONAL_NOTE"
 
 
 def check_book_exists(title: str, author: str, firebase_uid: str, conn=None) -> bool:
@@ -137,6 +193,7 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
     # Normalize categories: remove newlines and extra spaces
     if categories:
         categories = ",".join([c.strip() for c in categories.replace("\n", ",").split(",") if c.strip()])
+    prepared_categories = prepare_labels(categories) if categories else []
     # DEBUG: Verify file exists at start
     print(f"[DEBUG] File exists at start: {os.path.exists(file_path)}")
     
@@ -222,8 +279,9 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
                 
                 insert_sql = """
                 INSERT INTO TOMEHUB_CONTENT 
-                (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, book_id, normalized_content, text_deaccented, lemma_tokens, categories)
-                VALUES (:p_uid, :p_type, :p_title, :p_content, :p_chunk_type, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm_content, :p_deaccent, :p_lemmas, :p_cats)
+                (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, book_id, normalized_content, text_deaccented, lemma_tokens, token_freq, categories)
+                VALUES (:p_uid, :p_type, :p_title, :p_content, :p_chunk_type, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm_content, :p_deaccent, :p_lemmas, :p_token_freq, :p_cats)
+                RETURNING id INTO :p_out_id
                 """
                 
                 successful_inserts = 0
@@ -251,24 +309,22 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
                             })
                             skip_chunk = True
                     
-                    # Phase 13 Optimization: OCR Quality Gating & Automated Repair
-                    confidence = chunk.get('confidence', 1.0)
+                    # Phase 13 Optimization: LINGUISTIC FILTER (Non-AI Repair)
+                    # We apply deterministic regex and dictionary rules using ftfy + symspell
+                    # This replaces the slow AI method and prevents memory crashes.
+                    chunk_text_before = chunk_text
+                    
+                    # Force Repair via Linguistic Correction Service
+                    repaired_text = corrector_service.fix_text(chunk_text)
                     repaired = False
                     
-                    # Only repair/embed if not skipped
-                    if not skip_chunk and confidence < 0.7:
-                        logger.warning("Low OCR Confidence detected. Triggering automated repair.", extra={
-                            "confidence": confidence, 
-                            "page": chunk.get('page_num'),
-                            "chunk_index": idx
-                        })
-                        # Automated Repair using Gemini
-                        repaired_text = repair_ocr_text(chunk_text)
-                        if repaired_text != chunk_text:
-                            chunk_text = repaired_text
-                            repaired = True
-                            logger.info("OCR Repair successful", extra={"chunk_index": idx, "page": chunk.get('page_num')})
+                    if repaired_text != chunk_text:
+                        chunk_text = repaired_text
+                        repaired = True
+                        # Log simple confirmation
+                        logger.info("Linguistic Filter applied (Regex/Dict)", extra={"chunk_index": idx})
                     
+                    decluttered_text = DataCleanerService.clean_with_ai(chunk_text, title=title, author=author)
                     return {
                         'index': idx,
                         'chunk': chunk,
@@ -277,8 +333,9 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
                         'normalized': normalize_text(chunk_text),
                         'deaccented': deaccent_text(chunk_text),
                         'lemmas': json.dumps(get_lemmas(chunk_text), ensure_ascii=False),
+                        'lemma_freqs': json.dumps(get_lemma_frequencies(decluttered_text), ensure_ascii=False),
                         'classification': classify_passage_fast(chunk_text),
-                        'decluttered_text': DataCleanerService.clean_with_ai(chunk_text, title=title, author=author),
+                        'decluttered_text': decluttered_text,
                         'skip': skip_chunk
                     }
 
@@ -316,6 +373,7 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
                             continue
                             
                         try:
+                            out_id = cursor.var(oracledb.NUMBER)
                             cursor.execute(insert_sql, {
                                 "p_uid": firebase_uid,
                                 "p_type": "PDF" if file_ext == '.pdf' else "EPUB",
@@ -329,8 +387,15 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
                                 "p_norm_content": res['normalized'],
                                 "p_deaccent": res['deaccented'],
                                 "p_lemmas": res['lemmas'],
-                                "p_cats": categories
+                                "p_token_freq": res['lemma_freqs'],
+                                "p_cats": categories,
+                                "p_out_id": out_id
                             })
+                            new_id = out_id.getvalue()
+                            if isinstance(new_id, list):
+                                new_id = new_id[0] if new_id else None
+                            if new_id is not None:
+                                _insert_content_categories(cursor, int(new_id), prepared_categories)
                             successful_inserts += 1
                         except Exception as e:
                             print(f"[FAILED] Chunk {res['index']} DB insert: {e}")
@@ -410,12 +475,24 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
         logger.warning(f"Cache invalidation failed (non-critical): {e}")
         
     return True
-
-# (Keep ingest_text_item and process_bulk_items_logic as is, just ensuring imports)
-def ingest_text_item(text: str, title: str, author: str, source_type: str = "NOTE", firebase_uid: str = "test_user_001", categories: Optional[str] = None) -> bool:
+def ingest_text_item(
+    text: str,
+    title: str,
+    author: str,
+    source_type: str = "NOTE",
+    firebase_uid: str = "test_user_001",
+    categories: Optional[str] = None,
+    book_id: Optional[str] = None,
+    page_number: Optional[int] = None,
+    chunk_type: Optional[str] = None,
+    chunk_index: Optional[int] = None,
+    comment: Optional[str] = None,
+    tags: Optional[list] = None,
+) -> bool:
     # Normalize categories
     if categories:
         categories = ",".join([c.strip() for c in categories.replace("\n", ",").split(",") if c.strip()])
+    prepared_categories = prepare_labels(categories) if categories else []
     print(f"\n[INFO] Text Ingestion: {title}")
     try:
         with DatabaseManager.get_write_connection() as connection:
@@ -433,33 +510,43 @@ def ingest_text_item(text: str, title: str, author: str, source_type: str = "NOT
                 embedding = get_embedding(text)
                 if embedding:
                     # Generate a book_id if one doesn't exist contextually
-                    book_id = str(uuid.uuid4())
-                    
-                    # Map source_type to satisfy DB Constraint (PDF/EPUB only likely)
-                    valid_types = ['PDF', 'EPUB']
-                    db_source_type = source_type
-                    if db_source_type not in valid_types:
-                        db_source_type = 'PDF' # Fallback
-                    
+                    if not book_id:
+                        book_id = str(uuid.uuid4())
+
+                    db_source_type = normalize_source_type(source_type)
+                    tags_json = json.dumps(tags, ensure_ascii=False) if tags else None
+                    prepared_tags = prepare_labels(tags_json) if tags_json else []
+
+                    out_id = cursor.var(oracledb.NUMBER)
                     cursor.execute("""
                         INSERT INTO TOMEHUB_CONTENT 
-                        (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, book_id, normalized_content, text_deaccented, lemma_tokens, categories)
-                        VALUES (:p_uid, :p_type, :p_title, :p_content, :p_chunk_type, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_deaccent, :p_lemmas, :p_cats)
+                        (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, book_id, normalized_content, text_deaccented, lemma_tokens, categories, "COMMENT", tags)
+                        VALUES (:p_uid, :p_type, :p_title, :p_content, :p_chunk_type, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_deaccent, :p_lemmas, :p_cats, :p_comment, :p_tags)
+                        RETURNING id INTO :p_out_id
                     """, {
                         "p_uid": firebase_uid,
                         "p_type": db_source_type,
                         "p_title": f"{title} - {author}",
                         "p_content": text,
-                        "p_chunk_type": "paragraph",
-                        "p_page": 1,
-                        "p_chunk_idx": 0,
+                        "p_chunk_type": chunk_type or "paragraph",
+                        "p_page": page_number or 1,
+                        "p_chunk_idx": chunk_index or 0,
                         "p_vec": embedding,
                         "p_book_id": book_id,
                         "p_norm": normalized_text,
                         "p_deaccent": deaccented_text,
                         "p_lemmas": lemmas_json,
-                        "p_cats": categories
+                        "p_cats": categories,
+                        "p_comment": comment,
+                        "p_tags": tags_json,
+                        "p_out_id": out_id
                     })
+                    new_id = out_id.getvalue()
+                    if isinstance(new_id, list):
+                        new_id = new_id[0] if new_id else None
+                    if new_id is not None:
+                        _insert_content_categories(cursor, int(new_id), prepared_categories)
+                        _insert_content_tags(cursor, int(new_id), prepared_tags)
                     connection.commit()
                     print(f"[SUCCESS] Text Item Ingested: {title} (Type: {db_source_type})")
                     return True
@@ -470,6 +557,102 @@ def ingest_text_item(text: str, title: str, author: str, source_type: str = "NOT
     except Exception as e:
         print(f"Error: {e}")
         return False
+
+def sync_highlights_for_item(
+    firebase_uid: str,
+    book_id: str,
+    title: str,
+    author: str,
+    highlights: list
+) -> dict:
+    """
+    Replace all highlights/insights for a given book_id with the provided list.
+    """
+    deleted = 0
+    inserted = 0
+
+    if not book_id:
+        return {"success": False, "deleted": 0, "inserted": 0, "error": "book_id required"}
+
+    try:
+        with DatabaseManager.get_write_connection() as connection:
+            with connection.cursor() as cursor:
+                # Delete existing highlight/insight rows for this book/user
+                cursor.execute(
+                    """
+                    DELETE FROM TOMEHUB_CONTENT
+                    WHERE firebase_uid = :p_uid
+                      AND book_id = :p_book
+                      AND source_type IN ('HIGHLIGHT', 'INSIGHT', 'NOTES')
+                    """,
+                    {"p_uid": firebase_uid, "p_book": book_id},
+                )
+                deleted = cursor.rowcount or 0
+
+                if not highlights:
+                    connection.commit()
+                    return {"success": True, "deleted": deleted, "inserted": 0}
+
+                texts = [h.get("text", "") for h in highlights]
+                embeddings = batch_get_embeddings(texts)
+
+                insert_sql = """
+                    INSERT INTO TOMEHUB_CONTENT
+                    (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, book_id, normalized_content, text_deaccented, lemma_tokens, "COMMENT", tags)
+                    VALUES (:p_uid, :p_type, :p_title, :p_content, :p_chunk_type, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_deaccent, :p_lemmas, :p_comment, :p_tags)
+                    RETURNING id INTO :p_out_id
+                """
+
+                for idx, h in enumerate(highlights):
+                    text = (h.get("text") or "").strip()
+                    if not DataHealthService.validate_content(text):
+                        continue
+
+                    source_type = "INSIGHT" if str(h.get("type", "highlight")).lower() == "note" else "HIGHLIGHT"
+                    chunk_type = "insight" if source_type == "INSIGHT" else "highlight"
+                    comment = h.get("comment") if source_type == "HIGHLIGHT" else None
+                    page_number = h.get("pageNumber")
+                    tags = h.get("tags") or []
+                    tags_json = json.dumps(tags, ensure_ascii=False) if tags else None
+                    prepared_tags = prepare_labels(tags_json) if tags_json else []
+
+                    embedding = embeddings[idx] if idx < len(embeddings) else None
+                    if embedding is None:
+                        continue
+
+                    out_id = cursor.var(oracledb.NUMBER)
+                    cursor.execute(
+                        insert_sql,
+                        {
+                            "p_uid": firebase_uid,
+                            "p_type": source_type,
+                            "p_title": f"{title} - {author}",
+                            "p_content": text,
+                            "p_chunk_type": chunk_type,
+                            "p_page": page_number,
+                            "p_chunk_idx": idx,
+                            "p_vec": embedding,
+                            "p_book_id": book_id,
+                            "p_norm": normalize_text(text),
+                            "p_deaccent": deaccent_text(text),
+                            "p_lemmas": json.dumps(get_lemmas(text), ensure_ascii=False),
+                            "p_comment": comment,
+                            "p_tags": tags_json,
+                            "p_out_id": out_id,
+                        },
+                    )
+                    new_id = out_id.getvalue()
+                    if isinstance(new_id, list):
+                        new_id = new_id[0] if new_id else None
+                    if new_id is not None:
+                        _insert_content_tags(cursor, int(new_id), prepared_tags)
+                    inserted += 1
+
+                connection.commit()
+                return {"success": True, "deleted": deleted, "inserted": inserted}
+    except Exception as e:
+        logger.error(f"[ERROR] sync_highlights_for_item failed: {e}")
+        return {"success": False, "deleted": deleted, "inserted": inserted, "error": str(e)}
 
 def process_bulk_items_logic(items: list, firebase_uid: str) -> dict:
     print(f"Bulk processing {len(items)} items...")
@@ -485,6 +668,11 @@ def process_bulk_items_logic(items: list, firebase_uid: str) -> dict:
                         if not DataHealthService.validate_content(text):
                             continue
                         
+                        embedding = get_embedding(text)
+                        if not embedding:
+                            print("[WARN] Embedding missing for item, skipping.")
+                            continue
+
                         # NLP Processing
                         normalized_text = normalize_text(text)
                         deaccented_text = deaccent_text(text)
@@ -494,32 +682,51 @@ def process_bulk_items_logic(items: list, firebase_uid: str) -> dict:
                         cats = item.get('categories')
                         if cats:
                             cats = ",".join([c.strip() for c in cats.replace("\n", ",").split(",") if c.strip()])
+                        prepared_categories = prepare_labels(cats) if cats else []
 
-                        if embedding:
-                            cursor.execute("""
-                                INSERT INTO TOMEHUB_CONTENT 
-                                (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, normalized_content, text_deaccented, lemma_tokens, categories)
-                                VALUES (:p_uid, :p_type, :p_title, :p_content, 'full_text', 1, 0, :p_vec, :p_norm, :p_deaccent, :p_lemmas, :p_cats)
-                            """, {
-                                "p_uid": firebase_uid,
-                                "p_type": item.get('type', 'NOTE'),
-                                "p_title": f"{item.get('title')} - {item.get('author')}",
-                                "p_content": text,
-                                "p_vec": embedding,
-                                "p_norm": normalized_text,
-                                "p_deaccent": deaccented_text,
-                                "p_lemmas": lemmas_json,
-                                "p_cats": cats
-                            })
-                            success += 1
-                            time.sleep(0.5) # Rate limit
+                        tags = item.get('tags')
+                        tags_json = json.dumps(tags, ensure_ascii=False) if tags else None
+                        prepared_tags = prepare_labels(tags_json) if tags_json else []
+
+                        out_id = cursor.var(oracledb.NUMBER)
+                        db_source_type = normalize_source_type(item.get('type', 'NOTE'))
+                        cursor.execute("""
+                            INSERT INTO TOMEHUB_CONTENT 
+                            (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, book_id, normalized_content, text_deaccented, lemma_tokens, categories, "COMMENT", tags)
+                            VALUES (:p_uid, :p_type, :p_title, :p_content, :p_chunk_type, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_deaccent, :p_lemmas, :p_cats, :p_comment, :p_tags)
+                            RETURNING id INTO :p_out_id
+                        """, {
+                            "p_uid": firebase_uid,
+                            "p_type": db_source_type,
+                            "p_title": f"{item.get('title')} - {item.get('author')}",
+                            "p_content": text,
+                            "p_chunk_type": item.get('chunk_type') or 'full_text',
+                            "p_page": item.get('page_number') or 1,
+                            "p_chunk_idx": item.get('chunk_index') or 0,
+                            "p_vec": embedding,
+                            "p_book_id": item.get('book_id'),
+                            "p_norm": normalized_text,
+                            "p_deaccent": deaccented_text,
+                            "p_lemmas": lemmas_json,
+                            "p_cats": cats,
+                            # Here item.get is used differently in old logic? No, just keys.
+                            "p_comment": item.get('comment'), 
+                            "p_tags": tags_json,
+                            "p_out_id": out_id
+                        })
+                        new_id = out_id.getvalue()
+                        if isinstance(new_id, list):
+                            new_id = new_id[0] if new_id else None
+                        if new_id is not None:
+                            _insert_content_categories(cursor, int(new_id), prepared_categories)
+                            _insert_content_tags(cursor, int(new_id), prepared_tags)
+                        success += 1
+                        time.sleep(0.2) # Rate limit
                     except Exception as e:
                         print(f"Item failed: {e}")
                 conn.commit()
     except Exception as e:
         print(f"Bulk process error: {e}")
-        
-    return {"success": success}
         
     return {"success": success}
 

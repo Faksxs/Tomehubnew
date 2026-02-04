@@ -11,7 +11,7 @@ export interface Highlight {
   pageNumber?: number;
   paragraphNumber?: number; // or line/position
   chapterTitle?: string;
-  note?: string; // "Why is this important" or context (used primarily for highlights)
+  comment?: string; // "Why is this important" or context (used primarily for highlights)
   createdAt: number;
   tags?: string[];
   isFavorite?: boolean;

@@ -83,6 +83,42 @@ def clean_text_artifacts(text: str) -> str:
     # End of word '1' (e.g. "Anlam1")
     text = re.sub(r'(?<=[a-zçğıöşü])1\b', 'ı', text)
 
+    # 1.5 Fix specific OCR artifacts reported by user (Aggressive Pass)
+    # Generic 'ii' -> 'ü' heuristic (Safe for Turkish context)
+    text = text.replace('ii', 'ü')
+    text = text.replace('I I', 'Ü')
+
+    # Fix Capital 'O' / '0' acting as 'ü' or 'ö' inside lowercase words
+    # e.g. "gOnOmuz" -> "günümüz", "yOnO" -> "yönü"
+    # We iterate to catch consecutive/nested O's
+    for _ in range(2):
+        text = re.sub(r'(?<=[a-zçğıöşü])O(?=[a-zçğıöşüO])', 'ü', text)
+        text = re.sub(r'(?<=[a-zçğıöşüO])O(?=[a-zçğıöşü])', 'ü', text)
+        text = re.sub(r'(?<=[a-zçğıöşü])0(?=[a-zçğıöşü0])', 'ü', text)
+        # Handle word-ending O if preceded by lowercase (e.g. yOnO)
+        text = re.sub(r'(?<=[a-zçğıöşü])O\b', 'ü', text)
+
+    # Specific word repairs
+    specific_fixes = {
+        '<;ev': 'çev',
+        '~ikago': 'Chicago',
+        '~iddet': 'şiddet',
+        ';alt~malar': 'çalışmalar',
+        'Ele~tirisi': 'Eleştirisi',
+        '~Ankara': 'Ankara',
+        '~izgi': 'çizgi',
+        '~izmek': 'çizmek',
+        '~e~it': 'çeşit',
+        '~iinkii': 'çünkü',
+        'miizik': 'müzik',
+        'biitiin': 'bütün',
+        'goriint': 'görünt',
+        'dOnyas': 'dünyas',
+        'kOitOrel': 'kültürel',
+    }
+    for bad, good in specific_fixes.items():
+        text = text.replace(bad, good)
+
     # 2. Fix Tilde '~' usages (likely 'ç' or 'ş' or 'ğ')
     # High frequency map
     replacements = {
@@ -120,7 +156,45 @@ def clean_text_artifacts(text: str) -> str:
     
     return text
 
-    # ... (Keep existing code above) ...
+class BibliographyDetector:
+    """
+    Detects if a text block is likely part of a Bibliography, Index, or Reference list.
+    """
+    @staticmethod
+    def is_bibliography_or_index(text: str) -> bool:
+        if not text: return False
+        
+        # 1. Header Detection (Strong signal)
+        # Matches: "KAYNAKÇA", "BIBLIOGRAPHY", "DİZİN", "INDEX", "KAYNAKLAR"
+        if re.search(r'^\s*(KAYNAKÇA|KAYNAKLAR|BIBLIOGRAPHY|DİZİN|INDEX|REFERANSLAR)\s*$', text, re.IGNORECASE):
+            return True
+            
+        # 2. Pattern density check
+        # Bibliographies have many years (19xx, 20xx) and city names or "Yay."
+        year_matches = len(re.findall(r'\b(19|20)\d{2}\b', text))
+        
+        # Heuristic: If we have > 3 years in a short text (e.g. < 500 chars), likely a list
+        if len(text) < 500 and year_matches >= 3:
+            return True
+            
+        # 3. Index check: High density of page numbers at end of lines
+        # e.g. "Adorno, 12, 45, 67"
+        lines = text.split('\n')
+        index_lines = 0
+        for line in lines:
+            line = line.strip()
+            if not line: continue
+            # Ends with number or number list
+            if re.search(r',\s*\d+(?:,\s*\d+)*\s*$', line):
+                index_lines += 1
+            # Or starts with Name, Name...
+            if re.match(r'^[A-Z][a-z]+,\s[A-Z]', line):
+                index_lines += 0.5 # Weaker signal for index
+                
+        if len(lines) > 5 and (index_lines / len(lines)) > 0.4:
+            return True
+            
+        return False
 
 def calculate_sis(text: str) -> dict:
     """
@@ -132,6 +206,10 @@ def calculate_sis(text: str) -> dict:
 
     if not text:
         return {'score': 0, 'decision': 'QUARANTINE', 'details': ['empty']}
+        
+    # 0. Bibliography/Index Detection
+    if BibliographyDetector.is_bibliography_or_index(text):
+        return {'score': 0, 'decision': 'QUARANTINE', 'details': ['bibliography_detected']}
 
     # 1. Ends with sentence terminator (Strongest signal)
     if re.search(r'[.!?…"]\s*$', text):

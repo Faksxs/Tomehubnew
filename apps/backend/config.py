@@ -39,6 +39,7 @@ class Settings:
         
         # AI
         self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+        self.ANSWER_MODEL_NAME = os.getenv("ANSWER_MODEL_NAME", "gemini-flash-latest")
         
         # Validation
         if not self.DB_PASSWORD:
@@ -67,6 +68,17 @@ class Settings:
         self.SENTRY_DSN = os.getenv("SENTRY_DSN")
         self.MEMORY_WARNING_THRESHOLD = float(os.getenv("MEMORY_WARNING_THRESHOLD", "75.0"))
         self.MEMORY_CRITICAL_THRESHOLD = float(os.getenv("MEMORY_CRITICAL_THRESHOLD", "85.0"))
+
+        # Chat / Memory Limits
+        self.CHAT_CONTEXT_LIMIT = int(os.getenv("CHAT_CONTEXT_LIMIT", "5"))  # recent messages sent to AI
+        self.CHAT_PROMPT_TURNS = int(os.getenv("CHAT_PROMPT_TURNS", "3"))    # turns injected into prompt
+        self.CHAT_SUMMARY_LIMIT = int(os.getenv("CHAT_SUMMARY_LIMIT", "10")) # messages used for summary extraction
+        self.CHAT_RETENTION_DAYS = int(os.getenv("CHAT_RETENTION_DAYS", "90"))
+        self.CHAT_TITLE_MIN_MESSAGES = int(os.getenv("CHAT_TITLE_MIN_MESSAGES", "3"))
+        self.CHAT_TITLE_MAX_LENGTH = int(os.getenv("CHAT_TITLE_MAX_LENGTH", "60"))
+
+        # Graph Concept Strength
+        self.CONCEPT_STRENGTH_MIN = float(os.getenv("CONCEPT_STRENGTH_MIN", "0.7"))
     
     def _init_firebase(self):
         """Initialize Firebase Admin SDK if credentials available."""

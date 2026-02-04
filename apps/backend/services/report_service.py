@@ -13,6 +13,7 @@ import logging
 import time
 import google.generativeai as genai
 from typing import List, Dict, Optional
+import re
 import oracledb
 from infrastructure.db_manager import DatabaseManager, safe_read_clob
 
@@ -114,6 +115,63 @@ def generate_file_report(book_id: str, firebase_uid: str):
     if not chunks:
         logger.warning(f"No chunks found for book {book_id}. Skipping report.")
         return False
+
+def search_reports_by_topic(firebase_uid: str, topic: str, limit: int = 20) -> List[Dict]:
+    """
+    Find file reports by key topic using JSON search index.
+    """
+    if not topic:
+        return []
+    safe_limit = max(1, min(int(limit), 50))
+    pattern = f"^{re.escape(topic.strip())}$"
+    results: List[Dict] = []
+    try:
+        with DatabaseManager.get_read_connection() as conn:
+            with conn.cursor() as cursor:
+                sql = f"""
+                    SELECT BOOK_ID, SUMMARY_TEXT, KEY_TOPICS, ENTITIES, CREATED_AT, UPDATED_AT
+                    FROM TOMEHUB_FILE_REPORTS
+                    WHERE FIREBASE_UID = :p_uid
+                    AND JSON_TEXTCONTAINS(KEY_TOPICS, '$', :p_topic)
+                    ORDER BY UPDATED_AT DESC NULLS LAST
+                    FETCH FIRST {safe_limit} ROWS ONLY
+                """
+                cursor.execute(sql, {"p_uid": firebase_uid, "p_topic": topic})
+                for row in cursor.fetchall():
+                    results.append({
+                        "book_id": row[0],
+                        "summary_text": safe_read_clob(row[1]) if row[1] else "",
+                        "key_topics": safe_read_clob(row[2]) if row[2] else "[]",
+                        "entities": safe_read_clob(row[3]) if row[3] else "[]",
+                        "created_at": row[4].isoformat() if row[4] else None,
+                        "updated_at": row[5].isoformat() if row[5] else None
+                    })
+    except Exception as e:
+        logger.warning(f"Report search failed (JSON). Falling back to LIKE. Error: {e}")
+        try:
+            with DatabaseManager.get_read_connection() as conn:
+                with conn.cursor() as cursor:
+                    sql = f"""
+                        SELECT BOOK_ID, SUMMARY_TEXT, KEY_TOPICS, ENTITIES, CREATED_AT, UPDATED_AT
+                        FROM TOMEHUB_FILE_REPORTS
+                        WHERE FIREBASE_UID = :p_uid
+                        AND KEY_TOPICS LIKE :p_like
+                        ORDER BY UPDATED_AT DESC NULLS LAST
+                        FETCH FIRST {safe_limit} ROWS ONLY
+                    """
+                    cursor.execute(sql, {"p_uid": firebase_uid, "p_like": f"%{topic}%"})
+                    for row in cursor.fetchall():
+                        results.append({
+                            "book_id": row[0],
+                            "summary_text": safe_read_clob(row[1]) if row[1] else "",
+                            "key_topics": safe_read_clob(row[2]) if row[2] else "[]",
+                            "entities": safe_read_clob(row[3]) if row[3] else "[]",
+                            "created_at": row[4].isoformat() if row[4] else None,
+                            "updated_at": row[5].isoformat() if row[5] else None
+                        })
+        except Exception as e2:
+            logger.error(f"Report search fallback failed: {e2}")
+    return results
         
     # 2. Prepare Context (Sampling)
     # 500k chars is approx 125k tokens. Safe for Flash.

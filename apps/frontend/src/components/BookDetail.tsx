@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { LibraryItem, PhysicalStatus, ReadingStatus, Highlight } from '../types';
 import { ArrowLeft, Edit2, Trash2, BookOpen, FileText, Globe, StickyNote, Sparkles, Hash, Calendar, Link as LinkIcon, PenTool, CheckCircle, Clock, Library, AlertTriangle, Archive, Upload, Loader2, AlertCircle, FilePlus } from 'lucide-react';
 import { HighlightSection } from './HighlightSection';
-import { analyzeHighlightsAI } from '../services/geminiService';
+import { analyzeHighlightsAI, enrichBookWithAI, libraryItemToDraft, mergeEnrichedDraftIntoItem } from '../services/geminiService';
 import { useAuth } from '../contexts/AuthContext';
-import { ingestDocument, IngestResponse, getIngestedBooks } from '../services/backendApiService';
+import { getIngestionStatus, ingestDocument, IngestResponse, IngestionStatusResponse } from '../services/backendApiService';
+import { saveItemForUser } from '../services/firestoreService';
 
 interface BookDetailProps {
   book: LibraryItem;
@@ -15,18 +16,26 @@ interface BookDetailProps {
   initialTab?: 'info' | 'highlights'; // Optional prop to set initial tab
   autoEditHighlightId?: string; // Optional: highlight ID to auto-edit
   onIngestSuccess?: () => void;
+  onBookUpdated?: (book: LibraryItem) => void;
 }
 
-export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack, onEdit, onDelete, onUpdateHighlights, initialTab = 'info', autoEditHighlightId }) => {
+export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack, onEdit, onDelete, onUpdateHighlights, initialTab = 'info', autoEditHighlightId, onBookUpdated }) => {
   const [activeTab, setActiveTab] = useState<'info' | 'highlights'>(initialTab);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isIngesting, setIsIngesting] = useState(false);
+  const [isEnriching, setIsEnriching] = useState(false);
+  const [enrichError, setEnrichError] = useState<string | null>(null);
   const [ingestResult, setIngestResult] = useState<IngestResponse | null>(null);
   const [ingestError, setIngestError] = useState<string | null>(null);
-  const [ingestedFileTitle, setIngestedFileTitle] = useState<string | null>(null);
+  const [pdfStatus, setPdfStatus] = useState<IngestionStatusResponse | null>(null);
+  const [pdfStatusError, setPdfStatusError] = useState<string | null>(null);
+  const [pdfStatusRefresh, setPdfStatusRefresh] = useState(0);
+
   const { user } = useAuth();
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const isNote = book.type === 'PERSONAL_NOTE';
 
   // Helper for Turkish character normalization only
   const normalize = (str: any) => {
@@ -48,35 +57,15 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
       .trim();
   };
 
-  React.useEffect(() => {
-    async function checkIngestionStatus() {
-      if (!user?.uid) return;
-      try {
-        const data = await getIngestedBooks(user.uid);
-        const books = data.books || [];
 
-        const match = books.find(ib => {
-          const sTitle = normalize(ib.title);
-          const bTitle = normalize(book.title);
-          const sAuthor = normalize(ib.author);
-          const bAuthor = normalize(book.author);
 
-          // Both title AND author must match (and both must exist)
-          return sTitle && bTitle && sAuthor && bAuthor &&
-            sTitle === bTitle && sAuthor === bAuthor;
-        });
-
-        if (match) {
-          setIngestedFileTitle(match.title); // Use the title from DB as the filename proxy
-        } else {
-          setIngestedFileTitle(null);
-        }
-      } catch (e) {
-        console.error("Failed to check ingestion status:", e);
-      }
-    }
-    checkIngestionStatus();
-  }, [book, user]);
+  const formatPdfName = (name?: string | null) => {
+    if (!name) return '';
+    const cleaned = name.replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+    const maxLen = 24;
+    if (cleaned.length <= maxLen) return cleaned;
+    return `${cleaned.slice(0, maxLen).trimEnd()}...`;
+  };
 
   const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -90,9 +79,17 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
     setIsIngesting(true);
     setIngestError(null);
     setIngestResult(null);
+    setPdfStatus({
+      status: 'PROCESSING',
+      file_name: file.name,
+      chunk_count: null,
+      embedding_count: null,
+      updated_at: new Date().toISOString()
+    });
+    setPdfStatusRefresh((v) => v + 1);
 
     try {
-      const response = await ingestDocument(file, book.title, book.author, user.uid);
+      const response = await ingestDocument(file, book.title, book.author, user.uid, book.id);
       setIngestResult(response);
       // Optional: Clear success message after some time
       setTimeout(() => setIngestResult(null), 5000);
@@ -138,9 +135,67 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
     setIsAnalyzing(false);
   };
 
-  const isNote = book.type === 'PERSONAL_NOTE';
+  const handleGenerateSummaryAndTags = async () => {
+    if (!user?.uid || isEnriching) return;
+    setIsEnriching(true);
+    setEnrichError(null);
+    try {
+      const draft = libraryItemToDraft(book);
+      const enriched = await enrichBookWithAI(draft);
+      const mergedItem = mergeEnrichedDraftIntoItem(book, enriched);
+
+      await saveItemForUser(user.uid, mergedItem);
+      onBookUpdated?.(mergedItem);
+      if (mergedItem.generalNotes) setAiSummary(mergedItem.generalNotes);
+    } catch (e) {
+      console.error("Enrich failed", e);
+      setEnrichError(e instanceof Error ? e.message : 'Failed to generate with AI');
+    } finally {
+      setIsEnriching(false);
+    }
+  };
+
   const readingConfig = !isNote ? getReadingStatusConfig(book.readingStatus) : null;
   const physicalConfig = !isNote ? getPhysicalStatusConfig(book.status) : null;
+  const pdfIndexed = pdfStatus?.status === 'COMPLETED';
+  const pdfProcessing = pdfStatus?.status === 'PROCESSING';
+  const pdfFailed = pdfStatus?.status === 'FAILED';
+  const pdfDisableUpload = pdfIndexed || pdfProcessing || isIngesting;
+
+  React.useEffect(() => {
+    if (!user?.uid || !book?.id || isNote) {
+      setPdfStatus(null);
+      setPdfStatusError(null);
+      return;
+    }
+
+    let cancelled = false;
+    let attempts = 0;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const fetchStatus = async () => {
+      try {
+        const status = await getIngestionStatus(book.id, user.uid);
+        if (cancelled) return;
+        setPdfStatus(status);
+        setPdfStatusError(null);
+        if (status.status === 'PROCESSING' && attempts < 30) {
+          attempts += 1;
+          timeoutId = setTimeout(fetchStatus, 10000);
+        }
+      } catch (e) {
+        if (cancelled) return;
+        setPdfStatusError(e instanceof Error ? e.message : 'Failed to fetch ingestion status');
+      }
+    };
+
+    fetchStatus();
+
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [book.id, user?.uid, isNote, pdfStatusRefresh]);
 
   // Helper to render status cards compactly
   const renderStatusCard = (config: any, label: string, value: string) => (
@@ -202,9 +257,9 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={isIngesting}
+                  disabled={pdfDisableUpload}
                   className="p-2 text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-full transition-colors relative"
-                  title="Upload PDF"
+                  title={pdfIndexed ? `PDF already indexed: ${pdfStatus?.file_name || ''}` : "Upload PDF"}
                 >
                   {isIngesting ? <Loader2 size={18} className="md:w-5 md:h-5 animate-spin text-indigo-500" /> : <Upload size={18} className="md:w-5 md:h-5" />}
                 </button>
@@ -322,9 +377,9 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={isIngesting}
+                    disabled={pdfDisableUpload}
                     className="flex items-center justify-center gap-2 px-2 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg text-slate-600 dark:text-slate-400 transition-colors text-xs font-medium disabled:opacity-50"
-                    title="Upload PDF"
+                    title={pdfIndexed ? `PDF already indexed: ${pdfStatus?.file_name || ''}` : "Upload PDF"}
                   >
                     {isIngesting ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
                     <span className="hidden lg:inline">PDF</span>
@@ -369,7 +424,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
               className={`flex-1 py-3 md:py-4 text-xs md:text-sm font-medium text-center border-b-2 transition-colors ${activeTab === 'info' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                 }`}
             >
-              Details & Notes
+              Details
             </button>
             <button
               onClick={() => setActiveTab('highlights')}
@@ -389,15 +444,31 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                 {/* Summary / Content */}
                 <div className={`bg-white dark:bg-slate-900 p-4 md:p-6 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm ${isNote ? 'min-h-[300px]' : ''}`}>
                   {!isNote && (
-                    <h3 className="text-base md:text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3 md:mb-4 flex items-center gap-2">
-                      <StickyNote size={18} className="text-indigo-500 dark:text-indigo-400 md:w-5 md:h-5" />
-                      Summary
-                    </h3>
+                    <div className="flex items-start justify-between gap-3 mb-3 md:mb-4">
+                      <div className="flex items-center gap-2">
+                        <StickyNote size={18} className="text-indigo-500 dark:text-indigo-400 md:w-5 md:h-5" />
+                        <h3 className="text-base md:text-lg font-semibold text-slate-800 dark:text-slate-200">Summary</h3>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleGenerateSummaryAndTags}
+                        disabled={isEnriching}
+                        className="flex items-center gap-1.5 text-[11px] md:text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 px-2 py-1 rounded-lg border border-indigo-100 dark:border-indigo-700 bg-indigo-50/60 dark:bg-indigo-900/30 disabled:opacity-60"
+                      >
+                        {isEnriching ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                        {isEnriching ? 'Generating...' : 'Generate with AI'}
+                      </button>
+                    </div>
                   )}
                   {book.generalNotes ? (
                     <p className="text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed text-sm md:text-lg">{book.generalNotes}</p>
                   ) : (
                     <p className="text-slate-400 dark:text-slate-500 italic text-sm">No content added.</p>
+                  )}
+                  {enrichError && (
+                    <p className="text-xs text-red-600 dark:text-red-400 mt-2 flex items-center gap-1">
+                      <AlertCircle size={12} /> {enrichError}
+                    </p>
                   )}
                 </div>
               </div>
@@ -443,6 +514,31 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                       </div>
                     )}
 
+                    {pdfStatus && pdfStatus.status !== 'NOT_FOUND' && (
+                      <div className="flex flex-col gap-0.5 md:gap-1">
+                        <span className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400">PDF</span>
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                          {pdfProcessing && "Processing..."}
+                          {pdfFailed && "Failed - please re-upload"}
+                          {pdfIndexed && (
+                            <>
+                              {pdfStatus.file_name ? (
+                                <span title={pdfStatus.file_name}>
+                                  {`Indexed: ${formatPdfName(pdfStatus.file_name)}`}
+                                </span>
+                              ) : (
+                                "Indexed"
+                              )}
+                              {pdfStatus.chunk_count !== null ? ` (${pdfStatus.chunk_count} chunks)` : ""}
+                            </>
+                          )}
+                        </span>
+                        {pdfStatusError && (
+                          <span className="text-[10px] md:text-xs text-red-600 dark:text-red-400">{pdfStatusError}</span>
+                        )}
+                      </div>
+                    )}
+
                     {book.code && (
                       <div className="flex flex-col gap-0.5 md:gap-1">
                         <span className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400">Shelf Code</span>
@@ -453,15 +549,9 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                       </div>
                     )}
 
-                    {ingestedFileTitle && (
-                      <div className="flex flex-col gap-0.5 md:gap-1">
-                        <span className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400">File</span>
-                        <div className="flex items-center gap-2">
-                          <FileText size={12} className="text-emerald-500 md:w-3.5 md:h-3.5" />
-                          <span className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate" title={ingestedFileTitle}>{ingestedFileTitle}.pdf</span>
-                        </div>
-                      </div>
-                    )}
+
+
+
 
                     <div className="flex flex-col gap-0.5 md:gap-1">
                       <span className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400">Added</span>

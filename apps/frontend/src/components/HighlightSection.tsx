@@ -63,8 +63,8 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
     if (!formData.text) return;
     setIsGeneratingTags(true);
 
-    // Combine text and note for context
-    const contentToAnalyze = `"${formData.text}"\n${formData.note ? `Context: ${formData.note}` : ''}`;
+    // Combine text and comment for context
+    const contentToAnalyze = `"${formData.text}"\n${formData.comment ? `Context: ${formData.comment}` : ''}`;
 
     const tags = await generateTagsForNote(contentToAnalyze);
 
@@ -90,7 +90,7 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
       pageNumber: formData.pageNumber,
       paragraphNumber: formData.paragraphNumber,
       chapterTitle: formData.chapterTitle,
-      note: formData.note,
+      comment: formData.comment,
       createdAt: timestamp, // Use editable date
       tags: tagsArray // Add tags
     };
@@ -195,16 +195,16 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
               ></textarea>
             </div>
 
-            {/* Note input only for Highlights */}
+            {/* Comment input only for Highlights */}
             {entryType === 'highlight' && (
               <div>
-                <label className="block text-[10px] md:text-xs font-medium text-slate-500 mb-1 uppercase">Personal Comment</label>
+                <label className="block text-[10px] md:text-xs font-medium text-slate-500 mb-1 uppercase">Comment</label>
                 <input
                   type="text"
                   className="w-full border border-slate-200 rounded-lg p-2 text-xs md:text-sm"
                   placeholder="Why is this quote important?"
-                  value={formData.note || ''}
-                  onChange={e => setFormData(prev => ({ ...prev, note: e.target.value }))}
+                  value={formData.comment || ''}
+                  onChange={e => setFormData(prev => ({ ...prev, comment: e.target.value }))}
                 />
               </div>
             )}
@@ -376,9 +376,9 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
                     </div>
                   )}
 
-                  {h.note && (
+                  {h.comment && (
                     <div className={`mt-2 md:mt-3 pl-3 md:pl-4 border-l-2 py-0.5 md:py-1 ${isNote ? 'border-indigo-200' : 'border-yellow-300'}`}>
-                      <p className="text-xs md:text-sm text-slate-600 italic">{h.note}</p>
+                      <p className="text-xs md:text-sm text-slate-600 italic">{h.comment}</p>
                     </div>
                   )}
                 </div>

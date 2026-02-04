@@ -10,6 +10,7 @@ import logging
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 from infrastructure.db_manager import DatabaseManager, safe_read_clob
+from config import settings
 
 logger = logging.getLogger("chat_history_service")
 
@@ -53,9 +54,11 @@ def add_message(session_id: int, role: str, content: str, citations: Optional[Li
     except Exception as e:
         logger.error(f"Failed to add message to session {session_id}: {e}")
 
-def get_session_history(session_id: int, limit: int = 10) -> List[Dict]:
+def get_session_history(session_id: int, limit: Optional[int] = None) -> List[Dict]:
     """Retrieve last N messages for context."""
     messages = []
+    if limit is None:
+        limit = settings.CHAT_CONTEXT_LIMIT
     try:
         with DatabaseManager.get_read_connection() as conn:
             with conn.cursor() as cursor:
@@ -97,7 +100,7 @@ def get_session_context(session_id: int) -> Dict:
                 if row:
                     result["summary"] = safe_read_clob(row[0]) or ""
                     
-        result["recent_messages"] = get_session_history(session_id, limit=5)
+        result["recent_messages"] = get_session_history(session_id, limit=settings.CHAT_CONTEXT_LIMIT)
     except Exception as e:
         logger.error(f"Failed to get context for session {session_id}: {e}")
         
@@ -117,6 +120,86 @@ def update_session_summary(session_id: int, summary: str):
     except Exception as e:
         logger.error(f"Failed to update session summary {session_id}: {e}")
 
+def update_session_tags(session_id: int, tags: List[str]):
+    """Update session tags as JSON array."""
+    try:
+        tags_json = json.dumps(tags, ensure_ascii=False)
+        with DatabaseManager.get_write_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE TOMEHUB_CHAT_SESSIONS
+                    SET TAGS = :p_tags, UPDATED_AT = CURRENT_TIMESTAMP
+                    WHERE ID = :p_sid
+                """, {"p_tags": tags_json, "p_sid": session_id})
+                conn.commit()
+    except Exception as e:
+        logger.error(f"Failed to update session tags {session_id}: {e}")
+
+def generate_and_update_session_tags(session_id: int):
+    """
+    Generate topic tags from recent messages and update TAGS JSON.
+    """
+    try:
+        messages = get_session_history(session_id, limit=settings.CHAT_SUMMARY_LIMIT)
+        if not messages or len(messages) < 2:
+            return
+
+        history_str = ""
+        for msg in messages:
+            role = "Kullanıcı" if msg['role'] == 'user' else "Asistan"
+            content = msg['content']
+            if len(content) > 300:
+                content = content[:300]
+            history_str += f"{role}: {content}\n"
+
+        # LLM-based tag generation
+        try:
+            import google.generativeai as genai
+            prompt = f"""
+Aşağıdaki konuşmadan 3-5 adet kısa etiket üret.
+Kurallar:
+- Sadece etiketleri JSON array olarak döndür (örn: ["Felsefe","Etik"])
+- Kişisel veri veya özel isim kullanma
+- Türkçe etiketler
+
+KONUŞMA:
+{history_str}
+"""
+            model = genai.GenerativeModel('gemini-1.5-flash-latest')
+            response = model.generate_content(prompt)
+            tags_text = response.text.strip() if response else "[]"
+        except Exception as e:
+            logger.error(f"Tag generation failed: {e}")
+            tags_text = "[]"
+
+        # Parse JSON array
+        try:
+            if tags_text.startswith('```'):
+                tags_text = tags_text.split('```')[1]
+                if tags_text.startswith('json'):
+                    tags_text = tags_text[4:]
+                tags_text = tags_text.strip()
+            tags = json.loads(tags_text)
+            if isinstance(tags, list):
+                # Normalize and limit
+                cleaned = []
+                for t in tags:
+                    if not isinstance(t, str):
+                        continue
+                    t = t.strip().lstrip('#')
+                    if t:
+                        cleaned.append(t[:40])
+                tags = cleaned[:5]
+            else:
+                tags = []
+        except Exception:
+            tags = []
+
+        if tags:
+            update_session_tags(session_id, tags)
+    except Exception as e:
+        logger.error(f"Failed to generate/update session tags {session_id}: {e}")
+
 def update_conversation_state(session_id: int, state: Dict):
     """Update the structured conversation state (stored as JSON in RUNNING_SUMMARY)."""
     try:
@@ -125,6 +208,141 @@ def update_conversation_state(session_id: int, state: Dict):
         logger.info(f"Session {session_id} conversation state updated.")
     except Exception as e:
         logger.error(f"Failed to update conversation state {session_id}: {e}")
+
+def get_session_title(session_id: int) -> str:
+    """Fetch current session title."""
+    try:
+        with DatabaseManager.get_read_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT TITLE FROM TOMEHUB_CHAT_SESSIONS WHERE ID = :p_sid", {"p_sid": session_id})
+                row = cursor.fetchone()
+                return row[0] if row else ""
+    except Exception as e:
+        logger.error(f"Failed to get session title {session_id}: {e}")
+        return ""
+
+def is_title_locked(session_id: int) -> bool:
+    """Check if title generation is locked for this session."""
+    try:
+        with DatabaseManager.get_read_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT TITLE_LOCKED FROM TOMEHUB_CHAT_SESSIONS WHERE ID = :p_sid", {"p_sid": session_id})
+                row = cursor.fetchone()
+                return bool(row[0]) if row is not None else False
+    except Exception as e:
+        logger.error(f"Failed to check title lock {session_id}: {e}")
+        return False
+
+def lock_session_title(session_id: int):
+    """Lock title generation for this session."""
+    try:
+        with DatabaseManager.get_write_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE TOMEHUB_CHAT_SESSIONS
+                    SET TITLE_LOCKED = 1, UPDATED_AT = CURRENT_TIMESTAMP
+                    WHERE ID = :p_sid
+                """, {"p_sid": session_id})
+                conn.commit()
+    except Exception as e:
+        logger.error(f"Failed to lock session title {session_id}: {e}")
+
+def update_session_title(session_id: int, title: str):
+    """Update session title."""
+    try:
+        with DatabaseManager.get_write_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE TOMEHUB_CHAT_SESSIONS
+                    SET TITLE = :p_title, UPDATED_AT = CURRENT_TIMESTAMP
+                    WHERE ID = :p_sid
+                """, {"p_title": title, "p_sid": session_id})
+                conn.commit()
+    except Exception as e:
+        logger.error(f"Failed to update session title {session_id}: {e}")
+
+def _fallback_title_from_history(messages: List[Dict]) -> Optional[str]:
+    """Heuristic fallback title using first user message."""
+    first_user = None
+    for msg in messages:
+        if msg.get("role") == "user":
+            first_user = msg.get("content", "")
+            break
+    if not first_user:
+        return None
+    words = first_user.strip().split()
+    if not words:
+        return None
+    return " ".join(words[:8])[:settings.CHAT_TITLE_MAX_LENGTH].strip()
+
+def generate_and_update_session_title(session_id: int):
+    """
+    Generate a short, descriptive title using recent messages.
+    Only updates if current title is empty or default.
+    """
+    try:
+        if is_title_locked(session_id):
+            return
+
+        current_title = (get_session_title(session_id) or "").strip()
+        if current_title and current_title.lower() != "new chat":
+            lock_session_title(session_id)
+            return
+
+        # Ensure minimum messages before generating
+        with DatabaseManager.get_read_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT COUNT(*) FROM TOMEHUB_CHAT_MESSAGES WHERE SESSION_ID = :p_sid",
+                    {"p_sid": session_id}
+                )
+                msg_count = cursor.fetchone()[0]
+        if msg_count < settings.CHAT_TITLE_MIN_MESSAGES:
+            return
+
+        messages = get_session_history(session_id, limit=settings.CHAT_SUMMARY_LIMIT)
+        if not messages:
+            return
+
+        history_str = ""
+        for msg in messages:
+            role = "Kullanıcı" if msg['role'] == 'user' else "Asistan"
+            content = msg['content']
+            if len(content) > 280:
+                content = content[:280]
+            history_str += f"{role}: {content}\n"
+
+        # LLM-based title generation
+        try:
+            import google.generativeai as genai
+            prompt = f"""
+Aşağıdaki konuşmayı özetleyen kısa ve açıklayıcı bir başlık üret.
+Kurallar:
+- 3-6 kelime
+- En fazla {settings.CHAT_TITLE_MAX_LENGTH} karakter
+- Kişisel veri veya özel isim kullanma
+- Sadece başlığı döndür (tırnak, nokta, açıklama yok)
+
+KONUŞMA:
+{history_str}
+"""
+            model = genai.GenerativeModel('gemini-1.5-flash-latest')
+            response = model.generate_content(prompt)
+            title = response.text.strip() if response else ""
+        except Exception as e:
+            logger.error(f"Title generation failed: {e}")
+            title = ""
+
+        if not title:
+            title = _fallback_title_from_history(messages) or ""
+
+        if not title:
+            title = f"Chat {datetime.utcnow().strftime('%Y-%m-%d')}"
+
+        update_session_title(session_id, title[:settings.CHAT_TITLE_MAX_LENGTH].strip())
+        lock_session_title(session_id)
+    except Exception as e:
+        logger.error(f"Failed to generate/update session title {session_id}: {e}")
 
 def get_conversation_state(session_id: int) -> Dict:
     """
@@ -176,7 +394,7 @@ def extract_structured_state(session_id: int):
         
         # 1. Fetch Context
         current_state = get_conversation_state(session_id)
-        messages = get_session_history(session_id, limit=10)
+        messages = get_session_history(session_id, limit=settings.CHAT_SUMMARY_LIMIT)
         
         if len(messages) < 2:  # Too few to analyze
             return
@@ -258,4 +476,6 @@ def summarize_session_history(session_id: int):
     Kept for backward compatibility with existing callers.
     """
     extract_structured_state(session_id)
+    generate_and_update_session_title(session_id)
+    generate_and_update_session_tags(session_id)
 

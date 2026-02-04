@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { LibraryItem, ReadingStatus, ResourceType, PhysicalStatus } from '../types';
-import { Search, Plus, Book as BookIcon, Filter, FileText, Globe, ExternalLink, StickyNote, Quote, ArrowRight, PenTool, BarChart2, AlertTriangle, Library, ArrowUpDown, Calendar, Hash, Menu, Trash2, ChevronDown, ChevronLeft, ChevronRight, Loader2, Star, CheckCircle, Zap } from 'lucide-react';
+import { Search, Plus, Book as BookIcon, Filter, FileText, Globe, ExternalLink, StickyNote, Quote, ArrowRight, PenTool, BarChart2, AlertTriangle, Library, ArrowUpDown, Calendar, Hash, Menu, Trash2, ChevronDown, ChevronLeft, ChevronRight, Loader2, Star, CheckCircle, Zap, X } from 'lucide-react';
+import { CATEGORIES } from './CategorySelector';
 // import { StatisticsView } from './StatisticsView'; // Lazy loaded below
 const StatisticsView = React.lazy(() => import('./StatisticsView').then(module => ({ default: module.StatisticsView })));
 
@@ -12,25 +13,31 @@ interface BookListProps {
     activeTab: ResourceType | 'NOTES' | 'DASHBOARD';
     onMobileMenuClick: () => void;
     userId: string;
+    categoryFilter?: string | null;
+    onCategoryFilterChange?: (category: string | null) => void;
+    onCategoryNavigate?: (category: string) => void;
 
     onDeleteBook: (id: string) => void;
     onDeleteMultiple?: (ids: string[]) => void;
     onToggleFavorite: (id: string) => void; // Toggle favorite status
     onToggleHighlightFavorite?: (bookId: string, highlightId: string) => void; // Toggle highlight favorite status
+    currentPage: number;
+    onPageChange: (page: number) => void;
+    searchQuery: string;
+    onSearchChange: (val: string) => void;
+    statusFilter: string;
+    onStatusFilterChange: (val: any) => void;
+    sortOption: 'date_desc' | 'date_asc' | 'title_asc';
+    onSortOptionChange: (val: any) => void;
+    publisherFilter: string;
+    onPublisherFilterChange: (val: string) => void;
 }
 
-export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook, onSelectBook, onSelectBookWithTab, activeTab, onMobileMenuClick, onDeleteBook, onDeleteMultiple, onToggleFavorite, onToggleHighlightFavorite, userId }) => {
-    // UI State
-    const [inputValue, setInputValue] = useState(''); // Immediate input for UI
-    const [debouncedSearch, setDebouncedSearch] = useState(''); // Delayed search for logic
+export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook, onSelectBook, onSelectBookWithTab, activeTab, onMobileMenuClick, onDeleteBook, onDeleteMultiple, onToggleFavorite, onToggleHighlightFavorite, userId, categoryFilter, onCategoryFilterChange, onCategoryNavigate, currentPage, onPageChange, searchQuery, onSearchChange, statusFilter, onStatusFilterChange, sortOption, onSortOptionChange, publisherFilter, onPublisherFilterChange }) => {
+    // UI State (Moved to App.tsx for persistence)
     const [isTyping, setIsTyping] = useState(false); // Visual feedback
 
-    const [statusFilter, setStatusFilter] = useState<ReadingStatus | PhysicalStatus | 'ALL' | 'HIGHLIGHTS' | 'FAVORITES'>('ALL');
-    const [sortOption, setSortOption] = useState<'date_desc' | 'date_asc' | 'title_asc'>('date_desc');
-    const [publisherFilter, setPublisherFilter] = useState('');
-
-    // Pagination State
-    const [currentPage, setCurrentPage] = useState(1);
+    // Pagination State (Moved to App.tsx) - using props instead
 
     const statusColors = {
         'To Read': 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200',
@@ -57,41 +64,43 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
     // --- PERFORMANCE OPTIMIZATION: DEBOUNCING ---
     // Updates the actual search query 300ms after the user STOPS typing.
     // This prevents the heavy filtering logic from running on every keystroke.
+    const [localInput, setLocalInput] = useState(searchQuery);
+
     useEffect(() => {
-        if (inputValue !== debouncedSearch) {
+        if (localInput !== searchQuery) {
             setIsTyping(true);
             const timer = setTimeout(() => {
-                setDebouncedSearch(inputValue);
-                setCurrentPage(1); // Reset pagination on new search
+                onSearchChange(localInput);
+                onPageChange(1); // Reset pagination on new search
                 setIsTyping(false);
             }, 300);
 
             return () => clearTimeout(timer);
         }
-    }, [inputValue, debouncedSearch]);
+    }, [localInput, searchQuery, onSearchChange, onPageChange]);
 
-    // Reset pagination when filters or tab change
+    // Keep local input in sync if searchQuery is reset from parent (e.g. tab change)
     useEffect(() => {
-        setCurrentPage(1);
-    }, [activeTab, statusFilter, publisherFilter, sortOption]);
+        setLocalInput(searchQuery);
+    }, [searchQuery]);
 
-    // Reset filters when tab changes
-    useEffect(() => {
-        setStatusFilter('ALL');
-        setPublisherFilter('');
-        setDebouncedSearch('');
-        setInputValue('');
-        setIsTyping(false);
-    }, [activeTab]);
+    // Pagination reset on tab change is handled in App.tsx
+
+    // Filters are now controlled by props, reset is handled in App.tsx handleTabChange
 
     // --- FILTER & ENRICH LOGIC ---
     const filteredBooks = useMemo(() => {
         if (isNotesTab || isStats) return [];
 
-        const term = debouncedSearch.toLowerCase().trim();
+        const term = searchQuery.toLowerCase().trim();
 
         const result = books.filter(book => {
             if (book.type !== activeTab) return false;
+            if (categoryFilter) {
+                const target = categoryFilter.toLowerCase();
+                const hasCategory = (book.tags || []).some(tag => tag.toLowerCase() === target);
+                if (!hasCategory) return false;
+            }
             // 2. Status Filter (Fastest check first)
             let matchesStatus = true;
             if (statusFilter !== 'ALL') {
@@ -114,7 +123,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
             if (!matchesStatus) return false;
 
             // 3. Publisher Filter
-            if (publisherFilter) {
+            if (publisherFilter && activeTab !== 'BOOK') {
                 if (!book.publisher?.toLowerCase().includes(publisherFilter.toLowerCase())) {
                     return false;
                 }
@@ -158,13 +167,13 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
             return b.addedAt - a.addedAt;
         });
 
-    }, [books, debouncedSearch, statusFilter, publisherFilter, sortOption, activeTab, isNotesTab, isStats]);
+    }, [books, searchQuery, statusFilter, publisherFilter, sortOption, activeTab, isNotesTab, isStats, categoryFilter]);
 
     // --- AGGREGATE HIGHLIGHTS ---
     const filteredHighlights = useMemo(() => {
         if (!isNotesTab) return [];
 
-        const term = debouncedSearch.toLowerCase();
+        const term = searchQuery.toLowerCase();
 
         return books
             .flatMap(book => book.highlights.map(h => ({ ...h, source: book })))
@@ -182,7 +191,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                     (item.tags && item.tags.some(t => t.toLowerCase().includes(term)));
             })
             .sort((a, b) => b.createdAt - a.createdAt);
-    }, [books, isNotesTab, debouncedSearch, statusFilter]);
+    }, [books, isNotesTab, searchQuery, statusFilter]);
 
     // --- STATS CALCULATION ---
     const stats = useMemo(() => {
@@ -260,7 +269,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
         return (
             <div className="flex justify-center items-center gap-2 mt-8 md:mt-12 select-none">
                 <button
-                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    onClick={() => onPageChange(Math.max(currentPage - 1, 1))}
                     disabled={currentPage === 1}
                     className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
@@ -274,7 +283,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                                 <span className="px-2 text-slate-400">...</span>
                             ) : (
                                 <button
-                                    onClick={() => setCurrentPage(page as number)}
+                                    onClick={() => onPageChange(page as number)}
                                     className={`w-8 h-8 md:w-10 md:h-10 rounded-lg text-sm font-medium transition-colors ${currentPage === page
                                         ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200 dark:shadow-none'
                                         : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400'
@@ -288,7 +297,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                 </div>
 
                 <button
-                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    onClick={() => onPageChange(Math.min(currentPage + 1, totalPages))}
                     disabled={currentPage === totalPages}
                     className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
@@ -306,7 +315,10 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                         <Loader2 size={32} className="animate-spin text-indigo-500" />
                     </div>
                 }>
-                    <StatisticsView items={books} />
+                    <StatisticsView
+                        items={books}
+                        onCategorySelect={(cat) => onCategoryNavigate?.(cat)}
+                    />
                 </React.Suspense>
             );
         }
@@ -330,7 +342,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                         </div>
                         <h3 className="text-base md:text-lg font-medium text-slate-900 dark:text-white">No highlights found</h3>
                         <p className="text-slate-500 dark:text-slate-400 text-xs md:text-sm max-w-xs mx-auto mt-2">
-                            {debouncedSearch ? "Try a different search term." : "Highlights added to books appear here."}
+                            {searchQuery ? "Try a different search term." : "Highlights added to books appear here."}
                         </p>
                     </div>
                 );
@@ -420,7 +432,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                     </div>
                     <h3 className="text-base md:text-lg font-medium text-slate-900 dark:text-white">No {getTabLabel(activeTab).toLowerCase()} found</h3>
                     <p className="text-slate-500 dark:text-slate-400 text-xs md:text-sm max-w-xs mx-auto mt-2">
-                        {debouncedSearch ? "Try a different search term." : "Adjust filters or add a new item."}
+                        {searchQuery ? "Try a different search term." : "Adjust filters or add a new item."}
                     </p>
                 </div>
             );
@@ -652,9 +664,6 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                                 }
                             </p>
                         )}
-                        {isStats && (
-                            <p className="text-slate-500 text-[10px] md:text-sm mt-0.5 font-medium truncate">Analytics</p>
-                        )}
                     </div>
                 </div>
 
@@ -681,8 +690,8 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                         <input
                             type="text"
                             placeholder={getSearchPlaceholder()}
-                            value={inputValue}
-                            onChange={(e) => setInputValue(e.target.value)}
+                            value={localInput}
+                            onChange={(e) => setLocalInput(e.target.value)}
                             className="w-full pl-8 md:pl-10 pr-4 py-1.5 md:py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-[#CC561E] focus:border-transparent outline-none transition-all text-xs md:text-base bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500"
                         />
                         {/* Loading Spinner inside input */}
@@ -696,7 +705,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                     {/* Favorites Toggle for Notes Views */}
                     {(isNotesTab || isPersonalNotes) && (
                         <button
-                            onClick={() => setStatusFilter(prev => prev === 'FAVORITES' ? 'ALL' : 'FAVORITES')}
+                            onClick={() => onStatusFilterChange(statusFilter === 'FAVORITES' ? 'ALL' : 'FAVORITES')}
                             className={`p-2 rounded-lg border transition-all flex items-center justify-center shrink-0 ${statusFilter === 'FAVORITES'
                                 ? 'bg-amber-100 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400'
                                 : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700'
@@ -714,7 +723,10 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                                 <Filter className="absolute left-2 md:left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 w-3.5 h-3.5 md:w-4 md:h-4" />
                                 <select
                                     value={statusFilter}
-                                    onChange={(e) => setStatusFilter(e.target.value as ReadingStatus | PhysicalStatus | 'ALL' | 'HIGHLIGHTS' | 'FAVORITES')}
+                                    onChange={(e) => {
+                                        onStatusFilterChange(e.target.value);
+                                        onPageChange(1);
+                                    }}
                                     className="w-full pl-7 md:pl-9 pr-6 md:pr-8 py-1.5 md:py-2 border border-slate-200 dark:border-slate-700 rounded-lg appearance-none bg-white dark:bg-slate-800 focus:ring-2 focus:ring-[#CC561E] text-xs md:text-sm font-medium text-slate-700 dark:text-slate-200 cursor-pointer hover:border-slate-300 dark:hover:border-slate-600"
                                 >
                                     <option value="ALL">All</option>
@@ -740,7 +752,10 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                                 <ArrowUpDown className="absolute left-2 md:left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 w-3.5 h-3.5 md:w-4 md:h-4" />
                                 <select
                                     value={sortOption}
-                                    onChange={(e) => setSortOption(e.target.value as 'date_desc' | 'date_asc' | 'title_asc')}
+                                    onChange={(e) => {
+                                        onSortOptionChange(e.target.value);
+                                        onPageChange(1);
+                                    }}
                                     className="w-full pl-7 md:pl-9 pr-6 md:pr-8 py-1.5 md:py-2 border border-slate-200 dark:border-slate-700 rounded-lg appearance-none bg-white dark:bg-slate-800 focus:ring-2 focus:ring-[#CC561E] text-xs md:text-sm font-medium text-slate-700 dark:text-slate-200 cursor-pointer hover:border-slate-300 dark:hover:border-slate-600"
                                 >
                                     <option value="date_desc">Newest</option>
@@ -749,17 +764,50 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                                 </select>
                             </div>
 
-                            {activeTab !== 'WEBSITE' && (
+                            {activeTab === 'BOOK' && (
+                                <div className="relative min-w-[140px] md:min-w-[180px]">
+                                    <Hash className="absolute left-2 md:left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 w-3.5 h-3.5 md:w-4 md:h-4" />
+                                    <select
+                                        value={categoryFilter || ''}
+                                        onChange={(e) => onCategoryFilterChange?.(e.target.value || null)}
+                                        className="w-full pl-7 md:pl-9 pr-6 md:pr-8 py-1.5 md:py-2 border border-slate-200 dark:border-slate-700 rounded-lg appearance-none bg-white dark:bg-slate-800 focus:ring-2 focus:ring-[#CC561E] text-xs md:text-sm font-medium text-slate-700 dark:text-slate-200 cursor-pointer hover:border-slate-300 dark:hover:border-slate-600"
+                                    >
+                                        <option value="">All categories</option>
+                                        {CATEGORIES.map(cat => (
+                                            <option key={cat} value={cat}>{cat}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+
+                            {activeTab === 'ARTICLE' && (
                                 <input
                                     type="text"
-                                    placeholder={activeTab === 'ARTICLE' ? "Journal..." : "Publisher..."}
+                                    placeholder="Journal..."
                                     value={publisherFilter}
-                                    onChange={(e) => setPublisherFilter(e.target.value)}
+                                    onChange={(e) => {
+                                        onPublisherFilterChange(e.target.value);
+                                        onPageChange(1);
+                                    }}
                                     className="hidden md:block px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-[#CC561E] text-sm min-w-[140px] bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500"
                                 />
                             )}
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* Active Category Filter Pill */}
+            {activeTab === 'BOOK' && !isStats && categoryFilter && (
+                <div className="flex items-center gap-2 mb-4 md:mb-6">
+                    <span className="text-xs md:text-sm text-slate-500">Category:</span>
+                    <button
+                        className="flex items-center gap-2 px-3 py-1 bg-[rgba(204,86,30,0.1)] text-[#CC561E] rounded-full text-xs md:text-sm border border-[#CC561E]/20 shadow-sm"
+                        onClick={() => onCategoryFilterChange?.(null)}
+                    >
+                        <span className="font-semibold">{categoryFilter}</span>
+                        <X size={14} />
+                    </button>
                 </div>
             )}
 

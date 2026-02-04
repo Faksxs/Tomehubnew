@@ -17,6 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
 import oracledb
 import google.generativeai as genai
+from config import settings
 
 # Import TomeHub services
 from services.embedding_service import get_embedding, batch_get_embeddings
@@ -60,6 +61,11 @@ from services.rerank_service import rerank_candidates
 from services.network_classifier import classify_network_status
 from services.network_classifier import classify_network_status
 from services.monitoring import GRAPH_BRIDGES_FOUND, SEARCH_DIVERSITY_COUNT, SEARCH_RESULT_COUNT
+from services.analytics_service import (
+    is_analytic_word_count,
+    extract_target_term,
+    count_lemma_occurrences,
+)
 
 def get_graph_enriched_context(base_results: List[Dict], firebase_uid: str) -> str:
     """
@@ -500,7 +506,7 @@ def rewrite_query_with_history(question: str, history: List[Dict]) -> str:
     try:
         # Avoid circular import by using genai locally if needed, but it's already at top
         history_str = ""
-        for msg in history[-3:]: # Only need very recent for rewrite
+        for msg in history[-settings.CHAT_PROMPT_TURNS:]: # Only need very recent for rewrite
             role = "Kullanıcı" if msg['role'] == 'user' else "Asistan"
             history_str += f"{role}: {msg['content']}\n"
             
@@ -525,7 +531,7 @@ def rewrite_query_with_history(question: str, history: List[Dict]) -> str:
         print(f"[WARNING] Query rewriting failed: {e}")
         return question
 
-def get_rag_context(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, mode: str = 'STANDARD', resource_type: Optional[str] = None, limit: Optional[int] = None, offset: int = 0) -> Optional[Dict[str, Any]]:
+def get_rag_context(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, mode: str = 'STANDARD', resource_type: Optional[str] = None, limit: Optional[int] = None, offset: int = 0, session_id: Optional[int | str] = None) -> Optional[Dict[str, Any]]:
     """
     Retrieves and processes context for RAG.
     Shared by Legacy Search and Dual-AI Chat.
@@ -561,7 +567,7 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         # Pass intent to guide filtering (Short/Long bias)
         # Returns (results, metadata)
         search_depth = 'deep' if mode == 'EXPLORER' else 'normal'
-        return perform_smart_search(effective_query, firebase_uid, intent=intent, book_id=context_book_id, search_depth=search_depth, resource_type=resource_type, limit=limit, offset=offset)
+        return perform_smart_search(effective_query, firebase_uid, intent=intent, book_id=context_book_id, search_depth=search_depth, resource_type=resource_type, limit=limit, offset=offset, session_id=session_id)
         
     def run_graph_search():
         try:
@@ -630,7 +636,7 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
     if keywords:
         search_kw = " ".join(keywords[:2])
         if search_kw and search_kw != question:
-            kw_res, kw_meta = perform_smart_search(search_kw, firebase_uid)
+            kw_res, kw_meta = perform_smart_search(search_kw, firebase_uid, session_id=session_id)
             if kw_res:
                 for c in kw_res:
                     key = f"{c.get('title','')}_{str(c.get('content_chunk',''))[:20]}"
@@ -735,12 +741,55 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
     }
 
 
-def generate_answer(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, session_summary: str = "", limit: Optional[int] = None, offset: int = 0) -> Tuple[Optional[str], Optional[List[Dict]], Dict]:
+def generate_answer(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, session_summary: str = "", limit: Optional[int] = None, offset: int = 0, session_id: Optional[int | str] = None) -> Tuple[Optional[str], Optional[List[Dict]], Dict]:
     """
     RAG generation pipeline with Memory Layer support.
     """
+    if is_analytic_word_count(question):
+        if not context_book_id:
+            return (
+                "Analitik sayım için önce bir kitap seçmelisin.",
+                [],
+                {
+                    "status": "analytic",
+                    "analytics": {
+                        "type": "word_count",
+                        "error": "book_id_required",
+                    },
+                },
+            )
+        term = extract_target_term(question)
+        if not term:
+            return (
+                "Sayılacak kelimeyi belirtir misin?",
+                [],
+                {
+                    "status": "analytic",
+                    "analytics": {
+                        "type": "word_count",
+                        "error": "term_missing",
+                    },
+                },
+            )
+        count = count_lemma_occurrences(firebase_uid, context_book_id, term)
+        answer = f"\"{term}\" kelimesi bu kitapta toplam {count} kez geçiyor."
+        return (
+            answer,
+            [],
+            {
+                "status": "analytic",
+                "analytics": {
+                    "type": "word_count",
+                    "term": term,
+                    "count": count,
+                    "match": "lemma",
+                    "scope": "book_chunks",
+                },
+            },
+        )
+
     # 1. Retrieve Context
-    ctx = get_rag_context(question, firebase_uid, context_book_id, chat_history=chat_history, limit=limit, offset=offset)
+    ctx = get_rag_context(question, firebase_uid, context_book_id, chat_history=chat_history, limit=limit, offset=offset, session_id=session_id)
     if not ctx:
         return "Üzgünüm, şu an cevap üretemiyorum. İlgili içerik bulunamadı.", [], {"status": "failed"}
         
@@ -780,7 +829,7 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
         # Prepare Memory-Augmented Prompt
         history_str = ""
         if chat_history:
-            for msg in chat_history[-3:]: # Just last 3 turns
+            for msg in chat_history[-settings.CHAT_PROMPT_TURNS:]: # Just last N turns
                 role = "Kullanıcı" if msg['role'] == 'user' else "Asistan"
                 history_str += f"{role}: {msg['content']}\n"
         
@@ -805,12 +854,30 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
         )
         
         # Use Flash for conversational speed
-        model = genai.GenerativeModel('gemini-flash-latest')
+        model_name = settings.ANSWER_MODEL_NAME
+        model = genai.GenerativeModel(model_name)
         response = model.generate_content(prompt)
         answer = response.text if response else "Cevap üretilemedi."
         
         # Merge degradations from context
-        meta = ctx.get('metadata', {})
+        meta = ctx.get('metadata', {}) or {}
+        meta["model_name"] = model_name
+        search_log_id = meta.get("search_log_id")
+        if search_log_id:
+            try:
+                with DatabaseManager.get_write_connection() as conn:
+                    with conn.cursor() as cursor:
+                        cursor.execute(
+                            """
+                            UPDATE TOMEHUB_SEARCH_LOGS
+                            SET MODEL_NAME = :p_model
+                            WHERE ID = :p_id
+                            """,
+                            {"p_model": model_name, "p_id": search_log_id}
+                        )
+                    conn.commit()
+            except Exception as e:
+                logger.warning(f"Failed to update MODEL_NAME for search_log_id={search_log_id}: {e}")
         
         return answer, sources, meta
     except Exception as e:

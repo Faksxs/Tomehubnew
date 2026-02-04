@@ -12,6 +12,7 @@ export interface SearchRequest {
     question: string;
     firebase_uid: string;
     mode?: 'STANDARD' | 'EXPLORER';
+    book_id?: string;
 }
 
 export interface SearchResponse {
@@ -22,6 +23,10 @@ export interface SearchResponse {
         similarity_score: number;
     }>;
     timestamp: string;
+    metadata?: {
+        search_log_id?: number;
+        model_name?: string;
+    };
 }
 
 
@@ -38,9 +43,40 @@ export interface IngestResponse {
     timestamp: string;
 }
 
+export interface IngestionStatusResponse {
+    status: 'NOT_FOUND' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+    file_name: string | null;
+    chunk_count: number | null;
+    embedding_count: number | null;
+    updated_at: string | null;
+}
+
 export interface ApiError {
     error: string;
     details?: string;
+}
+
+export interface ReportSearchResponse {
+    topic: string;
+    count: number;
+    results: Array<{
+        book_id: string;
+        summary_text: string;
+        key_topics: string;
+        entities: string;
+        created_at: string | null;
+        updated_at: string | null;
+    }>;
+}
+
+export interface FeedbackRequest {
+    firebase_uid: string;
+    query: string;
+    answer: string;
+    rating: 1 | 0;
+    comment?: string;
+    search_log_id?: number;
+    book_id?: string;
 }
 
 // Chat API types (for Explorer Mode with conversational memory)
@@ -105,7 +141,8 @@ export async function checkApiHealth(): Promise<boolean> {
 export async function searchLibrary(
     question: string,
     firebaseUid: string,
-    mode: 'STANDARD' | 'EXPLORER' = 'STANDARD'
+    mode: 'STANDARD' | 'EXPLORER' = 'STANDARD',
+    bookId?: string
 ): Promise<SearchResponse> {
     if (!firebaseUid) {
         throw new Error('User must be authenticated to search');
@@ -119,7 +156,8 @@ export async function searchLibrary(
         body: JSON.stringify({
             question,
             firebase_uid: firebaseUid,
-            mode
+            mode,
+            book_id: bookId
         } as SearchRequest),
     });
 
@@ -216,6 +254,86 @@ export async function ingestDocument(
 }
 
 /**
+ * Submit feedback for a search response
+ */
+export async function submitFeedback(request: FeedbackRequest): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE_URL}/api/feedback`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+        const error: ApiError = await response.json();
+        throw new Error(error.details || error.error || 'Feedback failed');
+    }
+
+    return response.json();
+}
+
+/**
+ * Search file reports by key topic (JSON index)
+ */
+export async function searchReportsByTopic(
+    topic: string,
+    firebaseUid: string,
+    limit: number = 20
+): Promise<ReportSearchResponse> {
+    if (!firebaseUid) {
+        throw new Error('User must be authenticated to search reports');
+    }
+    const response = await fetch(
+        `${API_BASE_URL}/api/reports/search?topic=${encodeURIComponent(topic)}&limit=${encodeURIComponent(limit)}&firebase_uid=${encodeURIComponent(firebaseUid)}`,
+        {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Firebase-UID': firebaseUid
+            }
+        }
+    );
+    if (!response.ok) {
+        const error: ApiError = await response.json();
+        throw new Error(error.details || error.error || 'Report search failed');
+    }
+    return response.json();
+}
+
+/**
+ * Fetch ingestion status for a book
+ * @param bookId - Firestore book id (mapped to DB book_id)
+ * @param firebaseUid - Authenticated user's Firebase UID
+ */
+export async function getIngestionStatus(
+    bookId: string,
+    firebaseUid: string
+): Promise<IngestionStatusResponse> {
+    if (!firebaseUid) {
+        throw new Error('User must be authenticated to fetch ingestion status');
+    }
+
+    const response = await fetch(
+        `${API_BASE_URL}/api/books/${encodeURIComponent(bookId)}/ingestion-status?firebase_uid=${encodeURIComponent(firebaseUid)}`,
+        {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Firebase-UID': firebaseUid
+            }
+        }
+    );
+
+    if (!response.ok) {
+        const error: ApiError = await response.json();
+        throw new Error(error.details || error.error || 'Failed to fetch ingestion status');
+    }
+
+    return response.json();
+}
+
+/**
  * Extract metadata from a PDF file
  * @param file - The PDF file object
  */
@@ -248,7 +366,15 @@ export async function addTextItem(
     title: string,
     author: string,
     type: string,
-    firebaseUid: string
+    firebaseUid: string,
+    options?: {
+        book_id?: string;
+        page_number?: number;
+        chunk_type?: string;
+        chunk_index?: number;
+        comment?: string;
+        tags?: string[];
+    }
 ): Promise<{ success: boolean; message: string }> {
     const response = await fetch(`${API_BASE_URL}/api/add-item`, {
         method: 'POST',
@@ -258,7 +384,8 @@ export async function addTextItem(
             title,
             author,
             type,
-            firebase_uid: firebaseUid
+            firebase_uid: firebaseUid,
+            ...options
         })
     });
 
@@ -273,7 +400,18 @@ export async function addTextItem(
  * Bulk migrate items to AI library
  */
 export async function migrateBulkItems(
-    items: Array<{ text: string, title: string, author: string, type: string }>,
+    items: Array<{
+        text: string;
+        title: string;
+        author: string;
+        type: string;
+        book_id?: string;
+        page_number?: number;
+        chunk_type?: string;
+        chunk_index?: number;
+        comment?: string;
+        tags?: string[];
+    }>,
     firebaseUid: string
 ): Promise<{ success: boolean; processed: number; results: any }> {
     const response = await fetch(`${API_BASE_URL}/api/migrate_bulk`, {
@@ -293,15 +431,38 @@ export async function migrateBulkItems(
 }
 
 /**
- * Get list of already ingested books
+ * Sync highlights/insights for a specific book (replace existing)
  */
-export async function getIngestedBooks(firebaseUid: string): Promise<{ books: Array<{ title: string, author: string, book_id: string }> }> {
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/ingested-books?firebase_uid=${firebaseUid}`);
-        if (!response.ok) return { books: [] };
-        return response.json();
-    } catch (error) {
-        console.error('Failed to fetch ingested books:', error);
-        return { books: [] };
+export async function syncHighlights(
+    firebaseUid: string,
+    bookId: string,
+    title: string,
+    author: string,
+    highlights: Array<{
+        id?: string;
+        text: string;
+        type?: 'highlight' | 'note';
+        comment?: string;
+        pageNumber?: number;
+        tags?: string[];
+        createdAt?: number;
+    }>
+): Promise<{ success: boolean; deleted: number; inserted: number }> {
+    const response = await fetch(`${API_BASE_URL}/api/books/${encodeURIComponent(bookId)}/sync-highlights`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            firebase_uid: firebaseUid,
+            title,
+            author,
+            highlights
+        })
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to sync highlights');
     }
+    return response.json();
 }
+
+

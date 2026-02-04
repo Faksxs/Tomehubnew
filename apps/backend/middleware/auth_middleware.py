@@ -65,6 +65,10 @@ async def verify_firebase_token(request: Request) -> str | None:
     # 2. Extract Authorization header
     auth_header = request.headers.get("Authorization", "").strip()
     if not auth_header:
+        if settings.ENVIRONMENT == "development":
+            logger.warning("⚠️ DEPRECATED/DEV: Missing Authorization header, but allowing None for body fallback")
+            return None
+        logger.warning("❌ Missing Authorization header")
         raise HTTPException(status_code=401, detail="Missing Authorization header")
     
     # 3. Parse Bearer token
