@@ -21,6 +21,7 @@ export interface SearchResponse {
         title: string;
         page_number: number;
         similarity_score: number;
+        comment?: string;
     }>;
     timestamp: string;
     metadata?: {

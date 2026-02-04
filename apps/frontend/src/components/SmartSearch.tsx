@@ -13,7 +13,8 @@ interface SearchResult {
     content_chunk: string;
     summary?: string;
     tags?: string;
-    personal_comment?: string;
+    comment?: string;
+    personal_comment?: string; // Legacy extracted from text
     source_type: string;
     score: number;
     match_type: string;
@@ -252,15 +253,15 @@ export default function SmartSearch({ userId, onBack }: SmartSearchProps) {
                                         </div>
                                     )}
 
-                                    {/* Personal Comment - Fixed Position at Bottom */}
-                                    {result.personal_comment && (
+                                    {/* Handle both new column 'comment' and extracted 'personal_comment' */}
+                                    {(result.comment || result.personal_comment) && (
                                         <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 bg-[rgba(204,86,30,0.05)] dark:bg-[rgba(204,86,30,0.1)] -mx-6 px-6 py-4 rounded-b-2xl">
                                             <div className="flex flex-col gap-2">
                                                 <span className="text-[10px] font-bold uppercase tracking-widest text-[#CC561E]">
-                                                    Personal comment:
+                                                    Comment:
                                                 </span>
                                                 <p className="text-sm text-gray-800 dark:text-gray-200 italic border-l-2 border-[#CC561E]/30 dark:border-[#CC561E]/50 pl-3">
-                                                    {highlightMatches(result.personal_comment, query)}
+                                                    {highlightMatches(result.comment || result.personal_comment || '', query)}
                                                 </p>
                                             </div>
                                         </div>

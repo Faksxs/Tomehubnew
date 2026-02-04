@@ -185,7 +185,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
 
                 if (!term) return true;
                 return item.text.toLowerCase().includes(term) ||
-                    (item.note && item.note.toLowerCase().includes(term)) ||
+                    (item.comment && item.comment.toLowerCase().includes(term)) ||
                     item.source.title.toLowerCase().includes(term) ||
                     item.source.author.toLowerCase().includes(term) ||
                     (item.tags && item.tags.some(t => t.toLowerCase().includes(term)));

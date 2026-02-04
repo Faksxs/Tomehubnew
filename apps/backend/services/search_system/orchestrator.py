@@ -38,6 +38,7 @@ class SearchOrchestrator:
     def search(self, query: str, firebase_uid: str, limit: int = 50, offset: int = 0, book_id: str = None, intent: str = 'SYNTHESIS', resource_type: Optional[str] = None, session_id: Optional[int | str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         start_time = time.time()
         logger.info(f"Orchestrator: Search started for query='{query}' UID='{firebase_uid}' intent='{intent}'")
+        print(f"\n[ORCHESTRATOR] SEARCH: '{query}' | UID: {firebase_uid} | Intent: {intent}")
         
         # Check cache first
         if self.cache:
@@ -56,27 +57,8 @@ class SearchOrchestrator:
                 # Cache stores just the list. For now, return None for log_id on cache hit 
                 # (or we could log cache hits too, but let's keep it simple for now)
                 logger.info(f"Cache hit for query: {query[:30]}...")
+                print(f"[ORCHESTRATOR] Cache HIT")
                 return cached_result, {"cached": True, "search_log_id": None}
-        
-        # ... [Strategy Execution Code Omitted for Brevity - Keeping existing logic] ...
-        # (Assuming the existing strategy execution code remains here)
-        # We need to construct this block carefully since I'm blindly replacing the whole function if I'm not careful.
-        # But wait, replace_file_content replaces a block. The input file is 175 lines. 
-        # I should use multi_replace or be very precise.
-        # The user's prompt implies I should just do it. 
-        # I'll rely on the fact that I previously read the file. 
-        # Actually, since the strategies execution logic is long, I should probably NOT replace the whole function in one go if I can avoid it.
-        # But I need to change the Return statement at the end and the signature at the start.
-        # And insert the logging logic before return.
-        
-        # strategy execution...
-        # ...
-        
-        # [RE-INSERTING EXISTING LOGIC FOR CONTEXT SAFETY - I will use a simplified approach to just modify start and end]
-        pass 
-
-        # [Resuming Search Logic]
-
         
         # 0. Query Expansion (Phase 2) - PARALLELIZED with strategy execution
         # Start expansion in parallel with original query strategies
@@ -106,16 +88,23 @@ class SearchOrchestrator:
                     res = future.result()
                     if res:
                         raw_results_list.append(res)
-                        logger.info(f"Strat {name} returned {len(res)} hits")
+                        msg = f"Strat {name} returned {len(res)} hits"
+                        logger.info(msg)
+                        print(f"[ORCHESTRATOR] {msg}")
+                    else:
+                        print(f"[ORCHESTRATOR] Strat {name} returned ZERO hits")
                 except Exception as e:
                     logger.error(f"Strat {name} failed: {e}")
+                    print(f"[ORCHESTRATOR] Strat {name} FAILED: {e}")
             
             # D. Now get expansion results (should be ready or nearly ready)
             try:
                 variations = expansion_future.result(timeout=10)  # 10s timeout for expansion
                 logger.info(f"Variations: {variations}")
+                print(f"[ORCHESTRATOR] Variations generated: {len(variations)}")
             except Exception as e:
                 logger.warning(f"Query expansion failed or timed out: {e}")
+                print(f"[ORCHESTRATOR] Query expansion FAILED: {e}")
                 variations = []  # Fallback: use original query only
             
             # E. Variations: Run Semantic only (if we have variations)
@@ -134,9 +123,14 @@ class SearchOrchestrator:
                         res = future.result()
                         if res:
                             raw_results_list.append(res)
-                            logger.info(f"Strat {name} returned {len(res)} hits")
+                            msg = f"Strat {name} returned {len(res)} hits"
+                            logger.info(msg)
+                            print(f"[ORCHESTRATOR] {msg}")
+                        else:
+                            print(f"[ORCHESTRATOR] Strat {name} returned ZERO hits")
                     except Exception as e:
                         logger.error(f"Strat {name} failed: {e}")
+                        print(f"[ORCHESTRATOR] Strat {name} FAILED: {e}")
 
         # 2. Policy: Exact Match Gating (On Original Query Results Only)
         # Find exact match results from the pool
@@ -224,9 +218,11 @@ class SearchOrchestrator:
             # TTL: 1 hour (3600 seconds) for search results
             self.cache.set(cache_key, top_candidates, ttl=3600)
             logger.info(f"Cached search results for key: {cache_key[:50]}...")
+            print(f"[ORCHESTRATOR] Results cached.")
         
         duration = time.time() - start_time
         logger.info(f"Orchestrator: Finished in {duration:.3f}s. Returning {len(top_candidates)} results.")
+        print(f"[ORCHESTRATOR] Finished in {duration:.3f}s. Results: {len(top_candidates)}")
         
         # LOG ANALYTICS (Phase 5)
         search_log_id = self._log_search(

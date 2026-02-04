@@ -458,6 +458,10 @@ async def search(
         
         # Unpack result (answer, sources, metadata)
         answer, sources, metadata = result
+        print(f"[SEARCH] Finished. Answer length: {len(answer)}, Sources: {len(sources) if sources else 0}")
+        if sources:
+             print(f"[SEARCH] First source: {sources[0].get('title')} Score: {sources[0].get('similarity_score')}")
+        print(f"[SEARCH] Metadata: {metadata}")
         
         return {
             "answer": answer,
