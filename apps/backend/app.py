@@ -27,7 +27,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from models.request_models import (
     SearchRequest, SearchResponse, IngestRequest, 
     FeedbackRequest, AddItemRequest, BatchMigrateRequest,
-    ChatRequest, ChatResponse, HighlightSyncRequest
+    FeedbackRequest, AddItemRequest, BatchMigrateRequest,
+    ChatRequest, ChatResponse, HighlightSyncRequest, ComparisonRequest
 )
 from middleware.auth_middleware import verify_firebase_token
 
@@ -50,6 +51,10 @@ from services.analytics_service import (
     extract_target_term,
     count_lemma_occurrences,
     resolve_book_id_from_question,
+    count_all_notes_occurrences,
+    resolve_all_book_ids,
+    get_comparative_stats,
+    get_keyword_contexts,
 )
 from models.request_models import (
     EnrichBookRequest, GenerateTagsRequest, VerifyCoverRequest, AnalyzeHighlightsRequest
@@ -422,22 +427,32 @@ async def search(
                     },
                 }
             count = count_lemma_occurrences(firebase_uid, resolved_book_id, term)
+            
+            # Fetch context snippets for the UI "See Contexts" button
+            from services.analytics_service import get_keyword_contexts
+            contexts = get_keyword_contexts(firebase_uid, resolved_book_id, term, limit=10)
+            
+            metadata_dict = {
+                "status": "analytic",
+                "analytics": {
+                    "type": "word_count",
+                    "term": term,
+                    "count": count,
+                    "match": "lemma",
+                    "scope": "book_chunks",
+                    "resolved_book_id": resolved_book_id,
+                    "contexts": contexts if count > 0 else [],
+                    "debug": {"cache": "disabled"},
+                },
+            }
+            
+            print(f"[DEBUG] Contexts count: {len(metadata_dict['analytics']['contexts'])}")
+            
             return {
                 "answer": f"\"{term}\" kelimesi bu kitapta toplam {count} kez geçiyor.",
                 "sources": [],
                 "timestamp": datetime.now().isoformat(),
-                "metadata": {
-                    "status": "analytic",
-                    "analytics": {
-                        "type": "word_count",
-                        "term": term,
-                        "count": count,
-                        "match": "lemma",
-                        "scope": "book_chunks",
-                        "resolved_book_id": resolved_book_id,
-                        "debug": {"cache": "disabled"},
-                    },
-                },
+                "metadata": metadata_dict
             }
         
         # Run synchronous RAG search in thread pool
@@ -576,8 +591,25 @@ async def chat_endpoint(
                     },
                 }
 
-            count = count_lemma_occurrences(firebase_uid, resolved_book_id, term)
-            answer = f"\"{term}\" kelimesi bu kitapta toplam {count} kez geçiyor."
+            # 3.9 Fetch all data for narrative response
+            # 3.9 Fetch all data for narrative response
+            # Implementation Strategy: Single book analytic only.
+            
+            # A. Count in Current Book (Critical)
+            try:
+                count = count_lemma_occurrences(firebase_uid, resolved_book_id, term)
+            except Exception as e:
+                logger.error(f"Primary count failed: {e}")
+                count = 0
+
+            # B. Build Simple Narrative (Current Book Only)
+            answer = f"\"{term}\" kelimesi bu kitapta toplam **{count}** kez geçiyor."
+
+            logger.info(f"Final Narrative Answer: {answer}")
+            
+            # C. Fetch Contexts for 'See Contexts' button
+            contexts = get_keyword_contexts(firebase_uid, resolved_book_id, term, limit=10)
+            
             await loop.run_in_executor(None, add_message, session_id, 'assistant', answer, [])
             return {
                 "answer": answer,
@@ -592,9 +624,11 @@ async def chat_endpoint(
                         "type": "word_count",
                         "term": term,
                         "count": count,
+                        "all_notes_count": all_notes_count,
                         "match": "lemma",
                         "scope": "book_chunks",
                         "resolved_book_id": resolved_book_id,
+                        "contexts": contexts
                     },
                 },
             }
@@ -718,6 +752,161 @@ async def chat_endpoint(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/analytics/ingested-books")
+async def get_ingested_books(
+    request: Request,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+):
+    """
+    Returns list of book_ids that have ingested PDF content for the user.
+    """
+    # 1. Determine UID (Priority: JWT > QueryParam)
+    if firebase_uid_from_jwt:
+        firebase_uid = firebase_uid_from_jwt
+    else:
+        # Fallback to query param OR manual header extraction for raw UIDs (Dev mode)
+        firebase_uid = request.query_params.get("firebase_uid")
+        
+        # If still none, check Authorization header manually to see if it's a raw UID
+        if not firebase_uid:
+            auth_header = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+            if auth_header and len(auth_header) < 128: # Raw UIDs are short, JWTs are long
+                firebase_uid = auth_header
+
+    if not firebase_uid:
+         raise HTTPException(status_code=401, detail="Authentication required")
+
+    try:
+        from services.analytics_service import resolve_ingested_book_ids
+        import asyncio
+
+        loop = asyncio.get_running_loop()
+        book_ids = await loop.run_in_executor(
+            None,
+            resolve_ingested_book_ids,
+            firebase_uid,
+            "pdf"
+        )
+
+        logger.info(f"Ingested books fetched", extra={"uid": firebase_uid, "count": len(book_ids)})
+        return {
+            "book_ids": book_ids,
+            "count": len(book_ids)
+        }
+    except Exception as e:
+        logger.error(f"Ingested books endpoint failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/analytics/concordance")
+async def get_concordance(
+    book_id: str,
+    term: str,
+    limit: int = 50,
+    offset: int = 0,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+):
+    """
+    Endpoint for paginated KWIC (Concordance) retrieval.
+    """
+    if not firebase_uid_from_jwt:
+         raise HTTPException(status_code=401, detail="Unauthorized")
+
+    try:
+        from services.analytics_service import get_keyword_contexts
+        import asyncio
+        
+        loop = asyncio.get_running_loop()
+        contexts = await loop.run_in_executor(
+            None, 
+            get_keyword_contexts, 
+            firebase_uid_from_jwt, 
+            book_id, 
+            term, 
+            limit, 
+            offset
+        )
+        
+        return {
+            "book_id": book_id,
+            "term": term,
+            "contexts": contexts,
+            "limit": limit,
+            "offset": offset,
+            "count": len(contexts)
+        }
+    except Exception as e:
+        print(f"[ERROR] Concordance endpoint failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/analytics/distribution")
+async def get_distribution(
+    book_id: str,
+    term: str,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+):
+    """
+    Endpoint for keyword distribution across pages.
+    """
+    if not firebase_uid_from_jwt:
+         raise HTTPException(status_code=401, detail="Unauthorized")
+
+    try:
+        from services.analytics_service import get_keyword_distribution
+        import asyncio
+        
+        loop = asyncio.get_running_loop()
+        distribution = await loop.run_in_executor(
+            None, 
+            get_keyword_distribution, 
+            firebase_uid_from_jwt, 
+            book_id, 
+            term
+        )
+        
+        return {
+            "book_id": book_id,
+            "term": term,
+            "distribution": distribution
+        }
+    except Exception as e:
+        print(f"[ERROR] Distribution endpoint failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/analytics/compare")
+async def get_comparative_stats_endpoint(
+    request: ComparisonRequest,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+):
+    """
+    Endpoint for cross-book keyword comparison.
+    """
+    if not firebase_uid_from_jwt:
+         raise HTTPException(status_code=401, detail="Unauthorized")
+
+    try:
+        from services.analytics_service import get_comparative_stats
+        import asyncio
+        
+        loop = asyncio.get_running_loop()
+        stats = await loop.run_in_executor(
+            None, 
+            get_comparative_stats, 
+            firebase_uid_from_jwt, 
+            request.target_book_ids, 
+            request.term
+        )
+        
+        return {
+            "term": request.term,
+            "comparison": stats
+        }
+    except Exception as e:
+        print(f"[ERROR] Comparison endpoint failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/smart-search")
 def smart_search(
     request: SearchRequest,
@@ -738,12 +927,18 @@ def smart_search(
     
     try:
         from services.smart_search_service import perform_smart_search
-        results = perform_smart_search(request.question, firebase_uid)
+        results, metadata = perform_smart_search(
+            request.question, 
+            firebase_uid, 
+            limit=request.limit, 
+            offset=request.offset
+        )
         
         return {
             "results": results,
-            "total": len(results),
-            "query": request.question
+            "total": metadata.get("total_count", len(results)),
+            "query": request.question,
+            "metadata": metadata
         }
     except Exception as e:
         print(f"[ERROR] Smart search failed: {e}")

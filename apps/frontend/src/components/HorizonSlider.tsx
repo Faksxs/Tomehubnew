@@ -92,7 +92,7 @@ export const HorizonSlider: React.FC<HorizonSliderProps> = ({
                     border: 1px solid rgba(255, 255, 255, 0.05);
                     border-radius: 24px;
                     padding: 24px;
-                    margin-bottom: 16px;
+                    margin-bottom: 8px;
                 }
 
                 .horizon-slider__header {

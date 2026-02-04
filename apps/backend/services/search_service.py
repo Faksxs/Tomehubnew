@@ -772,6 +772,7 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
                 },
             )
         count = count_lemma_occurrences(firebase_uid, context_book_id, term)
+        contexts = get_keyword_contexts(firebase_uid, context_book_id, term, limit=10) # Initial 10 for the short-circuit
         answer = f"\"{term}\" kelimesi bu kitapta toplam {count} kez geçiyor."
         return (
             answer,
@@ -784,6 +785,7 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
                     "count": count,
                     "match": "lemma",
                     "scope": "book_chunks",
+                    "contexts": contexts
                 },
             },
         )

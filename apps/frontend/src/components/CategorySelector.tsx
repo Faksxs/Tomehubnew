@@ -1,9 +1,8 @@
-
 import React from 'react';
 
 export const CATEGORIES = [
     "Felsefe", "Sosyoloji", "Politika", "Ekonomi", "Edebiyat",
-    "Roman", "Bilim", "Tarih", "İnanç", "Sanat",
+    "Roman", "Bilim", "Tarih", "Inanç", "Sanat",
     "Psikoloji", "Hukuk", "Eğitim"
 ];
 
@@ -14,16 +13,16 @@ interface CategorySelectorProps {
 
 export const CategorySelector: React.FC<CategorySelectorProps> = ({ activeCategory, onCategoryChange }) => {
     return (
-        <div className="flex flex-col gap-3 mb-8">
+        <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between px-1">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Keşif Alanları</span>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Keşif Alanları</span>
             </div>
-            <div className="flex flex-wrap gap-2 pb-2">
+            <div className="flex flex-col gap-2">
                 <button
                     onClick={() => onCategoryChange(null)}
-                    className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all duration-300 border-2 ${activeCategory === null
-                        ? 'bg-[#CC561E]/10 border-[#CC561E] text-[#CC561E] shadow-[0_0_15px_rgba(204,86,30,0.3)]'
-                        : 'bg-white border-slate-200 text-slate-900 hover:border-slate-400 hover:bg-slate-50'
+                    className={`w-full text-left px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 border ${activeCategory === null
+                        ? 'bg-[#CC561E]/10 border-[#CC561E] text-[#CC561E] shadow-[0_0_12px_rgba(204,86,30,0.25)]'
+                        : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50'
                         }`}
                 >
                     Tümü
@@ -32,9 +31,9 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({ activeCatego
                     <button
                         key={cat}
                         onClick={() => onCategoryChange(cat)}
-                        className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all duration-300 border-2 ${activeCategory === cat
-                            ? 'bg-[#CC561E]/10 border-[#CC561E] text-[#CC561E] shadow-[0_0_15px_rgba(204,86,30,0.3)]'
-                            : 'bg-white border-slate-200 text-slate-900 hover:border-slate-400 hover:bg-slate-50'
+                        className={`w-full text-left px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 border ${activeCategory === cat
+                            ? 'bg-[#CC561E]/10 border-[#CC561E] text-[#CC561E] shadow-[0_0_12px_rgba(204,86,30,0.25)]'
+                            : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50'
                             }`}
                     >
                         {cat}

@@ -6,7 +6,7 @@ Pydantic models for the Knowledge Stream (Layer 4) API.
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional, List, Literal
+from typing import Optional, List, Literal, Dict, Any
 from enum import Enum
 
 
@@ -94,3 +94,26 @@ class FlowNextResponse(BaseModel):
     has_more: bool = True
     pivot_info: Optional[PivotInfo] = None
     session_state: Optional[dict] = None  # For UI debugging
+
+
+class InsightCard(BaseModel):
+    """A single insight card shown before the flow starts."""
+    id: str
+    type: Literal["CONCEPT_OVERLAP", "FORGOTTEN", "CATEGORY_STATS", "UNLABELED_CLUSTER"]
+    title: str
+    body: str
+    meta: Optional[Dict[str, Any]] = None
+    cta: Optional[Dict[str, Any]] = None
+
+
+class FlowInsightsRequest(BaseModel):
+    """Request to get insight cards."""
+    firebase_uid: str
+    force_refresh: bool = False
+
+
+class FlowInsightsResponse(BaseModel):
+    """Response for insight cards."""
+    cards: List[InsightCard]
+    generated_at: str
+    cache_hit: bool = False

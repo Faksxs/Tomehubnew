@@ -179,6 +179,11 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
         if (cancelled) return;
         setPdfStatus(status);
         setPdfStatusError(null);
+        if (status.status === 'COMPLETED' && !book.isIngested) {
+          const updated = { ...book, isIngested: true };
+          await saveItemForUser(user.uid, updated);
+          onBookUpdated?.(updated);
+        }
         if (status.status === 'PROCESSING' && attempts < 30) {
           attempts += 1;
           timeoutId = setTimeout(fetchStatus, 10000);

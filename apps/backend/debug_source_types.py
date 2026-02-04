@@ -1,42 +1,29 @@
+
+import os
+import sys
+
+# Add apps/backend to path to import infrastructure
+sys.path.append(os.path.join(os.getcwd(), 'apps', 'backend'))
+
 from infrastructure.db_manager import DatabaseManager
 
-DatabaseManager.init_pool()
-conn = DatabaseManager.get_connection()
-cur = conn.cursor()
+def check_source_types():
+    print("Checking distinct source_type values in TOMEHUB_CONTENT...")
+    try:
+        with DatabaseManager.get_read_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT source_type, COUNT(*) 
+                    FROM TOMEHUB_CONTENT 
+                    GROUP BY source_type
+                """)
+                rows = cursor.fetchall()
+                print(f"{'SOURCE_TYPE':<20} | {'COUNT'}")
+                print("-" * 30)
+                for r in rows:
+                    print(f"{str(r[0]):<20} | {r[1]}")
+    except Exception as e:
+        print(f"Error: {e}")
 
-uid = 'vpq1p0UzcCSLAh1d18WgZZWPBE63'
-
-# Check source types
-cur.execute(f"SELECT source_type, COUNT(*) FROM TOMEHUB_CONTENT WHERE firebase_uid='{uid}' GROUP BY source_type")
-print("\n=== SOURCE TYPES ===")
-for row in cur.fetchall():
-    print(f"{row[0]}: {row[1]} items")
-
-# Check titles with "- Self" suffix
-cur.execute(f"SELECT COUNT(*) FROM TOMEHUB_CONTENT WHERE firebase_uid='{uid}' AND title LIKE '% - Self'")
-self_count = cur.fetchone()[0]
-print(f"\n=== TITLES WITH '- Self' ===")
-print(f"Count: {self_count}")
-
-# Check what should be personal notes (NOTES OR PDF with - Self)
-cur.execute(f"""
-    SELECT COUNT(*) FROM TOMEHUB_CONTENT 
-    WHERE firebase_uid='{uid}' 
-    AND (source_type = 'NOTES' OR (source_type = 'PDF' AND title LIKE '% - Self'))
-""")
-personal_count = cur.fetchone()[0]
-print(f"\n=== PERSONAL NOTES (Filter Match) ===")
-print(f"Count: {personal_count}")
-
-# Show sample personal notes
-cur.execute(f"""
-    SELECT id, title, source_type FROM TOMEHUB_CONTENT 
-    WHERE firebase_uid='{uid}' 
-    AND (source_type = 'NOTES' OR (source_type = 'PDF' AND title LIKE '% - Self'))
-    ORDER BY ROWNUM FETCH FIRST 10 ROWS ONLY
-""")
-print(f"\n=== SAMPLE PERSONAL NOTES ===")
-for row in cur.fetchall():
-    print(f"ID: {row[0]}, Title: {row[1]}, Type: {row[2]}")
-
-conn.close()
+if __name__ == "__main__":
+    check_source_types()

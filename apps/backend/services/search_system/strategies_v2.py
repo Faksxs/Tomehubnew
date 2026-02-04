@@ -35,26 +35,29 @@ class ExactMatchStrategy(SearchStrategy):
                         WHERE firebase_uid = :p_uid
                     """
                     
-                    # Manual interpolation to bypass ORA-01745 persistent bind error
-                    safe_term = q_deaccented.replace("'", "''")
-                    safe_term_lower = query.lower().replace("'", "''")
-                    
                     params = {
                         "p_uid": firebase_uid, 
+                        "p_term": q_deaccented, 
+                        "p_term_lower": query.lower(),
                         "p_limit": limit
                     }
                     
-                    if resource_type:
-                        sql += " AND source_type = :p_res_type"
-                        params["p_res_type"] = resource_type
                     
-                    # 1. TRY FIRST: Search without PDF (exclude raw PDF content)
-                    # Only exclude if resource_type is not explicitly PDF
-                    if not resource_type:
-                        sql += " AND source_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK') "
+                    print(f"DEBUG STRAT: calling filter with rt={resource_type}")
+                    res = _apply_resource_type_filter(sql, params, resource_type)
+                    print(f"DEBUG STRAT: filter returned type {type(res)} val {res}")
+                    sql, params = res
                     
-                    # 2. SEARCH CONDITION (Inlined values)
-                    sql += f" AND text_deaccented LIKE '%{safe_term}%' "
+                    # 1. EXCLUDE RAW PDF CONTENT
+                    sql += " AND source_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK') "
+
+                    # 2. SEARCH CONDITION
+                    sql += """
+                        AND (
+                            text_deaccented LIKE '%' || :p_term || '%'
+                            OR LOWER(content_chunk) LIKE '%' || :p_term_lower || '%'
+                        )
+                    """
 
                     # 3. Simple Sort (Priority handled in Orchestrator)
                     sql += """
@@ -64,24 +67,6 @@ class ExactMatchStrategy(SearchStrategy):
                     
                     cursor.execute(sql, params)
                     rows = cursor.fetchall()
-                    
-                    # 4. FALLBACK: If no results found and no resource_type filter, search including PDF content
-                    if not rows and not resource_type:
-                        logger.info(f"ExactMatchStrategy: No results without PDF content, trying with PDF fallback")
-                        sql_with_pdf = """
-                            SELECT id, content_chunk, title, source_type, page_number, 
-                                   tags, summary, "COMMENT",
-                                   normalized_content
-                            FROM TOMEHUB_CONTENT
-                            WHERE firebase_uid = :p_uid
-                        """
-                        sql_with_pdf += f" AND text_deaccented LIKE '%{safe_term}%' "
-                        sql_with_pdf += """
-                            ORDER BY id DESC
-                            FETCH FIRST :p_limit ROWS ONLY
-                        """
-                        cursor.execute(sql_with_pdf, params)
-                        rows = cursor.fetchall()
                     
                     results = []
                     for r in rows:
@@ -132,10 +117,8 @@ class LemmaMatchStrategy(SearchStrategy):
                     
                     sql, params = _apply_resource_type_filter(sql, params, resource_type)
 
-                    # 1. TRY FIRST: Search without PDF (exclude raw PDF content)
-                    # Only exclude if resource_type is not explicitly PDF
-                    if not resource_type:
-                        sql += " AND source_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK') "
+                    # 1. EXCLUDE RAW PDF CONTENT
+                    sql += " AND source_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK') "
                     
                     lemma_conditions = []
                     for i, lemma in enumerate(lemmas[:5]):
@@ -154,30 +137,6 @@ class LemmaMatchStrategy(SearchStrategy):
                     
                     cursor.execute(sql, params)
                     rows = cursor.fetchall()
-                    
-                    # 4. FALLBACK: If no results found and no resource_type filter, search including PDF content
-                    if not rows and not resource_type:
-                        logger.info(f"LemmaMatchStrategy: No results without PDF content, trying with PDF fallback")
-                        sql_with_pdf = """
-                            SELECT id, content_chunk, title, source_type, page_number,
-                                   tags, summary, "COMMENT"
-                            FROM TOMEHUB_CONTENT
-                            WHERE firebase_uid = :p_uid
-                        """
-                        lemma_conditions_fb = []
-                        for i, lemma in enumerate(lemmas[:5]):
-                            p_name = f"p_lemma_{i}"
-                            lemma_conditions_fb.append(f"lemma_tokens LIKE :{p_name}")
-                        
-                        if lemma_conditions_fb:
-                            sql_with_pdf += " AND (" + " OR ".join(lemma_conditions_fb) + ")"
-                        
-                        sql_with_pdf += """
-                             ORDER BY id DESC
-                             FETCH FIRST :p_limit ROWS ONLY
-                        """
-                        cursor.execute(sql_with_pdf, params)
-                        rows = cursor.fetchall()
                     
                     for r in rows:
                         content = safe_read_clob(r[1])
@@ -220,7 +179,7 @@ class SemanticMatchStrategy(SearchStrategy):
                 with conn.cursor() as cursor:
                     results = []
                     
-                    def run_query(custom_limit, length_filter=None, exclude_pdf=True):
+                    def run_query(custom_limit, length_filter=None):
                         sql = """
                             SELECT id, content_chunk, title, source_type, page_number,
                                    tags, summary, "COMMENT",
@@ -231,13 +190,10 @@ class SemanticMatchStrategy(SearchStrategy):
                         
                         params = {"p_uid": firebase_uid, "vec": emb, "p_limit": custom_limit}
                         
-                        if resource_type:
-                            sql += " AND source_type = :p_res_type"
-                            params["p_res_type"] = resource_type
+                        sql, params = _apply_resource_type_filter(sql, params, resource_type)
 
-                        # Apply PDF exclusion filter if requested and no resource_type
-                        if exclude_pdf and not resource_type:
-                            sql += " AND source_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK') "
+                        # 1. EXCLUDE RAW PDF CONTENT
+                        sql += " AND source_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK') "
 
                         if length_filter:
                             if length_filter == 'SHORT':
@@ -263,19 +219,6 @@ class SemanticMatchStrategy(SearchStrategy):
                         rows.extend(run_query(10, length_filter='LONG'))
                     else:
                         rows.extend(run_query(limit))
-                    
-                    # FALLBACK: If no results found and no resource_type filter, search including PDF content
-                    if not rows and not resource_type:
-                        logger.info(f"SemanticMatchStrategy: No results without PDF content, trying with PDF fallback")
-                        if intent == 'DIRECT' or intent == 'FOLLOW_UP':
-                            sweep_limit = max(5, limit // 2)
-                            rows.extend(run_query(sweep_limit, exclude_pdf=False))
-                            rows.extend(run_query(sweep_limit, length_filter='SHORT', exclude_pdf=False))
-                        elif intent == 'NARRATIVE':
-                            rows.extend(run_query(15, exclude_pdf=False))
-                            rows.extend(run_query(10, length_filter='LONG', exclude_pdf=False))
-                        else:
-                            rows.extend(run_query(limit, exclude_pdf=False))
                         
                     seen_ids = set()
                     unique_rows = []

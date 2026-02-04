@@ -1,5 +1,5 @@
 import React from 'react';
-import { Book, FileText, Globe, StickyNote, Layers, ChevronRight } from 'lucide-react';
+import { Book, FileText, Globe, StickyNote, Layers } from 'lucide-react';
 
 export type SourceFilter = 'BOOK' | 'ARTICLE' | 'WEBSITE' | 'PERSONAL_NOTE' | 'ALL';
 
@@ -52,14 +52,7 @@ const SourceNavigator: React.FC<SourceNavigatorProps> = ({ activeFilter, onFilte
                 })}
             </div>
 
-            <div className={`mt-8 p-6 rounded-2xl ${activeFilter === 'ALL' ? 'bg-[rgba(204,86,30,0.05)] border-[rgba(204,86,30,0.1)]' : 'bg-slate-500/5 border-slate-500/10'} relative overflow-hidden group`}>
-                <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                    <Layers className="w-12 h-12" />
-                </div>
-                <p className="text-[11px] text-slate-500 italic leading-relaxed text-center relative z-10 font-medium">
-                    Filtering the knowledge stream focuses the AI's "epistemic lens" on selected evidence types.
-                </p>
-            </div>
+            <div className="mt-2" />
         </div>
     );
 };

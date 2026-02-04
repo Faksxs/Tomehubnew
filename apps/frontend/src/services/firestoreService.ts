@@ -25,7 +25,7 @@ const userItemsCollection = (userId: string) =>
  */
 export const fetchItemsForUser = async (
     userId: string,
-    limitCount: number = 600,
+    limitCount: number = 2000,
     lastDoc?: QueryDocumentSnapshot<DocumentData> | null
 ): Promise<{ items: LibraryItem[]; lastDoc: QueryDocumentSnapshot<DocumentData> | null }> => {
     let q = query(userItemsCollection(userId), orderBy("addedAt", "desc"), limit(limitCount));

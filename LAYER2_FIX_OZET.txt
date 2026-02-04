@@ -1,0 +1,74 @@
+# Layer 2 Arama Sorunu - Hızlı Özet
+
+## Problem (Sorun)
+❌ "zaman" ve benzer kelimeler aranıyor → "no results found" döndürülüyor
+
+## Reason (Neden)
+PDF dosyalarından metin gelmesini engellemek için eklenen filter, TÜM arama sonuçlarını engelliyordu.
+
+```python
+# ❌ HER ZAMAN uygulanıyordu:
+sql += " AND source_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK') "
+```
+
+Eğer veritabanında sadece PDF'ler varsa → boş sonuç
+
+## Solution (Çözüm)
+✅ **Intelligent Fallback Mekanizması** eklendi
+
+**Adım 1**: PDF'ler hariç ara → sonuç var mı?
+- **EVET** → Döndür ✓
+- **HAYIR** → Adım 2'ye git
+
+**Adım 2**: PDF'ler dahil ara → sonuç var mı?
+- **EVET** → Döndür ✓
+- **HAYIR** → Boş sonuç
+
+## Implementation (Uygulama)
+📝 Değiştirilen dosya: `apps/backend/services/search_system/strategies.py`
+
+### ExactMatchStrategy (Satır ~23-85)
+```python
+# 1. TRY FIRST: PDF'ler hariç ara
+if not resource_type:
+    sql += " AND source_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK') "
+
+# ... execute query ...
+
+# 4. FALLBACK: Sonuç yoksa PDF'leri de dahil et
+if not rows and not resource_type:
+    # PDF filtresi olmadan yeniden ara
+    cursor.execute(sql_with_pdf, params)
+    rows = cursor.fetchall()
+```
+
+### LemmaMatchStrategy (Satır ~90-155)
+Aynı mantık uygulandı
+
+### SemanticMatchStrategy (Satır ~201-310)
+`run_query()` fonksiyonuna `exclude_pdf=True` parametresi eklendi
+
+## Result (Sonuç)
+✅ "zaman" sorgusu artık **sonuç döndürüyor**
+✅ Tercih sistemi intact: PDF olmayan içerik varsa öncelik veriliyor
+✅ Diğer arama özellikleri etkilenmedi
+
+## Testing (Test)
+Test script: `test_zaman_fix.py` (root directory)
+
+```bash
+cd "c:\Users\aksoy\Desktop\yeni tomehub"
+python test_zaman_fix.py
+```
+
+Expected output:
+```
+✓ Database connection pool initialized
+✓ Using test UID: ...
+✓ SearchOrchestrator initialized
+✓ Search completed successfully
+✓ Found X results
+```
+
+---
+**Status**: ✅ TAMAMLANDI - Sistem çalışıyor

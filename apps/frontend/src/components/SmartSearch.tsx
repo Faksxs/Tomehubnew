@@ -1,10 +1,13 @@
 
 import React, { useState } from 'react';
-import { Search, Loader2, BookOpen, AlertCircle, Sparkles, Wand2, Type, ChevronLeft } from 'lucide-react';
+import { Search, Loader2, BookOpen, AlertCircle, Sparkles, Wand2, Type, ChevronLeft, LayoutPanelLeft, FileSearch } from 'lucide-react';
+import { ConcordanceView } from './ConcordanceView';
+import { LibraryItem } from '../types';
 
 interface SmartSearchProps {
     userId: string;
     onBack?: () => void;
+    books?: LibraryItem[];
 }
 
 interface SearchResult {
@@ -14,18 +17,23 @@ interface SearchResult {
     summary?: string;
     tags?: string;
     comment?: string;
-    personal_comment?: string; // Legacy extracted from text
+    personal_comment?: string;
     source_type: string;
     score: number;
     match_type: string;
 }
 
-export default function SmartSearch({ userId, onBack }: SmartSearchProps) {
+export default function SmartSearch({ userId, onBack, books = [] }: SmartSearchProps) {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<SearchResult[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [searched, setSearched] = useState(false);
+    const [analyticsResult, setAnalyticsResult] = useState<any>(null);
+    const [showConcordance, setShowConcordance] = useState(false);
+    const [offset, setOffset] = useState(0);
+    const [totalResults, setTotalResults] = useState(0);
+    const limit = 20;
 
     // Helper function to highlight matches with Turkish fuzzy logic
     const highlightMatches = (text: string, query: string) => {
@@ -50,7 +58,6 @@ export default function SmartSearch({ userId, onBack }: SmartSearchProps) {
         if (words.length === 0) return text;
 
         try {
-            // Create a fuzzy regex pattern for each word
             const patterns = words.map(word => {
                 return word.split('').map(char => turkishCharMap[char] || char).join('');
             });
@@ -72,33 +79,49 @@ export default function SmartSearch({ userId, onBack }: SmartSearchProps) {
         }
     };
 
-    const handleSearch = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSearch = async (e?: React.FormEvent, newOffset: number = 0) => {
+        if (e) e.preventDefault();
         if (!query.trim()) return;
 
         setLoading(true);
         setError(null);
-        setResults([]);
-        setSearched(true);
+        if (newOffset === 0) {
+            setResults([]);
+            setSearched(true);
+        }
+        setOffset(newOffset);
 
         try {
-            // Production API URL (SSL via nip.io)
-            const apiUrl = 'https://158.101.206.111.nip.io/api/smart-search';
-            console.log('[SmartSearch] Calling:', apiUrl);
-            console.log('[SmartSearch] Query:', query);
-            console.log('[SmartSearch] UID:', userId);
+            // Point to local backend to see our changes (limit:1000, etc.)
+            const apiUrl = 'http://localhost:5000/api/smart-search';
+            console.log('[SmartSearch] Calling:', apiUrl, 'Offset:', newOffset);
 
             const response = await fetch(apiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ question: query, firebase_uid: userId }),
+                body: JSON.stringify({
+                    question: query,
+                    firebase_uid: userId,
+                    limit: limit,
+                    offset: newOffset
+                }),
             });
 
             if (!response.ok) throw new Error('Search failed');
             const data = await response.json();
-            console.log('[SmartSearch] Results count:', data.results?.length || 0);
-            console.log('[SmartSearch] First 3 titles:', data.results?.slice(0, 3).map((r: any) => r.title));
-            setResults(data.results || []);
+
+            if (data.metadata?.status === 'analytic' && data.metadata?.analytics) {
+                setAnalyticsResult({
+                    ...data.metadata.analytics,
+                    answer: data.answer
+                });
+                setResults([]);
+                setTotalResults(0);
+            } else {
+                setResults(data.results || []);
+                setTotalResults(data.total || (data.results?.length || 0));
+                setAnalyticsResult(null);
+            }
         } catch (err) {
             console.error('[SmartSearch] Error:', err);
             setError(err instanceof Error ? err.message : 'An error occurred');
@@ -109,10 +132,8 @@ export default function SmartSearch({ userId, onBack }: SmartSearchProps) {
 
     return (
         <div className="flex flex-col h-full space-y-8 p-6 max-w-[1100px] mx-auto w-full animate-in fade-in duration-500">
-            {/* Header - Compact when results are shown */}
             {!searched ? (
                 <div className="text-center space-y-3 pt-6 relative">
-                    {/* Back Button */}
                     {onBack && (
                         <div className="absolute left-0 top-6">
                             <button
@@ -158,15 +179,14 @@ export default function SmartSearch({ userId, onBack }: SmartSearchProps) {
                 </div>
             )}
 
-            {/* Search Bar Container - ALWAYS VISIBLE */}
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 sticky top-0 z-50">
-                <div className="p-2">
+            <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl border border-gray-100 dark:border-gray-700 overflow-hidden sticky top-0 z-50">
+                <div className="p-3">
                     <form onSubmit={handleSearch} className="flex items-center gap-2">
                         <div className="relative flex-1 group">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5 group-focus-within:text-indigo-500 transition-colors" />
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-indigo-500" />
                             <input
                                 type="text"
-                                placeholder="Search here..."
+                                placeholder="Kütüphanende akıllı arama yap..."
                                 value={query}
                                 onChange={(e) => setQuery(e.target.value)}
                                 className="w-full pl-12 pr-4 py-4 text-lg bg-transparent border-none outline-none text-gray-900 dark:text-gray-100 placeholder:text-gray-400 font-medium"
@@ -174,21 +194,22 @@ export default function SmartSearch({ userId, onBack }: SmartSearchProps) {
                         </div>
                         <button
                             type="submit"
-                            disabled={loading}
-                            className="bg-[#CC561E] hover:bg-[#b34b1a] active:bg-[#b34b1a] text-white px-8 py-4 rounded-xl font-bold text-base transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed shadow-lg shadow-[#CC561E]/20"
+                            disabled={loading || !query.trim()}
+                            className="px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold text-base transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-indigo-600/20"
                         >
                             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <span>Search</span>}
                         </button>
                     </form>
                 </div>
-                {!searched && (
-                    <div className="bg-gray-50 dark:bg-gray-900/40 px-6 py-3 border-t border-gray-100 dark:border-gray-700 flex flex-wrap gap-4 text-sm text-gray-500 font-medium">
-                        <span className="flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-1 rounded-full border border-gray-100 dark:border-gray-700 shadow-sm"><Sparkles className="w-4 h-4 text-amber-500" /> AI Query Expansion</span>
-                        <span className="flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-1 rounded-full border border-gray-100 dark:border-gray-700 shadow-sm"><Type className="w-4 h-4 text-blue-500" /> Typo Correction</span>
-                        <span className="flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-1 rounded-full border border-gray-100 dark:border-gray-700 shadow-sm"><BookOpen className="w-4 h-4 text-emerald-500" /> Hybrid Retrieval</span>
-                    </div>
-                )}
             </div>
+
+            {!searched && (
+                <div className="bg-gray-50 dark:bg-gray-900/40 px-6 py-3 rounded-2xl border border-gray-100 dark:border-gray-700 flex flex-wrap gap-4 text-sm text-gray-500 font-medium">
+                    <span className="flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-1 rounded-full border border-gray-100 dark:border-gray-700 shadow-sm"><Sparkles className="w-4 h-4 text-amber-500" /> AI Query Expansion</span>
+                    <span className="flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-1 rounded-full border border-gray-100 dark:border-gray-700 shadow-sm"><Type className="w-4 h-4 text-blue-500" /> Typo Correction</span>
+                    <span className="flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-1 rounded-full border border-gray-100 dark:border-gray-700 shadow-sm"><BookOpen className="w-4 h-4 text-emerald-500" /> Hybrid Retrieval</span>
+                </div>
+            )}
 
             {error && (
                 <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-5 rounded-2xl flex items-center gap-4 border border-red-100 dark:border-red-900/50 shadow-sm">
@@ -201,7 +222,7 @@ export default function SmartSearch({ userId, onBack }: SmartSearchProps) {
                 {results.length > 0 ? (
                     <>
                         <div className="flex items-center justify-between px-2">
-                            <span className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Found {results.length} relevant items</span>
+                            <span className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Found {totalResults} relevant items</span>
                         </div>
                         <div className="grid gap-5">
                             {results.map((result, index) => (
@@ -227,54 +248,47 @@ export default function SmartSearch({ userId, onBack }: SmartSearchProps) {
                                             </span>
                                         </div>
                                     </div>
-
-                                    {/* Main Highlight/Text - Cleanest view */}
                                     <div className="pl-5 border-l-4 border-gray-100 dark:border-gray-700 group-hover:border-[#CC561E] transition-colors">
                                         <p className="text-gray-700 dark:text-gray-200 leading-relaxed text-base whitespace-pre-wrap font-serif">
                                             {highlightMatches(result.content_chunk, query)}
                                         </p>
                                     </div>
-
-                                    {/* Secondary Metadata: Summary & Tags */}
-                                    {(result.summary || result.tags) && (
-                                        <div className="mt-4 pt-3 border-t border-gray-50 dark:border-gray-800/50 space-y-2">
-                                            {result.summary && (
-                                                <div className="text-sm">
-                                                    <span className="font-semibold text-gray-400 dark:text-gray-500">Summary:</span>{' '}
-                                                    <span className="text-gray-600 dark:text-gray-400">{highlightMatches(result.summary, query)}</span>
-                                                </div>
-                                            )}
-                                            {result.tags && (
-                                                <div className="text-xs">
-                                                    <span className="font-semibold text-gray-400 dark:text-gray-500">Tags:</span>{' '}
-                                                    <span className="text-gray-500 dark:text-gray-600 italic">{highlightMatches(result.tags, query)}</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    {/* Handle both new column 'comment' and extracted 'personal_comment' */}
                                     {(result.comment || result.personal_comment) && (
                                         <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 bg-[rgba(204,86,30,0.05)] dark:bg-[rgba(204,86,30,0.1)] -mx-6 px-6 py-4 rounded-b-2xl">
-                                            <div className="flex flex-col gap-2">
-                                                <span className="text-[10px] font-bold uppercase tracking-widest text-[#CC561E]">
-                                                    Comment:
-                                                </span>
-                                                <p className="text-sm text-gray-800 dark:text-gray-200 italic border-l-2 border-[#CC561E]/30 dark:border-[#CC561E]/50 pl-3">
-                                                    {highlightMatches(result.comment || result.personal_comment || '', query)}
-                                                </p>
-                                            </div>
+                                            <span className="text-[10px] font-bold uppercase tracking-widest text-[#CC561E] block mb-1">Comment:</span>
+                                            <p className="text-sm text-gray-800 dark:text-gray-200 italic border-l-2 border-[#CC561E]/30 pl-3">
+                                                {highlightMatches(result.comment || result.personal_comment || '', query)}
+                                            </p>
                                         </div>
                                     )}
-
-                                    <div className="mt-4 pt-2 flex justify-end">
-                                        <span className="text-[10px] text-gray-300 dark:text-gray-600 font-bold uppercase tracking-widest">
-                                            {result.source_type || 'General'}
-                                        </span>
-                                    </div>
                                 </div>
                             ))}
                         </div>
+
+                        {/* Pagination UI */}
+                        {totalResults > limit && (
+                            <div className="flex items-center justify-between mt-10 pt-6 border-t border-gray-100 dark:border-gray-700">
+                                <button
+                                    onClick={() => handleSearch(undefined, Math.max(0, offset - limit))}
+                                    disabled={loading || offset === 0}
+                                    className="px-6 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all disabled:opacity-50 flex items-center gap-2 shadow-sm"
+                                >
+                                    <ChevronLeft size={20} />
+                                    Previous
+                                </button>
+                                <span className="text-sm font-bold text-gray-500 uppercase tracking-widest">
+                                    Page {Math.floor(offset / limit) + 1} of {Math.ceil(totalResults / limit)}
+                                </span>
+                                <button
+                                    onClick={() => handleSearch(undefined, offset + limit)}
+                                    disabled={loading || offset + limit >= totalResults}
+                                    className="px-6 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all disabled:opacity-50 flex items-center gap-2 shadow-sm"
+                                >
+                                    Next
+                                    <ChevronLeft size={20} className="rotate-180" />
+                                </button>
+                            </div>
+                        )}
                     </>
                 ) : searched && !loading && !error ? (
                     <div className="text-center py-24 opacity-60">
@@ -285,6 +299,50 @@ export default function SmartSearch({ userId, onBack }: SmartSearchProps) {
                     </div>
                 ) : null}
             </div>
+
+            {analyticsResult && (
+                <div className="bg-white dark:bg-gray-800 rounded-3xl p-8 shadow-xl border-t-4 border-amber-500 animate-in zoom-in duration-300 relative overflow-hidden">
+                    <div className="absolute right-[-20px] top-[-20px] opacity-[0.03] dark:opacity-[0.05] pointer-events-none">
+                        <FileSearch size={220} />
+                    </div>
+                    <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                        <div className="space-y-4">
+                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[rgba(204,86,30,0.1)] text-[#CC561E] text-xs font-bold uppercase tracking-widest">
+                                <Sparkles size={12} />
+                                Deterministic Analytics
+                            </div>
+                            <h3 className="text-3xl font-extrabold text-slate-900 dark:text-white leading-tight">
+                                {analyticsResult.answer}
+                            </h3>
+                        </div>
+                        {analyticsResult.contexts && analyticsResult.contexts.length > 0 && (
+                            <button
+                                onClick={() => setShowConcordance(true)}
+                                className="group flex items-center gap-3 bg-[#CC561E] hover:bg-[#b34b1a] text-white px-8 py-4 rounded-2xl font-bold shadow-lg shadow-[#CC561E]/30 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                            >
+                                <LayoutPanelLeft size={20} className="group-hover:rotate-12 transition-transform" />
+                                See Contexts
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {showConcordance && analyticsResult && (
+                <div className="fixed inset-0 z-[100] flex justify-end">
+                    <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => setShowConcordance(false)} />
+                    <div className="relative w-full max-w-lg h-full overflow-hidden">
+                        <ConcordanceView
+                            bookId={analyticsResult.resolved_book_id || ''}
+                            term={analyticsResult.term}
+                            initialContexts={analyticsResult.contexts}
+                            firebaseUid={userId}
+                            onClose={() => setShowConcordance(false)}
+                        />
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
+

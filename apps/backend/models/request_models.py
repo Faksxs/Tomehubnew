@@ -6,7 +6,7 @@ class SearchRequest(BaseModel):
     firebase_uid: str
     book_id: Optional[str] = None
     mode: Optional[str] = "STANDARD" # STANDARD or EXPLORER
-    limit: Optional[int] = 5
+    limit: Optional[int] = 20
     offset: Optional[int] = 0
     
 class SearchResponse(BaseModel):
@@ -14,6 +14,9 @@ class SearchResponse(BaseModel):
     sources: List[Any]
     timestamp: str
     metadata: Optional[dict] = None
+    # We use dict for metadata to allow flexibility, but we must ensure
+    # Pydantic doesn't strip fields if we were to use a strict model.
+    # Currently it's permissive.
 
 class FeedbackRequest(BaseModel):
     firebase_uid: str
@@ -109,4 +112,10 @@ class ChatResponse(BaseModel):
     conversation_state: Optional[dict] = None  # Structured state for Context Bar
     thinking_history: Optional[List[Any]] = None  # Process logs for UI
     metadata: Optional[dict] = None  # Degradation info and other metadata
+
+
+class ComparisonRequest(BaseModel):
+    firebase_uid: str
+    target_book_ids: List[str]
+    term: str
 

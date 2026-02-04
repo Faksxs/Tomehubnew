@@ -446,9 +446,9 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
             enrichmentStats={enrichmentStats}
           />
         ) : activeTab === "SMART_SEARCH" ? (
-          <SmartSearch userId={userId} onBack={() => handleTabChange("DASHBOARD")} />
+          <SmartSearch userId={userId} onBack={() => handleTabChange("DASHBOARD")} books={books} />
         ) : activeTab === "RAG_SEARCH" ? (
-          <RAGSearch userId={userId} userEmail={userEmail} onBack={() => handleTabChange("DASHBOARD")} />
+          <RAGSearch userId={userId} userEmail={userEmail} onBack={() => handleTabChange("DASHBOARD")} books={books} />
         ) : activeTab === "FLOW" ? (
           <FlowContainer
             firebaseUid={userId}

@@ -40,6 +40,10 @@ class SearchOrchestrator:
         logger.info(f"Orchestrator: Search started for query='{query}' UID='{firebase_uid}' intent='{intent}'")
         print(f"\n[ORCHESTRATOR] SEARCH: '{query}' | UID: {firebase_uid} | Intent: {intent}")
         
+        # Determine internal POOL_SIZE based on intent
+        # We fetch a large pool to ensure good fusion, even on later pages
+        internal_pool_limit = 1000 if intent in ['DIRECT', 'CITATION_SEEKING'] else 500
+        
         # Check cache first
         if self.cache:
             cache_key = generate_cache_key(
@@ -62,187 +66,118 @@ class SearchOrchestrator:
         
         # 0. Query Expansion (Phase 2) - PARALLELIZED with strategy execution
         # Start expansion in parallel with original query strategies
-        raw_results_list = []
+        # 0. Query Expansion (Phase 2) - PARALLELIZED
         
-        with ThreadPoolExecutor(max_workers=6) as executor:  # Increased for parallel expansion
+        # Buckets for strict ordering
+        bucket_exact = []
+        bucket_lemma = []
+        bucket_semantic = []
+        
+        with ThreadPoolExecutor(max_workers=6) as executor:
             future_map = {}
             
-            # A. Start Query Expansion in parallel (non-blocking)
+            # A. Start Expansion
             expansion_future = executor.submit(self.expander.expand_query, query)
             
-            # B. Original Query: Run ALL strategies immediately (don't wait for expansion)
+            # B. Run Strategies
             for strat in self.strategies:
-                # Label: StrategyName_Original
-                label = f"{strat.__class__.__name__}_Original"
+                s_name = strat.__class__.__name__
+                # Label allows us to bucket them later
+                label = s_name 
                 
-                # Check if strategy supports 'intent' arg (Semantic does, others don't)
                 if isinstance(strat, SemanticMatchStrategy):
-                     future_map[executor.submit(strat.search, query, firebase_uid, limit, intent, resource_type)] = label
+                     future_map[executor.submit(strat.search, query, firebase_uid, 20, 0, intent, resource_type)] = label
                 else:
-                     future_map[executor.submit(strat.search, query, firebase_uid, limit, resource_type)] = label
+                     future_map[executor.submit(strat.search, query, firebase_uid, internal_pool_limit, 0, resource_type)] = label
             
-            # C. Collect original query results first
+            # C. Collect Results & Bucket
             for future in list(future_map.keys()):
-                name = future_map[future]
+                label = future_map[future]
                 try:
                     res = future.result()
                     if res:
-                        raw_results_list.append(res)
-                        msg = f"Strat {name} returned {len(res)} hits"
-                        logger.info(msg)
-                        print(f"[ORCHESTRATOR] {msg}")
-                    else:
-                        print(f"[ORCHESTRATOR] Strat {name} returned ZERO hits")
+                        if "ExactMatchStrategy" in label:
+                            bucket_exact.extend(res)
+                        elif "LemmaMatchStrategy" in label:
+                            bucket_lemma.extend(res)
+                        elif "SemanticMatchStrategy" in label:
+                            bucket_semantic.extend(res)
+                        
+                        logger.info(f"Strat {label} returned {len(res)} hits")
                 except Exception as e:
-                    logger.error(f"Strat {name} failed: {e}")
-                    print(f"[ORCHESTRATOR] Strat {name} FAILED: {e}")
-            
-            # D. Now get expansion results (should be ready or nearly ready)
+                    logger.error(f"Strat {label} failed: {e}")
+
+            # D. Expansion Results
             try:
-                variations = expansion_future.result(timeout=10)  # 10s timeout for expansion
-                logger.info(f"Variations: {variations}")
-                print(f"[ORCHESTRATOR] Variations generated: {len(variations)}")
-            except Exception as e:
-                logger.warning(f"Query expansion failed or timed out: {e}")
-                print(f"[ORCHESTRATOR] Query expansion FAILED: {e}")
-                variations = []  # Fallback: use original query only
-            
-            # E. Variations: Run Semantic only (if we have variations)
+                variations = expansion_future.result(timeout=10)
+            except Exception:
+                variations = []
+
+            # E. Run Semantic for Variations
             semantic_strat = next((s for s in self.strategies if isinstance(s, SemanticMatchStrategy)), None)
             if semantic_strat and variations:
                 variation_futures = {}
                 for i, var_query in enumerate(variations):
-                    label = f"SemanticMatchStrategy_Var{i+1}"
-                    # Pass intent and resource_type here too
-                    variation_futures[executor.submit(semantic_strat.search, var_query, firebase_uid, limit, intent, resource_type)] = label
+                    label = "SemanticMatchStrategy_Var"
+                    variation_futures[executor.submit(semantic_strat.search, var_query, firebase_uid, 20, 0, intent, resource_type)] = label
                 
-                # Collect variation results
                 for future in variation_futures:
-                    name = variation_futures[future]
                     try:
                         res = future.result()
                         if res:
-                            raw_results_list.append(res)
-                            msg = f"Strat {name} returned {len(res)} hits"
-                            logger.info(msg)
-                            print(f"[ORCHESTRATOR] {msg}")
-                        else:
-                            print(f"[ORCHESTRATOR] Strat {name} returned ZERO hits")
-                    except Exception as e:
-                        logger.error(f"Strat {name} failed: {e}")
-                        print(f"[ORCHESTRATOR] Strat {name} FAILED: {e}")
-
-        # 2. Policy: Exact Match Gating (On Original Query Results Only)
-        # Find exact match results from the pool
-        # This is harder now since we have a flat list of lists
-        # But we can assume if specific ExactMatch returned high scores, we might prioritize.
-        # For Phase 2, let's skip gating to maximize recall via RRF.
+                            bucket_semantic.extend(res)
+                    except Exception:
+                        pass
         
-        # 3. Fusion (RRF) with Intent-Aware Weighting
-        candidate_pool = {} # Key -> Item
-        rankings = []
+        # ---------------------------------------------------------
+        # 3. STRICT CONCATENATION & DEDUPLICATION (No RRF)
+        # Priority: EXACT > LEMMA > SEMANTIC
+        # Sub-Priority: HIGHLIGHT > INSIGHT > NOTES > Others
+        # ---------------------------------------------------------
         
-        # Determine base weights based on intent
-        # Default: [Exact, Lemma, SemanticOriginal, SemanticVar1, SemanticVar2, ...]
-        if intent == 'DIRECT' or intent == 'CITATION_SEEKING':
-            base_weights = [0.6, 0.3, 0.1] # High priority on exact/lemma
-        elif intent == 'NARRATIVE' or intent == 'SYNTHESIS':
-            base_weights = [0.1, 0.2, 0.7] # High priority on semantic
-        else:
-            base_weights = [0.33, 0.33, 0.34] # Equal-ish distribution
-            
-        final_weights = []
-        
-        for i, result_set in enumerate(raw_results_list):
-            ranking = []
-            # Calculate weight for this specific ranking list
-            if i < 3:
-                # Original query results (Exact, Lemma, Semantic)
-                w = base_weights[i] if i < len(base_weights) else 0.33
-            else:
-                # Expanded variations (Semantic only)
-                # Dampen expansions by 50% relative to the original semantic query
-                w = base_weights[2] * 0.5 if len(base_weights) > 2 else 0.15
-            
-            final_weights.append(w)
-            
-            for hit in result_set:
-                # Key Generation
-                if hit.get('id'):
-                    key = str(hit['id'])
-                else:
-                    key = f"{hit['title']}_{hit['page_number']}_{hit['content_chunk'][:30]}"
-                
-                if key not in candidate_pool:
-                    candidate_pool[key] = hit
-                    candidate_pool[key]['strategies'] = [f"strat_{i}"]
-                else:
-                    # Update score (max)
-                    candidate_pool[key]['score'] = max(candidate_pool[key]['score'], hit['score'])
-                    candidate_pool[key]['strategies'].append(f"strat_{i}")
-                
-                ranking.append(key)
-            
-            if ranking:
-                rankings.append(ranking)
-            else:
-                # Maintain weight list integrity even if ranking is empty
-                # rankings.append([]) # Actually rankings list in compute_rrf should match weights list size or we handle it
-                pass
-                
-        # Call RRF with calculated weight vector
-        rrf_scores = compute_rrf(rankings, weights=final_weights)
-        
-        # Apply RRF scores
         final_list = []
-        for key, sc in rrf_scores.items():
-            item = candidate_pool[key]
-            item['rrf_score'] = sc
-            final_list.append(item)
-            
-        # Sort by RRF
-        final_list.sort(key=lambda x: x['rrf_score'], reverse=True)
+        seen_ids = set()
+        
+        # Priority Helper
+        def get_priority(item):
+            st = item.get('source_type', '')
+            if st == 'HIGHLIGHT': return 1
+            if st == 'INSIGHT': return 2
+            if st == 'NOTES': return 3
+            if item.get('comment') or item.get('personal_comment'): return 2.5 # Boost comments
+            return 4
+
+        # Sort Buckets Internally
+        bucket_exact.sort(key=get_priority)
+        bucket_lemma.sort(key=get_priority)
+        # Semantic is sorted by distance, do not re-sort by type to preserve relevance
+        
+        def add_batch(batch, match_label):
+            count = 0
+            for item in batch:
+                # Deduplicate by ID
+                if item['id'] not in seen_ids:
+                    seen_ids.add(item['id'])
+                    # Tag metadata for UI
+                    if 'match_type' not in item:
+                        item['match_type'] = match_label
+                    final_list.append(item)
+                    count += 1
+            return count
+
+        # 1. Exact Matches (Highest Priority)
+        # Already sorted by source_type in strategy (HIGHLIGHT > INSIGHT > NOTES)
+        add_batch(bucket_exact, 'content_exact')
+        
+        # 2. Lemma Matches
+        add_batch(bucket_lemma, 'content_fuzzy')
+        
+        # 3. Semantic Matches (Lowest Priority)
+        add_batch(bucket_semantic, 'semantic')
+
+        # Pagination Slicing
+        total_found = len(final_list)
         top_candidates = final_list[offset : offset + limit]
-        
-        # Store in cache
-        if self.cache:
-            cache_key = generate_cache_key(
-                service="search",
-                query=query,
-                firebase_uid=firebase_uid,
-                book_id=book_id,
-                limit=limit,
-                version=settings.EMBEDDING_MODEL_VERSION
-            )
-            cache_key += f"_int:{intent}_off:{offset}"
-            # TTL: 1 hour (3600 seconds) for search results
-            self.cache.set(cache_key, top_candidates, ttl=3600)
-            logger.info(f"Cached search results for key: {cache_key[:50]}...")
-            print(f"[ORCHESTRATOR] Results cached.")
-        
-        duration = time.time() - start_time
-        logger.info(f"Orchestrator: Finished in {duration:.3f}s. Returning {len(top_candidates)} results.")
-        print(f"[ORCHESTRATOR] Finished in {duration:.3f}s. Results: {len(top_candidates)}")
-        
-        # LOG ANALYTICS (Phase 5)
-        search_log_id = self._log_search(
-            uid=firebase_uid, 
-            query=query, 
-            intent=intent,
-            rrf_scores=None, # Passed inside helper for now
-            results=top_candidates,
-            duration=duration,
-            session_id=session_id
-        )
-        
-        metadata = {
-            "search_log_id": search_log_id,
-            "intent": intent,
-            "duration": duration,
-            "cached": False
-        }
-        
-        return top_candidates, metadata
 
     # Helper for DB Logging
     def _log_search(self, uid, query, intent, rrf_scores, results, duration, session_id: Optional[int | str] = None):

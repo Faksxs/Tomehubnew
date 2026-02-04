@@ -181,7 +181,7 @@ def perform_smart_search(query, firebase_uid, book_id=None, intent='SYNTHESIS', 
         
         # Determine limit based on depth if not explicitly provided
         if limit is None:
-            limit = 100 if search_depth == 'deep' else 50
+            limit = 20
         
         # Initialize Orchestrator with embedding function and cache
         orchestrator = SearchOrchestrator(embedding_fn=get_embedding, cache=cache)
@@ -335,5 +335,5 @@ def format_results(results_map, query_tokens=None):
     
     # Sort by: 1) Content match (primary - highlight priority), 2) Score (secondary)
     final.sort(key=lambda x: (x.get('in_content', False), x['score']), reverse=True)
-    return final[:50]
+    return final
 

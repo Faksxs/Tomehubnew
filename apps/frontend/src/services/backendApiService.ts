@@ -27,6 +27,8 @@ export interface SearchResponse {
     metadata?: {
         search_log_id?: number;
         model_name?: string;
+        status?: string;
+        analytics?: any;
     };
 }
 
@@ -117,6 +119,43 @@ export interface ChatResponse {
         };
         latency: number;
     }>;
+}
+
+export interface ConcordanceResponse {
+    book_id: string;
+    term: string;
+    contexts: Array<{
+        chunk_id: string;
+        page_number: number;
+        snippet: string;
+        keyword_found: string;
+    }>;
+    limit: number;
+    offset: number;
+    count: number;
+}
+
+export interface DistributionResponse {
+    book_id: string;
+    term: string;
+    distribution: Array<{
+        page_number: number;
+        count: number;
+    }>;
+}
+
+export interface ComparisonResponse {
+    term: string;
+    comparison: Array<{
+        book_id: string;
+        title: string;
+        count: number;
+    }>;
+}
+
+export interface IngestedBooksResponse {
+    book_ids: string[];
+    count: number;
 }
 
 /**
@@ -466,4 +505,108 @@ export async function syncHighlights(
     return response.json();
 }
 
+/**
+ * Get paginated concordance (KWIC) for a term in a book
+ */
+export async function getConcordance(
+    firebaseUid: string,
+    bookId: string,
+    term: string,
+    limit: number = 50,
+    offset: number = 0
+): Promise<ConcordanceResponse> {
+    const url = new URL(`${API_BASE_URL}/api/analytics/concordance`);
+    url.searchParams.append('book_id', bookId);
+    url.searchParams.append('term', term);
+    url.searchParams.append('limit', limit.toString());
+    url.searchParams.append('offset', offset.toString());
+    url.searchParams.append('firebase_uid', firebaseUid);
+
+    const response = await fetch(url.toString(), {
+        headers: {
+            'Authorization': `Bearer ${firebaseUid}`, // Assuming the backend verify_firebase_token handles this dependency
+            'Content-Type': 'application/json'
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to fetch concordance');
+    }
+    return response.json();
+}
+
+/**
+ * Get keyword distribution across pages
+ */
+export async function getDistribution(
+    firebaseUid: string,
+    bookId: string,
+    term: string
+): Promise<DistributionResponse> {
+    const url = new URL(`${API_BASE_URL}/api/analytics/distribution`);
+    url.searchParams.append('book_id', bookId);
+    url.searchParams.append('term', term);
+    url.searchParams.append('firebase_uid', firebaseUid);
+
+    const response = await fetch(url.toString(), {
+        headers: {
+            'Authorization': `Bearer ${firebaseUid}`,
+            'Content-Type': 'application/json'
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to fetch distribution');
+    }
+    return response.json();
+}
+
+/**
+ * Get comparative stats for multiple books
+ */
+export async function getComparativeStats(
+    firebaseUid: string,
+    targetBookIds: string[],
+    term: string
+): Promise<ComparisonResponse> {
+    const response = await fetch(`${API_BASE_URL}/api/analytics/compare?firebase_uid=${encodeURIComponent(firebaseUid)}`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${firebaseUid}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            firebase_uid: firebaseUid,
+            target_book_ids: targetBookIds,
+            term: term
+        })
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to fetch comparison');
+    }
+    return response.json();
+}
+
+/**
+ * Get list of ingested PDF book IDs
+ */
+export async function getIngestedBookIds(
+    firebaseUid: string
+): Promise<IngestedBooksResponse> {
+    const url = new URL(`${API_BASE_URL}/api/analytics/ingested-books`);
+    url.searchParams.append('firebase_uid', firebaseUid);
+
+    const response = await fetch(url.toString(), {
+        headers: {
+            'Authorization': `Bearer ${firebaseUid}`,
+            'Content-Type': 'application/json'
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to fetch ingested books');
+    }
+    return response.json();
+}
 

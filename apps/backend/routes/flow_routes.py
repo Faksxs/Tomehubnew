@@ -13,9 +13,11 @@ from fastapi import APIRouter, HTTPException, Depends, Request, BackgroundTasks,
 from models.flow_models import (
     FlowStartRequest, FlowStartResponse,
     FlowNextRequest, FlowNextResponse,
-    FlowFeedbackRequest
+    FlowFeedbackRequest,
+    FlowInsightsRequest, FlowInsightsResponse
 )
 from services.flow_service import get_flow_service
+from services.flow_insights_service import get_flow_insights
 from services.flow_session_service import get_flow_session_manager
 from middleware.auth_middleware import verify_firebase_token
 
@@ -69,6 +71,30 @@ async def flow_start(
         
     except Exception as e:
         logger.error(f"[FLOW] Start failed: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/insights", response_model=FlowInsightsResponse)
+async def flow_insights(
+    request: Request,
+    insight_request: FlowInsightsRequest,
+    user_id: str = Depends(verify_firebase_token)
+):
+    """
+    Get pre-flow insight cards (cached).
+    """
+    if user_id is None:
+        # Use request body UID for local development
+        effective_uid = insight_request.firebase_uid
+    else:
+        effective_uid = user_id
+
+    try:
+        payload = get_flow_insights(effective_uid, force_refresh=insight_request.force_refresh)
+        return payload
+    except Exception as e:
+        logger.error(f"[FLOW] Insights failed: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 

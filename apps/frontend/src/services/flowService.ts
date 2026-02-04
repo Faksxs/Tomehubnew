@@ -47,6 +47,15 @@ export interface FlowCard {
     zone: number;
 }
 
+export interface InsightCard {
+    id: string;
+    type: 'CONCEPT_OVERLAP' | 'FORGOTTEN' | 'CATEGORY_STATS' | 'UNLABELED_CLUSTER';
+    title: string;
+    body: string;
+    meta?: Record<string, any>;
+    cta?: Record<string, any>;
+}
+
 export interface PivotInfo {
     type: string;
     message: string;
@@ -82,6 +91,17 @@ export interface FlowNextResponse {
         cards_shown: number;
         anchor_id?: string;
     };
+}
+
+export interface FlowInsightsRequest {
+    firebase_uid: string;
+    force_refresh?: boolean;
+}
+
+export interface FlowInsightsResponse {
+    cards: InsightCard[];
+    generated_at: string;
+    cache_hit: boolean;
 }
 
 export interface FlowFeedbackRequest {
@@ -125,6 +145,32 @@ export async function startFlowSession(request: FlowStartRequest): Promise<FlowS
     if (!response.ok) {
         const error = await response.json();
         throw new Error(error.detail || 'Failed to start flow session');
+    }
+
+    return response.json();
+}
+
+/**
+ * Get insight cards before flow starts
+ */
+export async function getFlowInsights(request: FlowInsightsRequest): Promise<FlowInsightsResponse> {
+    if (!request.firebase_uid) {
+        throw new Error('User must be authenticated');
+    }
+
+    const idToken = await getAuthToken();
+    const response = await fetch(`${API_BASE_URL}/api/flow/insights`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to get insights');
     }
 
     return response.json();
