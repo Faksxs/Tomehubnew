@@ -431,8 +431,8 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
         onClose={() => setIsSidebarOpen(false)}
       />
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col h-full w-full relative overflow-y-auto transition-all duration-300">
+      {/* Main Content Shell (Warm Gray + Noise) */}
+      <main className="flex-1 flex flex-col h-full w-full relative overflow-y-auto transition-all duration-300 bg-[#f8f5f2] dark:bg-[#0c0e12] noise-bg">
         {activeTab === "PROFILE" ? (
           <ProfileView
             email={userEmail}
@@ -496,6 +496,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
             onSortOptionChange={setListSortOption as any}
             publisherFilter={listPublisherFilter}
             onPublisherFilterChange={setListPublisherFilter}
+            onTabChange={handleTabChange}
           />
         ) : (
           selectedBook && (

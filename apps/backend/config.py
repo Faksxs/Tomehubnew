@@ -50,7 +50,7 @@ class Settings:
         # CORS
         # Default to localhost if not set, but allow overriding via env var
         # Format: "http://localhost:5173,http://localhost:3000,https://myapp.com"
-        allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000")
+        allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:5174,http://localhost:3000")
         self.ALLOWED_ORIGINS: List[str] = [origin.strip() for origin in allowed_origins_str.split(",") if origin.strip()]
         
         # Cache Configuration

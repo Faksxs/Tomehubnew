@@ -2,8 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { LibraryItem, ReadingStatus, ResourceType, PhysicalStatus } from '../types';
 import { Search, Plus, Book as BookIcon, Filter, FileText, Globe, ExternalLink, StickyNote, Quote, ArrowRight, PenTool, BarChart2, AlertTriangle, Library, ArrowUpDown, Calendar, Hash, Menu, Trash2, ChevronDown, ChevronLeft, ChevronRight, Loader2, Star, CheckCircle, Zap, X } from 'lucide-react';
 import { CATEGORIES } from './CategorySelector';
-// import { StatisticsView } from './StatisticsView'; // Lazy loaded below
-const StatisticsView = React.lazy(() => import('./StatisticsView').then(module => ({ default: module.StatisticsView })));
+const KnowledgeDashboard = React.lazy(() => import('./dashboard/KnowledgeDashboard').then(module => ({ default: module.KnowledgeDashboard })));
 
 interface BookListProps {
     books: LibraryItem[];
@@ -31,9 +30,10 @@ interface BookListProps {
     onSortOptionChange: (val: any) => void;
     publisherFilter: string;
     onPublisherFilterChange: (val: string) => void;
+    onTabChange?: (tab: ResourceType | 'NOTES' | 'DASHBOARD') => void;
 }
 
-export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook, onSelectBook, onSelectBookWithTab, activeTab, onMobileMenuClick, onDeleteBook, onDeleteMultiple, onToggleFavorite, onToggleHighlightFavorite, userId, categoryFilter, onCategoryFilterChange, onCategoryNavigate, currentPage, onPageChange, searchQuery, onSearchChange, statusFilter, onStatusFilterChange, sortOption, onSortOptionChange, publisherFilter, onPublisherFilterChange }) => {
+export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook, onSelectBook, onSelectBookWithTab, activeTab, onMobileMenuClick, onDeleteBook, onDeleteMultiple, onToggleFavorite, onToggleHighlightFavorite, userId, categoryFilter, onCategoryFilterChange, onCategoryNavigate, currentPage, onPageChange, searchQuery, onSearchChange, statusFilter, onStatusFilterChange, sortOption, onSortOptionChange, publisherFilter, onPublisherFilterChange, onTabChange }) => {
     // UI State (Moved to App.tsx for persistence)
     const [isTyping, setIsTyping] = useState(false); // Visual feedback
 
@@ -315,9 +315,10 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, onAddBook,
                         <Loader2 size={32} className="animate-spin text-indigo-500" />
                     </div>
                 }>
-                    <StatisticsView
+                    <KnowledgeDashboard
                         items={books}
                         onCategorySelect={(cat) => onCategoryNavigate?.(cat)}
+                        onNavigateToTab={(tab) => onTabChange?.(tab as any)}
                     />
                 </React.Suspense>
             );

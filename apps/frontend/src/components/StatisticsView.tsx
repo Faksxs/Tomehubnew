@@ -1,7 +1,25 @@
 
 import React from 'react';
 import { LibraryItem } from '../types';
-import { Book, FileText, Globe, PenTool, Quote, StickyNote, PieChart, CheckCircle, Clock, BookOpen, Archive, AlertTriangle } from 'lucide-react';
+import {
+    Activity,
+    Archive,
+    Book,
+    BookOpen,
+    CheckCircle,
+    ChevronDown,
+    Clock,
+    FileText,
+    GitBranch,
+    Globe,
+    Layers,
+    Network,
+    PenTool,
+    PieChart,
+    Quote,
+    Sparkles,
+    TrendingUp
+} from 'lucide-react';
 import { CATEGORIES } from './CategorySelector';
 
 interface StatisticsViewProps {
@@ -15,9 +33,8 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({ items, onCategor
     const websites = items.filter(i => i.type === 'WEBSITE');
     const personalNotes = items.filter(i => i.type === 'PERSONAL_NOTE');
 
-    const allHighlights = items.flatMap(i => i.highlights);
+    const allHighlights = items.flatMap(i => i.highlights || []);
     const quotes = allHighlights.filter(h => h.type === 'highlight' || !h.type); // Default to highlight for legacy items
-    const attachedNotes = allHighlights.filter(h => h.type === 'note');
 
     // Reading Status (Books, Articles, Websites) - exclude Personal Notes
     const readableItems = items.filter(i => i.type !== 'PERSONAL_NOTE');
@@ -33,170 +50,293 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({ items, onCategor
     const lostCount = books.filter(i => i.status === 'Lost').length;
     const onShelfCount = books.filter(i => i.status === 'On Shelf').length;
 
-    const StatCard = ({ title, count, icon: Icon, color, subtext }: any) => (
-        <div className="bg-white p-3 md:p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-2 md:gap-4 hover:shadow-md transition-shadow">
-            <div className={`p-2 md:p-3.5 rounded-full ${color} bg-opacity-10 shrink-0`}>
-                <Icon size={20} className={`${color.replace('bg-', 'text-')} md:w-7 md:h-7`} />
+    // Knowledge status (TomeHub-specific heuristics)
+    const activeKnowledge = readableItems.filter(i => (i.highlights?.length || 0) > 0).length;
+    const dormantKnowledge = Math.max(totalReadable - activeKnowledge, 0);
+    const dormantRate = totalReadable ? dormantKnowledge / totalReadable : 0;
+
+    // AI-inspired signals (lightweight heuristics for now)
+    const now = Date.now();
+    const weekMs = 7 * 24 * 60 * 60 * 1000;
+    const addedLast7 = items.filter(i => i.addedAt >= now - weekMs).length;
+    const addedPrev7 = items.filter(i => i.addedAt >= now - (2 * weekMs) && i.addedAt < now - weekMs).length;
+    const last7Delta = addedLast7 - addedPrev7;
+    const last7DeltaLabel = last7Delta === 0 ? '±0' : last7Delta > 0 ? `+${last7Delta}` : `${last7Delta}`;
+
+    const itemsLast7 = items.filter(i => i.addedAt >= now - weekMs);
+    const conceptBridgesLast7 = itemsLast7.reduce((sum, i) => sum + Math.max(0, (i.tags?.length || 0) - 1), 0);
+
+    const tagCounts = new Map<string, number>();
+    items.forEach(item => {
+        (item.tags || []).forEach(tag => {
+            const key = tag.trim();
+            if (!key) return;
+            tagCounts.set(key, (tagCounts.get(key) || 0) + 1);
+        });
+    });
+    let topTag = '';
+    let topTagCount = 0;
+    tagCounts.forEach((count, tag) => {
+        if (count > topTagCount) {
+            topTag = tag;
+            topTagCount = count;
+        }
+    });
+    const unexploredCount = readableItems.filter(i => (i.highlights?.length || 0) === 0).length;
+
+    const PrimaryStat = ({ label, value, icon: Icon }: { label: string; value: number; icon: any }) => (
+        <div className="flex items-center gap-3 px-3 py-2 md:px-4 md:py-3">
+            <div className="rounded-full bg-muted/60 p-1.5 text-muted-foreground">
+                <Icon size={16} />
             </div>
-            <div className="flex-1 text-center pr-2 md:pr-4">
-                <p className="text-[10px] md:text-xs text-slate-500 font-medium uppercase tracking-wide truncate">{title}</p>
-                <h3 className="text-xl md:text-3xl font-bold text-slate-900 leading-tight">{count}</h3>
-                {subtext && <p className="text-[10px] md:text-xs text-slate-400 mt-0.5">{subtext}</p>}
+            <div className="min-w-0">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground truncate">{label}</p>
+                <p className="text-xl md:text-2xl font-semibold text-foreground leading-tight">{value}</p>
             </div>
         </div>
     );
 
     return (
-        <div className="space-y-4 md:space-y-8 pb-20 animate-in fade-in slide-in-from-bottom-4">
-            <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
-                <StatCard
-                    title="Total Books"
-                    count={books.length}
-                    icon={Book}
-                    color="bg-indigo-500"
-                />
-                <StatCard title="Articles" count={articles.length} icon={FileText} color="bg-blue-500" />
-                <StatCard title="Websites" count={websites.length} icon={Globe} color="bg-emerald-500" />
-                <StatCard title="Personal Notes" count={personalNotes.length} icon={PenTool} color="bg-amber-500" />
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Highlights Stats */}
-                <div className="bg-white p-3 md:p-6 rounded-xl border border-slate-200 shadow-sm lg:col-span-2">
-                    <h3 className="text-sm md:text-lg font-bold text-slate-800 mb-3 md:mb-6 flex items-center gap-2">
-                        <Quote size={16} className="text-indigo-600 md:w-5 md:h-5" />
-                        Content Collection
-                    </h3>
-                    <div className="grid grid-cols-1 gap-2 md:gap-4">
-                        <div className="p-3 md:p-5 bg-yellow-50 rounded-xl border border-yellow-100">
-                            <div className="flex items-center gap-2 md:gap-3 mb-1 md:mb-2">
-                                <div className="p-1.5 md:p-2 bg-yellow-100 rounded-lg">
-                                    <Quote className="text-yellow-600" size={16} />
-                                </div>
-                                <span className="font-semibold text-yellow-900 text-xs md:text-base">Highlights & Insights</span>
-                            </div>
-                            <p className="text-2xl md:text-4xl font-bold text-yellow-700 mt-1 md:mt-2">{quotes.length}</p>
-                            <p className="text-[10px] md:text-xs text-yellow-600/80 mt-0.5 md:mt-1">Passages saved from books & articles</p>
+        <div className="space-y-6 pb-20 animate-in fade-in slide-in-from-bottom-4">
+            {/* Level A - Always visible */}
+            <section className="rounded-2xl border border-border/60 bg-card/40 p-4 md:p-6">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                        <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Level A • Always visible</p>
+                        <div className="mt-2 flex items-center gap-2">
+                            <Layers size={18} className="text-primary" />
+                            <h2 className="text-lg md:text-2xl font-semibold text-foreground">TomeHub Atlas</h2>
                         </div>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            Knowledge OS snapshot. Compact, hierarchical, and TomeHub-native.
+                        </p>
                     </div>
-
-                    {/* Inventory Check (Books Only) */}
-                    <div className="mt-4 md:mt-6 pt-4 md:pt-6 border-t border-slate-100">
-                        <h4 className="text-[10px] md:text-sm font-bold text-slate-500 uppercase tracking-wider mb-2 md:mb-4">Books Inventory</h4>
-                        <div className="grid grid-cols-3 gap-2 md:gap-4">
-                            <div className="flex flex-col md:flex-row items-center md:items-center gap-1 md:gap-3 p-2 md:p-3 rounded-lg bg-slate-50 border border-slate-100 text-center md:text-left">
-                                <Archive size={14} className="text-slate-400 md:w-4 md:h-4" />
-                                <div>
-                                    <p className="text-[9px] md:text-xs text-slate-500">On Shelf</p>
-                                    <p className="font-bold text-slate-700 text-sm md:text-base">{onShelfCount}</p>
-                                </div>
-                            </div>
-                            <div className="flex flex-col md:flex-row items-center md:items-center gap-1 md:gap-3 p-2 md:p-3 rounded-lg bg-amber-50 border border-amber-100 text-center md:text-left">
-                                <AlertTriangle size={14} className="text-amber-500 md:w-4 md:h-4" />
-                                <div>
-                                    <p className="text-[9px] md:text-xs text-amber-600">Lent Out</p>
-                                    <p className="font-bold text-amber-700 text-sm md:text-base">{lentCount}</p>
-                                </div>
-                            </div>
-                            <div className="flex flex-col md:flex-row items-center md:items-center gap-1 md:gap-3 p-2 md:p-3 rounded-lg bg-red-50 border border-red-100 text-center md:text-left">
-                                <AlertTriangle size={14} className="text-red-500 md:w-4 md:h-4" />
-                                <div>
-                                    <p className="text-[9px] md:text-xs text-red-600">Lost</p>
-                                    <p className="font-bold text-red-700 text-sm md:text-base">{lostCount}</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <div className="text-xs text-muted-foreground">Total items: {items.length}</div>
                 </div>
 
-                {/* Reading Progress */}
-                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                    <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
-                        <PieChart size={20} className="text-indigo-600" />
-                        Library Progress
-                    </h3>
-                    <p className="text-xs text-slate-500 mb-4 -mt-4">Includes Books, Articles & Websites</p>
+                <div className="mt-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 divide-y md:divide-y-0 md:divide-x divide-border/40">
+                    <PrimaryStat label="Total Books" value={books.length} icon={Book} />
+                    <PrimaryStat label="Articles" value={articles.length} icon={FileText} />
+                    <PrimaryStat label="Websites" value={websites.length} icon={Globe} />
+                    <PrimaryStat label="Notes" value={personalNotes.length} icon={PenTool} />
+                    <PrimaryStat label="Highlights" value={allHighlights.length} icon={Quote} />
+                </div>
+            </section>
 
-                    <div className="space-y-6">
-                        <div>
-                            <div className="flex justify-between text-sm mb-2">
-                                <span className="flex items-center gap-2 text-slate-600"><CheckCircle size={14} /> Finished</span>
-                                <span className="font-medium">{finishedCount}</span>
-                            </div>
-                            <div className="w-full bg-slate-100 rounded-full h-2">
-                                <div className="bg-emerald-500 h-2 rounded-full transition-all duration-1000" style={{ width: `${totalReadable ? (finishedCount / totalReadable) * 100 : 0}%` }}></div>
-                            </div>
-                        </div>
-                        <div>
-                            <div className="flex justify-between text-sm mb-2">
-                                <span className="flex items-center gap-2 text-slate-600"><BookOpen size={14} /> Reading</span>
-                                <span className="font-medium">{readingCount}</span>
-                            </div>
-                            <div className="w-full bg-slate-100 rounded-full h-2">
-                                <div className="bg-indigo-500 h-2 rounded-full transition-all duration-1000" style={{ width: `${totalReadable ? (readingCount / totalReadable) * 100 : 0}%` }}></div>
-                            </div>
-                        </div>
-                        <div>
-                            <div className="flex justify-between text-sm mb-2">
-                                <span className="flex items-center gap-2 text-slate-600"><Clock size={14} /> To Read</span>
-                                <span className="font-medium">{toReadCount}</span>
-                            </div>
-                            <div className="w-full bg-slate-100 rounded-full h-2">
-                                <div className="bg-slate-400 h-2 rounded-full transition-all duration-1000" style={{ width: `${totalReadable ? (toReadCount / totalReadable) * 100 : 0}%` }}></div>
-                            </div>
+            {/* Level B - Contextual */}
+            <details className="group rounded-2xl border border-border/60 bg-card/40">
+                <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 md:px-6 md:py-4">
+                    <div>
+                        <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Level B • Contextual</p>
+                        <div className="mt-1 flex items-center gap-2">
+                            <PieChart size={16} className="text-primary" />
+                            <span className="text-base font-semibold text-foreground">Context Layer</span>
                         </div>
                     </div>
-                </div>
-            </div>
+                    <ChevronDown size={16} className="text-muted-foreground transition-transform group-open:rotate-180" />
+                </summary>
 
-            {/* Category Distribution */}
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                        <Archive size={20} className="text-[#CC561E]" />
-                        Category
-                    </h3>
-                    <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded-full">
-                        {books.length} Total Books
-                    </span>
-                </div>
+                <div className="border-t border-border/40 px-4 py-4 md:px-6 md:py-6 space-y-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        {/* Category Distribution */}
+                        <div className="lg:col-span-2">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                                    <Archive size={16} className="text-muted-foreground" />
+                                    Category Distribution
+                                </h3>
+                                <span className="text-xs text-muted-foreground">{books.length} Books</span>
+                            </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {CATEGORIES.map(category => {
-                        const count = books.filter(b => b.tags?.includes(category)).length;
-                        const percentage = books.length > 0 ? (count / books.length) * 100 : 0;
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {CATEGORIES.map(category => {
+                                    const count = books.filter(b => b.tags?.includes(category)).length;
+                                    const percentage = books.length > 0 ? (count / books.length) * 100 : 0;
 
-                        return (
-                            <button
-                                key={category}
-                                type="button"
-                                className="space-y-2 group text-left focus:outline-none"
-                                onClick={() => onCategorySelect?.(category)}
-                            >
-                                <div className="flex justify-between items-center text-sm">
-                                    <span className="font-semibold text-slate-700 group-hover:text-[#CC561E] transition-colors">{category}</span>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-slate-400 text-xs">{percentage.toFixed(0)}%</span>
-                                        <span className="font-bold text-slate-900">{count}</span>
+                                    return (
+                                        <button
+                                            key={category}
+                                            type="button"
+                                            className="space-y-2 group text-left focus:outline-none"
+                                            onClick={() => onCategorySelect?.(category)}
+                                        >
+                                            <div className="flex justify-between items-center text-sm">
+                                                <span className="font-medium text-foreground group-hover:text-primary transition-colors">
+                                                    {category}
+                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-muted-foreground text-xs">{percentage.toFixed(0)}%</span>
+                                                    <span className="font-semibold text-foreground">{count}</span>
+                                                </div>
+                                            </div>
+                                            <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                                                <div
+                                                    className="bg-primary h-full rounded-full transition-all duration-1000 ease-out opacity-80 group-hover:opacity-100"
+                                                    style={{ width: `${percentage}%` }}
+                                                ></div>
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {books.length === 0 && (
+                                <div className="py-8 text-center">
+                                    <p className="text-muted-foreground text-sm italic">No books in library to categorize.</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Reading + Inventory + Knowledge Status */}
+                        <div className="space-y-6">
+                            <div>
+                                <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                                    <BookOpen size={16} className="text-muted-foreground" />
+                                    Reading Progress
+                                </h3>
+                                <p className="text-xs text-muted-foreground mt-1">Books, Articles, Websites</p>
+
+                                <div className="space-y-4 mt-4">
+                                    <div>
+                                        <div className="flex justify-between text-sm mb-2">
+                                            <span className="flex items-center gap-2 text-muted-foreground"><CheckCircle size={14} /> Finished</span>
+                                            <span className="font-medium text-foreground">{finishedCount}</span>
+                                        </div>
+                                        <div className="w-full bg-muted rounded-full h-2">
+                                            <div className="bg-primary h-2 rounded-full transition-all duration-1000" style={{ width: `${totalReadable ? (finishedCount / totalReadable) * 100 : 0}%` }}></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="flex justify-between text-sm mb-2">
+                                            <span className="flex items-center gap-2 text-muted-foreground"><BookOpen size={14} /> Reading</span>
+                                            <span className="font-medium text-foreground">{readingCount}</span>
+                                        </div>
+                                        <div className="w-full bg-muted rounded-full h-2">
+                                            <div className="bg-accent h-2 rounded-full transition-all duration-1000" style={{ width: `${totalReadable ? (readingCount / totalReadable) * 100 : 0}%` }}></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="flex justify-between text-sm mb-2">
+                                            <span className="flex items-center gap-2 text-muted-foreground"><Clock size={14} /> To Read</span>
+                                            <span className="font-medium text-foreground">{toReadCount}</span>
+                                        </div>
+                                        <div className="w-full bg-muted rounded-full h-2">
+                                            <div className="bg-muted-foreground/50 h-2 rounded-full transition-all duration-1000" style={{ width: `${totalReadable ? (toReadCount / totalReadable) * 100 : 0}%` }}></div>
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                                    <div
-                                        className="bg-[#CC561E] h-full rounded-full transition-all duration-1000 ease-out opacity-80 group-hover:opacity-100"
-                                        style={{ width: `${percentage}%` }}
-                                    ></div>
-                                </div>
-                            </button>
-                        );
-                    })}
-                </div>
+                            </div>
 
-                {books.length === 0 && (
-                    <div className="py-10 text-center">
-                        <p className="text-slate-400 text-sm italic">No books in library to categorize.</p>
+                            <div className="space-y-4">
+                                <div>
+                                    <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                                        <Archive size={16} className="text-muted-foreground" />
+                                        Books Inventory
+                                    </h3>
+                                    <ul className="mt-2 divide-y divide-border/40 text-sm">
+                                        <li className="flex items-center justify-between py-2">
+                                            <span className="text-muted-foreground">On Shelf</span>
+                                            <span className="font-semibold text-foreground">{onShelfCount}</span>
+                                        </li>
+                                        <li className="flex items-center justify-between py-2">
+                                            <span className="text-muted-foreground">Lent Out</span>
+                                            <span className="font-semibold text-foreground">{lentCount}</span>
+                                        </li>
+                                        <li className="flex items-center justify-between py-2">
+                                            <span className="text-muted-foreground">Lost</span>
+                                            <span className="font-semibold text-foreground">{lostCount}</span>
+                                        </li>
+                                    </ul>
+                                </div>
+
+                                <div>
+                                    <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                                        <Activity size={16} className="text-muted-foreground" />
+                                        Knowledge Status
+                                    </h3>
+                                    <ul className="mt-2 divide-y divide-border/40 text-sm">
+                                        <li className="flex items-center justify-between py-2">
+                                            <span className="text-muted-foreground">Active</span>
+                                            <span className="font-semibold text-foreground">{activeKnowledge}</span>
+                                        </li>
+                                        <li className="flex items-center justify-between py-2">
+                                            <span className="text-muted-foreground">Dormant</span>
+                                            <span className="font-semibold text-foreground">{dormantRate.toFixed(2)}</span>
+                                        </li>
+                                    </ul>
+                                    <p className="text-xs text-muted-foreground mt-2">
+                                        Active = items with highlights. Dormant shows the ratio of untouched knowledge.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                )}
-            </div>
+                </div>
+            </details>
+
+            {/* Level C - AI-assisted */}
+            <details className="group rounded-2xl border border-border/60 bg-card/40">
+                <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 md:px-6 md:py-4">
+                    <div>
+                        <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Level C • AI-assisted</p>
+                        <div className="mt-1 flex items-center gap-2">
+                            <Sparkles size={16} className="text-primary" />
+                            <span className="text-base font-semibold text-foreground">AI Lens</span>
+                        </div>
+                    </div>
+                    <ChevronDown size={16} className="text-muted-foreground transition-transform group-open:rotate-180" />
+                </summary>
+
+                <div className="border-t border-border/40 px-4 py-4 md:px-6 md:py-6 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="flex items-start justify-between gap-4 rounded-xl border border-border/50 bg-background/60 px-4 py-3">
+                            <div>
+                                <p className="text-xs text-muted-foreground flex items-center gap-2">
+                                    <TrendingUp size={14} /> Last 7 Days Delta
+                                </p>
+                                <p className={`text-2xl font-semibold ${last7Delta > 0 ? 'text-emerald-600' : last7Delta < 0 ? 'text-rose-600' : 'text-foreground'}`}>
+                                    {last7DeltaLabel}
+                                </p>
+                                <p className="text-xs text-muted-foreground">{addedLast7} new items in the last week</p>
+                            </div>
+                        </div>
+
+                        <div className="flex items-start justify-between gap-4 rounded-xl border border-border/50 bg-background/60 px-4 py-3">
+                            <div>
+                                <p className="text-xs text-muted-foreground flex items-center gap-2">
+                                    <GitBranch size={14} /> New Concept Bridges
+                                </p>
+                                <p className="text-2xl font-semibold text-foreground">{conceptBridgesLast7}</p>
+                                <p className="text-xs text-muted-foreground">Estimated from multi-tag items</p>
+                            </div>
+                        </div>
+
+                        <div className="flex items-start justify-between gap-4 rounded-xl border border-border/50 bg-background/60 px-4 py-3">
+                            <div>
+                                <p className="text-xs text-muted-foreground flex items-center gap-2">
+                                    <Activity size={14} /> Most Active Concept
+                                </p>
+                                <p className="text-lg font-semibold text-foreground">{topTag || '—'}</p>
+                                <p className="text-xs text-muted-foreground">{topTag ? `${topTagCount} items tagged` : 'No tags yet'}</p>
+                            </div>
+                        </div>
+
+                        <div className="flex items-start justify-between gap-4 rounded-xl border border-border/50 bg-background/60 px-4 py-3">
+                            <div>
+                                <p className="text-xs text-muted-foreground flex items-center gap-2">
+                                    <Network size={14} /> Unexplored
+                                </p>
+                                <p className="text-2xl font-semibold text-foreground">{unexploredCount}</p>
+                                <p className="text-xs text-muted-foreground">Items without highlights</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground">
+                        AI Lens uses lightweight heuristics for now. We can replace these with real AI signals step by step.
+                    </p>
+                </div>
+            </details>
         </div>
     );
 };
