@@ -221,7 +221,10 @@ def get_rate_limit_key(request: Request):
     return get_remote_address(request)
 
 # Initialize Limiter
-limiter = Limiter(key_func=get_rate_limit_key)
+limiter = Limiter(
+    key_func=get_rate_limit_key,
+    default_limits=[settings.RATE_LIMIT_GLOBAL]
+)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -359,7 +362,7 @@ async def health_restart():
 # ============================================================================
 
 @app.post("/api/search", response_model=SearchResponse)
-@limiter.limit("100/minute")
+@limiter.limit(settings.RATE_LIMIT_SEARCH)
 async def search(
     request: Request,
     search_request: SearchRequest,
@@ -490,7 +493,7 @@ async def search(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/chat", response_model=ChatResponse)
-@limiter.limit("50/minute")
+@limiter.limit(settings.RATE_LIMIT_CHAT)
 async def chat_endpoint(
     request: Request,
     chat_request: ChatRequest,
@@ -1147,7 +1150,9 @@ def run_ingestion_background(temp_path: str, title: str, author: str, firebase_u
         # Note: We rely on ingest_book's internal logic for file cleanup (Task 1.3 will fix that logic next)
 
 @app.post("/api/ingest")
+@limiter.limit(settings.RATE_LIMIT_INGEST)
 async def ingest_endpoint(
+    request: Request,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     title: str = Form(...),
@@ -1381,7 +1386,7 @@ async def migrate_bulk_endpoint(
 from fastapi import Body
 
 @app.post("/api/ai/enrich-book")
-@limiter.limit("10/minute")
+@limiter.limit(settings.RATE_LIMIT_AI_ENRICH)
 async def enrich_book_endpoint(
     request: Request,
     enrich_request: EnrichBookRequest,
@@ -1429,7 +1434,7 @@ async def enrich_batch_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/ai/generate-tags")
-@limiter.limit("10/minute")
+@limiter.limit(settings.RATE_LIMIT_AI_ENRICH)
 async def generate_tags_endpoint(
     request: Request,
     tags_request: GenerateTagsRequest,
@@ -1442,7 +1447,7 @@ async def generate_tags_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/ai/verify-cover")
-@limiter.limit("20/minute")
+@limiter.limit(settings.RATE_LIMIT_AI_COVER)
 async def verify_cover_endpoint(
     request: Request,
     cover_request: VerifyCoverRequest,
@@ -1455,7 +1460,7 @@ async def verify_cover_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/ai/analyze-highlights")
-@limiter.limit("5/minute")
+@limiter.limit(settings.RATE_LIMIT_AI_ANALYZE)
 async def analyze_highlights_endpoint(
     request: Request,
     highlights_request: AnalyzeHighlightsRequest,
@@ -1468,7 +1473,7 @@ async def analyze_highlights_endpoint(
          raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/ai/search-resources")
-@limiter.limit("10/minute")
+@limiter.limit(settings.RATE_LIMIT_AI_ENRICH)
 async def search_resources_endpoint(
     request: Request,
     query: str = Body(...), 

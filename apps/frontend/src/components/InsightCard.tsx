@@ -11,7 +11,6 @@ const TYPE_META: Record<InsightCardType['type'], { label: string; icon: React.El
     CONCEPT_OVERLAP: { label: 'Prestij', icon: Sparkles, tone: 'border-[#CC561E] bg-[#CC561E]/10 text-[#CC561E]' },
     FORGOTTEN: { label: 'Hatirlatma', icon: Bookmark, tone: 'border-amber-400 bg-amber-50 text-amber-700' },
     CATEGORY_STATS: { label: 'Istatistik', icon: Layers, tone: 'border-slate-200 bg-white text-slate-700' },
-    UNLABELED_CLUSTER: { label: 'Kume', icon: AlertCircle, tone: 'border-indigo-200 bg-indigo-50 text-indigo-700' },
 };
 
 export const InsightCard: React.FC<InsightCardProps> = ({ card, onAction }) => {

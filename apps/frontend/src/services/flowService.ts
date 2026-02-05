@@ -49,7 +49,7 @@ export interface FlowCard {
 
 export interface InsightCard {
     id: string;
-    type: 'CONCEPT_OVERLAP' | 'FORGOTTEN' | 'CATEGORY_STATS' | 'UNLABELED_CLUSTER';
+    type: 'CONCEPT_OVERLAP' | 'FORGOTTEN' | 'CATEGORY_STATS';
     title: string;
     body: string;
     meta?: Record<string, any>;

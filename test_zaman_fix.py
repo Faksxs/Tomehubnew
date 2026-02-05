@@ -14,7 +14,7 @@ import asyncio
 from dotenv import load_dotenv
 
 # Import after path setup
-from search_system.orchestrator import SearchOrchestrator
+from services.search_system.orchestrator import SearchOrchestrator
 from services.embedding_service import get_embedding
 from services.cache_service import MultiLayerCache
 from infrastructure.db_manager import DatabaseManager

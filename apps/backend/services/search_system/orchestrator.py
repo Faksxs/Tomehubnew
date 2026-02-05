@@ -44,6 +44,7 @@ class SearchOrchestrator:
         # We fetch a large pool to ensure good fusion, even on later pages
         internal_pool_limit = 1000 if intent in ['DIRECT', 'CITATION_SEEKING'] else 500
         
+        cache_key = None
         # Check cache first
         if self.cache:
             cache_key = generate_cache_key(
@@ -56,13 +57,19 @@ class SearchOrchestrator:
             )
             cache_key += f"_int:{intent}_off:{offset}"
             
-            cached_result = self.cache.get(cache_key)
-            if cached_result:
+            cached_payload = self.cache.get(cache_key)
+            if cached_payload:
                 # Cache stores just the list. For now, return None for log_id on cache hit 
                 # (or we could log cache hits too, but let's keep it simple for now)
                 logger.info(f"Cache hit for query: {query[:30]}...")
                 print(f"[ORCHESTRATOR] Cache HIT")
-                return cached_result, {"cached": True, "search_log_id": None}
+                if isinstance(cached_payload, dict) and "results" in cached_payload:
+                    cached_results = cached_payload.get("results") or []
+                    total_count = cached_payload.get("total_count", len(cached_results))
+                else:
+                    cached_results = cached_payload
+                    total_count = len(cached_results)
+                return cached_results, {"cached": True, "search_log_id": None, "total_count": total_count}
         
         # 0. Query Expansion (Phase 2) - PARALLELIZED with strategy execution
         # Start expansion in parallel with original query strategies
@@ -178,6 +185,43 @@ class SearchOrchestrator:
         # Pagination Slicing
         total_found = len(final_list)
         top_candidates = final_list[offset : offset + limit]
+
+        duration = time.time() - start_time
+
+        # Log search (best-effort)
+        search_log_id = None
+        try:
+            search_log_id = self._log_search(
+                firebase_uid,
+                query,
+                intent,
+                None,
+                top_candidates,
+                duration,
+                session_id=session_id
+            )
+        except Exception as e:
+            logger.error(f"Search log failed: {e}")
+
+        # Cache results (best-effort)
+        if self.cache and cache_key:
+            try:
+                self.cache.set(
+                    cache_key,
+                    {"results": top_candidates, "total_count": total_found},
+                    ttl=settings.CACHE_L1_TTL
+                )
+            except Exception as e:
+                logger.error(f"Search cache set failed: {e}")
+
+        metadata = {
+            "total_count": total_found,
+            "cached": False,
+            "search_log_id": search_log_id,
+            "duration_ms": int(duration * 1000)
+        }
+
+        return top_candidates, metadata
 
     # Helper for DB Logging
     def _log_search(self, uid, query, intent, rrf_scores, results, duration, session_id: Optional[int | str] = None):

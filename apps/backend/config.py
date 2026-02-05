@@ -69,6 +69,15 @@ class Settings:
         self.MEMORY_WARNING_THRESHOLD = float(os.getenv("MEMORY_WARNING_THRESHOLD", "75.0"))
         self.MEMORY_CRITICAL_THRESHOLD = float(os.getenv("MEMORY_CRITICAL_THRESHOLD", "85.0"))
 
+        # Rate Limiting (Task A3)
+        self.RATE_LIMIT_GLOBAL = os.getenv("RATE_LIMIT_GLOBAL", "1000/minute")
+        self.RATE_LIMIT_SEARCH = os.getenv("RATE_LIMIT_SEARCH", "100/minute")
+        self.RATE_LIMIT_CHAT = os.getenv("RATE_LIMIT_CHAT", "50/minute")
+        self.RATE_LIMIT_INGEST = os.getenv("RATE_LIMIT_INGEST", "10/minute")
+        self.RATE_LIMIT_AI_ENRICH = os.getenv("RATE_LIMIT_AI_ENRICH", "10/minute")
+        self.RATE_LIMIT_AI_COVER = os.getenv("RATE_LIMIT_AI_COVER", "20/minute")
+        self.RATE_LIMIT_AI_ANALYZE = os.getenv("RATE_LIMIT_AI_ANALYZE", "5/minute")
+
         # Chat / Memory Limits
         self.CHAT_CONTEXT_LIMIT = int(os.getenv("CHAT_CONTEXT_LIMIT", "5"))  # recent messages sent to AI
         self.CHAT_PROMPT_TURNS = int(os.getenv("CHAT_PROMPT_TURNS", "3"))    # turns injected into prompt

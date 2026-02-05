@@ -85,10 +85,7 @@ def get_flow_insights(firebase_uid: str, force_refresh: bool = False) -> Dict[st
     # Category stats (up to 2 cards)
     cards.extend(_build_category_stats(firebase_uid))
 
-    # Unlabeled cluster
-    unlabeled = _build_unlabeled_cluster(firebase_uid)
-    if unlabeled:
-        cards.append(unlabeled)
+    # Unlabeled cluster (temporarily disabled)
 
     # Trim to 10 max
     cards = cards[:10]

@@ -284,6 +284,17 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
             <div className="flow-layout">
                 {/* Left Category Column */}
                 <aside className="flow-left">
+                    {onClose && (
+                        <button
+                            onClick={onClose}
+                            className="flow-left__back group flex items-center gap-2 text-slate-500 hover:text-[#CC561E] transition-all duration-300"
+                        >
+                            <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
+                                <ChevronLeft size={16} />
+                            </div>
+                            <span className="text-xs font-bold uppercase tracking-wider">Back to Home</span>
+                        </button>
+                    )}
                     {(activeFilter === 'ALL' || activeFilter === 'BOOK') && (
                         <CategorySelector
                             activeCategory={activeCategory}
@@ -298,16 +309,6 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     <div className="flow-container__header">
                         <div className="flow-container__title-section">
                             <div className="flow-container__mobile-actions">
-                                <button
-                                    onClick={onClose}
-                                    className="group flex items-center gap-2 text-slate-500 hover:text-[#CC561E] transition-all duration-300"
-                                >
-                                    <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
-                                        <ChevronLeft size={16} />
-                                    </div>
-                                    <span className="text-xs font-bold uppercase tracking-wider">Back to Home</span>
-                                </button>
-
                                 {/* Mobile Controls Trigger */}
                                 <button
                                     onClick={() => setIsSidebarOpen(true)}
@@ -321,15 +322,6 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                             </div>
 
                             <div className="flow-badge">Knowledge Stream</div>
-
-                            <>
-                                <div className="flow-container__meta">
-                                    <span className="meta-dot"></span>
-                                    <span className="flow-container__subtitle">
-                                        {cards.length} thoughts explored
-                                    </span>
-                                </div>
-                            </>
                         </div>
                         {onClose && (
                             <button className="flow-container__close" onClick={onClose} title="Close Stream">
@@ -647,6 +639,10 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     position: sticky;
                     top: 24px;
                     align-self: flex-start;
+                }
+
+                .flow-left__back {
+                    margin-bottom: 16px;
                 }
 
                 .flow-card__content:not(.expanded)::after {
