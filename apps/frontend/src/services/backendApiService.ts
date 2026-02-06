@@ -5,7 +5,7 @@
 
 const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'http://localhost:5000'
-    : `https://${window.location.hostname.replace('.github.io', '.nip.io')}`; // Placeholder logic for production mapping
+    : 'https://api.tomehub.nl'; // ✅ Real Production Endpoint
 
 
 export interface SearchRequest {

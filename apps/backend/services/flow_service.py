@@ -24,6 +24,7 @@ from services.flow_session_service import (
 )
 from services.embedding_service import get_embedding, get_query_embedding
 from infrastructure.db_manager import DatabaseManager, safe_read_clob
+import oracledb  # For DatabaseError exception handling
 from config import settings
 from utils.text_utils import normalize_text
 
@@ -85,6 +86,33 @@ ALL_NOTES_SOURCE_TYPES = ("HIGHLIGHT", "INSIGHT", "NOTES")
 DEFAULT_ANCHOR_ID = "General Discovery"
 DEFAULT_TOPIC_LABEL = "Flux"
 INITIAL_BATCH_SIZE = 5
+
+
+def _is_numeric_session_id(session_id: str) -> bool:
+    """Check if session_id can be used in TOMEHUB_FLOW_SEEN queries (NUMBER column)."""
+    if session_id is None:
+        return False
+    return str(session_id).strip().isdigit()
+
+
+def _build_seen_exclusion_sql(session_id: str, params: dict, column_name: str = "id") -> tuple:
+    """
+    Build SQL exclusion clause for FLOW_SEEN table.
+    
+    Returns (sql_clause, updated_params) where sql_clause is either:
+    - The exclusion subquery if session_id is numeric
+    - Empty string if session_id is UUID (can't query FLOW_SEEN)
+    
+    This prevents ORA-01722 errors when UUID session_ids are used.
+    """
+    if not _is_numeric_session_id(session_id):
+        # UUID session_id - can't query NUMBER column, skip exclusion
+        return "", params
+    
+    # Numeric session_id - safe to add exclusion
+    sql_clause = f" AND {column_name} NOT IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE session_id = :p_sid) "
+    new_params = {**params, "p_sid": int(session_id)}
+    return sql_clause, new_params
 
 class FlowService:
     """
@@ -300,7 +328,7 @@ class FlowService:
                         JOIN TOMEHUB_CONTENT ct ON cc.content_id = ct.id
                         WHERE ct.firebase_uid = :p_uid
                         AND ct.id NOT IN (
-                            SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE session_id = :p_sid
+                            SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE TO_CHAR(session_id) = :p_sid
                         )
                         AND c.id NOT IN (
                             SELECT concept_id FROM TOMEHUB_CONCEPT_CHUNKS 
@@ -553,11 +581,16 @@ class FlowService:
                 with conn.cursor() as cursor:
                     if anchor_type == "note":
                         # Fetch the note's content and existing vector
+                        # Safety: Only use database ID if it's numeric
+                        if not anchor_id.isdigit():
+                            logger.warning(f"Skipping note anchor lookup for non-numeric ID: {anchor_id}")
+                            return None, None, anchor_id
+                        
                         cursor.execute("""
                             SELECT content_chunk, title, VEC_EMBEDDING, id
                             FROM TOMEHUB_CONTENT
                             WHERE id = :p_id AND firebase_uid = :p_uid
-                        """, {"p_id": anchor_id, "p_uid": firebase_uid})
+                        """, {"p_id": int(anchor_id), "p_uid": firebase_uid})
                         row = cursor.fetchone()
                         if row:
                             content = safe_read_clob(row[0])
@@ -713,7 +746,7 @@ class FlowService:
             WHERE firebase_uid = :p_uid
             AND VEC_EMBEDDING IS NOT NULL
             AND DBMS_LOB.GETLENGTH(content_chunk) > 12
-            AND id NOT IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE session_id = :p_sid)
+            AND id NOT IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE TO_CHAR(session_id) = :p_sid)
         """
         if r_type == 'BOOK':
              # Books = PDFs + Highlights
@@ -766,7 +799,7 @@ class FlowService:
             FROM TOMEHUB_CONTENT
             WHERE firebase_uid = :p_uid
             AND DBMS_LOB.GETLENGTH(content_chunk) > 12
-            AND id NOT IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE session_id = :p_sid)
+            AND id NOT IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE TO_CHAR(session_id) = :p_sid)
         """
         params = {"p_uid": uid, "p_sid": sid, "p_limit": limit}
         
@@ -797,7 +830,7 @@ class FlowService:
             FROM TOMEHUB_CONTENT
             WHERE firebase_uid = :p_uid
             AND DBMS_LOB.GETLENGTH(content_chunk) > 12
-            AND id NOT IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE session_id = :p_sid)
+            AND id NOT IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE TO_CHAR(session_id) = :p_sid)
         """
         params = {"p_uid": uid, "p_sid": sid, "p_limit": limit}
 
@@ -1080,7 +1113,7 @@ class FlowService:
                     sql += """
                         AND id NOT IN (
                             SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
-                            WHERE session_id = :p_sid
+                            WHERE TO_CHAR(session_id) = :p_sid
                         )
                         ORDER BY DBMS_RANDOM.VALUE
                         FETCH FIRST :p_limit ROWS ONLY
@@ -1120,15 +1153,20 @@ class FlowService:
         Zone 1: Fetch chunks from the same book, near the anchor's page.
         """
         # Safety check: Is the anchor ID a numeric database ID?
+        # UUIDs and topic strings should skip database lookups
         is_numeric_id = state.global_anchor_id and state.global_anchor_id.isdigit()
         
         anchor_row = None
         if is_numeric_id:
-            cursor.execute("""
-                SELECT title, page_number FROM TOMEHUB_CONTENT
-                WHERE id = :p_id AND firebase_uid = :p_uid
-            """, {"p_id": state.global_anchor_id, "p_uid": firebase_uid})
-            anchor_row = cursor.fetchone()
+            try:
+                cursor.execute("""
+                    SELECT title, page_number FROM TOMEHUB_CONTENT
+                    WHERE id = :p_id AND firebase_uid = :p_uid
+                """, {"p_id": int(state.global_anchor_id), "p_uid": firebase_uid})
+                anchor_row = cursor.fetchone()
+            except (ValueError, oracledb.DatabaseError) as e:
+                logger.warning(f"Failed to fetch anchor row for ID {state.global_anchor_id}: {e}")
+                anchor_row = None
         if not anchor_row:
             # Fallback: If anchor ID isn't found (e.g., Topic Anchor), use strict vector search
             if state.global_anchor_vector:
@@ -1148,7 +1186,7 @@ class FlowService:
                     AND VEC_EMBEDDING IS NOT NULL
                     AND id NOT IN (
                         SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
-                        WHERE session_id = :p_sid
+                        WHERE TO_CHAR(session_id) = :p_sid
                     )
                 """
                 # Apply filters
@@ -1205,7 +1243,7 @@ class FlowService:
         sql += """
             AND id NOT IN (
                 SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
-                WHERE session_id = :p_sid
+                WHERE TO_CHAR(session_id) = :p_sid
             )
         """
         sql, params = self._apply_resource_filter(sql, params, resource_type)
@@ -1243,10 +1281,14 @@ class FlowService:
         is_numeric_id = state.global_anchor_id and state.global_anchor_id.isdigit()
         
         if is_numeric_id:
-            cursor.execute("""
-                SELECT title FROM TOMEHUB_CONTENT
-                WHERE id = :p_id AND firebase_uid = :p_uid
-            """, {"p_id": state.global_anchor_id, "p_uid": firebase_uid})
+            try:
+                cursor.execute("""
+                    SELECT title FROM TOMEHUB_CONTENT
+                    WHERE id = :p_id AND firebase_uid = :p_uid
+                """, {"p_id": int(state.global_anchor_id), "p_uid": firebase_uid})
+            except (ValueError, oracledb.DatabaseError) as e:
+                logger.warning(f"Failed to fetch author for anchor ID {state.global_anchor_id}: {e}")
+                author = None
             
             anchor_row = cursor.fetchone()
             if anchor_row and " - " in anchor_row[0]:
@@ -1276,7 +1318,7 @@ class FlowService:
             sql += """
                 AND id NOT IN (
                     SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
-                    WHERE session_id = :p_sid
+                    WHERE TO_CHAR(session_id) = :p_sid
                 )
             """
 
@@ -1320,7 +1362,7 @@ class FlowService:
                 AND VEC_EMBEDDING IS NOT NULL
                 AND id NOT IN (
                     SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
-                    WHERE session_id = :p_sid
+                    WHERE TO_CHAR(session_id) = :p_sid
                 )
             """
             sql, params = self._apply_resource_filter(sql, params, resource_type)
@@ -1375,7 +1417,7 @@ class FlowService:
             AND VEC_EMBEDDING IS NOT NULL
             AND id NOT IN (
                 SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
-                WHERE session_id = :p_sid
+                WHERE TO_CHAR(session_id) = :p_sid
             )
         """
         sql, params = self._apply_resource_filter(sql, params, resource_type)
@@ -1492,7 +1534,7 @@ class FlowService:
                 AND VEC_EMBEDDING IS NOT NULL
                 AND id NOT IN (
                     SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
-                    WHERE session_id = :p_sid
+                    WHERE TO_CHAR(session_id) = :p_sid
                 )
             """
             sql, params = self._apply_resource_filter(sql, params, resource_type)
@@ -1671,11 +1713,26 @@ class FlowService:
             return None
         return int(chunk_str)
     
+    def _coerce_session_id(self, session_id: str) -> Optional[int]:
+        """Coerce session_id to int for DB operations; return None if invalid."""
+        if session_id is None:
+            return None
+        if isinstance(session_id, (int, np.integer)):
+            return int(session_id)
+        sid_str = str(session_id).strip()
+        if not sid_str.isdigit():
+            return None
+        return int(sid_str)
+    
     def _record_seen_chunk(self, firebase_uid: str, session_id: str, chunk_id: str):
         """Persist seen chunk to Database for cross-session global history and decay."""
         try:
             with DatabaseManager.get_write_connection() as conn:
                 with conn.cursor() as cursor:
+                    sid_int = self._coerce_session_id(session_id)
+                    if sid_int is None:
+                        logger.debug(f"Skipping seen record insert for non-numeric session_id: {session_id}")
+                        return
                     coerced_id = self._coerce_chunk_id(chunk_id)
                     if coerced_id is None:
                         logger.debug(f"Skipping non-numeric chunk_id for seen record: {chunk_id}")
@@ -1684,7 +1741,7 @@ class FlowService:
                     cursor.execute("""
                         INSERT INTO TOMEHUB_FLOW_SEEN (firebase_uid, session_id, chunk_id, seen_at)
                         VALUES (:p_uid, :p_sid, :p_cid, CURRENT_TIMESTAMP)
-                    """, {"p_uid": firebase_uid, "p_sid": session_id, "p_cid": coerced_id})
+                    """, {"p_uid": firebase_uid, "p_sid": sid_int, "p_cid": coerced_id})
                     conn.commit()
         except Exception as e:
             # Silently fail if DB not ready for tiered history yet

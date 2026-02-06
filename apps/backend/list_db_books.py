@@ -4,11 +4,10 @@ from dotenv import load_dotenv
 import sys
 from infrastructure.db_manager import DatabaseManager
 
-# Force UTF-8 encoding for stdout to handle special characters in book titles
+# Force UTF-8 encoding
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
-# Load env for local run
 load_dotenv()
 
 def list_books():
@@ -17,18 +16,16 @@ def list_books():
         DatabaseManager.init_pool()
         with DatabaseManager.get_connection() as conn:
             with conn.cursor() as cursor:
-                # Query distinct titles/authors
-                # Note: Schema might store 'Title - Author' in title column based on previous code
+                # Query from Master Table TOMEHUB_BOOKS
                 query = """
-                    SELECT title, source_type, book_id, COUNT(*) as chunk_count
-                    FROM TOMEHUB_CONTENT
-                    GROUP BY title, source_type, book_id
+                    SELECT title, 'BOOK' as source_type, id as book_id, total_chunks as chunk_count
+                    FROM TOMEHUB_BOOKS
                     ORDER BY title
                 """
                 cursor.execute(query)
                 rows = cursor.fetchall()
                 
-                print(f"\nFound {len(rows)} unique book(s) in database:\n")
+                print(f"\nFound {len(rows)} books in TOMEHUB_BOOKS (Master Table):\n")
                 print(f"{'TYPE':<10} | {'TITLE':<60} | {'BOOK_ID':<36} | {'CHUNKS'}")
                 print("-" * 60)
                 
@@ -39,7 +36,9 @@ def list_books():
     except Exception as e:
         print(f"Error: {e}")
     finally:
-        DatabaseManager.close_pool()
+        try:
+            DatabaseManager.close_pool()
+        except: pass
 
 if __name__ == "__main__":
     list_books()

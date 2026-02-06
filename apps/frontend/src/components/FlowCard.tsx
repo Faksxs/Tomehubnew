@@ -8,7 +8,7 @@ import { FlowCard as FlowCardType, FeedbackAction, sendFlowFeedback } from '../s
 
 interface FlowCardProps {
     card: FlowCardType;
-    sessionId: string;
+    sessionId: number;
     firebaseUid: string;
     onFeedback?: (action: FeedbackAction) => void;
 }

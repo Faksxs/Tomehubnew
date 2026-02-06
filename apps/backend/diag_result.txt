@@ -1,0 +1,10 @@
+=== Diagnostic: Schema Check ===
+
+[1] Checking TOMEHUB_BOOKS...
+YES: TOMEHUB_BOOKS table exists.
+     Row count: 87
+
+[2] Checking SESSION_ID types...
+  TOMEHUB_CHAT_SESSIONS.ID: NUMBER (Len: 22, Prec: None)
+  TOMEHUB_FLOW_SEEN.SESSION_ID: NUMBER (Len: 22, Prec: None)
+  TOMEHUB_SEARCH_LOGS.SESSION_ID: NUMBER (Len: 22, Prec: None)

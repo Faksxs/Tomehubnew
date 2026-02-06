@@ -9,10 +9,12 @@ admin.initializeApp();
 // Gemini API key secret
 const geminiApiKey = defineSecret("GEMINI_API_KEY");
 
-// Allowed origins for CORS
+// Allowed origins for CORS (including production domain)
 const ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "https://faksxs.github.io",
+    "https://tomehub.nl",
+    "https://www.tomehub.nl",
 ];
 
 // Rate limiting configuration

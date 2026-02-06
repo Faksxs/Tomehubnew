@@ -6,7 +6,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   return {
     root: '.',
-    base: '/Tomehubnew/',   // ✅ GitHub Pages deploy path
+    base: '/',   // ✅ Root domain support for tomehub.nl
     server: {
       port: 5173,
       host: '0.0.0.0',

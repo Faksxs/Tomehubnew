@@ -112,12 +112,13 @@ class Settings:
                     self.FIREBASE_READY = False
             else:
                 if self.ENVIRONMENT == "production":
+                    # STRICT ENFORCEMENT: Fail fast if credentials missing in Prod
                     raise ValueError(
-                        "CRITICAL: Firebase credentials not found. "
-                        "Set GOOGLE_APPLICATION_CREDENTIALS environment variable to path of service account JSON. "
-                        "Firebase Auth is required for production."
+                        "CRITICAL SECURITY: Firebase credentials missing in Production. "
+                        "Set GOOGLE_APPLICATION_CREDENTIALS. "
+                        "Dev workaround is disabled."
                     )
-                logger.warning("Firebase credentials not configured (OK for development)")
+                logger.warning("Firebase credentials not configured (OK for development only)")
                 self.FIREBASE_READY = False
         
         except ImportError:

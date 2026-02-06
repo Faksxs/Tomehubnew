@@ -36,7 +36,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
     onClose,
 }) => {
     // State
-    const [sessionId, setSessionId] = useState<string | null>(null);
+    const [sessionId, setSessionId] = useState<number | null>(null);
     const [cards, setCards] = useState<FlowCardType[]>([]);
     const [topicLabel, setTopicLabel] = useState(anchorLabel || 'Flux');
     const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -84,7 +84,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                 category: category || undefined
             });
 
-            setSessionId(response.session_id);
+            setSessionId(Number(response.session_id));
             setCards(response.initial_cards);
             setTopicLabel(response.topic_label);
             setPivotInfo(null); // Clear pivot info on new session start
@@ -111,7 +111,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
 
     // Load more cards
     const loadMore = useCallback(async () => {
-        if (!sessionId || isLoading || !hasMore) return;
+        if (sessionId === null || isLoading || !hasMore) return;
 
         setIsLoading(true);
 
@@ -148,7 +148,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
             return;
         }
 
-        if (sessionId) {
+        if (sessionId !== null) {
             try {
                 await adjustFlowHorizon(sessionId, newValue, firebaseUid);
             } catch (err) {
@@ -162,7 +162,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
             setFlowStarted(true);
             return;
         }
-        if (!sessionId) return;
+        if (sessionId === null) return;
 
         setIsLoading(true);
         setIsJumping(true);
@@ -217,7 +217,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
             return;
         }
 
-        if (sessionId) {
+        if (sessionId !== null) {
             setIsLoading(true);
             resetFlowAnchor(
                 sessionId,
@@ -354,7 +354,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                                     <FlowCard
                                         key={card.flow_id}
                                         card={card}
-                                        sessionId={sessionId || ''}
+                                        sessionId={sessionId ?? 0}
                                         firebaseUid={firebaseUid}
                                     />
                                 ))}
@@ -464,7 +464,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                             <div className="flow-sidebar__stats">
                                 <div className="stat-item">
                                     <span className="stat-label">Session ID</span>
-                                    <span className="stat-value">{sessionId?.split('-')[0]}...</span>
+                                    <span className="stat-value">{sessionId !== null ? sessionId.toString() : '—'}</span>
                                 </div>
                             </div>
                         </div>

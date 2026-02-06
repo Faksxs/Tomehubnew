@@ -317,6 +317,22 @@ def count_lemma_occurrences(
         return 0
 
     count = 0
+    
+    # 2. Check Cache
+    cache = get_cache()
+    if cache:
+        cache_key = generate_cache_key(
+            service="analytics_count",
+            query=term,
+            firebase_uid=firebase_uid,
+            book_id=book_id,
+            limit=1
+        )
+        cached_val = cache.get(cache_key)
+        if cached_val is not None:
+            # logger.debug(f"Cache hit for lemma count: {term} in {book_id}")
+            return int(cached_val)
+
     try:
         # Use existing distribution logic for accuracy (scan-based)
         # This ensures we count inflections correctly even if index is stale
@@ -343,6 +359,12 @@ def count_lemma_occurrences(
                     row = cursor.fetchone()
                     if row and row[0]:
                         count = int(row[0])
+        
+        # 3. Set Cache (TTL: 24h for books, 1h for others)
+        if cache:
+            # If standard book, long cache. If not, shorter.
+            ttl = 86400 if book_id and len(book_id) > 10 else 3600
+            cache.set(cache_key, count, ttl=ttl)
                         
     except Exception as e:
         print(f"[ERROR] count_lemma_occurrences failed: {e}")
@@ -493,6 +515,21 @@ def get_keyword_distribution(
     if not candidates:
         return []
 
+    # 2. Check Cache
+    cache = get_cache()
+    cache_key = None
+    if cache:
+        cache_key = generate_cache_key(
+            service="analytics_dist",
+            query=term,
+            firebase_uid=firebase_uid,
+            book_id=book_id,
+            limit=1000
+        )
+        cached_val = cache.get(cache_key)
+        if cached_val is not None:
+             return cached_val
+
     distribution = {}
 
     try:
@@ -549,6 +586,11 @@ def get_keyword_distribution(
     # Convert to sorted list
     result_list = [{"page_number": p, "count": c} for p, c in distribution.items()]
     result_list.sort(key=lambda x: x["page_number"])
+    
+    # 3. Set Cache
+    if cache and cache_key:
+        ttl = 86400 if book_id and len(book_id) > 10 else 3600
+        cache.set(cache_key, result_list, ttl=ttl)
     
     return result_list
 

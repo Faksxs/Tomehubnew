@@ -7,7 +7,7 @@ import { getAuth } from 'firebase/auth';
 
 const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'http://localhost:5000'
-    : `https://${window.location.hostname.replace('.github.io', '.nip.io')}`;
+    : 'https://api.tomehub.nl'; // ✅ Real Production Endpoint
 
 // ============================================================================
 // AUTH HELPER
@@ -64,14 +64,14 @@ export interface FlowStartRequest {
 }
 
 export interface FlowStartResponse {
-    session_id: string;
+    session_id: number;
     initial_cards: FlowCard[];
     topic_label: string;
 }
 
 export interface FlowNextRequest {
     firebase_uid: string;
-    session_id: string;
+    session_id: number;
     batch_size?: number;
 }
 
@@ -88,13 +88,13 @@ export interface FlowNextResponse {
 
 export interface FlowFeedbackRequest {
     firebase_uid: string;
-    session_id: string;
+    session_id: number;
     chunk_id: string;
     action: FeedbackAction;
 }
 
 export interface FlowSessionInfo {
-    session_id: string;
+    session_id: number;
     cards_shown: number;
     horizon_value: number;
     mode: FlowMode;
@@ -179,7 +179,7 @@ export async function sendFlowFeedback(request: FlowFeedbackRequest): Promise<{ 
 }
 
 export async function adjustFlowHorizon(
-    sessionId: string,
+    sessionId: number,
     horizonValue: number,
     firebaseUid: string
 ): Promise<{ success: boolean; new_horizon: number }> {
@@ -210,7 +210,7 @@ export async function adjustFlowHorizon(
  * Reset the session anchor (Change Topic)
  */
 export async function resetFlowAnchor(
-    sessionId: string,
+    sessionId: number,
     anchorType: string,
     anchorId: string,
     firebaseUid: string,
@@ -246,7 +246,7 @@ export async function resetFlowAnchor(
 /**
  * Get session info
  */
-export async function getFlowSessionInfo(sessionId: string): Promise<FlowSessionInfo> {
+export async function getFlowSessionInfo(sessionId: number): Promise<FlowSessionInfo> {
     const idToken = await getAuthToken();
 
     const response = await fetch(`${API_BASE_URL}/api/flow/session/${sessionId}`, {

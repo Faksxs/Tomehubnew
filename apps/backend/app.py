@@ -88,15 +88,9 @@ formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s %(messa
 logHandler.setFormatter(formatter)
 logger.addHandler(logHandler)
 
-# File Handler (Legacy support)
-fileHandler = logging.FileHandler('backend_error.log')
-fileHandler.setFormatter(formatter)
-logger.addHandler(fileHandler)
-
 # Remove default handlers to avoid duplicates
 logging.getLogger().handlers = []
 logging.getLogger().addHandler(logHandler)
-logging.getLogger().addHandler(fileHandler)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -241,11 +235,11 @@ app.add_middleware(
 
 # Include Layer 4 Flow Routes (MUST BE BEFORE Instrumentator)
 # We import explicitly to fail fast if there's an issue
-print("[FLOW] Importing flow_routes...")
+logger.info("Importing flow_routes...")
 # Include Flow Router (Layer 4)
 from routes import flow_routes
 app.include_router(flow_routes.router)
-print(f"[FLOW] Router registered with {len(flow_routes.router.routes)} routes")
+logger.info("Router registered", extra={"route_count": len(flow_routes.router.routes)})
 
 # Prometheus Instrumentation (must be AFTER all routers are added)
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -383,8 +377,10 @@ async def search(
             raise HTTPException(status_code=401, detail="Authentication required")
     
     # Log search start
-    print(f"\n[SEARCH] Started for UID: {firebase_uid}")
-    print(f"[SEARCH] Question: {search_request.question}")
+    logger.info(
+        "Search started", 
+        extra={"uid": firebase_uid, "question": search_request.question}
+    )
     
     try:
         import asyncio
@@ -449,7 +445,7 @@ async def search(
                 },
             }
             
-            print(f"[DEBUG] Contexts count: {len(metadata_dict['analytics']['contexts'])}")
+            logger.debug("Analytic search context count", extra={"count": len(metadata_dict['analytics']['contexts'])})
             
             return {
                 "answer": f"\"{term}\" kelimesi bu kitapta toplam {count} kez geçiyor.",
@@ -476,10 +472,16 @@ async def search(
         
         # Unpack result (answer, sources, metadata)
         answer, sources, metadata = result
-        print(f"[SEARCH] Finished. Answer length: {len(answer)}, Sources: {len(sources) if sources else 0}")
-        if sources:
-             print(f"[SEARCH] First source: {sources[0].get('title')} Score: {sources[0].get('similarity_score')}")
-        print(f"[SEARCH] Metadata: {metadata}")
+        logger.info(
+            "Search finished successfully",
+            extra={
+                "answer_length": len(answer),
+                "source_count": len(sources) if sources else 0,
+                "first_source_title": sources[0].get('title') if sources else None,
+                "first_source_score": sources[0].get('similarity_score') if sources else None,
+                "metadata": metadata,
+            }
+        )
         
         return {
             "answer": answer,
@@ -488,8 +490,7 @@ async def search(
             "metadata": metadata
         }
     except Exception as e:
-        print(f"[ERROR] Search failed: {e}")
-        traceback.print_exc()
+        logger.error("Search failed", extra={"error": str(e), "traceback": traceback.format_exc()})
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/chat", response_model=ChatResponse)
@@ -516,7 +517,10 @@ async def chat_endpoint(
             logger.error("SECURITY: Auth failed but ENVIRONMENT != development. Rejecting request.")
             raise HTTPException(status_code=401, detail="Authentication required")
     
-    print(f"\n[CHAT] Started for Session: {chat_request.session_id} UID: {firebase_uid}")
+    logger.info(
+        "Chat started",
+        extra={"session_id": chat_request.session_id, "uid": firebase_uid}
+    )
     
     try:
         import asyncio
@@ -751,8 +755,7 @@ async def chat_endpoint(
         }
         
     except Exception as e:
-        print(f"[ERROR] Chat failed: {e}")
-        traceback.print_exc()
+        logger.error("Chat failed", extra={"error": str(e), "traceback": traceback.format_exc()})
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/analytics/ingested-books")
@@ -838,7 +841,7 @@ async def get_concordance(
             "count": len(contexts)
         }
     except Exception as e:
-        print(f"[ERROR] Concordance endpoint failed: {e}")
+        logger.error("Concordance endpoint failed", extra={"error": str(e), "traceback": traceback.format_exc()})
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -873,7 +876,7 @@ async def get_distribution(
             "distribution": distribution
         }
     except Exception as e:
-        print(f"[ERROR] Distribution endpoint failed: {e}")
+        logger.error("Distribution endpoint failed", extra={"error": str(e), "traceback": traceback.format_exc()})
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -906,12 +909,12 @@ async def get_comparative_stats_endpoint(
             "comparison": stats
         }
     except Exception as e:
-        print(f"[ERROR] Comparison endpoint failed: {e}")
+        logger.error("Comparison endpoint failed", extra={"error": str(e), "traceback": traceback.format_exc()})
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/smart-search")
-def perform_search(
+async def perform_search(
     request: SearchRequest,
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
@@ -930,11 +933,18 @@ def perform_search(
     
     try:
         from services.smart_search_service import perform_search
-        results, metadata = perform_search(
-            request.question, 
-            firebase_uid, 
-            limit=request.limit, 
-            offset=request.offset
+        from functools import partial
+
+        loop = asyncio.get_running_loop()
+        results, metadata = await loop.run_in_executor(
+            None,
+            partial(
+                perform_search,
+                request.question, 
+                firebase_uid, 
+                limit=request.limit, 
+                offset=request.offset
+            )
         )
         
         return {
@@ -944,11 +954,11 @@ def perform_search(
             "metadata": metadata
         }
     except Exception as e:
-        print(f"[ERROR] Smart search failed: {e}")
+        logger.error("Smart search failed", extra={"error": str(e), "traceback": traceback.format_exc()})
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/feedback")
-def feedback(
+async def feedback(
     request: FeedbackRequest,
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
@@ -966,7 +976,10 @@ def feedback(
         # Pydantic model dump
         data = request.model_dump()
         data['firebase_uid'] = firebase_uid  # Ensure verified UID is used
-        success = submit_feedback(data)
+        
+        loop = asyncio.get_running_loop()
+        success = await loop.run_in_executor(None, submit_feedback, data)
+
         if success:
             return {"success": True}
         else:
@@ -999,14 +1012,14 @@ async def extract_metadata_endpoint(
         metadata = await get_pdf_metadata(temp_path)
         return metadata
     except Exception as e:
-        print(f"Error extracting metadata: {e}")
+        logger.error("Error extracting metadata", extra={"error": str(e), "traceback": traceback.format_exc()})
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
 @app.get("/api/reports/search")
-def search_reports(
+async def search_reports(
     topic: str,
     limit: int = 20,
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
@@ -1022,7 +1035,8 @@ def search_reports(
         else:
             raise HTTPException(status_code=401, detail="Authentication required")
 
-    results = search_reports_by_topic(uid, topic, limit)
+    loop = asyncio.get_running_loop()
+    results = await loop.run_in_executor(None, search_reports_by_topic, uid, topic, limit)
     return {"topic": topic, "count": len(results), "results": results}
 
 from services.report_service import generate_file_report, search_reports_by_topic
@@ -1163,7 +1177,7 @@ async def ingest_endpoint(
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
     # Log ingestion start
-    print(f"Ingesting file: {file.filename} Title: {title}")
+    logger.info("Ingesting file", extra={"filename": file.filename, "title": title})
     
     # Verify firebase_uid from JWT in production, fall back to form data in development
     if firebase_uid_from_jwt:
@@ -1217,7 +1231,7 @@ async def ingest_endpoint(
         }
              
     except Exception as e:
-        print(f"Ingestion setup error: {e}")
+        logger.error("Ingestion setup error", extra={"error": str(e), "traceback": traceback.format_exc()})
         # If we failed before adding task, cleanup immediately
         if os.path.exists(temp_path):
              os.remove(temp_path)
@@ -1430,7 +1444,7 @@ async def enrich_batch_endpoint(
             media_type="text/event-stream"
         )
     except Exception as e:
-        print(f"Streaming error: {e}")
+        logger.error("Streaming error", extra={"error": str(e), "traceback": traceback.format_exc()})
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/ai/generate-tags")
@@ -1490,5 +1504,5 @@ async def search_resources_endpoint(
 
 
 if __name__ == "__main__":
-    print("[INFO] Starting FastAPI Server on port 5000 (DIRECT)...")
+    logger.info("Starting FastAPI Server on port 5000 (DIRECT)...")
     uvicorn.run("app:app", host="0.0.0.0", port=5000, reload=True)

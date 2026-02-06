@@ -249,6 +249,29 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
     try:
         with DatabaseManager.get_write_connection() as connection:
             with connection.cursor() as cursor:
+                # Mirroring Logic: Ensure Book Exists in TOMEHUB_BOOKS
+                try:
+                   cursor.execute("""
+                       MERGE INTO TOMEHUB_BOOKS b
+                       USING (SELECT :p_id as id, :p_title as title, :p_author as author, :p_uid as uid FROM DUAL) src
+                       ON (b.ID = src.id)
+                       WHEN NOT MATCHED THEN
+                           INSERT (ID, TITLE, AUTHOR, FIREBASE_UID, CREATED_AT)
+                           VALUES (src.id, src.title, src.author, src.uid, CURRENT_TIMESTAMP)
+                       WHEN MATCHED THEN
+                           UPDATE SET LAST_UPDATED = CURRENT_TIMESTAMP
+                   """, {
+                       "p_id": book_id,
+                       "p_title": title,
+                       "p_author": author,
+                       "p_uid": firebase_uid
+                   })
+                   # Note: We commit this via standard flow later, or implicit if successful
+                   logger.info(f"Mirrored book '{title}' to TOMEHUB_BOOKS")
+                except Exception as e:
+                   # Mirroring is secondary, don't break ingestion if this fails but log strictly assuming constraints disabled
+                   logger.warning(f"Mirroring to TOMEHUB_BOOKS failed (Non-critical): {e}")
+
                 # A. ACQUIRE LOCK (The critical section starts here)
                 # Task 6.1: Deterministic Lock Name
                 # Normalize title/author to ensure "Book A" and "book a" map to the same lock

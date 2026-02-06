@@ -9,6 +9,7 @@ services:
       context: ../apps/backend
       dockerfile: Dockerfile
     container_name: tomehub-backend
+    hostname: tomehub.internal
     restart: unless-stopped
     ports:
       - "80:80"

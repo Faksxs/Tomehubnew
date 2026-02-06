@@ -237,6 +237,13 @@ class SearchOrchestrator:
                     weights_str = "vec:1.0, bm25:1.0, graph:1.0" 
                     id_var = cursor.var(int)
                     
+                    # Coerce session_id to int if possible to avoid ORA-01722 when UUID-like strings are passed
+                    sid_int = None
+                    try:
+                        sid_int = int(session_id) if session_id is not None and str(session_id).strip().isdigit() else None
+                    except Exception:
+                        sid_int = None
+                    
                     cursor.execute("""
                         INSERT INTO TOMEHUB_SEARCH_LOGS 
                         (FIREBASE_UID, SESSION_ID, QUERY_TEXT, INTENT, RRF_WEIGHTS, TOP_RESULT_ID, TOP_RESULT_SCORE, EXECUTION_TIME_MS)
@@ -244,7 +251,7 @@ class SearchOrchestrator:
                         RETURNING ID INTO :id_col
                     """, {
                         "p_uid": uid,
-                        "p_sid": str(session_id) if session_id is not None else None,
+                        "p_sid": sid_int,
                         "p_q": query,
                         "p_intent": intent,
                         "p_w": weights_str,
