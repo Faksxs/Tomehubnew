@@ -33,16 +33,16 @@ const SourceNavigator: React.FC<SourceNavigatorProps> = ({ activeFilter, onFilte
                         <button
                             key={cat.id}
                             onClick={() => onFilterChange(cat.id as SourceFilter)}
-                            className={`w-full flex items-center justify-between px-3 py-3 rounded-xl transition-all duration-300 group relative overflow-hidden ${isActive
-                                ? 'bg-[rgba(204,86,30,0.1)] dark:bg-[rgba(204,86,30,0.2)] border border-[#CC561E]/30 shadow-sm'
-                                : 'hover:bg-slate-50 dark:hover:bg-slate-800 border border-transparent'
+                            className={`w-full flex items-center justify-between px-3 py-3 rounded-xl transition-all duration-300 group relative overflow-hidden border bg-card text-card-foreground ${isActive
+                                ? 'border-[#CC561E] shadow-[0_0_12px_rgba(204,86,30,0.35)]'
+                                : 'border-white/10 hover:border-white/20 hover:bg-card/90'
                                 }`}
                         >
                             <div className="flex items-center gap-3 relative z-10">
-                                <div className={`p-2 rounded-lg transition-all duration-300 ${isActive ? 'text-[#CC561E] dark:text-[#f3a47b]' : 'text-slate-400 group-hover:text-slate-500 dark:text-slate-500'}`}>
+                                <div className={`p-2 rounded-lg transition-all duration-300 ${isActive ? 'text-[#CC561E]' : 'text-card-foreground/70 group-hover:text-card-foreground'}`}>
                                     <Icon size={20} />
                                 </div>
-                                <span className={`text-sm font-medium tracking-tight ${isActive ? 'text-[#CC561E] dark:text-[#f3a47b]' : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:group-hover:text-slate-200'}`}>
+                                <span className={`text-sm font-medium tracking-tight ${isActive ? 'text-card-foreground' : 'text-card-foreground/80 group-hover:text-card-foreground'}`}>
                                     {cat.label}
                                 </span>
                             </div>

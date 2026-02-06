@@ -86,20 +86,20 @@ export const ExportBooks: React.FC<ExportBooksProps> = ({ books }) => {
                         Download your entire library as a JSON file.
                     </p>
                 </div>
-                <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-lg">
+                <div className="p-3 bg-[#262D40]/5 dark:bg-[#262D40]/20 text-[#262D40] dark:text-[#262D40]/82 rounded-lg">
                     <FileJson size={24} />
                 </div>
             </div>
 
             {error && (
-                <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded-lg flex items-center gap-2 border border-red-100 dark:border-red-900/30">
+                <div className="mb-4 p-4 bg-[#262D40]/5 dark:bg-[#262D40]/20 text-[#262D40] dark:text-[#262D40]/82 rounded-lg flex items-center gap-2 border border-[#262D40]/8 dark:border-[#262D40]/30">
                     <AlertCircle size={20} />
                     {error}
                 </div>
             )}
 
             {completed && (
-                <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-lg flex items-center gap-2 border border-green-100 dark:border-green-900/30">
+                <div className="mb-4 p-4 bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400 rounded-lg flex items-center gap-2 border border-orange-100 dark:border-orange-900/30">
                     <Check size={20} />
                     Successfully exported {books.length} items!
                 </div>
@@ -108,7 +108,7 @@ export const ExportBooks: React.FC<ExportBooksProps> = ({ books }) => {
             <button
                 onClick={handleExport}
                 disabled={exporting || books.length === 0}
-                className="w-full py-3 px-4 rounded-lg font-medium flex items-center justify-center gap-2 transition-colors bg-emerald-600 dark:bg-emerald-500 hover:bg-emerald-700 dark:hover:bg-emerald-600 text-white shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-3 px-4 rounded-lg font-medium flex items-center justify-center gap-2 transition-colors bg-[#CC561E] dark:bg-[#CC561E] hover:bg-[#b34b1a] text-white shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
                 <Download size={20} />
                 {books.length === 0 ? 'No Items to Export' : `Export ${books.length} Items`}

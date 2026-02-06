@@ -501,7 +501,7 @@ async def chat_endpoint(
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
     """
-    Stateful Chat Endpoint (Memory Layer).
+    Stateful Chat Endpoint (LagosChat - Layer 3).
     Orchestrates session, history, and RAG search.
     """
     # Determine authoritative UID (JWT or request body in dev mode)
@@ -911,12 +911,12 @@ async def get_comparative_stats_endpoint(
 
 
 @app.post("/api/smart-search")
-def smart_search(
+def perform_search(
     request: SearchRequest,
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
     """
-    Pure weighted search (Layer 2).
+    Pure weighted search (Search - Layer 2).
     """
     # Determine authoritative UID
     if firebase_uid_from_jwt:
@@ -929,8 +929,8 @@ def smart_search(
             raise HTTPException(status_code=401, detail="Authentication required")
     
     try:
-        from services.smart_search_service import perform_smart_search
-        results, metadata = perform_smart_search(
+        from services.smart_search_service import perform_search
+        results, metadata = perform_search(
             request.question, 
             firebase_uid, 
             limit=request.limit, 

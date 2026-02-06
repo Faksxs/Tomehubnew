@@ -88,7 +88,7 @@ export const ConcordanceView: React.FC<ConcordanceViewProps> = ({
             </div>
 
             {/* Info Alert */}
-            <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 m-4 rounded-lg border border-indigo-100 dark:border-indigo-800 flex gap-3 text-xs text-indigo-700 dark:text-indigo-300">
+            <div className="p-3 bg-[#262D40]/5 dark:bg-[#262D40]/20 m-4 rounded-lg border border-[#262D40]/8 dark:border-[#262D40]/70 flex gap-3 text-xs text-[#262D40] dark:text-[#262D40]/78">
                 <Info size={16} className="shrink-0 mt-0.5" />
                 <p>
                     Bu liste, kelimenin kitaptaki farklı formlarını (çekim ekleri, kök formları)
@@ -106,7 +106,7 @@ export const ConcordanceView: React.FC<ConcordanceViewProps> = ({
                 {contexts.map((ctx, idx) => (
                     <div key={idx} className="group relative">
                         <div className="flex justify-between items-start mb-1 text-[10px] items-center">
-                            <span className="font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/40 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                            <span className="font-semibold text-[#262D40] dark:text-[#262D40]/82 bg-[#262D40]/5 dark:bg-[#262D40]/40 px-1.5 py-0.5 rounded uppercase tracking-wider">
                                 Sayfa {ctx.page_number}
                             </span>
                             <button className="text-slate-300 group-hover:text-slate-500 dark:text-slate-700 dark:group-hover:text-slate-400 flex items-center gap-1 transition-colors">
@@ -115,7 +115,7 @@ export const ConcordanceView: React.FC<ConcordanceViewProps> = ({
                             </button>
                         </div>
 
-                        <div className="text-sm md:text-base text-slate-700 dark:text-slate-300 leading-relaxed font-lora border-l-2 border-slate-100 dark:border-slate-800 pl-4 py-1 italic hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors">
+                        <div className="text-sm md:text-base text-slate-700 dark:text-slate-300 leading-relaxed font-lora border-l-2 border-slate-100 dark:border-slate-800 pl-4 py-1 italic hover:border-[#262D40]/18 dark:hover:border-[#262D40]/55 transition-colors">
                             {highlightKeyword(ctx.snippet, ctx.keyword_found)}
                         </div>
                     </div>
@@ -125,7 +125,7 @@ export const ConcordanceView: React.FC<ConcordanceViewProps> = ({
                     <button
                         onClick={loadMore}
                         disabled={isLoadingMore}
-                        className="w-full py-4 text-sm font-medium text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-xl hover:border-indigo-200 dark:hover:border-indigo-800 hover:bg-slate-50 dark:hover:bg-slate-900 transition-all flex items-center justify-center gap-2"
+                        className="w-full py-4 text-sm font-medium text-slate-500 hover:text-[#262D40] dark:hover:text-[#262D40]/82 border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-xl hover:border-[#262D40]/12 dark:hover:border-[#262D40]/70 hover:bg-slate-50 dark:hover:bg-slate-900 transition-all flex items-center justify-center gap-2"
                     >
                         {isLoadingMore ? (
                             <>

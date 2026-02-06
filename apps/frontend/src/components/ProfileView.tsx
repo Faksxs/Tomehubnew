@@ -59,7 +59,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden mb-8">
                 <div className="p-6 md:p-8 border-b border-slate-100 dark:border-slate-800 flex flex-col md:flex-row items-start md:items-center gap-6">
-                    <div className="w-20 h-20 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                    <div className="w-20 h-20 bg-[#262D40]/8 dark:bg-[#262D40]/30 rounded-full flex items-center justify-center text-[#262D40] dark:text-[#262D40]/82">
                         <User size={40} />
                     </div>
                     <div>
@@ -80,10 +80,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
 
             {/* AI Library Assistant Section */}
-            <div className="bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-xl border border-indigo-100 dark:border-indigo-800 shadow-sm overflow-hidden mb-8">
+            <div className="bg-gradient-to-br from-[#262D40]/5 to-purple-50 dark:from-[#262D40]/20 dark:to-purple-900/20 rounded-xl border border-[#262D40]/8 dark:border-[#262D40]/70 shadow-sm overflow-hidden mb-8">
                 <div className="p-6 md:p-8">
                     <div className="flex items-start gap-4 mb-6">
-                        <div className="p-3 bg-white dark:bg-slate-900 rounded-lg shadow-sm text-indigo-600 dark:text-indigo-400">
+                        <div className="p-3 bg-white dark:bg-slate-900 rounded-lg shadow-sm text-[#262D40] dark:text-[#262D40]/82">
                             <Sparkles size={24} />
                         </div>
                         <div>
@@ -94,7 +94,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         </div>
                     </div>
 
-                    <div className="bg-white/60 dark:bg-slate-900/60 rounded-xl p-6 border border-indigo-100/50 dark:border-indigo-800/50">
+                    <div className="bg-white/60 dark:bg-slate-900/60 rounded-xl p-6 border border-[#262D40]/50 dark:border-[#262D40]/50">
                         <div className="flex flex-col md:flex-row items-center justify-between gap-6">
                             <div>
                                 <h3 className="font-medium text-slate-900 dark:text-white mb-1">
@@ -102,9 +102,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                                 </h3>
                                 <p className="text-slate-500 dark:text-slate-400 text-sm">
                                     {isEnriching ? (
-                                        <span>Processing: <span className="font-medium text-indigo-600 dark:text-indigo-400">{enrichmentStats.currentBookTitle || 'Initializing...'}</span></span>
+                                        <span>Processing: <span className="font-medium text-[#262D40] dark:text-[#262D40]/82">{enrichmentStats.currentBookTitle || 'Initializing...'}</span></span>
                                     ) : (
-                                        <span><span className="font-bold text-indigo-600 dark:text-indigo-400">{booksNeedingEnrichment}</span> books are missing details.</span>
+                                        <span><span className="font-bold text-[#262D40] dark:text-[#262D40]/82">{booksNeedingEnrichment}</span> books are missing details.</span>
                                     )}
                                 </p>
                             </div>
@@ -121,7 +121,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                                 <button
                                     onClick={() => onStartEnrichment(books)}
                                     disabled={booksNeedingEnrichment === 0}
-                                    className="flex items-center gap-2 px-6 py-3 bg-indigo-600 dark:bg-indigo-500 text-white hover:bg-indigo-700 dark:hover:bg-indigo-600 rounded-lg font-medium transition-colors shadow-md shadow-indigo-200 dark:shadow-none disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="flex items-center gap-2 px-6 py-3 bg-[#262D40]/40 dark:bg-[#262D40]/30 text-white hover:bg-[#262D40]/55 dark:hover:bg-[#262D40]/40 rounded-lg font-medium transition-colors shadow-md shadow-[#262D40]/12 dark:shadow-none disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     <Play size={18} fill="currentColor" />
                                     Auto-fill Missing Info
@@ -138,7 +138,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                                 </div>
                                 <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                                     <div
-                                        className="h-full bg-indigo-500 dark:bg-indigo-400 transition-all duration-500 ease-out"
+                                        className="h-full bg-[#262D40]/30 dark:bg-[#262D40]/24 transition-all duration-500 ease-out"
                                         style={{ width: `${(enrichmentStats.processed / enrichmentStats.total) * 100}%` }}
                                     />
                                 </div>

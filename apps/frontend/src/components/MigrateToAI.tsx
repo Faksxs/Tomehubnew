@@ -108,10 +108,10 @@ export const MigrateToAI: React.FC<MigrateToAIProps> = ({ books, userId }) => {
     };
 
     return (
-        <div className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 rounded-xl border border-emerald-100 dark:border-emerald-800 shadow-sm overflow-hidden mb-8">
+        <div className="bg-gradient-to-br from-[#262D40]/5 to-slate-50 dark:from-[#262D40]/20 dark:to-slate-900/20 rounded-xl border border-[#262D40]/8 dark:border-[#262D40]/70 shadow-sm overflow-hidden mb-8">
             <div className="p-6 md:p-8">
                 <div className="flex items-start gap-4 mb-6">
-                    <div className="p-3 bg-white dark:bg-slate-900 rounded-lg shadow-sm text-emerald-600 dark:text-emerald-400">
+                    <div className="p-3 bg-white dark:bg-slate-900 rounded-lg shadow-sm text-[#262D40] dark:text-[#262D40]/82">
                         <Database size={24} />
                     </div>
                     <div>
@@ -122,7 +122,7 @@ export const MigrateToAI: React.FC<MigrateToAIProps> = ({ books, userId }) => {
                     </div>
                 </div>
 
-                <div className="bg-white/60 dark:bg-slate-900/60 rounded-xl p-6 border border-emerald-100/50 dark:border-emerald-800/50">
+                <div className="bg-white/60 dark:bg-slate-900/60 rounded-xl p-6 border border-[#262D40]/50 dark:border-[#262D40]/50">
                     <div className="flex flex-col md:flex-row items-center justify-between gap-6">
                         <div>
                             <h3 className="font-medium text-slate-900 dark:text-white mb-1">
@@ -130,9 +130,9 @@ export const MigrateToAI: React.FC<MigrateToAIProps> = ({ books, userId }) => {
                             </h3>
                             <p className="text-slate-500 dark:text-slate-400 text-sm">
                                 {finished ? (
-                                    <span className="text-emerald-600 font-medium">Migration Complete! {stats.success} items synced.</span>
+                                    <span className="text-[#262D40] font-medium">Migration Complete! {stats.success} items synced.</span>
                                 ) : isMigrating ? (
-                                    <span>Syncing: <span className="font-medium text-emerald-600 dark:text-emerald-400">{currentTitle}</span></span>
+                                    <span>Syncing: <span className="font-medium text-[#262D40] dark:text-[#262D40]/82">{currentTitle}</span></span>
                                 ) : (
                                     <span>Sync {books.length} items to Oracle AI Vector Database.</span>
                                 )}
@@ -142,7 +142,7 @@ export const MigrateToAI: React.FC<MigrateToAIProps> = ({ books, userId }) => {
                         {!isMigrating && !finished && (
                             <button
                                 onClick={handleMigrate}
-                                className="flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg font-medium transition-colors shadow-md shadow-emerald-200 dark:shadow-none"
+                                className="flex items-center gap-2 px-6 py-3 bg-[#CC561E] text-white hover:bg-[#b34b1a] rounded-lg font-medium transition-colors shadow-md shadow-[#CC561E]/20 dark:shadow-none"
                             >
                                 <Play size={18} fill="currentColor" />
                                 Start Migration
@@ -166,7 +166,7 @@ export const MigrateToAI: React.FC<MigrateToAIProps> = ({ books, userId }) => {
                             </div>
                             <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                                 <div
-                                    className="h-full bg-emerald-500 transition-all duration-300 ease-out"
+                                    className="h-full bg-orange-500 transition-all duration-300 ease-out"
                                     style={{ width: `${progress}%` }}
                                 />
                             </div>

@@ -34,7 +34,7 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack,
                         onClick={onBack}
                         className="group flex items-center gap-2 text-slate-500 hover:text-[#CC561E] transition-all duration-300"
                     >
-                        <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
+                        <div className="p-1.5 rounded-lg bg-[#F3F5FA] dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
                             <ChevronLeft size={16} />
                         </div>
                         <span className="text-xs font-bold uppercase tracking-wider">Back to Home</span>
@@ -42,7 +42,7 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack,
                 </div>
 
                 <div className="flex justify-center mb-4">
-                    <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-lg inline-flex items-center">
+                    <div className="bg-[#F3F5FA] dark:bg-slate-800 p-1 rounded-lg inline-flex items-center">
                         <button
                             type="button"
                             onClick={() => setMode('STANDARD')}
@@ -119,7 +119,7 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack,
                     onClick={onBack}
                     className="group flex items-center gap-2 text-slate-500 hover:text-[#CC561E] transition-all duration-300"
                 >
-                    <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
+                    <div className="p-1.5 rounded-lg bg-[#F3F5FA] dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
                         <ChevronLeft size={16} />
                     </div>
                     <span className="text-xs font-bold uppercase tracking-wider">Back to Home</span>
@@ -128,7 +128,7 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack,
 
             <form onSubmit={handleSearch} className="space-y-4">
                 <div className="flex justify-center mb-4">
-                    <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-lg inline-flex items-center">
+                    <div className="bg-[#F3F5FA] dark:bg-slate-800 p-1 rounded-lg inline-flex items-center">
                         <button
                             type="button"
                             className="px-4 py-2 rounded-md text-sm font-medium transition-all bg-white dark:bg-slate-700 text-[#CC561E] shadow-sm"
@@ -152,7 +152,7 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack,
                         value={question}
                         onChange={(e) => setQuestion(e.target.value)}
                         placeholder="Ask a question about your books..."
-                        className="w-full pl-12 pr-4 py-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#CC561E] transition-all"
+                        className="w-full pl-12 pr-4 py-4 rounded-xl border border-[#E6EAF2] dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#CC561E] transition-all"
                         disabled={isSearching}
                     />
                 </div>
@@ -182,7 +182,7 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack,
 
             {result && (
                 <div className="space-y-6">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6 space-y-4">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl border border-[#E6EAF2] dark:border-slate-700 p-6 space-y-4">
                         <h2 className="text-xl font-semibold text-slate-900 dark:text-white flex items-center gap-2">
                             <BookOpen className="w-5 h-5 text-[#CC561E]" />
                             Answer
@@ -208,7 +208,7 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack,
                             })}
                         </div>
 
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 border-t border-slate-100 dark:border-slate-700">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 border-t border-[#E6EAF2] dark:border-slate-700">
                             <div className="flex items-center gap-4">
                                 <span className="text-sm text-slate-500 dark:text-slate-400">Was this answer helpful?</span>
                                 <div className="flex items-center gap-2">
@@ -243,14 +243,14 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack,
                     </div>
 
                     {result.sources && result.sources.length > 0 && (
-                        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6 space-y-4">
+                        <div className="bg-white dark:bg-slate-800 rounded-xl border border-[#E6EAF2] dark:border-slate-700 p-6 space-y-4">
                             <h3 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
                                 <ExternalLink className="w-5 h-5 text-[#CC561E]" />
                                 Sources ({result.sources.length})
                             </h3>
                             <div className="space-y-2">
                                 {result.sources.map((source, index) => (
-                                    <div key={index} className="flex items-start gap-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 transition-colors">
+                                    <div key={index} className="flex items-start gap-3 p-3 rounded-lg bg-[#F3F5FA] dark:bg-slate-700/50 hover:bg-[#F3F5FA] transition-colors">
                                         <div className="flex-shrink-0 w-6 h-6 rounded-full bg-[rgba(204,86,30,0.1)] text-[#CC561E] flex items-center justify-center text-sm font-medium">
                                             {index + 1}
                                         </div>

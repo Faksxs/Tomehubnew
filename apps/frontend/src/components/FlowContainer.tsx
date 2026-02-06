@@ -1,6 +1,7 @@
 /**
  * FlowContainer Component
- * Main container for the Knowledge Stream experience
+ * Renders a single card in the Flux stream
+ experience
  * Handles infinite scroll, session management, and card rendering
  */
 
@@ -9,17 +10,13 @@ import { ChevronLeft, SlidersHorizontal, Settings2, X, ChevronDown } from 'lucid
 import { FlowCard } from './FlowCard';
 import { HorizonSlider } from './HorizonSlider';
 import { CategorySelector } from './CategorySelector';
-import InsightCard from './InsightCard';
 import {
     FlowCard as FlowCardType,
-    FlowMode,
     startFlowSession,
     getNextFlowBatch,
     adjustFlowHorizon,
     resetFlowAnchor,
     PivotInfo,
-    InsightCard as InsightCardType,
-    getFlowInsights
 } from '../services/flowService';
 import SourceNavigator, { SourceFilter } from './SourceNavigator';
 
@@ -41,16 +38,13 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
     // State
     const [sessionId, setSessionId] = useState<string | null>(null);
     const [cards, setCards] = useState<FlowCardType[]>([]);
-    const [topicLabel, setTopicLabel] = useState(anchorLabel || 'Knowledge Stream');
+    const [topicLabel, setTopicLabel] = useState(anchorLabel || 'Flux');
     const [activeCategory, setActiveCategory] = useState<string | null>(null);
     const [horizon, setHorizon] = useState(0.25); // Start at Author zone
     const [isLoading, setIsLoading] = useState(false);
     const [hasMore, setHasMore] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [flowStarted, setFlowStarted] = useState(false);
-    const [insightCards, setInsightCards] = useState<InsightCardType[]>([]);
-    const [insightsLoading, setInsightsLoading] = useState(false);
-    const [insightsError, setInsightsError] = useState<string | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [pivotInfo, setPivotInfo] = useState<PivotInfo | null>(null);
     const [isJumping, setIsJumping] = useState(false);
@@ -61,25 +55,32 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
     const observerRef = useRef<IntersectionObserver | null>(null);
     const loadMoreRef = useRef<HTMLDivElement>(null);
 
+    const resolveResourceType = useCallback((filter: SourceFilter): string | undefined => {
+        if (filter === 'ALL') return 'ALL_NOTES';
+        return filter;
+    }, []);
+
     // Function to initialize or re-initialize the flow session
     const initializeFlow = useCallback(async (
         filter: SourceFilter,
         category: string | null = null,
         horizonValue: number = 0.25
     ) => {
+        if (!firebaseUid) return;
         setIsLoading(true);
         setError(null);
         setCards([]); // Clear cards when initializing new filter/anchor
         setHasMore(true); // Reset hasMore for new session
 
         try {
+            const resourceType = resolveResourceType(filter);
             const response = await startFlowSession({
                 firebase_uid: firebaseUid,
                 anchor_type: anchorType,
                 anchor_id: anchorId,
                 mode: 'FOCUS',
                 horizon_value: horizonValue,
-                resource_type: filter === 'ALL' ? undefined : filter,
+                resource_type: resourceType,
                 category: category || undefined
             });
 
@@ -92,33 +93,17 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
         } finally {
             setIsLoading(false);
         }
-    }, [firebaseUid, anchorType, anchorId]);
+    }, [firebaseUid, anchorType, anchorId, resolveResourceType]);
 
-    // Load insight cards on mount
+    // Auto-start session when user is ready
     useEffect(() => {
-        let active = true;
         if (!firebaseUid) return;
-        setInsightsLoading(true);
-        setInsightsError(null);
-        getFlowInsights({ firebase_uid: firebaseUid })
-            .then((res) => {
-                if (!active) return;
-                setInsightCards(res.cards || []);
-            })
-            .catch((err) => {
-                if (!active) return;
-                setInsightsError(err instanceof Error ? err.message : 'Failed to load insights');
-            })
-            .finally(() => {
-                if (!active) return;
-                setInsightsLoading(false);
-            });
-        return () => {
-            active = false;
-        };
-    }, [firebaseUid]);
+        if (!flowStarted) {
+            setFlowStarted(true);
+        }
+    }, [firebaseUid, flowStarted]);
 
-    // Start session only after user interaction
+    // Start session after auto-start or user interaction
     useEffect(() => {
         if (!flowStarted) return;
         initializeFlow(activeFilter, activeCategory, horizon);
@@ -191,7 +176,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                 'topic',
                 'General Discovery',
                 firebaseUid,
-                activeFilter === 'ALL' ? undefined : activeFilter,
+                resolveResourceType(activeFilter),
                 activeCategory || undefined
             );
 
@@ -239,7 +224,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                 'topic',
                 'General Discovery',
                 firebaseUid || '',
-                activeFilter === 'ALL' ? undefined : activeFilter,
+                resolveResourceType(activeFilter),
                 category || undefined
             ).then((resp) => {
                 setCards([]);
@@ -321,7 +306,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                                 </button>
                             </div>
 
-                            <div className="flow-badge">Knowledge Stream</div>
+                            <div className="flow-badge">Flux</div>
                         </div>
                         {onClose && (
                             <button className="flow-container__close" onClick={onClose} title="Close Stream">
@@ -349,37 +334,20 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     {/* Cards */}
                     <div className="flow-container__cards">
                         {!flowStarted ? (
-                            <>
-                                {insightsLoading && (
-                                    <div className="flow-container__loader">
-                                        <div className="spinner" />
-                                        Insight kartları hazırlanıyor...
-                                    </div>
-                                )}
-                                {insightsError && (
-                                    <div className="flow-container__error">
-                                        <p>⚠️ {insightsError}</p>
-                                    </div>
-                                )}
-                                {!insightsLoading && !insightsError && insightCards.length === 0 && (
-                                    <div className="flex flex-col items-center justify-center py-20 text-center px-4">
-                                        <div className="text-5xl mb-6 opacity-80">🔎</div>
-                                        <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">
-                                            Henüz keşif kartı üretilemedi
-                                        </h3>
-                                        <p className="text-slate-500 max-w-md mx-auto">
-                                            İçerik arttıkça bu bölüm otomatik dolacaktır.
-                                        </p>
-                                    </div>
-                                )}
-                                {insightCards.map((card) => (
-                                    <InsightCard
-                                        key={card.id}
-                                        card={card}
-                                        onAction={() => setFlowStarted(true)}
-                                    />
-                                ))}
-                            </>
+                            <div className="flex flex-col items-center justify-center py-20 text-center px-4">
+                                <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-3">
+                                    Flux başlatılmadı
+                                </h3>
+                                <p className="text-slate-500 max-w-md mx-auto mb-6">
+                                    Başlamak için bir filtre seçebilir veya aşağıdaki butona tıklayabilirsin.
+                                </p>
+                                <button
+                                    onClick={() => setFlowStarted(true)}
+                                    className="px-6 py-2.5 bg-[#CC561E] hover:bg-[#b04a1a] text-white font-medium rounded-lg transition-colors"
+                                >
+                                    Flux Başlat
+                                </button>
+                            </div>
                         ) : (
                             <>
                                 {cards.map((card) => (
@@ -426,7 +394,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                                     hasMore && (
                                         <button
                                             onClick={loadMore}
-                                            className="px-8 py-3 bg-white border border-slate-200 hover:border-[#CC561E]/50 text-slate-700 hover:text-[#CC561E] font-medium rounded-full shadow-sm hover:shadow-md transition-all duration-300 flex items-center gap-2 group"
+                                            className="px-8 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-[#CC561E]/50 text-slate-700 dark:text-slate-300 hover:text-[#CC561E] dark:hover:text-[#CC561E] font-medium rounded-full shadow-sm hover:shadow-md transition-all duration-300 flex items-center gap-2 group"
                                         >
                                             <span>Daha Fazla Göster</span>
                                             <ChevronDown className="w-4 h-4 group-hover:translate-y-0.5 transition-transform" />
@@ -627,6 +595,12 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     }
                 }
 
+                @media (min-width: 1025px) {
+                    .flow-container__mobile-actions {
+                        display: none;
+                    }
+                }
+
                 .flow-sidebar__sticky {
                     position: sticky;
                     top: 24px;
@@ -667,7 +641,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     gap: 12px;
                     width: 100%;
                     padding: 14px;
-                    background: linear-gradient(135deg, #CC561E 0%, #e66a2e 100%);
+                    background: #262D40;
                     border: none;
                     border-radius: 12px;
                     color: white;
@@ -675,13 +649,13 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     font-size: 14px;
                     cursor: pointer;
                     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-                    box-shadow: 0 4px 15px rgba(204, 86, 30, 0.25);
+                    box-shadow: 0 4px 15px rgba(38, 45, 64, 0.25);
                 }
 
                 .flow-sidebar__pivot-button:hover:not(:disabled) {
                     transform: translateY(-2px);
-                    box-shadow: 0 8px 25px rgba(204, 86, 30, 0.35);
-                    filter: brightness(1.05);
+                    box-shadow: 0 8px 25px rgba(38, 45, 64, 0.35);
+                    filter: brightness(1.08);
                 }
 
                 .flow-sidebar__pivot-button:disabled {
@@ -692,10 +666,9 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
 
                 .flow-sidebar__stats {
                     padding: 20px;
-                    background: rgba(255, 255, 255, 0.02);
-                    backdrop-filter: blur(8px);
+                    background: hsl(var(--card));
                     border-radius: 16px;
-                    border: 1px solid rgba(255, 255, 255, 0.05);
+                    border: 1px solid rgba(255, 255, 255, 0.08);
                 }
 
                 .stat-item {
@@ -705,18 +678,8 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     margin-bottom: 8px;
                 }
 
-                .stat-label { color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
-                .stat-value { color: #cbd5e1; font-family: 'JetBrains Mono', monospace; }
-
-                .flow-container__mobile-actions {
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    width: 100%;
-                    margin-bottom: 24px;
-                    background: transparent;
-                    z-index: 10;
-                }
+                .stat-label { color: rgba(255, 255, 255, 0.65); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+                .stat-value { color: rgba(255, 255, 255, 0.95); font-family: 'JetBrains Mono', monospace; }
 
                 .flow-container__header {
                     display: flex;

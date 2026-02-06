@@ -105,7 +105,7 @@ export const ImportBooks: React.FC = () => {
                         Upload a JSON file to add books to your library.
                     </p>
                 </div>
-                <div className="p-3 bg-indigo-50 text-indigo-600 rounded-lg">
+                <div className="p-3 bg-[#262D40]/5 text-[#262D40] rounded-lg">
                     <FileJson size={24} />
                 </div>
             </div>
@@ -132,7 +132,7 @@ export const ImportBooks: React.FC = () => {
                     </div>
                     <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
                         <div
-                            className="bg-indigo-600 h-2.5 rounded-full transition-all duration-300"
+                            className="bg-[#262D40]/40 h-2.5 rounded-full transition-all duration-300"
                             style={{ width: `${(progress / total) * 100}%` }}
                         ></div>
                     </div>
@@ -152,7 +152,7 @@ export const ImportBooks: React.FC = () => {
                     <button
                         onClick={triggerFileInput}
                         disabled={importing}
-                        className="w-full py-3 px-4 rounded-lg font-medium flex items-center justify-center gap-2 transition-colors bg-indigo-600 hover:bg-indigo-700 text-white shadow-md hover:shadow-lg"
+                        className="w-full py-3 px-4 rounded-lg font-medium flex items-center justify-center gap-2 transition-colors bg-[#262D40]/40 hover:bg-[#262D40]/55 text-white shadow-md hover:shadow-lg"
                     >
                         <Upload size={20} />
                         Select JSON File

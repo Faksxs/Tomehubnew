@@ -2,13 +2,13 @@
 """
 Layer 4: Flow Session Models
 ============================
-Pydantic models for the Knowledge Stream (Layer 4) API.
+Pydantic models for the Flux (Layer 4) API.
+
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional, List, Literal, Dict, Any
+from typing import Optional, List, Literal
 from enum import Enum
-
 
 class FlowMode(str, Enum):
     """Flow session modes (maps to Horizon Slider)."""
@@ -95,25 +95,3 @@ class FlowNextResponse(BaseModel):
     pivot_info: Optional[PivotInfo] = None
     session_state: Optional[dict] = None  # For UI debugging
 
-
-class InsightCard(BaseModel):
-    """A single insight card shown before the flow starts."""
-    id: str
-    type: Literal["CONCEPT_OVERLAP", "FORGOTTEN", "CATEGORY_STATS", "UNLABELED_CLUSTER"]
-    title: str
-    body: str
-    meta: Optional[Dict[str, Any]] = None
-    cta: Optional[Dict[str, Any]] = None
-
-
-class FlowInsightsRequest(BaseModel):
-    """Request to get insight cards."""
-    firebase_uid: str
-    force_refresh: bool = False
-
-
-class FlowInsightsResponse(BaseModel):
-    """Response for insight cards."""
-    cards: List[InsightCard]
-    generated_at: str
-    cache_hit: bool = False

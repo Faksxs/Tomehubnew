@@ -21,8 +21,8 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({ activeCatego
                 <button
                     onClick={() => onCategoryChange(null)}
                     className={`w-full text-left px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 border ${activeCategory === null
-                        ? 'bg-[#CC561E]/10 border-[#CC561E] text-[#CC561E] shadow-[0_0_12px_rgba(204,86,30,0.25)]'
-                        : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                        ? 'bg-card border-[#CC561E] text-card-foreground shadow-[0_0_12px_rgba(204,86,30,0.35)]'
+                        : 'bg-card border-white/10 text-card-foreground hover:border-white/20 hover:bg-card/90'
                         }`}
                 >
                     Tümü
@@ -32,8 +32,8 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({ activeCatego
                         key={cat}
                         onClick={() => onCategoryChange(cat)}
                         className={`w-full text-left px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 border ${activeCategory === cat
-                            ? 'bg-[#CC561E]/10 border-[#CC561E] text-[#CC561E] shadow-[0_0_12px_rgba(204,86,30,0.25)]'
-                            : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                            ? 'bg-card border-[#CC561E] text-card-foreground shadow-[0_0_12px_rgba(204,86,30,0.35)]'
+                            : 'bg-card border-white/10 text-card-foreground hover:border-white/20 hover:bg-card/90'
                             }`}
                     >
                         {cat}

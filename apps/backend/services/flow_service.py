@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Layer 4: Flow Service (The Knowledge Stream Engine)
+Layer 4: Flow Service (The Flux Engine)
 =====================================================
 Orchestrates the "Expanding Horizons" algorithm with Dual Anchor gravity.
+
 """
 
 import logging
@@ -80,87 +81,72 @@ SIMILARITY_THRESHOLDS = {
 
 # Resource type helper constants
 BOOK_SOURCE_TYPES = ("PDF", "EPUB", "PDF_CHUNK", "BOOK", "HIGHLIGHT", "INSIGHT", "NOTES")
-
-
-# ============================================================================
-# FLOW SERVICE CLASS
-# ============================================================================
+ALL_NOTES_SOURCE_TYPES = ("HIGHLIGHT", "INSIGHT", "NOTES")
+DEFAULT_ANCHOR_ID = "General Discovery"
+DEFAULT_TOPIC_LABEL = "Flux"
+INITIAL_BATCH_SIZE = 5
 
 class FlowService:
     """
     The Knowledge Stream Engine.
-    
+
     Responsibilities:
     - Start a new Flow session from an anchor (note, book, topic)
     - Generate candidates from multiple zones based on Horizon Slider
-    - Apply Dual Anchor gravity (Global + Local)
     - Filter using session state (dedup, negative feedback)
     - Orchestrate prefetching for smooth UX
     """
-    
     def __init__(self):
         self.session_manager: FlowSessionManager = get_flow_session_manager()
-    
-    # -------------------------------------------------------------------------
-    # PUBLIC API
-    # -------------------------------------------------------------------------
-    
-    def start_session(self, request: FlowStartRequest) -> FlowStartResponse:
-        """
-        Start a new Flow session.
-        
-        1. Resolve anchor to a vector
-        2. Create session state in Redis
-        3. Generate initial batch of cards
-        """
-        logger.info(f"Starting Flow session: anchor_type={request.anchor_type}, anchor_id={request.anchor_id}")
-        
-        # Step 1: Resolve anchor to vector
-        # Use the authenticated UID as the only source of content.
-        effective_uid = request.firebase_uid
 
-        anchor_vector, anchor_label, resolved_id = self._resolve_anchor(
-            request.anchor_type, request.anchor_id, effective_uid, request.resource_type, request.category
+    def start_session(self, request: FlowStartRequest | None = None, **kwargs) -> FlowStartResponse:
+        """
+        Start a new Flow session and return the initial batch.
+        Accepts either a FlowStartRequest or kwargs for legacy/debug callers.
+        """
+        if request is None:
+            # Backwards-compatibility: allow "horizon" alias
+            if "horizon" in kwargs and "horizon_value" not in kwargs:
+                kwargs["horizon_value"] = kwargs.pop("horizon")
+            request = FlowStartRequest(**kwargs)
+
+        anchor_type = request.anchor_type
+        anchor_id = request.anchor_id or DEFAULT_ANCHOR_ID
+
+        # Resolve anchor vector + label
+        anchor_vector, label, resolved_id = self._resolve_anchor(
+            anchor_type=anchor_type,
+            anchor_id=anchor_id,
+            firebase_uid=request.firebase_uid,
+            resource_type=request.resource_type,
+            category=request.category
         )
-        
-        if anchor_vector is None:
-            # Fallback: Generate embedding from anchor_id as text
-            logger.warning("Could not resolve anchor, using anchor_id as text query")
-            anchor_vector = get_query_embedding(request.anchor_id)
-            anchor_label = request.anchor_id[:50]
-        
-        # Convert to list if it's an array.array
-        if isinstance(anchor_vector, array.array):
-            anchor_vector = list(anchor_vector)
-        
-        # Step 2: Create session
+
+        resolved_anchor_id = resolved_id or anchor_id
+        topic_label = label or anchor_id or DEFAULT_TOPIC_LABEL
+
+        # Create session
         state = self.session_manager.create_session(
-            firebase_uid=effective_uid, # Store the UID for this session's future batches
-            anchor_id=resolved_id,      # Use the REAL ID (e.g., numeric ID from ver63)
+            firebase_uid=request.firebase_uid,
+            anchor_id=resolved_anchor_id,
             anchor_vector=anchor_vector,
             horizon_value=request.horizon_value,
             mode=request.mode,
             resource_type=request.resource_type,
             category=request.category
         )
-        
-        # Step 3: Generate initial cards
+
+        # Generate initial cards
         initial_cards = self._generate_batch(
             session_id=state.session_id,
-            firebase_uid=state.firebase_uid, # Use the UID from session state (may be mapped to ver63)
-            batch_size=5
+            firebase_uid=request.firebase_uid,
+            batch_size=INITIAL_BATCH_SIZE
         )
-        
-        # After initial card generation, if we successfully got cards,
-        # we can update the local anchor to the first card's ID if needed
-        # but the session state already has the global anchor.
-        
-        logger.info(f"[FLOW] Returning {len(initial_cards)} initial cards for session {state.session_id}")
-        
+
         return FlowStartResponse(
             session_id=state.session_id,
             initial_cards=initial_cards,
-            topic_label=anchor_label or "Knowledge Stream"
+            topic_label=topic_label
         )
     
     def reset_anchor(self, session_id: str, anchor_type: str, anchor_id: str, firebase_uid: str, resource_type: Optional[str] = None, category: Optional[str] = None) -> Tuple[str, Optional[PivotInfo]]:
@@ -473,6 +459,82 @@ class FlowService:
             params["p_cat_norm"] = norm
         return sql, params
 
+    def _select_low_engagement_note_anchor(
+        self,
+        firebase_uid: str,
+        category: Optional[str] = None
+    ) -> Tuple[Optional[List[float]], Optional[str], Optional[str]]:
+        """
+        Pick a low-engagement anchor from All Notes (highlights/insights).
+        Heuristics:
+        - Least seen in Flow (TOMEHUB_FLOW_SEEN)
+        - Least context produced (fewest concept links)
+        """
+        try:
+            with DatabaseManager.get_read_connection() as conn:
+                with conn.cursor() as cursor:
+                    params = {"p_uid": firebase_uid}
+                    sql = """
+                        SELECT
+                            t.id,
+                            t.title,
+                            t.content_chunk,
+                            t.vec_embedding,
+                            NVL(s.seen_count, 0) AS seen_count,
+                            NVL(c.ctx_count, 0) AS ctx_count
+                        FROM TOMEHUB_CONTENT t
+                        LEFT JOIN (
+                            SELECT chunk_id, COUNT(*) AS seen_count
+                            FROM TOMEHUB_FLOW_SEEN
+                            WHERE firebase_uid = :p_uid
+                            GROUP BY chunk_id
+                        ) s ON TO_CHAR(s.chunk_id) = TO_CHAR(t.id)
+                        LEFT JOIN (
+                            SELECT content_id, COUNT(*) AS ctx_count
+                            FROM TOMEHUB_CONCEPT_CHUNKS
+                            GROUP BY content_id
+                        ) c ON c.content_id = t.id
+                        WHERE LOWER(TRIM(t.firebase_uid)) = LOWER(TRIM(:p_uid))
+                        AND t.source_type IN ('HIGHLIGHT', 'INSIGHT', 'NOTES')
+                        AND DBMS_LOB.GETLENGTH(t.content_chunk) > 12
+                    """
+                    sql, params = self._apply_category_filter(sql, params, category)
+                    sql += """
+                        ORDER BY
+                            NVL(s.seen_count, 0) ASC,
+                            NVL(c.ctx_count, 0) ASC,
+                            t.id ASC
+                        FETCH FIRST 1 ROW ONLY
+                    """
+                    cursor.execute(sql, params)
+                    row = cursor.fetchone()
+                    if not row:
+                        return None, None, None
+
+                    content_id, title, content_chunk, vec_data, seen_count, ctx_count = row
+                    vec = self._to_list(vec_data)
+                    if vec is None:
+                        content = safe_read_clob(content_chunk)
+                        if content:
+                            try:
+                                vec = list(get_embedding(content[:2000]))
+                            except Exception:
+                                vec = None
+
+                    if not vec:
+                        return None, None, None
+
+                    label = title or "Düşük etkileşimli not"
+                    logger.info(
+                        f"[FLOW] Low-engagement anchor selected: id={content_id} "
+                        f"seen={seen_count} ctx={ctx_count}"
+                    )
+                    return vec, label, str(content_id)
+        except Exception as e:
+            logger.warning(f"Low-engagement anchor selection failed: {e}")
+
+        return None, None, None
+
     def _resolve_anchor(
         self, 
         anchor_type: str, 
@@ -529,11 +591,18 @@ class FlowService:
                             return vec, anchor_id, resolved_id
                             
                     elif anchor_type == "topic":
-                        # AUTO-BOOTSTRAP: If generic "General Discovery", pivot to most recent content
-                        # AUTO-BOOTSTRAP: If generic "General Discovery", pivot to most recent content
+                        # AUTO-BOOTSTRAP: If generic "General Discovery", start from low-engagement notes
                         if anchor_id == "General Discovery" or not anchor_id:
-                            logger.info(f"*** DEBUG: Auto-bootstrapping for UID: [{firebase_uid}] ***")
-                            logger.info(f"Auto-bootstrapping for UID: {firebase_uid}, Scope: {resource_type}")
+                            logger.info(f"*** DEBUG: Auto-bootstrapping (low-engagement notes) for UID: [{firebase_uid}] ***")
+                            vec, label, resolved_id = self._select_low_engagement_note_anchor(
+                                firebase_uid=firebase_uid,
+                                category=category
+                            )
+                            if vec:
+                                return vec, label, resolved_id
+
+                            # Fallback to random content if no suitable note anchor
+                            logger.info(f"Auto-bootstrapping fallback for UID: {firebase_uid}, Scope: {resource_type}")
                             
                             # Build dynamic bootstrap SQL
                             sql = """

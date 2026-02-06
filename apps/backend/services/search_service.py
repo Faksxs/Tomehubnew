@@ -45,7 +45,7 @@ from infrastructure.db_manager import DatabaseManager, safe_read_clob
 
 # Import Smart Search Service & Helpers
 from services.smart_search_service import (
-    perform_smart_search, 
+    perform_search, 
     create_turkish_fuzzy_pattern, 
     parse_and_clean_content,
     generate_query_variations,
@@ -567,7 +567,7 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         # Pass intent to guide filtering (Short/Long bias)
         # Returns (results, metadata)
         search_depth = 'deep' if mode == 'EXPLORER' else 'normal'
-        return perform_smart_search(effective_query, firebase_uid, intent=intent, book_id=context_book_id, search_depth=search_depth, resource_type=resource_type, limit=limit, offset=offset, session_id=session_id)
+        return perform_search(effective_query, firebase_uid, intent=intent, book_id=context_book_id, search_depth=search_depth, resource_type=resource_type, limit=limit, offset=offset, session_id=session_id)
         
     def run_graph_search():
         try:
@@ -636,7 +636,7 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
     if keywords:
         search_kw = " ".join(keywords[:2])
         if search_kw and search_kw != question:
-            kw_res, kw_meta = perform_smart_search(search_kw, firebase_uid, session_id=session_id)
+            kw_res, kw_meta = perform_search(search_kw, firebase_uid, session_id=session_id)
             if kw_res:
                 for c in kw_res:
                     key = f"{c.get('title','')}_{str(c.get('content_chunk',''))[:20]}"

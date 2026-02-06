@@ -12,6 +12,7 @@ import { BookDetail } from "./components/BookDetail";
 import { Sidebar } from "./components/Sidebar";
 import { ProfileView } from "./components/ProfileView";
 import SmartSearch from "./components/SmartSearch";
+import logo from './assets/logo_v5.png';
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import {
@@ -390,12 +391,25 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
 
   const handleNavigateToBooksWithCategory = useCallback((category: string) => {
     setActiveCategoryFilter(category);
+    setListStatusFilter('ALL');
     setActiveTab("BOOK");
     setView("list");
     setSelectedBookId(null);
     setCurrentPage(1);
     setListSearch('');
-    setListStatusFilter('ALL');
+    setListPublisherFilter('');
+    setOpenToHighlights(false);
+    setSelectedHighlightId(null);
+  }, []);
+
+  const handleNavigateToBooksWithStatus = useCallback((status: string) => {
+    setListStatusFilter(status);
+    setActiveCategoryFilter(null);
+    setActiveTab("BOOK");
+    setView("list");
+    setSelectedBookId(null);
+    setCurrentPage(1);
+    setListSearch('');
     setListPublisherFilter('');
     setOpenToHighlights(false);
     setSelectedHighlightId(null);
@@ -422,7 +436,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   }
 
   return (
-    <div className="flex h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden">
+    <div className="flex h-screen bg-[#F7F8FB] dark:bg-[#0b0e14] overflow-hidden">
       {/* Sidebar */}
       <Sidebar
         activeTab={activeTab}
@@ -432,7 +446,8 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
       />
 
       {/* Main Content Shell (Warm Gray + Noise) */}
-      <main className="flex-1 flex flex-col h-full w-full relative overflow-y-auto transition-all duration-300 bg-[#f8f5f2] dark:bg-[#0c0e12] noise-bg">
+      <main className="flex-1 flex flex-col h-full w-full relative overflow-y-auto transition-all duration-300 bg-[#F7F8FB] dark:bg-[#0b0e14] noise-bg
+">
         {activeTab === "PROFILE" ? (
           <ProfileView
             email={userEmail}
@@ -464,6 +479,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
             categoryFilter={activeCategoryFilter}
             onCategoryFilterChange={setActiveCategoryFilter}
             onCategoryNavigate={handleNavigateToBooksWithCategory}
+            onStatusNavigate={handleNavigateToBooksWithStatus}
             onSelectBook={(book) => {
               setSelectedBookId(book.id);
               setOpenToHighlights(false); // Default to info tab
@@ -558,16 +574,24 @@ const AppContent: React.FC = () => {
 
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
+      <div className="min-h-screen flex items-center justify-center bg-[#F7F8FB] dark:bg-[#0b0e14] transition-colors duration-300
+">
         <div className="bg-white dark:bg-slate-900 shadow-lg rounded-2xl px-8 py-10 flex flex-col items-center gap-4 border border-slate-100 dark:border-slate-800">
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white mb-2">TomeHub</h1>
+          <div className="flex flex-col items-center gap-6 mb-12">
+            <img
+              src={logo}
+              alt="TomeHub Icon"
+              className="h-[156px] w-auto object-contain brightness-110 drop-shadow-xl"
+            />
+            <h1 className="text-[39px] font-bold text-slate-900 dark:text-white tracking-tighter">TomeHub</h1>
+          </div>
           <p className="text-sm text-slate-600 dark:text-slate-400 text-center max-w-xs">
             Sign in with your Google account to access your library across all
             devices.
           </p>
           <button
             onClick={loginWithGoogle}
-            className="mt-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-medium shadow-md transition-colors"
+            className="mt-2 bg-[#262D40]/40 hover:bg-[#262D40]/55 text-white px-5 py-2 rounded-lg text-sm font-medium shadow-md transition-colors"
           >
             Continue with Google
           </button>

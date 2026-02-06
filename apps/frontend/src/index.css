@@ -4,12 +4,15 @@
 
 @layer base {
   :root {
-    --background: 30 20% 98%;
-    /* Very light warm gray */
+    --background: 225 35% 98%;
+    --background: 225 35% 98%;
+    /* Slate Prestige Background (#f8f9fb) */
     --foreground: 224 71.4% 4.1%;
 
-    --card: 30 20% 99%;
-    --card-foreground: 224 71.4% 4.1%;
+    --card: 218 25% 20%;
+    /* Slate Prestige Card v2 (Pastel/Soft #262D40) */
+    --card-foreground: 0 0% 100%;
+    /* Pure white text on slate cards */
 
     --popover: 30 20% 100%;
     --popover-foreground: 224 71.4% 4.1%;
@@ -29,8 +32,9 @@
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 20% 98%;
 
-    --border: 30 10% 90%;
-    --input: 30 10% 90%;
+    --border: 214.3 31.8% 88%;
+    /* Darker border for better definition (#e2e8f0) */
+    --input: 214.3 31.8% 88%;
     --ring: 19 80% 46%;
 
     --radius: 1rem;
@@ -38,10 +42,10 @@
   }
 
   .dark {
-    --background: 224 71.4% 4.1%;
+    --background: 223 27% 6%;
     --foreground: 210 20% 98%;
 
-    --card: 224 71.4% 4.1%;
+    --card: 223 27% 5%;
     --card-foreground: 210 20% 98%;
 
     --popover: 224 71.4% 4.1%;

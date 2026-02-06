@@ -2,7 +2,7 @@
 """
 Layer 4: Flow Session Service (Redis State Manager)
 ====================================================
-Manages the ephemeral state for Knowledge Stream sessions.
+Manages the ephemeral state for Flux sessions.
 Uses the existing L2Cache (Redis) infrastructure from cache_service.py.
 Fallbacks to in-memory dictionary if Redis is unavailable.
 """
@@ -68,7 +68,7 @@ class FlowSessionManager:
         resource_type: Optional[str] = None,
         category: Optional[str] = None
     ) -> FlowSessionState:
-        """Create a new Flow session."""
+        """Start a new Flux session."""
         session_id = str(uuid.uuid4())
         
         state = FlowSessionState(
@@ -140,7 +140,7 @@ class FlowSessionManager:
         state.local_anchor_id = anchor_id
         state.local_anchor_vector = anchor_vector
         
-        # For a responsible pivot, reset the centroid to the new anchor
+        # For a responsible pivot, reset the cenFastAPI routes for the Flux feature.
         if anchor_vector:
             state.session_centroid = anchor_vector
             

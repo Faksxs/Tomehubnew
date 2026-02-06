@@ -65,7 +65,7 @@ export const DistributionChart: React.FC<DistributionChartProps> = ({
                                 minHeight: '4px' // Ensure visibility for 1 count
                             }}
                         >
-                            <div className={`w-full h-full rounded-t-sm ${isHighDensity ? 'bg-indigo-500 dark:bg-indigo-400' : 'bg-indigo-300 dark:bg-indigo-600'
+                            <div className={`w-full h-full rounded-t-sm ${isHighDensity ? 'bg-[#262D40]/30 dark:bg-[#262D40]/24' : 'bg-[#262D40]/18 dark:bg-[#262D40]/40'
                                 }`} />
 
                             {/* Tooltip */}

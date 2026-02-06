@@ -170,8 +170,9 @@ def score_with_bm25(documents: list[str], query: str) -> list[float]:
 from services.search_system.orchestrator import SearchOrchestrator
 from services.search_system.search_utils import compute_rrf # Re-export for compatibility
 
-def perform_smart_search(query, firebase_uid, book_id=None, intent='SYNTHESIS', search_depth='normal', resource_type=None, limit=None, offset=0, session_id=None):
+def perform_search(query, firebase_uid, book_id=None, intent='SYNTHESIS', search_depth='normal', resource_type=None, limit=None, offset=0, session_id=None):
     """
+    Search - Layer 2
     Delegates to the new SearchOrchestrator (Phase 3 Architecture).
     search_depth: 'normal' (default, limit 50) or 'deep' (limit 100)
     """

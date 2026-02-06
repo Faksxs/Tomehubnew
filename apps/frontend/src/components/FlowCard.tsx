@@ -127,10 +127,8 @@ export const FlowCard: React.FC<FlowCardProps> = ({
 
             <style>{`
                 .flow-card {
-                    background: rgba(255, 255, 255, 0.03);
-                    backdrop-filter: blur(16px);
-                    -webkit-backdrop-filter: blur(16px);
-                    border: 1px solid rgba(255, 255, 255, 0.08);
+                    background: #ffffff;
+                    border: 1px solid #E6EAF2;
                     border-left: 3px solid var(--zone-color);
                     border-radius: 20px;
                     padding: 24px;
@@ -138,6 +136,11 @@ export const FlowCard: React.FC<FlowCardProps> = ({
                     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
                     position: relative;
                     overflow: hidden;
+                }
+                
+                .dark .flow-card {
+                    background: rgba(15, 23, 42, 0.5);
+                    border-color: rgba(255, 255, 255, 0.1);
                 }
 
                 .flow-card::before {
@@ -148,15 +151,21 @@ export const FlowCard: React.FC<FlowCardProps> = ({
                     width: 150px;
                     height: 150px;
                     background: radial-gradient(circle at top right, var(--zone-color), transparent 70%);
-                    opacity: 0.05;
+                    opacity: 0.04;
                     pointer-events: none;
                 }
 
                 .flow-card:hover {
-                    background: rgba(255, 255, 255, 0.05);
-                    border-color: rgba(255, 255, 255, 0.15);
+                    background: #ffffff;
+                    border-color: #DDE2ED;
                     transform: translateY(-2px);
-                    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+                    box-shadow: 0 12px 40px rgba(15, 23, 42, 0.08);
+                }
+
+                .dark .flow-card:hover {
+                    background: rgba(15, 23, 42, 0.7);
+                    border-color: rgba(204, 86, 30, 0.3);
+                    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
                 }
 
                 .flow-card__top-bar {
@@ -216,21 +225,32 @@ export const FlowCard: React.FC<FlowCardProps> = ({
                     align-items: center;
                     gap: 6px;
                     padding: 4px 12px;
-                    background: rgba(255, 255, 255, 0.05);
+                    background: #F3F5FA;
+                    border: 1px solid #E6EAF2;
                     border-radius: 100px;
                     font-size: 12px;
-                    color: #cbd5e1;
+                    color: #475569;
                     font-weight: 500;
                 }
 
-                .flow-card__content {
+                .dark .flow-card__author-pill {
+                    background: rgba(255, 255, 255, 0.05);
+                    border-color: rgba(255, 255, 255, 0.1);
                     color: #94a3b8;
+                }
+
+                .flow-card__content {
+                    color: #475569;
                     font-size: 15px;
                     line-height: 1.7;
                     max-height: 120px;
                     overflow: hidden;
                     position: relative;
-                    transition: max-height 0.5s ease;
+                    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+                }
+
+                .dark .flow-card__content {
+                    color: #94a3b8;
                 }
 
                 .flow-card__content:not(.expanded)::after {
@@ -240,17 +260,21 @@ export const FlowCard: React.FC<FlowCardProps> = ({
                     left: 0;
                     width: 100%;
                     height: 60px;
-                    background: linear-gradient(to bottom, transparent, rgba(15, 23, 42, 0.9));
+                    background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.95));
                     pointer-events: none;
+                }
+
+                .dark .flow-card__content:not(.expanded)::after {
+                    background: linear-gradient(to bottom, transparent, rgba(15, 23, 42, 0.9));
                 }
 
                 .flow-card__content.expanded {
                     max-height: 2000px;
-                    color: #334155;
+                    color: #111827;
                 }
 
                 .dark .flow-card__content.expanded {
-                    color: #e2e8f0;
+                    color: #f1f5f9;
                 }
 
                 .flow-card__footer-reason {
@@ -268,7 +292,11 @@ export const FlowCard: React.FC<FlowCardProps> = ({
                     align-items: center;
                     margin-top: 24px;
                     padding-top: 20px;
-                    border-top: 1px solid rgba(255, 255, 255, 0.05);
+                    border-top: 1px solid #E6EAF2;
+                }
+
+                .dark .flow-card__footer {
+                    border-top-color: rgba(255, 255, 255, 0.1);
                 }
 
                 .flow-card__feedback {
@@ -280,8 +308,8 @@ export const FlowCard: React.FC<FlowCardProps> = ({
                     width: 38px;
                     height: 38px;
                     border-radius: 10px;
-                    border: 1px solid rgba(255, 255, 255, 0.05);
-                    background: rgba(255, 255, 255, 0.02);
+                    border: 1px solid #E6EAF2;
+                    background: #ffffff;
                     display: flex;
                     align-items: center;
                     justify-content: center;
@@ -290,16 +318,28 @@ export const FlowCard: React.FC<FlowCardProps> = ({
                     color: #64748b;
                 }
 
-                .feedback-btn:hover:not(:disabled) {
-                    background: rgba(255, 255, 255, 0.08);
-                    border-color: rgba(255, 255, 255, 0.2);
-                    transform: translateY(-2px);
-                    color: #fff;
+                .dark .feedback-btn {
+                    background: rgba(255, 255, 255, 0.05);
+                    border-color: rgba(255, 255, 255, 0.1);
+                    color: #94a3b8;
                 }
 
-                .feedback-btn.active.like { background: rgba(34, 197, 94, 0.15); color: #4ade80; border-color: rgba(34, 197, 94, 0.3); }
-                .feedback-btn.active.dislike { background: rgba(239, 68, 68, 0.15); color: #f87171; border-color: rgba(239, 68, 68, 0.3); }
-                .feedback-btn.active.save { background: rgba(204, 86, 30, 0.15); color: #CC561E; border-color: rgba(204, 86, 30, 0.3); }
+                .feedback-btn:hover:not(:disabled) {
+                    background: #F3F5FA;
+                    border-color: #DDE2ED;
+                    transform: translateY(-2px);
+                    color: #1e293b;
+                }
+
+                .dark .feedback-btn:hover:not(:disabled) {
+                    background: rgba(255, 255, 255, 0.1);
+                    border-color: rgba(204, 86, 30, 0.4);
+                    color: #f1f5f9;
+                }
+
+                .feedback-btn.active.like { background: rgba(34, 197, 94, 0.1); color: #22c55e; border-color: rgba(34, 197, 94, 0.2); }
+                .feedback-btn.active.dislike { background: rgba(239, 68, 68, 0.1); color: #ef4444; border-color: rgba(239, 68, 68, 0.2); }
+                .feedback-btn.active.save { background: rgba(204, 86, 30, 0.1); color: #CC561E; border-color: rgba(204, 86, 30, 0.2); }
 
                 .expand-toggle {
                     background: transparent;

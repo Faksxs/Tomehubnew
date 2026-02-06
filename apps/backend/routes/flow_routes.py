@@ -2,7 +2,8 @@
 """
 Layer 4: Flow API Routes
 =========================
-FastAPI routes for the Knowledge Stream feature.
+FastAPI routes for the Flux feature.
+
 """
 
 import logging
@@ -13,18 +14,16 @@ from fastapi import APIRouter, HTTPException, Depends, Request, BackgroundTasks,
 from models.flow_models import (
     FlowStartRequest, FlowStartResponse,
     FlowNextRequest, FlowNextResponse,
-    FlowFeedbackRequest,
-    FlowInsightsRequest, FlowInsightsResponse
+    FlowFeedbackRequest
 )
 from services.flow_service import get_flow_service
-from services.flow_insights_service import get_flow_insights
 from services.flow_session_service import get_flow_session_manager
 from middleware.auth_middleware import verify_firebase_token
 
 logger = logging.getLogger("tomehub_api")
 
 # Create Router
-router = APIRouter(prefix="/api/flow", tags=["Knowledge Stream (Layer 4)"])
+router = APIRouter(prefix="/api/flow", tags=["Flux (Layer 4)"])
 
 
 # ============================================================================
@@ -39,7 +38,8 @@ async def flow_start(
     user_id: str = Depends(verify_firebase_token)
 ):
     """
-    Start a new Knowledge Stream session.
+    Start a new Flux session.
+
     """
     print(f"\n[FLOW-API] Incoming request: {flow_request}")
     print(f"[FLOW-API] Token-derived UID: {user_id}")
@@ -75,29 +75,6 @@ async def flow_start(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/insights", response_model=FlowInsightsResponse)
-async def flow_insights(
-    request: Request,
-    insight_request: FlowInsightsRequest,
-    user_id: str = Depends(verify_firebase_token)
-):
-    """
-    Get pre-flow insight cards (cached).
-    """
-    if user_id is None:
-        # Use request body UID for local development
-        effective_uid = insight_request.firebase_uid
-    else:
-        effective_uid = user_id
-
-    try:
-        payload = get_flow_insights(effective_uid, force_refresh=insight_request.force_refresh)
-        return payload
-    except Exception as e:
-        logger.error(f"[FLOW] Insights failed: {e}")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-
 
 @router.post("/next", response_model=FlowNextResponse)
 async def flow_next(
@@ -107,7 +84,7 @@ async def flow_next(
     user_id: str = Depends(verify_firebase_token)
 ):
     """
-    Get the next batch of cards in the Knowledge Stream.
+    Get the next batch of cards in the Flux.
     """
     # SECURITY NOTE: Handle bypassed token verification for local dev
     if user_id is None:

@@ -89,7 +89,7 @@ export const DocumentIngest: React.FC<DocumentIngestProps> = ({ userId, userEmai
             {/* Header */}
             <div className="text-center space-y-2">
                 <div className="flex items-center justify-center gap-2">
-                    <Upload className="w-8 h-8 text-indigo-600" />
+                    <Upload className="w-8 h-8 text-[#262D40]" />
                     <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
                         Ingest Document
                     </h1>
@@ -112,10 +112,10 @@ export const DocumentIngest: React.FC<DocumentIngestProps> = ({ userId, userEmai
                 <div
                     className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer
                 ${dragActive
-                            ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/10'
-                            : 'border-slate-300 dark:border-slate-600 hover:border-indigo-400 dark:hover:border-slate-500'
+                            ? 'border-[#262D40]/30 bg-[#262D40]/5 dark:bg-[#262D40]/10'
+                            : 'border-slate-300 dark:border-slate-600 hover:border-[#262D40]/24 dark:hover:border-slate-500'
                         }
-                ${selectedFile ? 'bg-indigo-50/50 dark:bg-slate-700/30' : ''}
+                ${selectedFile ? 'bg-[#262D40]/50 dark:bg-slate-700/30' : ''}
             `}
                     onDragEnter={handleDrag}
                     onDragLeave={handleDrag}
@@ -132,7 +132,7 @@ export const DocumentIngest: React.FC<DocumentIngestProps> = ({ userId, userEmai
                     />
 
                     {selectedFile ? (
-                        <div className="flex flex-col items-center gap-2 text-indigo-600 dark:text-indigo-400">
+                        <div className="flex flex-col items-center gap-2 text-[#262D40] dark:text-[#262D40]/82">
                             <FileText className="w-10 h-10" />
                             <span className="font-medium">{selectedFile.name}</span>
                             <span className="text-xs text-slate-500">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</span>
@@ -166,7 +166,7 @@ export const DocumentIngest: React.FC<DocumentIngestProps> = ({ userId, userEmai
                         value={title}
                         onChange={(e) => setTitle(e.target.value)}
                         placeholder="Book Title"
-                        className="w-full px-4 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        className="w-full px-4 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#262D40]/30 focus:border-transparent"
                         disabled={isIngesting}
                     />
                 </div>
@@ -181,7 +181,7 @@ export const DocumentIngest: React.FC<DocumentIngestProps> = ({ userId, userEmai
                         value={author}
                         onChange={(e) => setAuthor(e.target.value)}
                         placeholder="Author Name"
-                        className="w-full px-4 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        className="w-full px-4 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#262D40]/30 focus:border-transparent"
                         disabled={isIngesting}
                     />
                 </div>
@@ -190,7 +190,7 @@ export const DocumentIngest: React.FC<DocumentIngestProps> = ({ userId, userEmai
                 <button
                     type="submit"
                     disabled={isIngesting || !selectedFile || !title.trim() || !author.trim()}
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white font-medium py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2"
+                    className="w-full bg-[#262D40]/40 hover:bg-[#262D40]/55 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white font-medium py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2"
                 >
                     {isIngesting ? (
                         <>

@@ -38,7 +38,7 @@ export const HorizonSlider: React.FC<HorizonSliderProps> = ({
             <div className="horizon-slider__header">
                 <div className="flex flex-col">
                     <span className="horizon-slider__title">Epistemic Horizon</span>
-                    <span className="text-[10px] text-slate-500 font-medium tracking-tight">Search Breadth Control</span>
+                    <span className="text-[10px] text-card-foreground/70 font-medium tracking-tight">Search Breadth Control</span>
                 </div>
                 <div className="horizon-slider__value-badge">
                     {Math.round(value * 100)}%
@@ -87,9 +87,8 @@ export const HorizonSlider: React.FC<HorizonSliderProps> = ({
 
             <style>{`
                 .horizon-slider {
-                    background: rgba(255, 255, 255, 0.02);
-                    backdrop-filter: blur(12px);
-                    border: 1px solid rgba(255, 255, 255, 0.05);
+                    background: hsl(var(--card));
+                    border: 1px solid rgba(255, 255, 255, 0.08);
                     border-radius: 24px;
                     padding: 24px;
                     margin-bottom: 8px;
@@ -105,13 +104,9 @@ export const HorizonSlider: React.FC<HorizonSliderProps> = ({
                 .horizon-slider__title {
                     font-size: 14px;
                     font-weight: 700;
-                    color: #1e293b;
+                    color: hsl(var(--card-foreground));
                     letter-spacing: -0.01em;
                     font-family: 'Outfit', sans-serif;
-                }
-
-                .dark .horizon-slider__title {
-                    color: #f1f5f9;
                 }
 
                 .horizon-slider__value-badge {
@@ -127,7 +122,7 @@ export const HorizonSlider: React.FC<HorizonSliderProps> = ({
                 .horizon-slider__track-container {
                     position: relative;
                     height: 6px;
-                    background: rgba(255, 255, 255, 0.05);
+                    background: rgba(255, 255, 255, 0.08);
                     border-radius: 100px;
                     margin-bottom: 24px;
                     overflow: visible;
@@ -193,7 +188,7 @@ export const HorizonSlider: React.FC<HorizonSliderProps> = ({
                 }
 
                 .horizon-slider__zone:hover {
-                    background: rgba(255, 255, 255, 0.03);
+                    background: rgba(255, 255, 255, 0.06);
                 }
 
                 .horizon-slider__zone.active {
@@ -202,7 +197,7 @@ export const HorizonSlider: React.FC<HorizonSliderProps> = ({
 
                 .zone-emoji {
                     font-size: 16px;
-                    filter: grayscale(1) opacity(0.5);
+                    filter: grayscale(1) opacity(0.55);
                     transition: all 0.3s ease;
                 }
 
@@ -214,14 +209,14 @@ export const HorizonSlider: React.FC<HorizonSliderProps> = ({
                 .zone-text {
                     font-size: 10px;
                     font-weight: 700;
-                    color: #64748b;
+                    color: rgba(255, 255, 255, 0.7);
                     text-transform: uppercase;
                     letter-spacing: 0.02em;
                     transition: all 0.3s ease;
                 }
 
                 .horizon-slider__zone.active .zone-text {
-                    color: #cbd5e1;
+                    color: rgba(255, 255, 255, 0.95);
                 }
 
                 .active-indicator {
