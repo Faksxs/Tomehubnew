@@ -4,6 +4,8 @@ import {
   LibraryItem,
   Highlight,
   ResourceType,
+  PersonalNoteCategory,
+  PersonalNoteFolder,
 } from "./types";
 import { QueryDocumentSnapshot, DocumentData } from "firebase/firestore";
 import { BookList } from "./components/BookList";
@@ -20,6 +22,11 @@ import {
   saveItemForUser,
   deleteItemForUser,
   deleteMultipleItemsForUser,
+  fetchPersonalNoteFoldersForUser,
+  savePersonalNoteFolderForUser,
+  updatePersonalNoteFolderForUser,
+  deletePersonalNoteFolderForUser,
+  movePersonalNoteForUser,
 } from "./services/firestoreService";
 
 import {
@@ -32,7 +39,9 @@ import { useBatchEnrichment } from "./hooks/useBatchEnrichment";
 
 import { RAGSearch } from "./components/RAGSearch";
 import { FlowContainer } from "./components/FlowContainer";
-import { addTextItem, syncHighlights } from "./services/backendApiService";
+import { addTextItem, syncHighlights, syncPersonalNote } from "./services/backendApiService";
+import { getPersonalNoteBackendType, getPersonalNoteCategory, isPersonalNote } from "./lib/personalNotePolicy";
+import { extractPersonalNoteText } from "./lib/personalNoteRender";
 
 // ----------------- LAYOUT (ANA UYGULAMA) -----------------
 
@@ -65,6 +74,9 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   const [listStatusFilter, setListStatusFilter] = useState<string>('ALL');
   const [listSortOption, setListSortOption] = useState<'date_desc' | 'date_asc' | 'title_asc'>('date_desc');
   const [listPublisherFilter, setListPublisherFilter] = useState('');
+  const [personalNoteDraftDefaults, setPersonalNoteDraftDefaults] = useState<{ personalNoteCategory?: PersonalNoteCategory; personalFolderId?: string; folderPath?: string }>({});
+  const [personalNoteFolders, setPersonalNoteFolders] = useState<PersonalNoteFolder[]>([]);
+  const [didRunLegacyFolderMigration, setDidRunLegacyFolderMigration] = useState(false);
 
 
   useEffect(() => {
@@ -77,11 +89,16 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
       }
 
       try {
-        const { items, lastDoc: newLastDoc } = await fetchItemsForUser(userId);
+        const [{ items, lastDoc: newLastDoc }, folders] = await Promise.all([
+          fetchItemsForUser(userId),
+          fetchPersonalNoteFoldersForUser(userId),
+        ]);
         if (active) {
           setBooks(items);
+          setPersonalNoteFolders(folders);
           setLastDoc(newLastDoc);
           setHasMore(!!newLastDoc);
+          setDidRunLegacyFolderMigration(false);
         }
       } catch (e) {
         console.error("Failed to load items:", e);
@@ -99,6 +116,28 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     };
   }, [userId]);
 
+  const syncPersonalNoteToBackend = useCallback(async (note: LibraryItem, deleteOnly: boolean = false) => {
+    if (!isPersonalNote(note)) return;
+    try {
+      await syncPersonalNote(userId, note.id, {
+        title: note.title,
+        author: note.author,
+        content: extractPersonalNoteText(note.generalNotes || ""),
+        tags: note.tags || [],
+        category: getPersonalNoteCategory(note),
+        delete_only: deleteOnly,
+      });
+    } catch (err) {
+      console.error("Failed to sync personal note to AI Backend:", err);
+    }
+  }, [userId]);
+
+  const buildFolderPath = useCallback((folderId?: string) => {
+    if (!folderId) return undefined;
+    const folder = personalNoteFolders.find((f) => f.id === folderId);
+    return folder?.name;
+  }, [personalNoteFolders]);
+
   const handleAddBook = useCallback(
     async (itemData: Omit<LibraryItem, "id" | "highlights"> & { id?: string }) => {
       // 1) Yeni item'i oluştur (AI dokunmadan önceki ham hali)
@@ -112,6 +151,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
       // 2) Önce UI'da göster (kullanıcı beklemesin)
       setBooks((prev) => [newItem, ...prev]);
       setIsFormOpen(false);
+      setPersonalNoteDraftDefaults({});
 
       // 3) Ham halini Firestore'a kaydet (veri kaybolmasın)
       try {
@@ -124,9 +164,20 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
       // We do this immediately so the item is searchable
       (async () => {
         try {
+          if (isPersonalNote(newItem)) {
+            await syncPersonalNoteToBackend(newItem, false);
+            return;
+          }
+
           const textParts = [];
           textParts.push(`Title: ${newItem.title}`);
           textParts.push(`Author: ${newItem.author}`);
+          if (isPersonalNote(newItem) && newItem.personalNoteCategory) {
+            textParts.push(`Category: ${newItem.personalNoteCategory}`);
+          }
+          if (isPersonalNote(newItem) && newItem.folderPath) {
+            textParts.push(`SubFile: ${newItem.folderPath}`);
+          }
           if (newItem.publisher) textParts.push(`Publisher: ${newItem.publisher}`);
           if (newItem.tags && newItem.tags.length > 0) textParts.push(`Tags: ${newItem.tags.join(', ')}`);
           if (newItem.generalNotes) textParts.push(`\nContent/Notes:\n${newItem.generalNotes}`);
@@ -139,7 +190,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
               fullText,
               newItem.title,
               newItem.author,
-              newItem.type,
+              isPersonalNote(newItem) ? getPersonalNoteBackendType(newItem) : newItem.type,
               userId,
               {
                 book_id: newItem.id,
@@ -199,8 +250,34 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
         })();
       }
     },
-    [userId]
+    [syncPersonalNoteToBackend, userId]
   );
+
+  const handleOpenPersonalNoteForm = useCallback((defaults?: { category?: PersonalNoteCategory; folderId?: string; folderPath?: string }) => {
+    setPersonalNoteDraftDefaults({
+      personalNoteCategory: defaults?.category || 'DAILY',
+      personalFolderId: defaults?.folderId,
+      folderPath: defaults?.folderPath || buildFolderPath(defaults?.folderId),
+    });
+    setEditingBookId(null);
+    setIsFormOpen(true);
+  }, [buildFolderPath]);
+
+  const handleQuickCreatePersonalNote = useCallback((payload: { title: string; content: string; category: PersonalNoteCategory; folderId?: string; folderPath?: string }) => {
+    handleAddBook({
+      type: 'PERSONAL_NOTE',
+      title: payload.title,
+      author: 'Self',
+      status: 'On Shelf',
+      readingStatus: 'Finished',
+      tags: [],
+      generalNotes: payload.content,
+      addedAt: Date.now(),
+      personalNoteCategory: payload.category,
+      personalFolderId: payload.folderId,
+      folderPath: payload.folderPath || buildFolderPath(payload.folderId),
+    });
+  }, [buildFolderPath, handleAddBook]);
 
   const handleUpdateBook = useCallback(async (
     itemData: Omit<LibraryItem, "id" | "highlights">
@@ -228,11 +305,15 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
       } catch (err) {
         console.error("Failed to update item in Firestore:", err);
       }
+      if (isPersonalNote(updatedItem)) {
+        syncPersonalNoteToBackend(updatedItem, false);
+      }
     }
-  }, [editingBookId, userId]);
+  }, [editingBookId, syncPersonalNoteToBackend, userId]);
 
   const handleDeleteBook = useCallback(async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this item?")) return;
+    const deletedItem = books.find((b) => b.id === id);
 
     setBooks((prev) => prev.filter((b) => b.id !== id));
 
@@ -246,10 +327,14 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     } catch (err) {
       console.error("Failed to delete item from Firestore:", err);
     }
-  }, [selectedBookId, userId]);
+    if (deletedItem && isPersonalNote(deletedItem)) {
+      syncPersonalNoteToBackend(deletedItem, true);
+    }
+  }, [books, selectedBookId, syncPersonalNoteToBackend, userId]);
 
   const handleBulkDelete = useCallback(async (ids: string[]) => {
     if (!window.confirm(`Are you sure you want to delete ${ids.length} items?`)) return;
+    const deletedItems = books.filter((b) => ids.includes(b.id));
 
     setBooks((prev) => prev.filter((b) => !ids.includes(b.id)));
 
@@ -263,7 +348,13 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     } catch (err) {
       console.error("Failed to delete items from Firestore:", err);
     }
-  }, [selectedBookId, userId]);
+    const deletedPersonalNotes = deletedItems.filter(isPersonalNote);
+    if (deletedPersonalNotes.length > 0) {
+      deletedPersonalNotes.forEach((note) => {
+        syncPersonalNoteToBackend(note, true);
+      });
+    }
+  }, [books, selectedBookId, syncPersonalNoteToBackend, userId]);
 
   const handleUpdateHighlights = useCallback(async (highlights: Highlight[]) => {
     if (!selectedBookId) return;
@@ -427,6 +518,294 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     }
   }, [userId, lastDoc]);
 
+  const makeFolderId = () => `folder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const handleCreatePersonalFolder = useCallback(async (
+    category: PersonalNoteCategory,
+    name: string
+  ): Promise<PersonalNoteFolder | null> => {
+    const trimmedName = name.trim();
+    if (!trimmedName) return null;
+    const now = Date.now();
+    const nextOrder = personalNoteFolders
+      .filter((f) => f.category === category)
+      .reduce((max, f) => Math.max(max, f.order), 0) + 1;
+    const folder: PersonalNoteFolder = {
+      id: makeFolderId(),
+      category,
+      name: trimmedName,
+      order: nextOrder,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    setPersonalNoteFolders((prev) => [...prev, folder]);
+    try {
+      await savePersonalNoteFolderForUser(userId, folder);
+      return folder;
+    } catch (err) {
+      console.error("Failed to create personal note folder:", err);
+      setPersonalNoteFolders((prev) => prev.filter((f) => f.id !== folder.id));
+      return null;
+    }
+  }, [personalNoteFolders, userId]);
+
+  const handleRenamePersonalFolder = useCallback(async (
+    folderId: string,
+    name: string
+  ): Promise<boolean> => {
+    const trimmed = name.trim();
+    if (!trimmed) return false;
+    const prev = personalNoteFolders;
+    const now = Date.now();
+    setPersonalNoteFolders((folders) => folders.map((f) => f.id === folderId ? { ...f, name: trimmed, updatedAt: now } : f));
+    try {
+      await updatePersonalNoteFolderForUser(userId, folderId, { name: trimmed, updatedAt: now });
+      setBooks((items) => items.map((item) => {
+        if (!isPersonalNote(item)) return item;
+        if (item.personalFolderId !== folderId) return item;
+        return { ...item, folderPath: trimmed };
+      }));
+      return true;
+    } catch (err) {
+      console.error("Failed to rename personal note folder:", err);
+      setPersonalNoteFolders(prev);
+      return false;
+    }
+  }, [personalNoteFolders, userId]);
+
+  const handleDeletePersonalFolder = useCallback(async (
+    folderId: string
+  ): Promise<boolean> => {
+    const folder = personalNoteFolders.find((f) => f.id === folderId);
+    if (!folder) return false;
+    const prevFolders = personalNoteFolders;
+    const prevBooks = books;
+    const affectedNotes = books.filter((item) => isPersonalNote(item) && item.personalFolderId === folderId);
+
+    setPersonalNoteFolders((folders) => folders.filter((f) => f.id !== folderId));
+    setBooks((items) => items.map((item) => {
+      if (!isPersonalNote(item) || item.personalFolderId !== folderId) return item;
+      return { ...item, personalFolderId: undefined, folderPath: undefined };
+    }));
+
+    try {
+      await Promise.all([
+        ...affectedNotes.map((note) => movePersonalNoteForUser(userId, note.id, getPersonalNoteCategory(note), undefined, undefined)),
+        deletePersonalNoteFolderForUser(userId, folderId),
+      ]);
+      return true;
+    } catch (err) {
+      console.error("Failed to delete personal note folder:", err);
+      setPersonalNoteFolders(prevFolders);
+      setBooks(prevBooks);
+      return false;
+    }
+  }, [books, personalNoteFolders, userId]);
+
+  const handleMovePersonalFolder = useCallback(async (
+    folderId: string,
+    targetCategory: PersonalNoteCategory
+  ): Promise<boolean> => {
+    const folder = personalNoteFolders.find((f) => f.id === folderId);
+    if (!folder) return false;
+    if (folder.category === targetCategory) return true;
+
+    const prevFolders = personalNoteFolders;
+    const prevBooks = books;
+    const now = Date.now();
+    const nextOrder = personalNoteFolders
+      .filter((f) => f.category === targetCategory && f.id !== folderId)
+      .reduce((max, f) => Math.max(max, f.order), 0) + 1;
+    const affectedNotes = books.filter((item) => isPersonalNote(item) && item.personalFolderId === folderId);
+
+    setPersonalNoteFolders((folders) => folders.map((f) => {
+      if (f.id !== folderId) return f;
+      return { ...f, category: targetCategory, order: nextOrder, updatedAt: now };
+    }));
+
+    setBooks((items) => items.map((item) => {
+      if (!isPersonalNote(item) || item.personalFolderId !== folderId) return item;
+      return {
+        ...item,
+        personalNoteCategory: targetCategory,
+        personalFolderId: folderId,
+        folderPath: folder.name,
+      };
+    }));
+
+    try {
+      await Promise.all([
+        updatePersonalNoteFolderForUser(userId, folderId, {
+          category: targetCategory,
+          order: nextOrder,
+          updatedAt: now,
+        }),
+        ...affectedNotes.map((note) =>
+          movePersonalNoteForUser(userId, note.id, targetCategory, folderId, folder.name)
+        ),
+      ]);
+
+      await Promise.all(affectedNotes.map((note) =>
+        syncPersonalNoteToBackend({
+          ...note,
+          personalNoteCategory: targetCategory,
+          personalFolderId: folderId,
+          folderPath: folder.name,
+        }, false)
+      ));
+
+      return true;
+    } catch (err) {
+      console.error("Failed to move personal note folder:", err);
+      setPersonalNoteFolders(prevFolders);
+      setBooks(prevBooks);
+      return false;
+    }
+  }, [books, personalNoteFolders, syncPersonalNoteToBackend, userId]);
+
+  const handleMovePersonalNote = useCallback(async (
+    noteId: string,
+    targetCategory: PersonalNoteCategory,
+    targetFolderId?: string
+  ): Promise<boolean> => {
+    const note = books.find((item) => item.id === noteId);
+    if (!note || !isPersonalNote(note)) return false;
+    const targetFolder = targetFolderId ? personalNoteFolders.find((f) => f.id === targetFolderId) : undefined;
+    const nextFolderId = targetFolder?.id;
+    const nextFolderPath = targetFolder?.name;
+    const currentCategory = getPersonalNoteCategory(note);
+    const currentFolderId = note.personalFolderId;
+    const currentFolderPath = note.folderPath;
+
+    if (currentCategory === targetCategory && (currentFolderId || undefined) === (nextFolderId || undefined)) {
+      return true;
+    }
+
+    setBooks((items) => items.map((item) => {
+      if (item.id !== noteId || !isPersonalNote(item)) return item;
+      return {
+        ...item,
+        personalNoteCategory: targetCategory,
+        personalFolderId: nextFolderId,
+        folderPath: nextFolderPath,
+      };
+    }));
+
+    try {
+      await movePersonalNoteForUser(userId, noteId, targetCategory, nextFolderId, nextFolderPath);
+      await syncPersonalNoteToBackend({
+        ...note,
+        personalNoteCategory: targetCategory,
+        personalFolderId: nextFolderId,
+        folderPath: nextFolderPath,
+      }, false);
+      return true;
+    } catch (err) {
+      console.error("Failed to move personal note:", err);
+      setBooks((items) => items.map((item) => {
+        if (item.id !== noteId || !isPersonalNote(item)) return item;
+        return {
+          ...item,
+          personalNoteCategory: currentCategory,
+          personalFolderId: currentFolderId,
+          folderPath: currentFolderPath,
+        };
+      }));
+      return false;
+    }
+  }, [books, personalNoteFolders, syncPersonalNoteToBackend, userId]);
+
+  useEffect(() => {
+    if (itemsLoading || didRunLegacyFolderMigration) return;
+
+    const legacyNotes = books.filter((item) =>
+      isPersonalNote(item) &&
+      !!item.folderPath &&
+      !item.personalFolderId
+    );
+    if (legacyNotes.length === 0) {
+      setDidRunLegacyFolderMigration(true);
+      return;
+    }
+
+    let cancelled = false;
+    const runMigration = async () => {
+      const existingByKey = new Map<string, PersonalNoteFolder>();
+      personalNoteFolders.forEach((folder) => {
+        const key = `${folder.category}::${folder.name.toLowerCase()}`;
+        existingByKey.set(key, folder);
+      });
+
+      const newFolders: PersonalNoteFolder[] = [];
+      const noteUpdates: Array<{ noteId: string; category: PersonalNoteCategory; folderId: string; folderPath: string }> = [];
+
+      legacyNotes.forEach((note) => {
+        const category = getPersonalNoteCategory(note);
+        const folderName = (note.folderPath || "").trim();
+        if (!folderName) return;
+        const key = `${category}::${folderName.toLowerCase()}`;
+        let folder = existingByKey.get(key);
+        if (!folder) {
+          const now = Date.now();
+          const nextOrder = Math.max(
+            ...personalNoteFolders
+              .filter((f) => f.category === category)
+              .map((f) => f.order),
+            ...newFolders
+              .filter((f) => f.category === category)
+              .map((f) => f.order),
+            0
+          ) + 1;
+          folder = {
+            id: makeFolderId(),
+            category,
+            name: folderName,
+            order: nextOrder,
+            createdAt: now,
+            updatedAt: now,
+          };
+          newFolders.push(folder);
+          existingByKey.set(key, folder);
+        }
+        noteUpdates.push({ noteId: note.id, category, folderId: folder.id, folderPath: folder.name });
+      });
+
+      if (cancelled) return;
+      if (newFolders.length > 0) {
+        setPersonalNoteFolders((prev) => [...prev, ...newFolders]);
+      }
+      if (noteUpdates.length > 0) {
+        setBooks((prev) => prev.map((item) => {
+          const update = noteUpdates.find((u) => u.noteId === item.id);
+          if (!update || !isPersonalNote(item)) return item;
+          return {
+            ...item,
+            personalNoteCategory: update.category,
+            personalFolderId: update.folderId,
+            folderPath: update.folderPath,
+          };
+        }));
+      }
+
+      try {
+        await Promise.all([
+          ...newFolders.map((folder) => savePersonalNoteFolderForUser(userId, folder)),
+          ...noteUpdates.map((update) => movePersonalNoteForUser(userId, update.noteId, update.category, update.folderId, update.folderPath)),
+        ]);
+      } catch (err) {
+        console.error("Legacy personal note folder migration failed:", err);
+      } finally {
+        if (!cancelled) setDidRunLegacyFolderMigration(true);
+      }
+    };
+
+    runMigration();
+    return () => {
+      cancelled = true;
+    };
+  }, [books, didRunLegacyFolderMigration, itemsLoading, personalNoteFolders, userId]);
+
   if (itemsLoading && books.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500">
@@ -492,9 +871,20 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
               setView("detail");
             }}
             onAddBook={() => {
+              setPersonalNoteDraftDefaults({});
               setEditingBookId(null);
               setIsFormOpen(true);
             }}
+            personalNoteFolders={personalNoteFolders}
+            onCreatePersonalFolder={handleCreatePersonalFolder}
+            onRenamePersonalFolder={handleRenamePersonalFolder}
+            onDeletePersonalFolder={handleDeletePersonalFolder}
+            onMovePersonalFolder={handleMovePersonalFolder}
+            onMovePersonalNote={handleMovePersonalNote}
+            onAddPersonalNote={({ category, folderId, folderPath }) => {
+              handleOpenPersonalNoteForm({ category, folderId, folderPath });
+            }}
+            onQuickCreatePersonalNote={handleQuickCreatePersonalNote}
             onMobileMenuClick={() => setIsSidebarOpen(true)}
             onDeleteBook={handleDeleteBook}
             onDeleteMultiple={handleBulkDelete}
@@ -548,10 +938,14 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
                 : activeTab
           }
           initialData={editingBook}
+          noteDefaults={!editingBook && (activeTab === "PERSONAL_NOTE")
+            ? personalNoteDraftDefaults
+            : undefined}
           onSave={editingBookId ? handleUpdateBook : handleAddBook}
           onCancel={() => {
             setIsFormOpen(false);
             setEditingBookId(null);
+            setPersonalNoteDraftDefaults({});
           }}
         />
       )}

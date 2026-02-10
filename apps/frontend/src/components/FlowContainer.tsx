@@ -36,7 +36,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
     onClose,
 }) => {
     // State
-    const [sessionId, setSessionId] = useState<number | null>(null);
+    const [sessionId, setSessionId] = useState<string | null>(null);
     const [cards, setCards] = useState<FlowCardType[]>([]);
     const [topicLabel, setTopicLabel] = useState(anchorLabel || 'Flux');
     const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -46,6 +46,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
     const [error, setError] = useState<string | null>(null);
     const [flowStarted, setFlowStarted] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [isCategoryDrawerOpen, setIsCategoryDrawerOpen] = useState(false);
     const [pivotInfo, setPivotInfo] = useState<PivotInfo | null>(null);
     const [isJumping, setIsJumping] = useState(false);
     const [activeFilter, setActiveFilter] = useState<SourceFilter>('ALL');
@@ -84,7 +85,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                 category: category || undefined
             });
 
-            setSessionId(Number(response.session_id));
+            setSessionId(response.session_id);
             setCards(response.initial_cards);
             setTopicLabel(response.topic_label);
             setPivotInfo(null); // Clear pivot info on new session start
@@ -293,26 +294,52 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     {/* Header */}
                     <div className="flow-container__header">
                         <div className="flow-container__title-section">
-                            <div className="flow-container__mobile-actions">
-                                {/* Mobile Controls Trigger */}
-                                <button
-                                    onClick={() => setIsSidebarOpen(true)}
-                                    className="lg:hidden group flex items-center gap-2 text-slate-500 hover:text-[#CC561E] transition-all duration-300"
-                                >
-                                    <span className="text-xs font-bold uppercase tracking-wider">Filters & Horizon</span>
-                                    <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
-                                        <SlidersHorizontal size={16} />
-                                    </div>
-                                </button>
-                            </div>
+                            <div className="flow-container__mobile-actions relative flex items-center justify-between">
+                                {/* Left Group: Back + Kesif Alanlari */}
+                                <div className="lg:hidden flex items-center gap-2 z-10 w-1/3">
+                                    {onClose && (
+                                        <button
+                                            onClick={onClose}
+                                            className="flow-mobile-action-btn group flex items-center gap-2 text-slate-500 hover:text-[#CC561E] transition-all duration-300"
+                                            aria-label="Back"
+                                        >
+                                            <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
+                                                <ChevronLeft size={16} />
+                                            </div>
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={() => setIsCategoryDrawerOpen(true)}
+                                        className="flow-mobile-action-btn group flex items-center gap-2 text-slate-500 hover:text-[#CC561E] transition-all duration-300"
+                                    >
+                                        <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
+                                            <Settings2 size={16} />
+                                        </div>
+                                        <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">Keşif</span>
+                                    </button>
+                                </div>
 
-                            <div className="flow-badge">Flux</div>
+                                {/* Center Group: Flux Title (Absolute) */}
+                                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-0 pointer-events-none select-none">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#CC561E] bg-[#CC561E]/10 px-3 py-1 rounded-md">
+                                        FLUX
+                                    </span>
+                                </div>
+
+                                {/* Right Group: Filters & Horizon */}
+                                <div className="lg:hidden flex items-center justify-end gap-2 z-10 w-1/3">
+                                    <button
+                                        onClick={() => setIsSidebarOpen(true)}
+                                        className="flow-mobile-action-btn group flex items-center gap-2 text-slate-500 hover:text-[#CC561E] transition-all duration-300"
+                                    >
+                                        <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">Filters</span>
+                                        <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
+                                            <SlidersHorizontal size={16} />
+                                        </div>
+                                    </button>
+                                </div>
+                            </div>
                         </div>
-                        {onClose && (
-                            <button className="flow-container__close" onClick={onClose} title="Close Stream">
-                                <span className="close-icon w-5 h-5">✕</span>
-                            </button>
-                        )}
                     </div>
 
                     {/* Error State */}
@@ -354,7 +381,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                                     <FlowCard
                                         key={card.flow_id}
                                         card={card}
-                                        sessionId={sessionId ?? 0}
+                                        sessionId={sessionId ?? ''}
                                         firebaseUid={firebaseUid}
                                     />
                                 ))}
@@ -412,6 +439,41 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                 </div>
 
                 {/* Sidebar Drawer Container */}
+                <div className={`flow-category-container ${isCategoryDrawerOpen ? 'is-open' : ''}`}>
+                    <div
+                        className="flow-sidebar-backdrop"
+                        onClick={() => setIsCategoryDrawerOpen(false)}
+                    />
+                    <aside className="flow-category-sidebar">
+                        <div className="flow-sidebar__sticky">
+                            <div className="lg:hidden flex items-center justify-between mb-6 pb-4 border-bottom border-slate-100 dark:border-slate-800">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 rounded-xl bg-[rgba(204,86,30,0.1)] text-[#CC561E]">
+                                        <Settings2 size={20} />
+                                    </div>
+                                    <span className="font-bold text-slate-800 dark:text-white">Keşif Alanları</span>
+                                </div>
+                                <button
+                                    onClick={() => setIsCategoryDrawerOpen(false)}
+                                    className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            {(activeFilter === 'ALL' || activeFilter === 'BOOK') && (
+                                <CategorySelector
+                                    activeCategory={activeCategory}
+                                    onCategoryChange={(cat) => {
+                                        handleCategoryChange(cat);
+                                        setIsCategoryDrawerOpen(false);
+                                    }}
+                                />
+                            )}
+                        </div>
+                    </aside>
+                </div>
+
                 <div className={`flow-sidebar-container ${isSidebarOpen ? 'is-open' : ''}`}>
                     {/* Backdrop for mobile */}
                     <div
@@ -515,6 +577,10 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                         gap: 28px;
                     }
 
+                    .flow-left {
+                        display: none;
+                    }
+
                     .flow-sidebar-container {
                         position: fixed;
                         top: 0;
@@ -527,7 +593,23 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                         justify-content: flex-end;
                     }
 
+                    .flow-category-container {
+                        position: fixed;
+                        top: 0;
+                        right: 0;
+                        bottom: 0;
+                        left: 0;
+                        z-index: 1000;
+                        pointer-events: none;
+                        display: flex;
+                        justify-content: flex-start;
+                    }
+
                     .flow-sidebar-container.is-open {
+                        pointer-events: auto;
+                    }
+
+                    .flow-category-container.is-open {
                         pointer-events: auto;
                     }
 
@@ -564,7 +646,26 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                         background: #0f172a;
                     }
 
+                    .flow-category-sidebar {
+                        width: 100%;
+                        max-width: 340px;
+                        height: 100%;
+                        background: #fff;
+                        transform: translateX(-100%);
+                        transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+                        box-shadow: 10px 0 30px rgba(0, 0, 0, 0.1);
+                        z-index: 1001;
+                    }
+
+                    .dark .flow-category-sidebar {
+                        background: #0f172a;
+                    }
+
                     .is-open .flow-sidebar {
+                        transform: translateX(0);
+                    }
+
+                    .is-open .flow-category-sidebar {
                         transform: translateX(0);
                     }
 
@@ -589,6 +690,42 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                         width: calc(100% + 40px);
                     }
 
+                    .flow-mobile-actions-row {
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                        gap: 8px;
+                        width: 100%;
+                    }
+
+                    .flow-mobile-actions-right {
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                        margin-left: auto;
+                    }
+
+                    .flow-mobile-action-btn {
+                        padding: 6px 10px;
+                        border-radius: 10px;
+                        border: 1px solid rgba(148, 163, 184, 0.22);
+                        background: rgba(255, 255, 255, 0.9);
+                    }
+
+                    .dark .flow-mobile-action-btn {
+                        background: rgba(15, 23, 42, 0.9);
+                        border-color: rgba(255, 255, 255, 0.12);
+                    }
+
+                    .flow-badge--title {
+                        display: table;
+                        margin: 4px auto 0 auto;
+                        text-align: center;
+                        font-size: 11px;
+                        padding: 6px 14px;
+                        letter-spacing: 0.14em;
+                    }
+
                     .dark .flow-container__mobile-actions {
                         background: rgba(15, 23, 42, 0.85);
                         border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -597,6 +734,10 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
 
                 @media (min-width: 1025px) {
                     .flow-container__mobile-actions {
+                        display: none;
+                    }
+
+                    .flow-category-container {
                         display: none;
                     }
                 }
@@ -821,3 +962,4 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
 };
 
 export default FlowContainer;
+

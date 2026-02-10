@@ -1,6 +1,6 @@
 import React from 'react';
-import { X, Library, User, Moon, Sun, Search, Upload } from 'lucide-react';
-import logo from '../assets/logo_v5.png';
+import { X, User, Moon, Sun } from 'lucide-react';
+import logo from '../assets/logo_v7.png';
 import { ResourceType } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 import {
@@ -24,11 +24,12 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen, onClose }) => {
   const { theme, toggleTheme } = useTheme();
+
   const menuItems = [
     { id: 'DASHBOARD', label: 'Dashboard', icon: KnowledgeBaseLogo },
     { id: 'SMART_SEARCH', label: 'Search (Layer 2)', icon: SmartSearchLogo },
-    { id: 'RAG_SEARCH', label: 'LagosChat (Layer 3)', icon: DeepChatbotLogo },
-    { id: 'FLOW', label: 'Flux (Layer 4)', icon: FluxLogo }, // Changed from KnowledgeStreamLogo
+    { id: 'RAG_SEARCH', label: 'LogosChat (Layer 3)', icon: DeepChatbotLogo },
+    { id: 'FLOW', label: 'Flux (Layer 4)', icon: FluxLogo },
     { id: 'BOOK', label: 'Books', icon: BooksLogo },
     { id: 'ARTICLE', label: 'Articles', icon: ArticlesLogo },
     { id: 'WEBSITE', label: 'Websites', icon: WebsitesLogo },
@@ -38,7 +39,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen
 
   return (
     <>
-      {/* Mobile Overlay */}
       {isOpen && (
         <div
           className="fixed inset-0 bg-slate-900/50 z-40 lg:hidden backdrop-blur-sm"
@@ -46,12 +46,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen
         />
       )}
 
-      {/* Sidebar Container */}
-      <aside className={`
+      <aside
+        className={`
         fixed lg:static inset-y-0 left-0 z-50 w-[269px] bg-[#262D40] border-r border-white/10 transform transition-transform duration-300 ease-in-out flex flex-col shadow-xl lg:shadow-none h-full
         ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-      `}>
-        {/* Logo Area */}
+      `}
+      >
         <div className="px-3 pt-0 pb-3 flex flex-col items-center border-b border-white/10 bg-[#262D40] gap-2 relative">
           <img
             src={logo}
@@ -68,7 +68,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen
           </button>
         </div>
 
-        {/* Navigation */}
         <nav className="flex-1 px-3 pt-2 pb-6 space-y-1 overflow-y-auto">
           {menuItems.map((item) => {
             const Icon = item.icon;
@@ -78,7 +77,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen
                 key={item.id}
                 onClick={() => {
                   onTabChange(item.id as any);
-                  onClose(); // Close on mobile when clicked
+                  onClose();
                 }}
                 className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-200 group ${isActive
                   ? 'bg-white/10 text-white shadow-sm border-r-2 border-[#CC561E]'
@@ -87,7 +86,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen
               >
                 <Icon
                   size={20}
-                  className={`transition-colors ${isActive ? 'text-[#CC561E]' : 'text-white/60 group-hover:text-white'}`}
+                  className={`transition-colors ${isActive ? 'text-[#CC561E]' : 'text-white/60 group-hover:text-white'
+                    }`}
                 />
                 {item.label}
               </button>
@@ -95,7 +95,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen
           })}
         </nav>
 
-        {/* Profile Section */}
         <div className="p-3 border-t border-white/10">
           <button
             onClick={() => {
@@ -109,12 +108,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen
           >
             <User
               size={20}
-              className={`transition-colors ${activeTab === 'PROFILE' ? 'text-[#CC561E]' : 'text-white/60 group-hover:text-white'}`}
+              className={`transition-colors ${activeTab === 'PROFILE' ? 'text-[#CC561E]' : 'text-white/60 group-hover:text-white'
+                }`}
             />
             Profile
           </button>
 
-          {/* Theme Toggle */}
           <button
             onClick={toggleTheme}
             className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white transition-all duration-200 group mt-1"
@@ -133,17 +132,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen
           </button>
         </div>
 
-        {/* Footer info */}
         <div className="p-4 border-t border-white/10">
           <div className="bg-white/5 rounded-xl p-4 border border-white/10">
             <p className="text-xs text-white/70 font-medium mb-1">My Personal Library</p>
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-[#CC561E] animate-pulse"></div>
+              <div className="w-2 h-2 rounded-full bg-[#CC561E] animate-pulse" />
               <p className="text-[10px] text-white/50 uppercase tracking-wider font-semibold">Online</p>
             </div>
           </div>
         </div>
-      </aside >
+      </aside>
     </>
   );
 };

@@ -52,6 +52,7 @@ Return ONLY valid JSON. No markdown.
 PROMPT_GENERATE_TAGS = """
 Generate 3-5 relevant tags for this note. 
 CRITICAL: The tags MUST be in the same language as the note content (e.g., if note is Turkish, tags must be Turkish).
+CRITICAL: Each tag must be 1 to 4 words only.
 Return ONLY a JSON array of strings.
 
 Note: "{note_content}"
@@ -99,6 +100,38 @@ def clean_json_response(text: str) -> str:
     elif "```" in text:
         text = text.split("```")[1].split("```")[0]
     return text.strip()
+
+
+def sanitize_generated_tags(raw_tags: Any) -> List[str]:
+    """
+    Enforce tag quality:
+    - String tags only
+    - 1..4 words per tag
+    - Deduplicated (case-insensitive)
+    - Max 5 tags
+    """
+    if not isinstance(raw_tags, list):
+        return []
+
+    clean_tags: List[str] = []
+    seen = set()
+    for tag in raw_tags:
+        if not isinstance(tag, str):
+            continue
+        normalized = " ".join(tag.strip().split())
+        if not normalized:
+            continue
+        word_count = len(normalized.split(" "))
+        if word_count < 1 or word_count > 4:
+            continue
+        key = normalized.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        clean_tags.append(normalized)
+        if len(clean_tags) >= 5:
+            break
+    return clean_tags
 
 # --- Async AI Functions with Tenacity ---
 
@@ -161,7 +194,8 @@ async def generate_tags_async(note_content: str) -> List[str]:
             )
         text = clean_json_response(response.text)
         
-        return json.loads(text)
+        parsed = json.loads(text)
+        return sanitize_generated_tags(parsed)
     except Exception as e:
         logger.error(f"Tag gen failed: {e}")
         raise e

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Highlight } from '../types';
 import { Plus, Trash2, Quote, MapPin, FileText, Edit2, Save, X, StickyNote, Calendar, Sparkles, Loader2, Hash } from 'lucide-react';
 import { generateTagsForNote } from '../services/geminiService';
+import { isInsightType, normalizeHighlightType } from '../lib/highlightType';
 
 interface HighlightSectionProps {
   highlights: Highlight[];
@@ -14,7 +15,7 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<Highlight>>({});
-  const [entryType, setEntryType] = useState<'highlight' | 'note'>('highlight');
+  const [entryType, setEntryType] = useState<'highlight' | 'insight'>('highlight');
 
   // New State for Date and Tags
   const [dateInput, setDateInput] = useState('');
@@ -44,7 +45,7 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
   const handleEdit = (h: Highlight) => {
     setEditingId(h.id);
     setFormData({ ...h });
-    setEntryType(h.type || 'highlight');
+    setEntryType(normalizeHighlightType(h.type));
     // Initialize date and tags
     setDateInput(new Date(h.createdAt).toISOString().split('T')[0]);
     setTagsInput(h.tags ? h.tags.join(', ') : '');
@@ -163,13 +164,13 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
             <button
               type="button"
               onClick={() => {
-                if (entryType !== 'note') {
-                  setEntryType('note');
+                if (entryType !== 'insight') {
+                  setEntryType('insight');
                   setFormData({}); // Clear form when switching
                   setTagsInput('');
                 }
               }}
-              className={`flex-1 flex items-center justify-center gap-2 py-1.5 md:py-2 text-xs md:text-sm font-medium rounded-md transition-all ${entryType === 'note'
+              className={`flex-1 flex items-center justify-center gap-2 py-1.5 md:py-2 text-xs md:text-sm font-medium rounded-md transition-all ${entryType === 'insight'
                 ? 'bg-white dark:bg-white/10 text-[#262D40] dark:text-orange-500 shadow-sm'
                 : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                 }`}
@@ -299,7 +300,7 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
       {/* List of Highlights/Notes */}
       <div className="space-y-3 md:space-y-4">
         {highlights.map((h) => {
-          const isNote = h.type === 'note';
+          const isNote = isInsightType(h.type);
           return (
             <div
               key={h.id}

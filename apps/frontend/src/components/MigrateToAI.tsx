@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Database, Play, Loader2, CheckCircle, AlertCircle, BarChart } from 'lucide-react';
 import { LibraryItem } from '../types';
 import { addTextItem, migrateBulkItems, syncHighlights } from '../services/backendApiService';
+import { isPersonalNote, shouldSyncPersonalNoteToAI, getPersonalNoteBackendType } from '../lib/personalNotePolicy';
+import { extractPersonalNoteText } from '../lib/personalNoteRender';
 
 interface MigrateToAIProps {
     books: LibraryItem[];
@@ -30,26 +32,29 @@ export const MigrateToAI: React.FC<MigrateToAIProps> = ({ books, userId }) => {
 
         // Prepare all items first
         const allItems = books.map(item => {
+            if (isPersonalNote(item) && !shouldSyncPersonalNoteToAI(item)) {
+                return null;
+            }
             let textContent = '';
             if (item.type === 'PERSONAL_NOTE') {
-                textContent = item.generalNotes || item.title;
+                textContent = extractPersonalNoteText(item.generalNotes || '') || item.title;
                 if (item.highlights && item.highlights.length > 0) {
                     textContent += '\n\n' + item.highlights.map(h => h.text).join('\n\n');
                 }
             } else {
                 textContent = `Title: ${item.title}\nAuthor: ${item.author}\n`;
-                if (item.generalNotes) textContent += `\nSummary/Notes: ${item.generalNotes}`;
+                if (item.generalNotes) textContent += `\nSummary/Notes: ${extractPersonalNoteText(item.generalNotes)}`;
                 if (item.tags && item.tags.length > 0) textContent += `\nTags: ${item.tags.join(', ')}`;
             }
             return {
                 text: textContent,
                 title: item.title,
                 author: item.author,
-                type: item.type,
+                type: isPersonalNote(item) ? getPersonalNoteBackendType(item) : item.type,
                 book_id: item.id,
                 tags: item.tags
             };
-        }).filter(item => item.text.length > 20); // Filter out empty/short items
+        }).filter((item): item is NonNullable<typeof item> => !!item && item.text.length > 20); // Filter out empty/short items
 
         const totalItemsToProcess = allItems.length;
 

@@ -86,6 +86,9 @@ ALL_NOTES_SOURCE_TYPES = ("HIGHLIGHT", "INSIGHT", "NOTES")
 DEFAULT_ANCHOR_ID = "General Discovery"
 DEFAULT_TOPIC_LABEL = "Flux"
 INITIAL_BATCH_SIZE = 5
+FLOW_CONTENT_CHAR_LIMIT = 650
+FLOW_CONTENT_FORWARD_WINDOW = 120
+LIMITED_SOURCE_TYPES = {"PDF", "EPUB", "PDF_CHUNK", "ARTICLE", "WEBSITE"}
 
 
 def _is_numeric_session_id(session_id: str) -> bool:
@@ -113,6 +116,66 @@ def _build_seen_exclusion_sql(session_id: str, params: dict, column_name: str = 
     sql_clause = f" AND {column_name} NOT IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE session_id = :p_sid) "
     new_params = {**params, "p_sid": int(session_id)}
     return sql_clause, new_params
+
+
+def _normalize_flow_text(text: str) -> str:
+    """Normalize whitespace for card-safe display text."""
+    return re.sub(r"\s+", " ", str(text or "")).strip()
+
+
+def _limit_flow_content(text: str, limit: int = FLOW_CONTENT_CHAR_LIMIT) -> str:
+    """
+    Limit long card text with sentence-aware boundaries.
+
+    Strategy:
+    1. Normalize whitespace.
+    2. If length <= limit, return as-is.
+    3. Prefer the last sentence end within [0, limit].
+    4. Else look for first sentence end in [limit, limit + 120].
+    5. Else cut on last whitespace and append "...".
+    """
+    normalized = _normalize_flow_text(text)
+    if not normalized:
+        return ""
+
+    if len(normalized) <= limit:
+        return normalized
+
+    sentence_end_pattern = r"[.!?\u2026]"
+    left_window = normalized[:limit]
+
+    left_matches = list(re.finditer(sentence_end_pattern, left_window))
+    if left_matches:
+        cut_idx = left_matches[-1].end()
+        candidate = normalized[:cut_idx].strip()
+        if candidate:
+            return candidate
+
+    right_window = normalized[limit:limit + FLOW_CONTENT_FORWARD_WINDOW]
+    right_match = re.search(sentence_end_pattern, right_window)
+    if right_match:
+        cut_idx = limit + right_match.end()
+        candidate = normalized[:cut_idx].strip()
+        if candidate:
+            return candidate
+
+    fallback_idx = left_window.rfind(" ")
+    if fallback_idx <= 0:
+        fallback_idx = limit
+
+    candidate = normalized[:fallback_idx].strip()
+    if not candidate:
+        candidate = normalized[:limit].strip()
+    return f"{candidate}..."
+
+
+def _prepare_flow_card_content(content: str, source_type: Optional[str]) -> str:
+    """Apply source-aware text limiting for flow cards."""
+    source = str(source_type or "").strip().upper()
+    if source in LIMITED_SOURCE_TYPES:
+        return _limit_flow_content(content, FLOW_CONTENT_CHAR_LIMIT)
+    return "" if content is None else content
+
 
 class FlowService:
     """
@@ -772,6 +835,7 @@ class FlowService:
                 for row in cursor.fetchall():
                     raw_content = safe_read_clob(row[1])
                     content = extract_note_content(raw_content)
+                    content = _prepare_flow_card_content(content, row[3])
                     sim = 1 - row[5]
                     
                     # Tag based on similarity (No drop!)
@@ -862,6 +926,7 @@ class FlowService:
                 for row in cursor.fetchall():
                     raw_content = safe_read_clob(row[1])
                     content = extract_note_content(raw_content)
+                    content = _prepare_flow_card_content(content, row[3])
                     cards.append(FlowCard(
                         flow_id=str(uuid.uuid4()),
                         chunk_id=str(row[0]),
@@ -1124,6 +1189,7 @@ class FlowService:
                     for row in cursor.fetchall():
                         raw_content = safe_read_clob(row[1])
                         clean_content = extract_note_content(raw_content)
+                        clean_content = _prepare_flow_card_content(clean_content, row[4])
                         
                         cards.append(FlowCard(
                             flow_id=str(uuid.uuid4()),
@@ -1200,7 +1266,7 @@ class FlowService:
                     distance = row[5]
                     similarity = 1 - distance if distance else 0
                     if similarity >= 0.35:
-                         content = safe_read_clob(row[1])
+                         content = _prepare_flow_card_content(safe_read_clob(row[1]), row[3])
                          cards.append(FlowCard(
                             flow_id=str(uuid.uuid4()),
                             chunk_id=str(row[0]),
@@ -1254,7 +1320,7 @@ class FlowService:
         
         cards = []
         for row in cursor.fetchall():
-            content = safe_read_clob(row[1])
+            content = _prepare_flow_card_content(safe_read_clob(row[1]), row[3])
             cards.append(FlowCard(
                 flow_id=str(uuid.uuid4()),
                 chunk_id=str(row[0]),
@@ -1329,7 +1395,7 @@ class FlowService:
             cursor.execute(sql, params)
             
             for row in cursor.fetchall():
-                content = safe_read_clob(row[1])
+                content = _prepare_flow_card_content(safe_read_clob(row[1]), row[3])
                 cards.append(FlowCard(
                     flow_id=str(uuid.uuid4()),
                     chunk_id=str(row[0]),
@@ -1375,7 +1441,7 @@ class FlowService:
                 distance = row[5]
                 similarity = 1 - distance if distance else 0
                 if similarity >= 0.40:
-                    content = safe_read_clob(row[1])
+                    content = _prepare_flow_card_content(safe_read_clob(row[1]), row[3])
                     cards.append(FlowCard(
                         flow_id=str(uuid.uuid4()),
                         chunk_id=str(row[0]),
@@ -1434,7 +1500,7 @@ class FlowService:
             if similarity < SIMILARITY_THRESHOLDS["syntopic"]:
                 continue
             
-            content = safe_read_clob(row[1])
+            content = _prepare_flow_card_content(safe_read_clob(row[1]), row[3])
             cards.append(FlowCard(
                 flow_id=str(uuid.uuid4()),
                 chunk_id=str(row[0]),
@@ -1494,7 +1560,7 @@ class FlowService:
             cursor.execute(sql, params)
             
             for row in cursor.fetchall():
-                content = safe_read_clob(row[1])
+                content = _prepare_flow_card_content(safe_read_clob(row[1]), row[3])
                 concept_name = row[5]
                 centrality = row[6] or 0
                 
@@ -1550,7 +1616,7 @@ class FlowService:
                 if similarity < SIMILARITY_THRESHOLDS["discovery"]:
                     continue
                 
-                content = safe_read_clob(row[1])
+                content = _prepare_flow_card_content(safe_read_clob(row[1]), row[3])
                 cards.append(FlowCard(
                     flow_id=str(uuid.uuid4()),
                     chunk_id=str(row[0]),

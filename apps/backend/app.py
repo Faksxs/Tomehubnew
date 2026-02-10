@@ -28,14 +28,14 @@ from models.request_models import (
     SearchRequest, SearchResponse, IngestRequest, 
     FeedbackRequest, AddItemRequest, BatchMigrateRequest,
     FeedbackRequest, AddItemRequest, BatchMigrateRequest,
-    ChatRequest, ChatResponse, HighlightSyncRequest, ComparisonRequest
+    ChatRequest, ChatResponse, HighlightSyncRequest, ComparisonRequest, PersonalNoteSyncRequest
 )
 from middleware.auth_middleware import verify_firebase_token
 
 # Import Services (Legacy & New)
 from services.search_service import generate_answer, get_rag_context
 from services.dual_ai_orchestrator import generate_evaluated_answer
-from services.ingestion_service import ingest_book, ingest_text_item, process_bulk_items_logic, sync_highlights_for_item
+from services.ingestion_service import ingest_book, ingest_text_item, process_bulk_items_logic, sync_highlights_for_item, sync_personal_note_for_item
 from services.feedback_service import submit_feedback
 from services.pdf_service import get_pdf_metadata
 from services.ai_service import (
@@ -502,7 +502,7 @@ async def chat_endpoint(
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
     """
-    Stateful Chat Endpoint (LagosChat - Layer 3).
+    Stateful Chat Endpoint (LogosChat - Layer 3).
     Orchestrates session, history, and RAG search.
     """
     # Determine authoritative UID (JWT or request body in dev mode)
@@ -1359,6 +1359,38 @@ async def sync_highlights_endpoint(
             title=request.title,
             author=request.author,
             highlights=[h.model_dump() for h in request.highlights],
+        )
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error", "Sync failed"))
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/notes/{book_id}/sync-personal-note")
+async def sync_personal_note_endpoint(
+    book_id: str,
+    request: PersonalNoteSyncRequest,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+):
+    try:
+        if firebase_uid_from_jwt:
+            verified_firebase_uid = firebase_uid_from_jwt
+        else:
+            verified_firebase_uid = request.firebase_uid
+            if settings.ENVIRONMENT == "production":
+                raise HTTPException(status_code=401, detail="Authentication required")
+            logger.warning("⚠️ Dev mode: Using unverified UID for sync-personal-note")
+
+        result = sync_personal_note_for_item(
+            firebase_uid=verified_firebase_uid,
+            book_id=book_id,
+            title=request.title,
+            author=request.author,
+            content=request.content,
+            tags=request.tags,
+            category=request.category or "PRIVATE",
+            delete_only=bool(request.delete_only),
         )
         if not result.get("success"):
             raise HTTPException(status_code=500, detail=result.get("error", "Sync failed"))

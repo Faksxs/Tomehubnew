@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Any
 
 class SearchRequest(BaseModel):
@@ -39,7 +39,7 @@ class AddItemRequest(BaseModel):
     text: str
     title: str
     author: str
-    type: str = "NOTE"
+    type: str = "PERSONAL_NOTE"
     firebase_uid: str
     book_id: Optional[str] = None
     page_number: Optional[int] = None
@@ -47,6 +47,18 @@ class AddItemRequest(BaseModel):
     chunk_index: Optional[int] = None
     comment: Optional[str] = None
     tags: Optional[List[str]] = None
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def normalize_type(cls, value: Optional[str]) -> str:
+        st = str(value or "PERSONAL_NOTE").strip().upper()
+        if st in {"NOTE", "PERSONAL"}:
+            return "PERSONAL_NOTE"
+        if st in {"NOTES", "HIGHLIGHTS"}:
+            return "HIGHLIGHT"
+        if st in {"INSIGHTS"}:
+            return "INSIGHT"
+        return st
 
 class BatchMigrateRequest(BaseModel):
     items: List[dict]
@@ -79,11 +91,19 @@ class AnalyzeHighlightsRequest(BaseModel):
 class HighlightItem(BaseModel):
     id: Optional[str] = None
     text: str
-    type: Optional[str] = "highlight"  # highlight | note (insight)
+    type: Optional[str] = "highlight"  # highlight | insight (legacy: note)
     comment: Optional[str] = None
     pageNumber: Optional[int] = None
     tags: Optional[List[str]] = None
     createdAt: Optional[int] = None
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def normalize_highlight_type(cls, value: Optional[str]) -> str:
+        st = str(value or "highlight").strip().lower()
+        if st in {"note", "insight"}:
+            return "insight"
+        return "highlight"
 
 
 class HighlightSyncRequest(BaseModel):
@@ -92,6 +112,24 @@ class HighlightSyncRequest(BaseModel):
     author: str
     resource_type: Optional[str] = None
     highlights: List[HighlightItem]
+
+
+class PersonalNoteSyncRequest(BaseModel):
+    firebase_uid: str
+    title: str
+    author: str
+    content: Optional[str] = None
+    tags: Optional[List[str]] = None
+    category: Optional[str] = "PRIVATE"
+    delete_only: Optional[bool] = False
+
+    @field_validator("category", mode="before")
+    @classmethod
+    def normalize_category(cls, value: Optional[str]) -> str:
+        category = str(value or "PRIVATE").strip().upper()
+        if category in {"DAILY", "IDEAS"}:
+            return category
+        return "PRIVATE"
 
 # --- Memory Layer Models ---
 class ChatRequest(BaseModel):

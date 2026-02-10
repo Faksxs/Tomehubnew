@@ -100,11 +100,24 @@ def normalize_source_type(source_type: Optional[str]) -> str:
         return st
     if st in {"NOTE", "PERSONAL"}:
         return "PERSONAL_NOTE"
-    if st in {"NOTES"}:
+    if st in {"NOTES", "HIGHLIGHTS"}:
         return "HIGHLIGHT"
+    if st in {"INSIGHTS"}:
+        return "INSIGHT"
     # Unknown types default to PERSONAL_NOTE (safe semantic fallback)
     logger.warning(f"[WARN] Unknown source_type '{source_type}', defaulting to PERSONAL_NOTE")
     return "PERSONAL_NOTE"
+
+
+def normalize_highlight_type(highlight_type: Optional[str]) -> str:
+    """
+    Normalize highlight type to canonical DB values.
+    Canonical set: HIGHLIGHT, INSIGHT
+    """
+    st = str(highlight_type or "highlight").strip().lower()
+    if st in {"insight", "note"}:
+        return "INSIGHT"
+    return "HIGHLIGHT"
 
 
 def check_book_exists(title: str, author: str, firebase_uid: str, conn=None) -> bool:
@@ -502,7 +515,7 @@ def ingest_text_item(
     text: str,
     title: str,
     author: str,
-    source_type: str = "NOTE",
+    source_type: str = "PERSONAL_NOTE",
     firebase_uid: str = "test_user_001",
     categories: Optional[str] = None,
     book_id: Optional[str] = None,
@@ -631,7 +644,7 @@ def sync_highlights_for_item(
                     if not DataHealthService.validate_content(text):
                         continue
 
-                    source_type = "INSIGHT" if str(h.get("type", "highlight")).lower() == "note" else "HIGHLIGHT"
+                    source_type = normalize_highlight_type(h.get("type", "highlight"))
                     chunk_type = "insight" if source_type == "INSIGHT" else "highlight"
                     comment = h.get("comment") if source_type == "HIGHLIGHT" else None
                     page_number = h.get("pageNumber")
@@ -677,6 +690,97 @@ def sync_highlights_for_item(
         logger.error(f"[ERROR] sync_highlights_for_item failed: {e}")
         return {"success": False, "deleted": deleted, "inserted": inserted, "error": str(e)}
 
+
+def sync_personal_note_for_item(
+    firebase_uid: str,
+    book_id: str,
+    title: str,
+    author: str,
+    content: Optional[str],
+    tags: Optional[list],
+    category: str = "PRIVATE",
+    delete_only: bool = False,
+) -> dict:
+    """
+    Keep Personal Note representation in AI store consistent with category policy.
+    - Always deletes existing PERSONAL_NOTE/INSIGHT rows for this note id
+    - Re-inserts only when category == IDEAS and delete_only is False
+    """
+    deleted = 0
+    inserted = 0
+
+    if not book_id:
+        return {"success": False, "deleted": 0, "inserted": 0, "error": "book_id required"}
+
+    try:
+        with DatabaseManager.get_write_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    DELETE FROM TOMEHUB_CONTENT
+                    WHERE firebase_uid = :p_uid
+                      AND book_id = :p_book
+                      AND source_type IN ('PERSONAL_NOTE', 'INSIGHT')
+                    """,
+                    {"p_uid": firebase_uid, "p_book": book_id},
+                )
+                deleted = cursor.rowcount or 0
+
+                normalized_category = str(category or "PRIVATE").strip().upper()
+                if delete_only or normalized_category != "IDEAS":
+                    connection.commit()
+                    return {"success": True, "deleted": deleted, "inserted": 0}
+
+                text = (content or "").strip()
+                if not DataHealthService.validate_content(text):
+                    connection.commit()
+                    return {"success": True, "deleted": deleted, "inserted": 0}
+
+                embedding = get_embedding(text)
+                if embedding is None:
+                    return {"success": False, "deleted": deleted, "inserted": 0, "error": "embedding_failed"}
+
+                tags_json = json.dumps(tags, ensure_ascii=False) if tags else None
+                prepared_tags = prepare_labels(tags_json) if tags_json else []
+                out_id = cursor.var(oracledb.NUMBER)
+
+                cursor.execute(
+                    """
+                    INSERT INTO TOMEHUB_CONTENT
+                    (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, book_id, normalized_content, text_deaccented, lemma_tokens, "COMMENT", tags)
+                    VALUES (:p_uid, :p_type, :p_title, :p_content, :p_chunk_type, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_deaccent, :p_lemmas, :p_comment, :p_tags)
+                    RETURNING id INTO :p_out_id
+                    """,
+                    {
+                        "p_uid": firebase_uid,
+                        "p_type": "INSIGHT",
+                        "p_title": f"{title} - {author}",
+                        "p_content": text,
+                        "p_chunk_type": "personal_note",
+                        "p_page": 1,
+                        "p_chunk_idx": 0,
+                        "p_vec": embedding,
+                        "p_book_id": book_id,
+                        "p_norm": normalize_text(text),
+                        "p_deaccent": deaccent_text(text),
+                        "p_lemmas": json.dumps(get_lemmas(text), ensure_ascii=False),
+                        "p_comment": None,
+                        "p_tags": tags_json,
+                        "p_out_id": out_id,
+                    },
+                )
+                new_id = out_id.getvalue()
+                if isinstance(new_id, list):
+                    new_id = new_id[0] if new_id else None
+                if new_id is not None:
+                    _insert_content_tags(cursor, int(new_id), prepared_tags)
+                inserted = 1
+                connection.commit()
+                return {"success": True, "deleted": deleted, "inserted": inserted}
+    except Exception as e:
+        logger.error(f"[ERROR] sync_personal_note_for_item failed: {e}")
+        return {"success": False, "deleted": deleted, "inserted": inserted, "error": str(e)}
+
 def process_bulk_items_logic(items: list, firebase_uid: str) -> dict:
     print(f"Bulk processing {len(items)} items...")
     success = 0
@@ -712,7 +816,7 @@ def process_bulk_items_logic(items: list, firebase_uid: str) -> dict:
                         prepared_tags = prepare_labels(tags_json) if tags_json else []
 
                         out_id = cursor.var(oracledb.NUMBER)
-                        db_source_type = normalize_source_type(item.get('type', 'NOTE'))
+                        db_source_type = normalize_source_type(item.get('type', 'PERSONAL_NOTE'))
                         cursor.execute("""
                             INSERT INTO TOMEHUB_CONTENT 
                             (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, book_id, normalized_content, text_deaccented, lemma_tokens, categories, "COMMENT", tags)

@@ -64,14 +64,14 @@ export interface FlowStartRequest {
 }
 
 export interface FlowStartResponse {
-    session_id: number;
+    session_id: string;
     initial_cards: FlowCard[];
     topic_label: string;
 }
 
 export interface FlowNextRequest {
     firebase_uid: string;
-    session_id: number;
+    session_id: string;
     batch_size?: number;
 }
 
@@ -88,13 +88,13 @@ export interface FlowNextResponse {
 
 export interface FlowFeedbackRequest {
     firebase_uid: string;
-    session_id: number;
+    session_id: string;
     chunk_id: string;
     action: FeedbackAction;
 }
 
 export interface FlowSessionInfo {
-    session_id: number;
+    session_id: string;
     cards_shown: number;
     horizon_value: number;
     mode: FlowMode;
@@ -179,7 +179,7 @@ export async function sendFlowFeedback(request: FlowFeedbackRequest): Promise<{ 
 }
 
 export async function adjustFlowHorizon(
-    sessionId: number,
+    sessionId: string,
     horizonValue: number,
     firebaseUid: string
 ): Promise<{ success: boolean; new_horizon: number }> {
@@ -210,7 +210,7 @@ export async function adjustFlowHorizon(
  * Reset the session anchor (Change Topic)
  */
 export async function resetFlowAnchor(
-    sessionId: number,
+    sessionId: string,
     anchorType: string,
     anchorId: string,
     firebaseUid: string,
@@ -246,7 +246,7 @@ export async function resetFlowAnchor(
 /**
  * Get session info
  */
-export async function getFlowSessionInfo(sessionId: number): Promise<FlowSessionInfo> {
+export async function getFlowSessionInfo(sessionId: string): Promise<FlowSessionInfo> {
     const idToken = await getAuthToken();
 
     const response = await fetch(`${API_BASE_URL}/api/flow/session/${sessionId}`, {

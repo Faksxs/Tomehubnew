@@ -1,13 +1,15 @@
 
 export type PhysicalStatus = 'On Shelf' | 'Lent Out' | 'Lost';
 export type ReadingStatus = 'To Read' | 'Reading' | 'Finished';
+export type PersonalNoteCategory = 'PRIVATE' | 'DAILY' | 'IDEAS';
 
 export type ResourceType = 'BOOK' | 'ARTICLE' | 'WEBSITE' | 'PERSONAL_NOTE';
 
 export interface Highlight {
   id: string;
   text: string;
-  type?: 'highlight' | 'note';
+  // Canonical: highlight|insight. Legacy firebase records may still contain "note".
+  type?: 'highlight' | 'insight' | 'note';
   pageNumber?: number;
   paragraphNumber?: number; // or line/position
   chapterTitle?: string;
@@ -37,6 +39,9 @@ export interface LibraryItem {
   readingStatus: ReadingStatus; // Progress Status
   tags: string[];
   generalNotes?: string;
+  personalNoteCategory?: PersonalNoteCategory;
+  personalFolderId?: string;
+  folderPath?: string;
   coverUrl?: string; // Optional placeholder
   lentInfo?: LentInfo;
   highlights: Highlight[];
@@ -44,6 +49,15 @@ export interface LibraryItem {
   isFavorite?: boolean; // Favorite status
   isIngested?: boolean; // AI library status
   pageCount?: number;
+}
+
+export interface PersonalNoteFolder {
+  id: string;
+  category: PersonalNoteCategory;
+  name: string;
+  order: number;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export type SortOption = 'title' | 'author' | 'addedAt';

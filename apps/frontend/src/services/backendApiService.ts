@@ -1,3 +1,4 @@
+import { normalizeHighlightType } from '../lib/highlightType';
 /**
  * TomeHub Backend API Service
  * Connects React frontend to Flask backend for RAG search and document ingestion
@@ -5,8 +6,15 @@
 
 const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'http://localhost:5000'
-    : 'https://api.tomehub.nl'; // ✅ Real Production Endpoint
+    : 'https://api.tomehub.nl';
 
+const normalizeSourceTypeForBackend = (type: string): string => {
+    const normalized = (type || '').trim().toUpperCase();
+    if (normalized === 'NOTE' || normalized === 'PERSONAL') return 'PERSONAL_NOTE';
+    if (normalized === 'NOTES') return 'HIGHLIGHT';
+    if (normalized === 'INSIGHTS') return 'INSIGHT';
+    return normalized || 'PERSONAL_NOTE';
+};
 
 export interface SearchRequest {
     question: string;
@@ -416,6 +424,7 @@ export async function addTextItem(
         tags?: string[];
     }
 ): Promise<{ success: boolean; message: string }> {
+    const normalizedType = normalizeSourceTypeForBackend(type);
     const response = await fetch(`${API_BASE_URL}/api/add-item`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -423,7 +432,7 @@ export async function addTextItem(
             text,
             title,
             author,
-            type,
+            type: normalizedType,
             firebase_uid: firebaseUid,
             ...options
         })
@@ -454,11 +463,15 @@ export async function migrateBulkItems(
     }>,
     firebaseUid: string
 ): Promise<{ success: boolean; processed: number; results: any }> {
+    const normalizedItems = items.map((item) => ({
+        ...item,
+        type: normalizeSourceTypeForBackend(item.type),
+    }));
     const response = await fetch(`${API_BASE_URL}/api/migrate_bulk`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            items,
+            items: normalizedItems,
             firebase_uid: firebaseUid
         })
     });
@@ -481,13 +494,17 @@ export async function syncHighlights(
     highlights: Array<{
         id?: string;
         text: string;
-        type?: 'highlight' | 'note';
+        type?: 'highlight' | 'insight' | 'note';
         comment?: string;
         pageNumber?: number;
         tags?: string[];
         createdAt?: number;
     }>
 ): Promise<{ success: boolean; deleted: number; inserted: number }> {
+    const normalizedHighlights = highlights.map((highlight) => ({
+        ...highlight,
+        type: normalizeHighlightType(highlight.type),
+    }));
     const response = await fetch(`${API_BASE_URL}/api/books/${encodeURIComponent(bookId)}/sync-highlights`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -495,12 +512,42 @@ export async function syncHighlights(
             firebase_uid: firebaseUid,
             title,
             author,
-            highlights
+            highlights: normalizedHighlights
         })
     });
 
     if (!response.ok) {
         throw new Error('Failed to sync highlights');
+    }
+    return response.json();
+}
+
+export interface SyncPersonalNoteRequest {
+    firebase_uid: string;
+    title: string;
+    author: string;
+    content?: string;
+    tags?: string[];
+    category?: 'PRIVATE' | 'DAILY' | 'IDEAS';
+    delete_only?: boolean;
+}
+
+export async function syncPersonalNote(
+    firebaseUid: string,
+    noteId: string,
+    payload: Omit<SyncPersonalNoteRequest, 'firebase_uid'>
+): Promise<{ success: boolean; deleted: number; inserted: number }> {
+    const response = await fetch(`${API_BASE_URL}/api/notes/${encodeURIComponent(noteId)}/sync-personal-note`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            firebase_uid: firebaseUid,
+            ...payload,
+        } as SyncPersonalNoteRequest),
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to sync personal note');
     }
     return response.json();
 }
@@ -609,4 +656,3 @@ export async function getIngestedBookIds(
     }
     return response.json();
 }
-

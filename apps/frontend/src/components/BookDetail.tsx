@@ -6,6 +6,8 @@ import { analyzeHighlightsAI, enrichBookWithAI, libraryItemToDraft, mergeEnriche
 import { useAuth } from '../contexts/AuthContext';
 import { getIngestionStatus, ingestDocument, IngestResponse, IngestionStatusResponse } from '../services/backendApiService';
 import { saveItemForUser } from '../services/firestoreService';
+import { getPersonalNoteCategory } from '../lib/personalNotePolicy';
+import { toPersonalNotePreviewHtml } from '../lib/personalNoteRender';
 
 interface BookDetailProps {
   book: LibraryItem;
@@ -225,9 +227,17 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
             // --- SIMPLIFIED HEADER FOR NOTES ---
             <div className="flex justify-between items-start">
               <div className="flex-1">
-                <div className="flex items-center gap-2 md:gap-3 mb-2 md:mb-4 text-[#262D40]/90 dark:text-[#262D40]/82">
+                <div className="flex items-center gap-2 md:gap-3 mb-2 md:mb-4 text-[#262D40]/90 dark:text-white/85">
                   <PenTool size={18} className="md:w-6 md:h-6" />
-                  <span className="text-xs md:text-sm font-bold tracking-wide uppercase text-[#262D40]/80 dark:text-[#262D40]/80">Personal Note</span>
+                  <span className="text-xs md:text-sm font-bold tracking-wide uppercase text-[#262D40]/80 dark:text-white">Personal Note</span>
+                  <span className="px-2 py-0.5 rounded-md bg-[#CC561E]/10 text-[#CC561E] text-[10px] md:text-xs font-bold tracking-wide">
+                    {getPersonalNoteCategory(book)}
+                  </span>
+                  {book.folderPath && (
+                    <span className="px-2 py-0.5 rounded-md bg-[#F3F5FA] dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] md:text-xs border border-[#E6EAF2] dark:border-slate-700">
+                      {book.folderPath}
+                    </span>
+                  )}
                 </div>
                 <h1 className="text-xl md:text-4xl font-bold text-slate-900 dark:text-white mb-2 md:mb-4 leading-tight">{book.title}</h1>
 
@@ -460,7 +470,14 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                     </div>
                   )}
                   {book.generalNotes ? (
-                    <p className="text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed text-sm md:text-lg">{book.generalNotes}</p>
+                    isNote ? (
+                      <div
+                        className="personal-note-render text-slate-700 dark:text-slate-300 leading-relaxed text-sm md:text-base max-w-none"
+                        dangerouslySetInnerHTML={{ __html: toPersonalNotePreviewHtml(book.generalNotes) }}
+                      />
+                    ) : (
+                      <p className="text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed text-sm md:text-lg">{book.generalNotes}</p>
+                    )
                   ) : (
                     <p className="text-slate-400 dark:text-slate-500 italic text-sm">No content added.</p>
                   )}

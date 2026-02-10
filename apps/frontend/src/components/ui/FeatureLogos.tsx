@@ -188,29 +188,24 @@ export const SmartSearchLogo: React.FC<LogoProps> = ({ className, size = 24 }) =
 
 export const DeepChatbotLogo: React.FC<LogoProps> = ({ className, size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-        <g transform="translate(-1, -1) scale(1.15)">
-            {/* Magic Lamp Body */}
-            <path d="M19 16C19 16 20.5 14.5 21 13C21.5 11.5 20.5 11 19 11C15 11 14 11 11 11C9 11 6 12 4 10C2.5 8.5 2 9 3 10.5C4 12 6 13 8 13L9 16H15L16 13H17C18 13 18.5 13.5 19 14.5C19 15.5 18 16 19 16Z" stroke="#CC561E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="#CC561E" fillOpacity="0.1" />
+        {/* Robot Head Outline */}
+        <rect x="4" y="6" width="16" height="15" rx="4" stroke="#CC561E" strokeWidth="2" fill="#CC561E" fillOpacity="0.05" />
 
-            {/* Base of the Lamp */}
-            <path d="M10 16L9 18H15L14 16" stroke="#CC561E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M8 18H16" stroke="#CC561E" strokeWidth="2" strokeLinecap="round" />
+        {/* Antenna */}
+        <path d="M12 6V3" stroke="#CC561E" strokeWidth="2" strokeLinecap="round" />
+        <circle cx="12" cy="3" r="2" stroke="#CC561E" strokeWidth="1.5" />
+        <circle cx="12" cy="3" r="0.5" fill="#CC561E" />
 
-            {/* Handle */}
-            <path d="M19 11C21 11 22 12.5 21 14C20 15.5 18.5 15.5 19 16" stroke="#CC561E" strokeWidth="2" strokeLinecap="round" />
+        {/* Eyes (Modern Slots) */}
+        <rect x="7" y="11" width="3" height="3" rx="1" fill="#CC561E" fillOpacity="0.8" />
+        <rect x="14" y="11" width="3" height="3" rx="1" fill="#CC561E" fillOpacity="0.8" />
 
-            {/* Lid / Top Detail */}
-            <path d="M12 11V9" stroke="#CC561E" strokeWidth="2" strokeLinecap="round" />
-            <path d="M10 9H14" stroke="#CC561E" strokeWidth="1.5" strokeLinecap="round" />
+        {/* Mouth/Smile */}
+        <path d="M9 16C9 16 10 17 12 17C14 17 15 16 15 16" stroke="#CC561E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" strokeOpacity="0.6" />
 
-            {/* Magic Smoke / Genie Effect */}
-            <path d="M3 9C2 7 4 6 5 5C6 4 5 2 7 2" stroke="#CC561E" strokeWidth="1.5" strokeLinecap="round" strokeDasharray="3 3" />
-
-            {/* Magic Sparkles */}
-            <path d="M5 4L5.5 3M7 5L8 4" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeOpacity="0.8" />
-            <circle cx="8" cy="3" r="1" fill="#fff" fillOpacity="0.8" />
-            <circle cx="3" cy="6" r="1" fill="#CC561E" fillOpacity="0.6" />
-        </g>
+        {/* Side Details/Ears */}
+        <path d="M2 13H4" stroke="#CC561E" strokeWidth="2" strokeLinecap="round" strokeOpacity="0.4" />
+        <path d="M20 13H22" stroke="#CC561E" strokeWidth="2" strokeLinecap="round" strokeOpacity="0.4" />
     </svg>
 );
 
