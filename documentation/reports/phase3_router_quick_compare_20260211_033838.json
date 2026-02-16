@@ -1,0 +1,401 @@
+{
+  "static": {
+    "mode": "static",
+    "query_count": 8,
+    "success_rate": 1.0,
+    "latency_ms": {
+      "p50": 2281.3002999755554,
+      "p95": 3300.553744993522,
+      "mean": 2333.636999996088
+    },
+    "quality": {
+      "mrr_mean": 0.2693452380952381,
+      "ndcg_at_10_mean": 0.2532506715767949
+    },
+    "rows": [
+      {
+        "qid": "Q001",
+        "query": "ahlak nedir?",
+        "status": 200,
+        "ok": true,
+        "error": "",
+        "latency_ms": 2505.1829000003636,
+        "result_count": 105,
+        "mrr": 1.0,
+        "ndcg_at_10": 0.7012899792965542,
+        "router_mode": "static",
+        "router_reason": "static_all",
+        "selected_buckets": [
+          "exact",
+          "lemma",
+          "semantic"
+        ],
+        "executed_strategies": [
+          "ExactMatchStrategy",
+          "LemmaMatchStrategy",
+          "SemanticMatchStrategy"
+        ]
+      },
+      {
+        "qid": "Q002",
+        "query": "etik ne demek?",
+        "status": 200,
+        "ok": true,
+        "error": "",
+        "latency_ms": 2197.070900001563,
+        "result_count": 113,
+        "mrr": 0.0,
+        "ndcg_at_10": 0.0,
+        "router_mode": "static",
+        "router_reason": "static_all",
+        "selected_buckets": [
+          "exact",
+          "lemma",
+          "semantic"
+        ],
+        "executed_strategies": [
+          "ExactMatchStrategy",
+          "LemmaMatchStrategy",
+          "SemanticMatchStrategy"
+        ]
+      },
+      {
+        "qid": "Q003",
+        "query": "vicdan kavramini kisa tanimlar misin?",
+        "status": 200,
+        "ok": true,
+        "error": "",
+        "latency_ms": 1730.3805999690667,
+        "result_count": 65,
+        "mrr": 0.5,
+        "ndcg_at_10": 0.5307212739772434,
+        "router_mode": "static",
+        "router_reason": "static_all",
+        "selected_buckets": [
+          "exact",
+          "lemma",
+          "semantic"
+        ],
+        "executed_strategies": [
+          "ExactMatchStrategy",
+          "LemmaMatchStrategy",
+          "SemanticMatchStrategy"
+        ]
+      },
+      {
+        "qid": "Q004",
+        "query": "adalet ile ilgili temel tanim nedir?",
+        "status": 200,
+        "ok": true,
+        "error": "",
+        "latency_ms": 2365.5296999495476,
+        "result_count": 141,
+        "mrr": 0.25,
+        "ndcg_at_10": 0.43067655807339306,
+        "router_mode": "static",
+        "router_reason": "static_all",
+        "selected_buckets": [
+          "exact",
+          "lemma",
+          "semantic"
+        ],
+        "executed_strategies": [
+          "ExactMatchStrategy",
+          "LemmaMatchStrategy",
+          "SemanticMatchStrategy"
+        ]
+      },
+      {
+        "qid": "Q005",
+        "query": "ozgurluk nedir?",
+        "status": 200,
+        "ok": true,
+        "error": "",
+        "latency_ms": 3146.028399991337,
+        "result_count": 92,
+        "mrr": 0.0,
+        "ndcg_at_10": 0.0,
+        "router_mode": "static",
+        "router_reason": "static_all",
+        "selected_buckets": [
+          "exact",
+          "lemma",
+          "semantic"
+        ],
+        "executed_strategies": [
+          "ExactMatchStrategy",
+          "LemmaMatchStrategy",
+          "SemanticMatchStrategy"
+        ]
+      },
+      {
+        "qid": "Q006",
+        "query": "sorumluluk ne demek?",
+        "status": 200,
+        "ok": true,
+        "error": "",
+        "latency_ms": 3383.759699994698,
+        "result_count": 111,
+        "mrr": 0.0,
+        "ndcg_at_10": 0.0,
+        "router_mode": "static",
+        "router_reason": "static_all",
+        "selected_buckets": [
+          "exact",
+          "lemma",
+          "semantic"
+        ],
+        "executed_strategies": [
+          "ExactMatchStrategy",
+          "LemmaMatchStrategy",
+          "SemanticMatchStrategy"
+        ]
+      },
+      {
+        "qid": "Q007",
+        "query": "erdem kavramini kisa tanimlar misin?",
+        "status": 200,
+        "ok": true,
+        "error": "",
+        "latency_ms": 1636.0025000176392,
+        "result_count": 69,
+        "mrr": 0.07142857142857142,
+        "ndcg_at_10": 0.0,
+        "router_mode": "static",
+        "router_reason": "static_all",
+        "selected_buckets": [
+          "exact",
+          "lemma",
+          "semantic"
+        ],
+        "executed_strategies": [
+          "ExactMatchStrategy",
+          "LemmaMatchStrategy",
+          "SemanticMatchStrategy"
+        ]
+      },
+      {
+        "qid": "Q008",
+        "query": "hakikat ile ilgili temel tanim nedir?",
+        "status": 200,
+        "ok": true,
+        "error": "",
+        "latency_ms": 1705.1413000444882,
+        "result_count": 108,
+        "mrr": 0.3333333333333333,
+        "ndcg_at_10": 0.36331756126716835,
+        "router_mode": "static",
+        "router_reason": "static_all",
+        "selected_buckets": [
+          "exact",
+          "lemma",
+          "semantic"
+        ],
+        "executed_strategies": [
+          "ExactMatchStrategy",
+          "LemmaMatchStrategy",
+          "SemanticMatchStrategy"
+        ]
+      }
+    ]
+  },
+  "rule_based": {
+    "mode": "rule_based",
+    "query_count": 8,
+    "success_rate": 1.0,
+    "latency_ms": {
+      "p50": 1287.502549996134,
+      "p95": 2158.5611549817254,
+      "mean": 1367.3204874867224
+    },
+    "quality": {
+      "mrr_mean": 0.32142857142857145,
+      "ndcg_at_10_mean": 0.2603038399156724
+    },
+    "rows": [
+      {
+        "qid": "Q001",
+        "query": "ahlak nedir?",
+        "status": 200,
+        "ok": true,
+        "error": "",
+        "latency_ms": 1283.8713999954052,
+        "result_count": 69,
+        "mrr": 1.0,
+        "ndcg_at_10": 0.7012899792965542,
+        "router_mode": "rule_based",
+        "router_reason": "short_query",
+        "selected_buckets": [
+          "exact",
+          "lemma"
+        ],
+        "executed_strategies": [
+          "ExactMatchStrategy",
+          "LemmaMatchStrategy"
+        ]
+      },
+      {
+        "qid": "Q002",
+        "query": "etik ne demek?",
+        "status": 200,
+        "ok": true,
+        "error": "",
+        "latency_ms": 2398.2903999858536,
+        "result_count": 114,
+        "mrr": 0.0,
+        "ndcg_at_10": 0.0,
+        "router_mode": "rule_based",
+        "router_reason": "conceptual_hint",
+        "selected_buckets": [
+          "lemma",
+          "semantic",
+          "exact"
+        ],
+        "executed_strategies": [
+          "ExactMatchStrategy",
+          "LemmaMatchStrategy",
+          "SemanticMatchStrategy"
+        ]
+      },
+      {
+        "qid": "Q003",
+        "query": "vicdan kavramini kisa tanimlar misin?",
+        "status": 200,
+        "ok": true,
+        "error": "",
+        "latency_ms": 1288.2537999539636,
+        "result_count": 63,
+        "mrr": 0.5,
+        "ndcg_at_10": 0.5307212739772434,
+        "router_mode": "rule_based",
+        "router_reason": "conceptual_hint",
+        "selected_buckets": [
+          "lemma",
+          "semantic",
+          "exact"
+        ],
+        "executed_strategies": [
+          "ExactMatchStrategy",
+          "LemmaMatchStrategy",
+          "SemanticMatchStrategy"
+        ]
+      },
+      {
+        "qid": "Q004",
+        "query": "adalet ile ilgili temel tanim nedir?",
+        "status": 200,
+        "ok": true,
+        "error": "",
+        "latency_ms": 1387.0966999675147,
+        "result_count": 82,
+        "mrr": 0.5,
+        "ndcg_at_10": 0.2960819109658652,
+        "router_mode": "rule_based",
+        "router_reason": "conceptual_hint",
+        "selected_buckets": [
+          "lemma",
+          "semantic",
+          "exact"
+        ],
+        "executed_strategies": [
+          "ExactMatchStrategy",
+          "LemmaMatchStrategy",
+          "SemanticMatchStrategy"
+        ]
+      },
+      {
+        "qid": "Q005",
+        "query": "ozgurluk nedir?",
+        "status": 200,
+        "ok": true,
+        "error": "",
+        "latency_ms": 816.4751000003889,
+        "result_count": 59,
+        "mrr": 0.0,
+        "ndcg_at_10": 0.0,
+        "router_mode": "rule_based",
+        "router_reason": "short_query",
+        "selected_buckets": [
+          "exact",
+          "lemma"
+        ],
+        "executed_strategies": [
+          "ExactMatchStrategy",
+          "LemmaMatchStrategy"
+        ]
+      },
+      {
+        "qid": "Q006",
+        "query": "sorumluluk ne demek?",
+        "status": 200,
+        "ok": true,
+        "error": "",
+        "latency_ms": 1286.7513000383042,
+        "result_count": 91,
+        "mrr": 0.0,
+        "ndcg_at_10": 0.0,
+        "router_mode": "rule_based",
+        "router_reason": "default_balanced",
+        "selected_buckets": [
+          "exact",
+          "lemma"
+        ],
+        "executed_strategies": [
+          "ExactMatchStrategy",
+          "LemmaMatchStrategy"
+        ]
+      },
+      {
+        "qid": "Q007",
+        "query": "erdem kavramini kisa tanimlar misin?",
+        "status": 200,
+        "ok": true,
+        "error": "",
+        "latency_ms": 1713.34969997406,
+        "result_count": 32,
+        "mrr": 0.07142857142857142,
+        "ndcg_at_10": 0.0,
+        "router_mode": "rule_based",
+        "router_reason": "default_balanced",
+        "selected_buckets": [
+          "exact",
+          "lemma"
+        ],
+        "executed_strategies": [
+          "ExactMatchStrategy",
+          "LemmaMatchStrategy"
+        ]
+      },
+      {
+        "qid": "Q008",
+        "query": "hakikat ile ilgili temel tanim nedir?",
+        "status": 200,
+        "ok": true,
+        "error": "",
+        "latency_ms": 764.475499978289,
+        "result_count": 55,
+        "mrr": 0.5,
+        "ndcg_at_10": 0.5543375550857161,
+        "router_mode": "rule_based",
+        "router_reason": "default_balanced",
+        "selected_buckets": [
+          "exact",
+          "lemma"
+        ],
+        "executed_strategies": [
+          "ExactMatchStrategy",
+          "LemmaMatchStrategy"
+        ]
+      }
+    ]
+  },
+  "decision": {
+    "quality_change_pct": 11.31591361082857,
+    "latency_gain_pct": 34.600030123552436,
+    "quality_guardrail_pct": -2.0,
+    "latency_target_gain_pct": 2.0,
+    "quality_pass": true,
+    "latency_pass": true,
+    "recommend_rule_based": true
+  }
+}

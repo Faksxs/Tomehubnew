@@ -161,6 +161,7 @@ async function searchGoogleBooks(query: string): Promise<BookItem[]> {
                     url: item.volumeInfo.infoLink || '',
                     coverUrl: item.volumeInfo.imageLinks?.thumbnail || null,
                     pageCount: item.volumeInfo.pageCount || undefined,
+                    sourceLanguageHint: item.volumeInfo.language || undefined,
                 } as BookItem));
 
                 results.push(...books);
@@ -232,6 +233,7 @@ async function searchOpenLibrary(query: string): Promise<BookItem[]> {
                 url: `https://openlibrary.org${doc.key}`,
                 coverUrl: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg` : null,
                 pageCount: doc.number_of_pages_median || doc.number_of_pages || undefined,
+                sourceLanguageHint: doc.language?.[0] || undefined,
             } as BookItem));
 
             results.push(...books);

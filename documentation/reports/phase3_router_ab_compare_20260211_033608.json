@@ -1,0 +1,106 @@
+{
+  "generated_at": "2026-02-11T03:36:08.783459",
+  "static_report_json": "C:\\Users\\aksoy\\Desktop\\yeni tomehub\\documentation\\reports\\phase3_router_ab_static_20260211_032958.json",
+  "rule_based_report_json": "C:\\Users\\aksoy\\Desktop\\yeni tomehub\\documentation\\reports\\phase3_router_ab_rule_based_20260211_033608.json",
+  "endpoint_compare": {
+    "search": {
+      "success_rate": {
+        "static": 0.6111111111111112,
+        "rule_based": 0.6666666666666666,
+        "delta": 0.05555555555555547
+      },
+      "timeout_rate": {
+        "static": 0.3888888888888889,
+        "rule_based": 0.3333333333333333,
+        "delta": -0.05555555555555558
+      },
+      "latency_p50_ms": {
+        "static": 22637.757649994455,
+        "rule_based": 20637.319799978286,
+        "delta": -2000.4378500161693
+      },
+      "latency_p95_ms": {
+        "static": 25026.178515001084,
+        "rule_based": 25028.27554998803,
+        "delta": 2.0970349869458005
+      },
+      "mrr_mean": {
+        "static": 0.2555555555555556,
+        "rule_based": 0.3777777777777778,
+        "delta": 0.12222222222222223
+      },
+      "ndcg_at_10_mean": {
+        "static": 0.2314311014469902,
+        "rule_based": 0.3511791360670358,
+        "delta": 0.11974803462004563
+      },
+      "explorer_avg_attempts": {
+        "static": 0.0,
+        "rule_based": 0.0,
+        "delta": 0.0
+      },
+      "explorer_fallback_timeout_rate": {
+        "static": 0.0,
+        "rule_based": 0.0,
+        "delta": 0.0
+      }
+    },
+    "smart": {
+      "success_rate": {
+        "static": 1.0,
+        "rule_based": 1.0,
+        "delta": 0.0
+      },
+      "timeout_rate": {
+        "static": 0.0,
+        "rule_based": 0.0,
+        "delta": 0.0
+      },
+      "latency_p50_ms": {
+        "static": 1670.2293999842368,
+        "rule_based": 2374.3419499951415,
+        "delta": 704.1125500109047
+      },
+      "latency_p95_ms": {
+        "static": 3601.313184964237,
+        "rule_based": 4298.47429995425,
+        "delta": 697.1611149900127
+      },
+      "mrr_mean": {
+        "static": 0.3180952380952381,
+        "rule_based": 0.342063492063492,
+        "delta": 0.023968253968253916
+      },
+      "ndcg_at_10_mean": {
+        "static": 0.3426030952489079,
+        "rule_based": 0.3202414909060589,
+        "delta": -0.022361604342849006
+      },
+      "explorer_avg_attempts": {
+        "static": 0.0,
+        "rule_based": 0.0,
+        "delta": 0.0
+      },
+      "explorer_fallback_timeout_rate": {
+        "static": 0.0,
+        "rule_based": 0.0,
+        "delta": 0.0
+      }
+    }
+  },
+  "aggregate": {
+    "quality_proxy_static": 0.286921247586673,
+    "quality_proxy_rule_based": 0.34781547420359116,
+    "latency_p95_static_ms": 14313.74584998266,
+    "latency_p95_rule_based_ms": 14663.37492497114
+  },
+  "decision": {
+    "quality_change_pct": 21.223324214956683,
+    "latency_gain_pct": -2.4426106111762684,
+    "quality_guardrail_pct": -2.0,
+    "latency_target_gain_pct": 5.0,
+    "quality_pass": true,
+    "latency_pass": false,
+    "recommend_rule_based": false
+  }
+}

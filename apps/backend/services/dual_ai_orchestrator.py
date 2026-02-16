@@ -3,6 +3,7 @@ import logging
 import asyncio
 import time
 from typing import Dict, List, Any
+from config import settings
 from services.work_ai_service import generate_work_ai_answer
 from services.judge_ai_service import evaluate_answer
 from services.epistemic_service import classify_question_intent
@@ -16,7 +17,8 @@ async def generate_evaluated_answer(
     confidence_score: float,
     max_attempts: int = 2,
     network_status: str = "IN_NETWORK",
-    conversation_state: Dict[str, Any] = None
+    conversation_state: Dict[str, Any] = None,
+    source_diversity_count: int = 0,
 ) -> Dict[str, Any]:
     """
     Generate and evaluate an answer with automatic quality-based retry.
@@ -70,9 +72,26 @@ async def generate_evaluated_answer(
         complexity = "LOW"
         
     hints = None
+    fallback_state: Dict[str, Any] = {"pro_fallback_used": 0}
     
     # Phase 4: Smart Orchestration (Selective Activation)
-    should_audit, reason = should_trigger_audit(confidence_score, intent, network_status)
+    should_audit, reason = should_trigger_audit(
+        confidence_score,
+        intent,
+        network_status,
+        source_diversity_count=source_diversity_count,
+    )
+    effective_max_attempts = max_attempts
+    if answer_mode == "EXPLORER":
+        # De-risked latency policy: Explorer runs single-pass by default.
+        # Only escalate to configured retry count for clearly high-risk cases.
+        effective_max_attempts = 1
+        if should_audit and (
+            network_status in {"OUT_OF_NETWORK", "HYBRID"}
+            or intent == "COMPARATIVE"
+            or confidence_score < 3.8
+        ):
+            effective_max_attempts = max(1, min(int(max_attempts or 1), 2))
     if not should_audit:
         logger.info(f"[DualAI] Fast Track Activated ({reason}) - Skipping Judge AI")
         
@@ -85,7 +104,9 @@ async def generate_evaluated_answer(
                 confidence_score=confidence_score,
                 feedback_hints=None,
                 network_status=network_status,
-                conversation_state=conversation_state
+                conversation_state=conversation_state,
+                allow_pro_fallback=False,
+                fallback_state=fallback_state,
             )
             
             # Construct a "SKIPPED_GOOD" verification result
@@ -105,20 +126,34 @@ async def generate_evaluated_answer(
                 "latency": (time.time() - start_time) * 1000
             })
             
-            return _create_success_response(work_result["answer"], pseudo_evaluation, history, start_time)
+            return _create_success_response(
+                work_result["answer"],
+                pseudo_evaluation,
+                history,
+                start_time,
+                work_result=work_result,
+                judge_used=False,
+                max_attempts_configured=max_attempts,
+                max_attempts_effective=effective_max_attempts,
+                source_diversity_count=source_diversity_count,
+            )
             
         except Exception as e:
             logger.error(f"[DualAI] Fast Track failed: {e}")
-            return _create_error_response(e)
+            return _create_error_response(
+                e,
+                max_attempts_configured=max_attempts,
+                max_attempts_effective=effective_max_attempts
+            )
 
 
     # Regular Audit Track (Loop)
     # Refactored for Explorer Timeout Support
     async def _execute_audit_track():
         current_hints = hints
-        for attempt in range(1, max_attempts + 1):
+        for attempt in range(1, effective_max_attempts + 1):
             step_start = time.time()
-            logger.info(f"[DualAI] Attempt {attempt}/{max_attempts} for '{question[:30]}...' (Mode: {answer_mode})")
+            logger.info(f"[DualAI] Attempt {attempt}/{effective_max_attempts} for '{question[:30]}...' (Mode: {answer_mode})")
             
             # 1. Work AI Generation
             logger.info(f"[DualAI] Starting Work AI Generation (Attempt {attempt})")
@@ -130,14 +165,20 @@ async def generate_evaluated_answer(
                     confidence_score=confidence_score,
                     feedback_hints=current_hints,
                     network_status=network_status,
-                    conversation_state=conversation_state
+                    conversation_state=conversation_state,
+                    allow_pro_fallback=(attempt == effective_max_attempts and bool(current_hints)),
+                    fallback_state=fallback_state,
                 )
                 answer_text = work_result["answer"]
             except Exception as e:
                 logger.error(f"[DualAI] Work AI failed: {e}")
-                if attempt < max_attempts:
+                if attempt < effective_max_attempts:
                     continue # Retry
-                return _create_error_response(e)
+                return _create_error_response(
+                    e,
+                    max_attempts_configured=max_attempts,
+                    max_attempts_effective=effective_max_attempts
+                )
                 
             # 2. Judge AI Evaluation
             logger.info(f"[DualAI] Starting Judge AI Evaluation (Attempt {attempt})")
@@ -151,7 +192,13 @@ async def generate_evaluated_answer(
                 )
             except Exception as e:
                 logger.error(f"[DualAI] Judge AI failed: {e}")
-                return _create_fallback_response(answer_text, work_result)
+                return _create_fallback_response(
+                    answer_text,
+                    work_result,
+                    attempts=len(history),
+                    max_attempts_configured=max_attempts,
+                    max_attempts_effective=effective_max_attempts
+                )
                 
             step_latency = (time.time() - step_start) * 1000
             
@@ -169,33 +216,71 @@ async def generate_evaluated_answer(
             verdict = eval_result["verdict"]
             
             if verdict == "PASS":
-                return _create_success_response(answer_text, eval_result, history, start_time, work_result)
+                return _create_success_response(
+                    answer_text,
+                    eval_result,
+                    history,
+                    start_time,
+                    work_result=work_result,
+                    judge_used=True,
+                    max_attempts_configured=max_attempts,
+                    max_attempts_effective=effective_max_attempts,
+                    source_diversity_count=source_diversity_count,
+                )
                 
             elif verdict == "REGENERATE":
-                if attempt < max_attempts:
+                if attempt < effective_max_attempts:
                     current_hints = eval_result["hints_for_retry"]
                     logger.info(f"[DualAI] Retrying with hints: {current_hints}")
                     continue
                 else:
-                    return _create_success_response(answer_text, eval_result, history, start_time, work_result)
+                    return _create_success_response(
+                        answer_text,
+                        eval_result,
+                        history,
+                        start_time,
+                        work_result=work_result,
+                        judge_used=True,
+                        max_attempts_configured=max_attempts,
+                        max_attempts_effective=effective_max_attempts
+                    )
                     
             elif verdict == "DECLINE":
-                 if eval_result["overall_score"] < 0.3 or attempt >= max_attempts:
-                     return _create_success_response(answer_text, eval_result, history, start_time, work_result)
+                 if eval_result["overall_score"] < 0.3 or attempt >= effective_max_attempts:
+                     return _create_success_response(
+                         answer_text,
+                         eval_result,
+                         history,
+                         start_time,
+                         work_result=work_result,
+                         judge_used=True,
+                         max_attempts_configured=max_attempts,
+                         max_attempts_effective=effective_max_attempts
+                     )
                  else:
                      current_hints = eval_result["hints_for_retry"]
                      continue
 
         # Fallback (should be reached via loop exits)
         last_entry = history[-1]
-        return _create_success_response(last_entry["answer"], last_entry["evaluation"], history, start_time, work_result)
+        return _create_success_response(
+            last_entry["answer"],
+            last_entry["evaluation"],
+            history,
+            start_time,
+            work_result=work_result,
+            judge_used=True,
+            max_attempts_configured=max_attempts,
+            max_attempts_effective=effective_max_attempts
+        )
 
     # Execute with Timeout for Explorer Mode
     if answer_mode == 'EXPLORER':
         try:
-            return await asyncio.wait_for(_execute_audit_track(), timeout=45.0)
+            # Keep Explorer responsive; long tails are handled via fallback path.
+            return await asyncio.wait_for(_execute_audit_track(), timeout=24.0)
         except asyncio.TimeoutError:
-            logger.warning("[DualAI] Explorer Mode TIMEOUT (45s). Falling back to Standard Synthesis.")
+            logger.warning("[DualAI] Explorer Mode TIMEOUT (24s). Falling back to Standard Synthesis.")
             
             # Fallback: Run standard synthesis (Fast & Reliable)
             # We treat this as a "system fallback"
@@ -227,14 +312,24 @@ async def generate_evaluated_answer(
                 "latency": (time.time() - start_time) * 1000
             })
             
-            return _create_success_response(final_ans, fallback_eval, history, start_time)
+            return _create_success_response(
+                final_ans,
+                fallback_eval,
+                history,
+                start_time,
+                work_result=fallback_result,
+                judge_used=False,
+                max_attempts_configured=max_attempts,
+                max_attempts_effective=effective_max_attempts,
+                source_diversity_count=source_diversity_count,
+            )
             
     else:
         # Standard execution (no extra timeout wrapper, let global timeout handle it)
         return await _execute_audit_track()
 
 
-def should_trigger_audit(confidence: float, intent: str, network_status: str) -> tuple:
+def should_trigger_audit(confidence: float, intent: str, network_status: str, source_diversity_count: int = 0) -> tuple:
     """
     Decide whether to trigger the expensive Judge AI audit.
     
@@ -248,9 +343,15 @@ def should_trigger_audit(confidence: float, intent: str, network_status: str) ->
     # Rule 2: Always audit HYBRID / Complex synthesis
     if network_status == "HYBRID" or intent == "COMPARATIVE":
         return True, "Complex Synthesis Required"
+
+    if bool(getattr(settings, "L3_JUDGE_DIVERSITY_AUDIT_ENABLED", False)):
+        threshold = int(getattr(settings, "L3_JUDGE_DIVERSITY_THRESHOLD", 2) or 2)
+        if int(source_diversity_count or 0) < max(1, threshold):
+            return True, "Low Source Diversity"
         
     # Rule 3: Fast Track for High Confidence + Simple Intent
-    if confidence >= 5.5 and intent == "DIRECT":
+    # Confidence is capped to 5.0 in retrieval context, so threshold must be reachable.
+    if confidence >= 4.5 and intent in {"DIRECT", "FOLLOW_UP"}:
         return False, "High Confidence Direct Answer"
         
     # Rule 4: Audit Low Confidence
@@ -261,35 +362,81 @@ def should_trigger_audit(confidence: float, intent: str, network_status: str) ->
     return False, "Standard In-Network Query"
 
 
-def _create_success_response(answer, evaluation, history, start_time, work_result):
+def _create_success_response(
+    answer,
+    evaluation,
+    history,
+    start_time,
+    work_result=None,
+    judge_used=True,
+    max_attempts_configured=2,
+    max_attempts_effective=2,
+    source_diversity_count=0,
+):
+    total_latency_ms = (time.time() - start_time) * 1000
+    used_chunks = []
+    work_meta = {}
+    if isinstance(work_result, dict):
+        work_meta = work_result.get("metadata") or {}
+        used_chunks = work_meta.get("chunks", [])
     return {
         "final_answer": answer,
         "metadata": {
             "verdict": evaluation["verdict"],
             "quality_score": evaluation["overall_score"],
             "attempts": len(history),
-            "total_latency_ms": (time.time() - start_time) * 1000,
+            "total_latency_ms": total_latency_ms,
             "history": history,
-            "used_chunks": work_result['metadata'].get('chunks', [])
-        }
+            "used_chunks": used_chunks,
+            "audit_cost_profile": {
+                "attempts": len(history),
+                "max_attempts_configured": max_attempts_configured,
+                "max_attempts_effective": max_attempts_effective,
+                "total_latency_ms": total_latency_ms,
+                "judge_used": bool(judge_used),
+            },
+            "source_diversity_count": int(source_diversity_count or 0),
+            "graph_bridge_attempted": bool(work_meta.get("graph_bridge_attempted", False)),
+            "graph_bridge_used": bool(work_meta.get("graph_bridge_used", False)),
+            "graph_bridge_timeout": bool(work_meta.get("graph_bridge_timeout", False)),
+        },
     }
 
-def _create_error_response(error):
+
+def _create_error_response(error, max_attempts_configured=2, max_attempts_effective=2):
     return {
-        "final_answer": "Üzgünüm, bir teknik hata oluştu. Lütfen tekrar deneyin.",
+        "final_answer": "Uzgunum, bir teknik hata olustu. Lutfen tekrar deneyin.",
         "metadata": {
             "verdict": "ERROR",
-            "error": str(error)
-        }
+            "error": str(error),
+            "audit_cost_profile": {
+                "attempts": 0,
+                "max_attempts_configured": max_attempts_configured,
+                "max_attempts_effective": max_attempts_effective,
+                "total_latency_ms": 0.0,
+                "judge_used": False,
+            },
+        },
     }
 
-def _create_fallback_response(answer, work_result):
+
+def _create_fallback_response(answer, work_result, attempts=1, max_attempts_configured=2, max_attempts_effective=2):
+    used_chunks = []
+    if isinstance(work_result, dict):
+        used_chunks = (work_result.get("metadata") or {}).get("chunks", [])
     return {
         "final_answer": answer,
         "metadata": {
             "verdict": "UNEVALUATED",
             "quality_score": 0.0,
             "note": "Judge AI failed, returning raw answer",
-            "used_chunks": work_result['metadata'].get('chunks', [])
-        }
+            "used_chunks": used_chunks,
+            "audit_cost_profile": {
+                "attempts": attempts,
+                "max_attempts_configured": max_attempts_configured,
+                "max_attempts_effective": max_attempts_effective,
+                "total_latency_ms": 0.0,
+                "judge_used": False,
+            },
+        },
     }

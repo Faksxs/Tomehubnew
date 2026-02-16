@@ -137,7 +137,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
     setEnrichError(null);
     try {
       const draft = libraryItemToDraft(book);
-      const enriched = await enrichBookWithAI(draft);
+      const enriched = await enrichBookWithAI(draft, { forceRegenerate: true });
       const mergedItem = mergeEnrichedDraftIntoItem(book, enriched);
 
       await saveItemForUser(user.uid, mergedItem);
@@ -175,8 +175,9 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
         if (cancelled) return;
         setPdfStatus(status);
         setPdfStatusError(null);
-        if (status.status === 'COMPLETED' && !book.isIngested) {
-          const updated = { ...book, isIngested: true };
+        const shouldBeIngested = status.status === 'COMPLETED';
+        if (book.isIngested !== shouldBeIngested) {
+          const updated = { ...book, isIngested: shouldBeIngested };
           await saveItemForUser(user.uid, updated);
           onBookUpdated?.(updated);
         }

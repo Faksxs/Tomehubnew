@@ -11,15 +11,43 @@ Date: 2026-01-07
 
 import os
 import base64
+import logging
 from typing import List, Dict, Optional
 from datetime import datetime
 from dotenv import load_dotenv
 import oci
 import re
+from config import settings
 
 # Load environment variables
 env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env')
 load_dotenv(dotenv_path=env_path)
+
+logger = logging.getLogger(__name__)
+
+
+def _runtime_log(message: str, level: str = "info") -> None:
+    normalized = (level or "info").lower()
+    msg = str(message)
+    if normalized == "info":
+        lowered = msg.lower()
+        if "[error]" in lowered:
+            normalized = "error"
+        elif "[warning]" in lowered or "[warn]" in lowered:
+            normalized = "warning"
+        elif "[debug]" in lowered:
+            normalized = "debug"
+    if normalized == "debug":
+        if settings.DEBUG_VERBOSE_PIPELINE:
+            logger.debug(msg)
+        return
+    if normalized == "warning":
+        logger.warning(msg)
+        return
+    if normalized == "error":
+        logger.error(msg)
+        return
+    logger.info(msg)
 
 
 def get_oci_config() -> dict:
@@ -62,7 +90,7 @@ def get_oci_config() -> dict:
              key_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
                                key_file.replace("./backend/", ""))
     
-    print(f"[DEBUG] OCI Key File Path: {key_file} (Exists: {os.path.exists(key_file)})")
+    _runtime_log(f"[DEBUG] OCI Key File Path: {key_file} (Exists: {os.path.exists(key_file)})")
     required_vars["key_file"] = key_file
     
     return required_vars
@@ -329,38 +357,38 @@ def extract_pdf_content(pdf_path: str) -> Optional[List[Dict[str, any]]]:
     Extract structured content from a PDF file using OCI Document Understanding.
     Includes Smart Chunk Reconstruction and SIS Scoring.
     """
-    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Starting PDF extraction (Smart Mode)...")
-    print(f"[INFO] File: {pdf_path}")
+    _runtime_log(f"\n[{datetime.now().strftime('%H:%M:%S')}] Starting PDF extraction (Smart Mode)...")
+    _runtime_log(f"[INFO] File: {pdf_path}")
     
     # Validate file exists
     if not os.path.exists(pdf_path):
-        print(f"[ERROR] File not found: {pdf_path}")
+        _runtime_log(f"[ERROR] File not found: {pdf_path}")
         return None
     
     # Validate file is PDF
     if not pdf_path.lower().endswith('.pdf'):
-        print(f"[ERROR] File is not a PDF: {pdf_path}")
+        _runtime_log(f"[ERROR] File is not a PDF: {pdf_path}")
         return None
     
     try:
         # Load OCI configuration
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Loading OCI configuration...")
+        _runtime_log(f"[{datetime.now().strftime('%H:%M:%S')}] Loading OCI configuration...")
         config = get_oci_config()
         
         # Create AI Document client
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Creating OCI Document client...")
+        _runtime_log(f"[{datetime.now().strftime('%H:%M:%S')}] Creating OCI Document client...")
         ai_client = oci.ai_document.AIServiceDocumentClient(config)
         
         # Read PDF file
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Reading PDF file...")
+        _runtime_log(f"[{datetime.now().strftime('%H:%M:%S')}] Reading PDF file...")
         with open(pdf_path, 'rb') as f:
             pdf_bytes = f.read()
         
         file_size_mb = len(pdf_bytes) / (1024 * 1024)
-        print(f"[INFO] File size: {file_size_mb:.2f} MB")
+        _runtime_log(f"[INFO] File size: {file_size_mb:.2f} MB")
         
         # Encode to base64
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Encoding file...")
+        _runtime_log(f"[{datetime.now().strftime('%H:%M:%S')}] Encoding file...")
         pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
         
         # Create inline document (no mime_type parameter in current OCI SDK)
@@ -369,7 +397,7 @@ def extract_pdf_content(pdf_path: str) -> Optional[List[Dict[str, any]]]:
         )
         
         # Create analyze request with text extraction and layout analysis
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Preparing analysis request...")
+        _runtime_log(f"[{datetime.now().strftime('%H:%M:%S')}] Preparing analysis request...")
         analyze_request = oci.ai_document.models.AnalyzeDocumentDetails(
             features=[
                 oci.ai_document.models.DocumentTextExtractionFeature(
@@ -384,18 +412,18 @@ def extract_pdf_content(pdf_path: str) -> Optional[List[Dict[str, any]]]:
         )
         
         # Send to OCI for analysis
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Sending to OCI Document Understanding...")
-        print(f"[INFO] This may take a few moments for large documents...")
+        _runtime_log(f"[{datetime.now().strftime('%H:%M:%S')}] Sending to OCI Document Understanding...")
+        _runtime_log(f"[INFO] This may take a few moments for large documents...")
         
         response = ai_client.analyze_document(analyze_request)
         
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Analysis complete!")
+        _runtime_log(f"[{datetime.now().strftime('%H:%M:%S')}] Analysis complete!")
         
         # Extract structured chunks using Smart Reconstructor
         reconstructor = ChunkReconstructor()
         
         total_pages = len(response.data.pages)
-        print(f"[INFO] Processing {total_pages} pages...")
+        _runtime_log(f"[INFO] Processing {total_pages} pages...")
         
         for page in response.data.pages:
             page_num = page.page_number
@@ -428,30 +456,30 @@ def extract_pdf_content(pdf_path: str) -> Optional[List[Dict[str, any]]]:
         reconstructor.flush()
         final_chunks = reconstructor.final_chunks
         
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Extraction complete!")
-        print(f"[SUCCESS] Extracted {len(final_chunks)} chunks from {total_pages} pages (Merged {reconstructor.merge_stats} splits)")
+        _runtime_log(f"\n[{datetime.now().strftime('%H:%M:%S')}] Extraction complete!")
+        _runtime_log(f"[SUCCESS] Extracted {len(final_chunks)} chunks from {total_pages} pages (Merged {reconstructor.merge_stats} splits)")
         
         return final_chunks
         
     except oci.exceptions.ServiceError as e:
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] [WARNING] OCI Service Error:")
-        print(f"  Status: {e.status}")
-        print(f"  Code: {e.code}")
-        print(f"  Message: {e.message}")
-        print(f"\n[INFO] Falling back to PyPDF2 extraction...")
+        _runtime_log(f"\n[{datetime.now().strftime('%H:%M:%S')}] [WARNING] OCI Service Error:")
+        _runtime_log(f"  Status: {e.status}")
+        _runtime_log(f"  Code: {e.code}")
+        _runtime_log(f"  Message: {e.message}")
+        _runtime_log(f"\n[INFO] Falling back to PyPDF2 extraction...")
         return extract_pdf_with_pypdf2(pdf_path)
         
     except FileNotFoundError as e:
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] [ERROR] File not found: {e}")
+        _runtime_log(f"\n[{datetime.now().strftime('%H:%M:%S')}] [ERROR] File not found: {e}")
         return None
         
     except PermissionError as e:
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] [ERROR] Permission denied: {e}")
+        _runtime_log(f"\n[{datetime.now().strftime('%H:%M:%S')}] [ERROR] Permission denied: {e}")
         return None
         
     except Exception as e:
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] [WARNING] Unexpected error with OCI: {e}")
-        print(f"[INFO] Falling back to PyPDF2 extraction...")
+        _runtime_log(f"\n[{datetime.now().strftime('%H:%M:%S')}] [WARNING] Unexpected error with OCI: {e}")
+        _runtime_log(f"[INFO] Falling back to PyPDF2 extraction...")
         return extract_pdf_with_pypdf2(pdf_path)
 
 
@@ -495,7 +523,7 @@ async def get_pdf_metadata(pdf_path: str) -> Dict[str, any]:
             
         # 3. AI Enhancement (The "Robust" Step)
         if first_page_text and len(first_page_text.strip()) > 50:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] Sending PDF first page to AI for metadata extraction...")
+            _runtime_log(f"[{datetime.now().strftime('%H:%M:%S')}] Sending PDF first page to AI for metadata extraction...")
             ai_meta = await extract_metadata_from_text_async(first_page_text)
             
             # AI Authority: If AI finds a title, use it (usually cleaner than PDF metadata)
@@ -504,10 +532,10 @@ async def get_pdf_metadata(pdf_path: str) -> Dict[str, any]:
             if ai_meta.get("author"):
                 metadata["author"] = ai_meta["author"]
 
-        print(f"[SUCCESS] Extracted metadata (AI-Enhanced): {metadata}")
+        _runtime_log(f"[SUCCESS] Extracted metadata (AI-Enhanced): {metadata}")
         
     except Exception as e:
-        print(f"[ERROR] Metadata extraction failed: {e}")
+        _runtime_log(f"[ERROR] Metadata extraction failed: {e}")
         
     return metadata
 
@@ -525,7 +553,7 @@ def extract_pdf_with_pypdf2(pdf_path: str) -> Optional[List[Dict[str, any]]]:
     try:
         from PyPDF2 import PdfReader
         
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Using PyPDF2 for extraction...")
+        _runtime_log(f"[{datetime.now().strftime('%H:%M:%S')}] Using PyPDF2 for extraction...")
         reader = PdfReader(pdf_path)
         chunks = []
         
@@ -545,11 +573,11 @@ def extract_pdf_with_pypdf2(pdf_path: str) -> Optional[List[Dict[str, any]]]:
                             'line_index': idx
                         })
         
-        print(f"[SUCCESS] PyPDF2 extracted {len(chunks)} chunks from {len(reader.pages)} pages")
+        _runtime_log(f"[SUCCESS] PyPDF2 extracted {len(chunks)} chunks from {len(reader.pages)} pages")
         return chunks if chunks else None
         
     except Exception as e:
-        print(f"[ERROR] PyPDF2 extraction also failed: {e}")
+        _runtime_log(f"[ERROR] PyPDF2 extraction also failed: {e}")
         return None
 
 
@@ -570,11 +598,11 @@ def save_chunks_to_file(chunks: List[Dict], output_path: str) -> bool:
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(chunks, f, indent=2, ensure_ascii=False)
         
-        print(f"[SUCCESS] Saved chunks to: {output_path}")
+        _runtime_log(f"[SUCCESS] Saved chunks to: {output_path}")
         return True
         
     except Exception as e:
-        print(f"[ERROR] Failed to save chunks: {e}")
+        _runtime_log(f"[ERROR] Failed to save chunks: {e}")
         return False
 
 
@@ -583,9 +611,9 @@ def save_chunks_to_file(chunks: List[Dict], output_path: str) -> bool:
 # ============================================================================
 
 if __name__ == "__main__":
-    print("=" * 70)
-    print("TomeHub PDF Service - Test")
-    print("=" * 70)
+    _runtime_log("=" * 70)
+    _runtime_log("TomeHub PDF Service - Test")
+    _runtime_log("=" * 70)
     
     # Test with a sample PDF
     # Replace this with your actual PDF path
@@ -595,67 +623,67 @@ if __name__ == "__main__":
     test_pdf_path = test_pdf_path.strip('"').strip("'")
     
     if not test_pdf_path:
-        print("[INFO] No file provided. Using default test path...")
+        _runtime_log("[INFO] No file provided. Using default test path...")
         test_pdf_path = "test.pdf"
     
     # Extract content
     chunks = extract_pdf_content(test_pdf_path)
     
     if chunks:
-        print("\n" + "=" * 70)
-        print("Extraction Results")
-        print("=" * 70)
+        _runtime_log("\n" + "=" * 70)
+        _runtime_log("Extraction Results")
+        _runtime_log("=" * 70)
         
-        print(f"\nTotal chunks extracted: {len(chunks)}")
+        _runtime_log(f"\nTotal chunks extracted: {len(chunks)}")
         
         # Show first 3 chunks
-        print("\nFirst 3 chunks (metadata):")
-        print("-" * 70)
+        _runtime_log("\nFirst 3 chunks (metadata):")
+        _runtime_log("-" * 70)
         
         for i, chunk in enumerate(chunks[:3], 1):
-            print(f"\nChunk {i}:")
-            print(f"  Page: {chunk['page_num']}")
-            print(f"  Type: {chunk['type']}")
-            print(f"  Confidence: {chunk['confidence']:.2%}")
-            print(f"  Text length: {len(chunk['text'])} characters")
-            print(f"  Text preview: {chunk['text'][:100]}...")
+            _runtime_log(f"\nChunk {i}:")
+            _runtime_log(f"  Page: {chunk['page_num']}")
+            _runtime_log(f"  Type: {chunk['type']}")
+            _runtime_log(f"  Confidence: {chunk['confidence']:.2%}")
+            _runtime_log(f"  Text length: {len(chunk['text'])} characters")
+            _runtime_log(f"  Text preview: {chunk['text'][:100]}...")
             
             if 'bbox' in chunk:
-                print(f"  Has bounding box: Yes")
+                _runtime_log(f"  Has bounding box: Yes")
         
         # Statistics
-        print("\n" + "=" * 70)
-        print("Statistics")
-        print("=" * 70)
+        _runtime_log("\n" + "=" * 70)
+        _runtime_log("Statistics")
+        _runtime_log("=" * 70)
         
         pages = set(chunk['page_num'] for chunk in chunks)
-        print(f"Total pages: {len(pages)}")
-        print(f"Total chunks: {len(chunks)}")
-        print(f"Average chunks per page: {len(chunks) / len(pages):.1f}")
+        _runtime_log(f"Total pages: {len(pages)}")
+        _runtime_log(f"Total chunks: {len(chunks)}")
+        _runtime_log(f"Average chunks per page: {len(chunks) / len(pages):.1f}")
         
         # Count by type
         from collections import Counter
         type_counts = Counter(chunk['type'] for chunk in chunks)
-        print(f"\nChunks by type:")
+        _runtime_log(f"\nChunks by type:")
         for chunk_type, count in type_counts.items():
-            print(f"  {chunk_type}: {count}")
+            _runtime_log(f"  {chunk_type}: {count}")
         
         # Save to file
         output_file = "pdf_extraction_output.json"
         save_chunks_to_file(chunks, output_file)
         
-        print("\n" + "=" * 70)
-        print("[SUCCESS] PDF extraction test complete!")
-        print("=" * 70)
-        print("\nNext steps:")
-        print("  1. Review the extracted chunks")
-        print("  2. Pipe chunks into embedding_service.py")
-        print("  3. Store in Oracle database with vectors")
+        _runtime_log("\n" + "=" * 70)
+        _runtime_log("[SUCCESS] PDF extraction test complete!")
+        _runtime_log("=" * 70)
+        _runtime_log("\nNext steps:")
+        _runtime_log("  1. Review the extracted chunks")
+        _runtime_log("  2. Pipe chunks into embedding_service.py")
+        _runtime_log("  3. Store in Oracle database with vectors")
         
     else:
-        print("\n[FAILED] Could not extract content from PDF")
-        print("\nPlease check:")
-        print("  1. PDF file path is correct")
-        print("  2. OCI credentials are configured")
-        print("  3. You have internet connectivity")
-        print("  4. The PDF is not corrupted or password-protected")
+        _runtime_log("\n[FAILED] Could not extract content from PDF")
+        _runtime_log("\nPlease check:")
+        _runtime_log("  1. PDF file path is correct")
+        _runtime_log("  2. OCI credentials are configured")
+        _runtime_log("  3. You have internet connectivity")
+        _runtime_log("  4. The PDF is not corrupted or password-protected")

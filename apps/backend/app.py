@@ -10,14 +10,16 @@ Date: 2026-01-18
 
 import sys
 import os
+import json
 import uvicorn
 import asyncio
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Request, BackgroundTasks
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Any
 import traceback
 
 # Add backend dir to path
@@ -27,15 +29,25 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from models.request_models import (
     SearchRequest, SearchResponse, IngestRequest, 
     FeedbackRequest, AddItemRequest, BatchMigrateRequest,
-    FeedbackRequest, AddItemRequest, BatchMigrateRequest,
-    ChatRequest, ChatResponse, HighlightSyncRequest, ComparisonRequest, PersonalNoteSyncRequest
+    ChatRequest, ChatResponse, HighlightSyncRequest, ComparisonRequest, PersonalNoteSyncRequest, PurgeResourceRequest
 )
 from middleware.auth_middleware import verify_firebase_token
 
 # Import Services (Legacy & New)
 from services.search_service import generate_answer, get_rag_context
 from services.dual_ai_orchestrator import generate_evaluated_answer
-from services.ingestion_service import ingest_book, ingest_text_item, process_bulk_items_logic, sync_highlights_for_item, sync_personal_note_for_item
+from services.ingestion_service import ingest_book, ingest_text_item, process_bulk_items_logic, sync_highlights_for_item, sync_personal_note_for_item, purge_item_content
+from services.index_freshness_service import get_index_freshness_state, maybe_trigger_graph_enrichment_async
+from services.external_kb_service import (
+    get_external_kb_backfill_status,
+    maybe_trigger_external_enrichment_async,
+    start_external_kb_backfill_async,
+)
+from services.language_backfill_service import (
+    get_language_backfill_status,
+    start_language_backfill_async,
+)
+from services.epistemic_distribution_service import get_epistemic_distribution
 from services.feedback_service import submit_feedback
 from services.pdf_service import get_pdf_metadata
 from services.ai_service import (
@@ -59,7 +71,6 @@ from services.analytics_service import (
 from models.request_models import (
     EnrichBookRequest, GenerateTagsRequest, VerifyCoverRequest, AnalyzeHighlightsRequest
 )
-from fastapi.responses import StreamingResponse
 
 # Rate Limiting
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -80,7 +91,7 @@ from services.embedding_service import get_circuit_breaker_status
 from pythonjsonlogger import jsonlogger
 
 logger = logging.getLogger("tomehub_api")
-logger.setLevel(logging.INFO)
+logger.setLevel(getattr(logging, settings.LOG_LEVEL, logging.INFO))
 
 # Console Handler (Stdout for Docker)
 logHandler = logging.StreamHandler()
@@ -91,6 +102,32 @@ logger.addHandler(logHandler)
 # Remove default handlers to avoid duplicates
 logging.getLogger().handlers = []
 logging.getLogger().addHandler(logHandler)
+
+
+def _allow_dev_unverified_auth() -> bool:
+    return (
+        settings.ENVIRONMENT == "development"
+        and not bool(getattr(settings, "FIREBASE_READY", False))
+        and bool(getattr(settings, "DEV_UNSAFE_AUTH_BYPASS", False))
+    )
+
+
+def _validate_cors_origins(origins: list[str]) -> list[str]:
+    normalized = [o.strip() for o in origins if str(o).strip()]
+    if not normalized:
+        raise ValueError("ALLOWED_ORIGINS cannot be empty")
+    if "*" in normalized:
+        raise ValueError("SECURITY: '*' is not allowed when allow_credentials=True")
+
+    for origin in normalized:
+        if origin.startswith("https://"):
+            continue
+        if settings.ENVIRONMENT == "development" and origin.startswith(
+            ("http://localhost", "http://127.0.0.1", "http://0.0.0.0")
+        ):
+            continue
+        raise ValueError(f"Invalid CORS origin: {origin}")
+    return normalized
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -227,7 +264,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Use dynamic origins from environment variables via config.settings
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=_validate_cors_origins(settings.ALLOWED_ORIGINS),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -370,7 +407,7 @@ async def search(
     else:
         # Development mode: use request body UID (with warning)
         firebase_uid = search_request.firebase_uid
-        if settings.ENVIRONMENT == "development":
+        if _allow_dev_unverified_auth():
             logger.warning(f"⚠️ Dev mode: Using unverified UID from request body: {firebase_uid}")
         else:
             logger.error("SECURITY: Auth failed but ENVIRONMENT != development. Rejecting request.")
@@ -403,6 +440,8 @@ async def search(
                     "metadata": {
                         "status": "analytic",
                         "analytics": {"type": "word_count", "error": "book_and_term_missing"},
+                        "search_variant": "search",
+                        "graph_capability": "enabled",
                     },
                 }
             if not resolved_book_id:
@@ -413,6 +452,8 @@ async def search(
                     "metadata": {
                         "status": "analytic",
                         "analytics": {"type": "word_count", "error": "book_id_required"},
+                        "search_variant": "search",
+                        "graph_capability": "enabled",
                     },
                 }
             if not term:
@@ -423,6 +464,8 @@ async def search(
                     "metadata": {
                         "status": "analytic",
                         "analytics": {"type": "word_count", "error": "term_missing"},
+                        "search_variant": "search",
+                        "graph_capability": "enabled",
                     },
                 }
             count = count_lemma_occurrences(firebase_uid, resolved_book_id, term)
@@ -443,6 +486,8 @@ async def search(
                     "contexts": contexts if count > 0 else [],
                     "debug": {"cache": "disabled"},
                 },
+                "search_variant": "search",
+                "graph_capability": "enabled",
             }
             
             logger.debug("Analytic search context count", extra={"count": len(metadata_dict['analytics']['contexts'])})
@@ -482,6 +527,10 @@ async def search(
                 "metadata": metadata,
             }
         )
+
+        if isinstance(metadata, dict):
+            metadata.setdefault("search_variant", "search")
+            metadata.setdefault("graph_capability", "enabled")
         
         return {
             "answer": answer,
@@ -511,7 +560,7 @@ async def chat_endpoint(
         logger.info(f"Using JWT-verified UID: {firebase_uid}")
     else:
         firebase_uid = chat_request.firebase_uid
-        if settings.ENVIRONMENT == "development":
+        if _allow_dev_unverified_auth():
             logger.warning(f"⚠️ Dev mode: Using unverified UID from request body: {firebase_uid}")
         else:
             logger.error("SECURITY: Auth failed but ENVIRONMENT != development. Rejecting request.")
@@ -555,6 +604,7 @@ async def chat_endpoint(
             if not resolved_book_id and not term:
                 answer = "Analitik sayım için kitap ve kelime gerekli. Örn: \"Mahur Beste kitabında zaman kelimesi kaç defa geçiyor?\""
                 await loop.run_in_executor(None, add_message, session_id, 'assistant', answer, [])
+                background_tasks.add_task(summarize_session_history, session_id)
                 return {
                     "answer": answer,
                     "session_id": session_id,
@@ -570,6 +620,7 @@ async def chat_endpoint(
             if not resolved_book_id:
                 answer = "Analitik sayım için hangi kitabı soruyorsun? Örn: \"Mahur Beste kitabında zaman kelimesi kaç defa geçiyor?\""
                 await loop.run_in_executor(None, add_message, session_id, 'assistant', answer, [])
+                background_tasks.add_task(summarize_session_history, session_id)
                 return {
                     "answer": answer,
                     "session_id": session_id,
@@ -585,6 +636,7 @@ async def chat_endpoint(
             if not term:
                 answer = "Sayılacak kelimeyi belirtir misin?"
                 await loop.run_in_executor(None, add_message, session_id, 'assistant', answer, [])
+                background_tasks.add_task(summarize_session_history, session_id)
                 return {
                     "answer": answer,
                     "session_id": session_id,
@@ -618,6 +670,7 @@ async def chat_endpoint(
             contexts = get_keyword_contexts(firebase_uid, resolved_book_id, term, limit=10)
             
             await loop.run_in_executor(None, add_message, session_id, 'assistant', answer, [])
+            background_tasks.add_task(summarize_session_history, session_id)
             return {
                 "answer": answer,
                 "session_id": session_id,
@@ -651,18 +704,39 @@ async def chat_endpoint(
         conversation_state = None  # To return in response
         thinking_history = []      # To return in response
         final_metadata = {}
+        # Guardrail: prevent accidentally tiny retrieval pools in chat mode.
+        retrieval_limit = int(chat_request.limit or 20)
+        if use_explorer_mode:
+            retrieval_limit = max(20, retrieval_limit)
+        else:
+            retrieval_limit = max(10, retrieval_limit)
+        retrieval_limit = min(100, retrieval_limit)
         
         if use_explorer_mode:
             # EXPLORER Mode: Dual-AI Orchestrator with conversation state
-            from services.chat_history_service import get_conversation_state
-            
-            # Get structured conversation state for context
-            if session_id:
-                conversation_state = await loop.run_in_executor(
-                    None, get_conversation_state, session_id
-                )
-            else:
-                conversation_state = {}
+            # Reuse already-fetched session context instead of another DB read.
+            state_payload = str((ctx_data or {}).get('conversation_state_json') or '').strip()
+            summary_payload = str((ctx_data or {}).get('summary') or '').strip()
+            conversation_state = {
+                "active_topic": "",
+                "assumptions": [],
+                "open_questions": [],
+                "established_facts": [],
+                "turn_count": 0,
+            }
+            raw_state_payload = state_payload or summary_payload
+            if raw_state_payload:
+                if raw_state_payload.startswith("{"):
+                    try:
+                        parsed_state = json.loads(raw_state_payload)
+                        if isinstance(parsed_state, dict):
+                            conversation_state.update(parsed_state)
+                    except Exception:
+                        conversation_state["legacy_summary"] = raw_state_payload
+                        conversation_state["active_topic"] = raw_state_payload[:100]
+                else:
+                    conversation_state["legacy_summary"] = raw_state_payload
+                    conversation_state["active_topic"] = raw_state_payload[:100]
 
             # 1. Retrieve Context
             rag_ctx = await loop.run_in_executor(
@@ -671,10 +745,11 @@ async def chat_endpoint(
                     get_rag_context,
                     chat_request.message, 
                     firebase_uid, 
+                    chat_request.book_id,
                     chat_history=ctx_data['recent_messages'],
                     mode='EXPLORER',
                     resource_type=chat_request.resource_type,
-                    limit=chat_request.limit,
+                    limit=retrieval_limit,
                     offset=chat_request.offset
                 )
             )
@@ -688,7 +763,8 @@ async def chat_endpoint(
                     answer_mode='EXPLORER',
                     confidence_score=rag_ctx['confidence'],
                     network_status=rag_ctx.get('network_status', 'IN_NETWORK'),
-                    conversation_state=conversation_state  # Pass structured state
+                    conversation_state=conversation_state,  # Pass structured state
+                    source_diversity_count=int(rag_ctx.get("source_diversity_count") or 0),
                 )
                 
                 answer = final_result['final_answer']
@@ -702,6 +778,27 @@ async def chat_endpoint(
                         if 'degradations' not in final_result['metadata']:
                             final_result['metadata']['degradations'] = []
                         final_result['metadata']['degradations'].extend(rag_meta['degradations'])
+                    # Phase-1: forward retrieval diagnostics for UI/observability
+                    for key in (
+                        "retrieval_fusion_mode",
+                        "retrieval_path",
+                        "graph_candidates_count",
+                        "external_graph_candidates_count",
+                        "vector_candidates_count",
+                        "source_diversity_count",
+                        "source_type_diversity_count",
+                        "academic_scope",
+                        "external_kb_used",
+                        "wikidata_qid",
+                        "openalex_used",
+                        "dbpedia_used",
+                        "orkg_used",
+                        "search_log_id",
+                        "graph_bridge_attempted",
+                        "quote_target_count",
+                    ):
+                        if key in rag_meta:
+                            final_result['metadata'][key] = rag_meta[key]
                         
                 final_metadata = final_result['metadata']
                 
@@ -726,7 +823,7 @@ async def chat_endpoint(
                     chat_request.book_id,
                     ctx_data['recent_messages'],
                     ctx_data['summary'] or "",
-                    chat_request.limit,
+                    retrieval_limit,
                     chat_request.offset,
                     session_id
                 )
@@ -736,6 +833,9 @@ async def chat_endpoint(
                 answer = answer_result
                 sources = sources_result or []
                 final_metadata = meta_result or {}
+
+        if isinstance(final_metadata, dict):
+            final_metadata.setdefault("effective_retrieval_limit", retrieval_limit)
         
         # 5. Save Assistant Message
         await loop.run_in_executor(None, add_message, session_id, 'assistant', answer, sources)
@@ -743,7 +843,6 @@ async def chat_endpoint(
         # 6. Periodic Summarization (Background)
         background_tasks.add_task(summarize_session_history, session_id)
         
-        # 7. Format Response
         return {
             "answer": answer,
             "session_id": session_id,
@@ -757,6 +856,7 @@ async def chat_endpoint(
     except Exception as e:
         logger.error("Chat failed", extra={"error": str(e), "traceback": traceback.format_exc()})
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/api/analytics/ingested-books")
 async def get_ingested_books(
@@ -802,6 +902,34 @@ async def get_ingested_books(
     except Exception as e:
         logger.error(f"Ingested books endpoint failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/analytics/epistemic-distribution")
+async def get_epistemic_distribution_endpoint(
+    request: Request,
+    book_id: Optional[str] = None,
+    limit: int = 250,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+):
+    if firebase_uid_from_jwt:
+        firebase_uid = firebase_uid_from_jwt
+    else:
+        if not _allow_dev_unverified_auth():
+            raise HTTPException(status_code=401, detail="Authentication required")
+        firebase_uid = request.query_params.get("firebase_uid")
+        if not firebase_uid:
+            auth_header = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+            if auth_header and len(auth_header) < 128:
+                firebase_uid = auth_header
+    if not firebase_uid:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    loop = asyncio.get_running_loop()
+    result = await loop.run_in_executor(
+        None,
+        lambda: get_epistemic_distribution(firebase_uid=firebase_uid, book_id=book_id, limit=limit),
+    )
+    return result
 
 @app.get("/api/analytics/concordance")
 async def get_concordance(
@@ -926,7 +1054,7 @@ async def perform_search(
         firebase_uid = firebase_uid_from_jwt
     else:
         firebase_uid = request.firebase_uid
-        if settings.ENVIRONMENT == "development":
+        if _allow_dev_unverified_auth():
             logger.warning(f"⚠️ Dev mode: Using unverified UID from request body: {firebase_uid}")
         else:
             raise HTTPException(status_code=401, detail="Authentication required")
@@ -943,9 +1071,15 @@ async def perform_search(
                 request.question, 
                 firebase_uid, 
                 limit=request.limit, 
-                offset=request.offset
+                offset=request.offset,
+                result_mix_policy="lexical_then_semantic_tail",
+                semantic_tail_cap=settings.SEARCH_SMART_SEMANTIC_TAIL_CAP,
             )
         )
+
+        if isinstance(metadata, dict):
+            metadata.setdefault("search_variant", "smart_search")
+            metadata.setdefault("graph_capability", "disabled")
         
         return {
             "results": results,
@@ -967,7 +1101,7 @@ async def feedback(
         firebase_uid = firebase_uid_from_jwt
     else:
         firebase_uid = request.firebase_uid
-        if settings.ENVIRONMENT == "development":
+        if _allow_dev_unverified_auth():
             logger.warning(f"⚠️ Dev mode: Using unverified UID from request body: {firebase_uid}")
         else:
             raise HTTPException(status_code=401, detail="Authentication required")
@@ -1030,7 +1164,7 @@ async def search_reports(
         uid = firebase_uid_from_jwt
     else:
         uid = firebase_uid
-        if settings.ENVIRONMENT == "development":
+        if _allow_dev_unverified_auth():
             logger.warning(f"⚠️ Dev mode: Using unverified UID from query: {uid}")
         else:
             raise HTTPException(status_code=401, detail="Authentication required")
@@ -1100,6 +1234,26 @@ def fetch_ingestion_status(book_id: str, firebase_uid: str):
         logger.error(f"Failed to fetch ingestion status: {e}")
         return None
 
+
+def _parse_csv_tags(raw_tags: Optional[str]) -> List[str]:
+    if not raw_tags:
+        return []
+    return [part.strip() for part in str(raw_tags).replace("\n", ",").split(",") if part.strip()]
+
+
+def _collect_highlight_tags(highlights: List[Any]) -> List[str]:
+    out: List[str] = []
+    seen = set()
+    for item in highlights or []:
+        tags = item.tags if hasattr(item, "tags") else item.get("tags", [])
+        for tag in tags or []:
+            normalized = str(tag or "").strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            out.append(normalized)
+    return out
+
 def run_ingestion_background(temp_path: str, title: str, author: str, firebase_uid: str, book_id: str, categories: Optional[str] = None):
     """
     Background task wrapper for book ingestion.
@@ -1136,6 +1290,20 @@ def run_ingestion_background(temp_path: str, title: str, author: str, firebase_u
                     )
                 except Exception as e:
                     logger.error(f"Failed to update ingestion status counts: {e}")
+                else:
+                    maybe_trigger_graph_enrichment_async(
+                        firebase_uid=firebase_uid,
+                        book_id=book_id,
+                        reason="pdf_ingest_completed",
+                    )
+                    maybe_trigger_external_enrichment_async(
+                        book_id=book_id,
+                        firebase_uid=firebase_uid,
+                        title=title,
+                        author=author,
+                        tags=_parse_csv_tags(categories),
+                        mode_hint="INGEST",
+                    )
 
             # Trigger Memory Layer: File Report Generation
             logger.info(f"Generating File Report for {book_id}...")
@@ -1255,6 +1423,7 @@ async def get_ingestion_status(
             raise HTTPException(status_code=400, detail="firebase_uid is required in development")
 
     row = fetch_ingestion_status(book_id, verified_firebase_uid)
+    freshness = get_index_freshness_state(book_id, verified_firebase_uid)
     if row:
         status, file_name, chunk_count, embedding_count, updated_at = row
         return {
@@ -1262,7 +1431,9 @@ async def get_ingestion_status(
             "file_name": file_name,
             "chunk_count": int(chunk_count) if chunk_count is not None else None,
             "embedding_count": int(embedding_count) if embedding_count is not None else None,
-            "updated_at": updated_at.isoformat() if updated_at else None
+            "updated_at": updated_at.isoformat() if updated_at else None,
+            "index_freshness_state": freshness.get("index_freshness_state"),
+            "index_freshness": freshness,
         }
 
     # Fallback: check if content exists for this book
@@ -1274,7 +1445,9 @@ async def get_ingestion_status(
                     SELECT COUNT(*) as chunk_count,
                            SUM(CASE WHEN VEC_EMBEDDING IS NOT NULL THEN 1 ELSE 0 END) as embedding_count
                     FROM TOMEHUB_CONTENT
-                    WHERE BOOK_ID = :p_bid AND FIREBASE_UID = :p_uid
+                    WHERE BOOK_ID = :p_bid
+                      AND FIREBASE_UID = :p_uid
+                      AND SOURCE_TYPE IN ('PDF', 'EPUB', 'PDF_CHUNK')
                     """,
                     {"p_bid": book_id, "p_uid": verified_firebase_uid}
                 )
@@ -1287,7 +1460,9 @@ async def get_ingestion_status(
                         "file_name": None,
                         "chunk_count": int(chunk_count),
                         "embedding_count": int(embedding_count),
-                        "updated_at": datetime.now().isoformat()
+                        "updated_at": datetime.now().isoformat(),
+                        "index_freshness_state": freshness.get("index_freshness_state"),
+                        "index_freshness": freshness,
                     }
     except Exception as e:
         logger.error(f"Fallback ingestion status check failed: {e}")
@@ -1297,8 +1472,95 @@ async def get_ingestion_status(
         "file_name": None,
         "chunk_count": None,
         "embedding_count": None,
-        "updated_at": None
+        "updated_at": None,
+        "index_freshness_state": freshness.get("index_freshness_state"),
+        "index_freshness": freshness,
     }
+
+
+@app.post("/api/admin/external-kb/backfill/start")
+async def start_external_kb_backfill(
+    request: Request,
+    all_users: bool = False,
+    firebase_uid: Optional[str] = None,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+):
+    if firebase_uid_from_jwt:
+        verified_uid = firebase_uid_from_jwt
+    else:
+        if settings.ENVIRONMENT == "production":
+            raise HTTPException(status_code=401, detail="Authentication required")
+        verified_uid = firebase_uid or request.query_params.get("firebase_uid")
+        if not verified_uid:
+            raise HTTPException(status_code=400, detail="firebase_uid is required in development")
+
+    if all_users and settings.ENVIRONMENT == "production":
+        raise HTTPException(status_code=403, detail="all_users backfill is disabled in production")
+
+    scope_uid = None if all_users else verified_uid
+    status = start_external_kb_backfill_async(scope_uid=scope_uid)
+    return {"success": True, "status": status}
+
+
+@app.get("/api/admin/external-kb/backfill/status")
+async def external_kb_backfill_status(
+    request: Request,
+    firebase_uid: Optional[str] = None,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+):
+    if not firebase_uid_from_jwt and settings.ENVIRONMENT == "production":
+        raise HTTPException(status_code=401, detail="Authentication required")
+    if not firebase_uid_from_jwt and settings.ENVIRONMENT != "production":
+        _ = firebase_uid or request.query_params.get("firebase_uid")
+    return {"success": True, "status": get_external_kb_backfill_status()}
+
+
+@app.post("/api/admin/ai/language-backfill/start")
+async def start_language_backfill(
+    request: Request,
+    all_users: bool = False,
+    dry_run: bool = False,
+    batch_size: int = 25,
+    max_items: int = 250,
+    firebase_uid: Optional[str] = None,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+):
+    if firebase_uid_from_jwt:
+        verified_uid = firebase_uid_from_jwt
+    else:
+        if settings.ENVIRONMENT == "production":
+            raise HTTPException(status_code=401, detail="Authentication required")
+        if all_users:
+            verified_uid = None
+        else:
+            verified_uid = firebase_uid or request.query_params.get("firebase_uid")
+            if not verified_uid:
+                raise HTTPException(status_code=400, detail="firebase_uid is required in development")
+
+    if all_users and settings.ENVIRONMENT == "production":
+        raise HTTPException(status_code=403, detail="all_users backfill is disabled in production")
+
+    scope_uid = None if all_users else verified_uid
+    status = start_language_backfill_async(
+        scope_uid=scope_uid,
+        dry_run=bool(dry_run),
+        batch_size=int(batch_size),
+        max_items=int(max_items),
+    )
+    return {"success": True, "status": status}
+
+
+@app.get("/api/admin/ai/language-backfill/status")
+async def language_backfill_status(
+    request: Request,
+    firebase_uid: Optional[str] = None,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+):
+    if not firebase_uid_from_jwt and settings.ENVIRONMENT == "production":
+        raise HTTPException(status_code=401, detail="Authentication required")
+    if not firebase_uid_from_jwt and settings.ENVIRONMENT != "production":
+        _ = firebase_uid or request.query_params.get("firebase_uid")
+    return {"success": True, "status": get_language_backfill_status()}
 
 
 @app.post("/api/add-item")
@@ -1331,7 +1593,31 @@ async def add_item_endpoint(
             tags=request.tags
         )
         if success:
-            return {"success": True, "message": "Item added"}
+            if request.book_id:
+                maybe_trigger_graph_enrichment_async(
+                    firebase_uid=verified_firebase_uid,
+                    book_id=request.book_id,
+                    reason="add_item",
+                )
+                maybe_trigger_external_enrichment_async(
+                    book_id=request.book_id,
+                    firebase_uid=verified_firebase_uid,
+                    title=request.title,
+                    author=request.author,
+                    tags=request.tags,
+                    mode_hint="INGEST",
+                )
+                freshness = get_index_freshness_state(request.book_id, verified_firebase_uid)
+            else:
+                freshness = None
+            return {
+                "success": True,
+                "message": "Item added",
+                "metadata": {
+                    "index_freshness_state": freshness.get("index_freshness_state") if freshness else None,
+                    "index_freshness": freshness,
+                },
+            }
         raise HTTPException(status_code=500, detail="Failed to add item")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1362,6 +1648,22 @@ async def sync_highlights_endpoint(
         )
         if not result.get("success"):
             raise HTTPException(status_code=500, detail=result.get("error", "Sync failed"))
+        maybe_trigger_graph_enrichment_async(
+            firebase_uid=verified_firebase_uid,
+            book_id=book_id,
+            reason="sync_highlights",
+        )
+        maybe_trigger_external_enrichment_async(
+            book_id=book_id,
+            firebase_uid=verified_firebase_uid,
+            title=request.title,
+            author=request.author,
+            tags=_collect_highlight_tags(request.highlights),
+            mode_hint="INGEST",
+        )
+        freshness = get_index_freshness_state(book_id, verified_firebase_uid)
+        result["index_freshness_state"] = freshness.get("index_freshness_state")
+        result["index_freshness"] = freshness
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1394,9 +1696,52 @@ async def sync_personal_note_endpoint(
         )
         if not result.get("success"):
             raise HTTPException(status_code=500, detail=result.get("error", "Sync failed"))
+        maybe_trigger_graph_enrichment_async(
+            firebase_uid=verified_firebase_uid,
+            book_id=book_id,
+            reason="sync_personal_note",
+        )
+        maybe_trigger_external_enrichment_async(
+            book_id=book_id,
+            firebase_uid=verified_firebase_uid,
+            title=request.title,
+            author=request.author,
+            tags=request.tags,
+            mode_hint="INGEST",
+        )
+        freshness = get_index_freshness_state(book_id, verified_firebase_uid)
+        result["index_freshness_state"] = freshness.get("index_freshness_state")
+        result["index_freshness"] = freshness
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/resources/{book_id}/purge")
+async def purge_resource_endpoint(
+    book_id: str,
+    request: PurgeResourceRequest,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+):
+    try:
+        if firebase_uid_from_jwt:
+            verified_firebase_uid = firebase_uid_from_jwt
+        else:
+            verified_firebase_uid = request.firebase_uid
+            if settings.ENVIRONMENT == "production":
+                raise HTTPException(status_code=401, detail="Authentication required")
+            logger.warning("⚠️ Dev mode: Using unverified UID for resource purge")
+
+        result = purge_item_content(
+            firebase_uid=verified_firebase_uid,
+            book_id=book_id,
+        )
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error", "Purge failed"))
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/api/migrate_bulk")
 async def migrate_bulk_endpoint(

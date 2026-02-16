@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Upload, Check, AlertCircle, FileJson } from 'lucide-react';
 import { saveItemForUser } from '../services/firestoreService';
+import { addTextItem } from '../services/backendApiService';
 import { LibraryItem } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -74,6 +75,22 @@ export const ImportBooks: React.FC = () => {
                 };
 
                 await saveItemForUser(user.uid, newItem);
+                try {
+                    const text = `Title: ${newItem.title}\nAuthor: ${newItem.author}`;
+                    await addTextItem(
+                        text,
+                        newItem.title,
+                        newItem.author,
+                        newItem.type,
+                        user.uid,
+                        {
+                            book_id: newItem.id,
+                            tags: newItem.tags || [],
+                        }
+                    );
+                } catch (syncErr) {
+                    console.error('Import sync to AI backend failed:', syncErr);
+                }
 
                 count++;
                 setProgress(count);

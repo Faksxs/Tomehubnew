@@ -1,0 +1,8 @@
+﻿tomehub_l3_phase_latency_seconds_count{phase="retrieval"} 1.0
+tomehub_l3_phase_latency_seconds_sum{phase="retrieval"} 1.7230145999928936
+tomehub_l3_phase_latency_seconds_count{phase="prompt_build"} 1.0
+tomehub_l3_phase_latency_seconds_sum{phase="prompt_build"} 6.480002775788307e-05
+tomehub_l3_phase_latency_seconds_count{phase="llm_generate"} 1.0
+tomehub_l3_phase_latency_seconds_sum{phase="llm_generate"} 13.58932539995294
+http_request_duration_seconds_count{handler="/api/search",method="POST"} 1.0
+http_request_duration_seconds_sum{handler="/api/search",method="POST"} 15.653328799991868

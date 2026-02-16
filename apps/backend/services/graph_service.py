@@ -3,10 +3,10 @@ import os
 import json
 import re
 import oracledb
-import google.generativeai as genai
 import logging
 from datetime import datetime
 from dotenv import load_dotenv
+from services.llm_client import MODEL_TIER_FLASH, generate_text, get_model_for_tier
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -14,9 +14,6 @@ logger = logging.getLogger(__name__)
 # Load environment - go up one level from services/ to backend/
 env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env')
 load_dotenv(dotenv_path=env_path)
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
 
 from services.embedding_service import get_embedding, get_query_embedding
 from config import settings
@@ -34,12 +31,21 @@ def extract_concepts_and_relations(text: str):
     prompt = GRAPH_EXTRACTION_PROMPT.format(text=text)
     
     try:
-        model = genai.GenerativeModel('gemini-2.0-flash')
-        # Task 2.4: Add timeout
-        response = model.generate_content(prompt, request_options={'timeout': 45})
-        text_resp = response.text.strip()
+        model = get_model_for_tier(MODEL_TIER_FLASH)
+        result = generate_text(
+            model=model,
+            prompt=prompt,
+            task="graph_extract_concepts",
+            model_tier=MODEL_TIER_FLASH,
+            timeout_s=45.0,
+        )
+        text_resp = result.text.strip()
         
-        print(f"[DEBUG] Raw Response: {text_resp[:100]}...")
+        # Avoid console encoding crashes on Windows terminals.
+        logger.debug(
+            "Graph extraction raw response preview",
+            extra={"preview": text_resp[:100].encode("ascii", "ignore").decode("ascii")},
+        )
         
         # Clean potential markdown
         if "```json" in text_resp:
@@ -72,7 +78,7 @@ def extract_concepts_and_relations(text: str):
         print(f"[ERROR] Extraction failed: {e}")
         return [], []
 
-def save_to_graph(content_id: int, concepts: list, relations: list):
+def save_to_graph(content_id: int, concepts: list, relations: list) -> bool:
     """Saves extracted data to Oracle Graph tables."""
     try:
         with DatabaseManager.get_write_connection() as conn:
@@ -109,13 +115,13 @@ def save_to_graph(content_id: int, concepts: list, relations: list):
                     # Upsert Concept (case-insensitive)
                     cursor.execute("""
                         MERGE INTO TOMEHUB_CONCEPTS target
-                        USING (SELECT :name as name, :name_lower as name_lower, :ctype as ctype, :desc as descr FROM DUAL) src
+                        USING (SELECT :name as name, :name_lower as name_lower, :ctype as ctype, :p_descr as descr FROM DUAL) src
                         ON (LOWER(target.name) = src.name_lower)
                         WHEN MATCHED THEN
                             UPDATE SET
                                 CONCEPT_TYPE = COALESCE(target.CONCEPT_TYPE, src.ctype),
                                 DESCRIPTION = CASE
-                                    WHEN target.DESCRIPTION IS NULL THEN src.descr
+                                    WHEN target.DESCRIPTION IS NULL THEN TO_CLOB(src.descr)
                                     ELSE target.DESCRIPTION
                                 END,
                                 DESCRIPTION_EMBEDDING = CASE
@@ -124,8 +130,8 @@ def save_to_graph(content_id: int, concepts: list, relations: list):
                                 END
                         WHEN NOT MATCHED THEN
                             INSERT (name, concept_type, description, description_embedding)
-                            VALUES (src.name, src.ctype, src.descr, :p_desc_vec)
-                    """, {"name": name_clean, "name_lower": name_lower, "ctype": ctype, "descr": desc, "p_desc_vec": desc_embedding})
+                            VALUES (src.name, src.ctype, TO_CLOB(src.descr), :p_desc_vec)
+                    """, {"name": name_clean, "name_lower": name_lower, "ctype": ctype, "p_descr": desc, "p_desc_vec": desc_embedding})
                     
                     # Get ID
                     cursor.execute("SELECT id FROM TOMEHUB_CONCEPTS WHERE LOWER(name) = :name_lower", {"name_lower": name_lower})
@@ -211,8 +217,10 @@ def save_to_graph(content_id: int, concepts: list, relations: list):
                                 pass
                             
                 conn.commit()
+                return True
     except Exception as e:
         print(f"[ERROR] DB Save failed: {e}")
+        return False
 
 def find_concepts_by_text(text: str, cursor) -> list[int]:
     """

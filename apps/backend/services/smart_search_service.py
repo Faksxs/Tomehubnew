@@ -1,21 +1,17 @@
 
 import os
 import sys
+import logging
 import oracledb
-import google.generativeai as genai
 from dotenv import load_dotenv
-from datetime import datetime
 import json
 import re
+from services.llm_client import MODEL_TIER_LITE, generate_text, get_model_for_tier
+from config import settings
 
 # Load environment variables - go up one level from services/ to backend/
 env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env')
 load_dotenv(dotenv_path=env_path)
-
-# Configure Gemini
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
 
 from services.embedding_service import get_embedding
 from utils.text_utils import normalize_text, calculate_fuzzy_score, deaccent_text, get_lemmas, normalize_canonical
@@ -28,6 +24,8 @@ from rank_bm25 import BM25Okapi
 
 
 from infrastructure.db_manager import DatabaseManager
+
+logger = logging.getLogger(__name__)
 
 # --- CONSTANTS ---
 STOP_WORDS = {
@@ -108,7 +106,8 @@ def generate_query_variations(query: str) -> list[str]:
     if not query:
         return []
         
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Generating query variations for: '{query}'")
+    if settings.DEBUG_VERBOSE_PIPELINE:
+        logger.debug("Generating query variations for query='%s'", query)
     
     prompt = f"""You are an AI search optimizer.
     Generate 3 alternative versions of the following search query to improve retrieval recall.
@@ -121,10 +120,15 @@ def generate_query_variations(query: str) -> list[str]:
     """
     
     try:
-        model = genai.GenerativeModel('gemini-2.0-flash')
-        # Task 2.4: Add timeout
-        response = model.generate_content(prompt, request_options={'timeout': 30})
-        text = response.text.strip()
+        model = get_model_for_tier(MODEL_TIER_LITE)
+        result = generate_text(
+            model=model,
+            prompt=prompt,
+            task="smart_search_query_variations",
+            model_tier=MODEL_TIER_LITE,
+            timeout_s=30.0,
+        )
+        text = result.text.strip()
         
         # Clean markdown
         if "```json" in text:
@@ -138,7 +142,7 @@ def generate_query_variations(query: str) -> list[str]:
         return [query]
         
     except Exception as e:
-        print(f"[WARNING] Query expansion failed: {e}")
+        logger.warning("Query expansion failed: %s", e)
         return [query]
 
 def score_with_bm25(documents: list[str], query: str) -> list[float]:
@@ -170,7 +174,19 @@ def score_with_bm25(documents: list[str], query: str) -> list[float]:
 from services.search_system.orchestrator import SearchOrchestrator
 from services.search_system.search_utils import compute_rrf # Re-export for compatibility
 
-def perform_search(query, firebase_uid, book_id=None, intent='SYNTHESIS', search_depth='normal', resource_type=None, limit=None, offset=0, session_id=None):
+def perform_search(
+    query,
+    firebase_uid,
+    book_id=None,
+    intent='SYNTHESIS',
+    search_depth='normal',
+    resource_type=None,
+    limit=None,
+    offset=0,
+    session_id=None,
+    result_mix_policy=None,
+    semantic_tail_cap=None,
+):
     """
     Search - Layer 2
     Delegates to the new SearchOrchestrator (Phase 3 Architecture).
@@ -186,16 +202,27 @@ def perform_search(query, firebase_uid, book_id=None, intent='SYNTHESIS', search
         
         # Initialize Orchestrator with embedding function and cache
         orchestrator = SearchOrchestrator(embedding_fn=get_embedding, cache=cache)
-        result = orchestrator.search(query, firebase_uid, limit=limit, offset=offset, book_id=book_id, intent=intent, resource_type=resource_type, session_id=session_id)
+        result = orchestrator.search(
+            query,
+            firebase_uid,
+            limit=limit,
+            offset=offset,
+            book_id=book_id,
+            intent=intent,
+            resource_type=resource_type,
+            session_id=session_id,
+            result_mix_policy=result_mix_policy,
+            semantic_tail_cap=semantic_tail_cap,
+        )
         
         if result is None:
-            print("[ERROR] Orchestrator returned None")
+            logger.error("Orchestrator returned None")
             return [], {}
             
         return result
         
     except Exception as e:
-        print(f"[ERROR] Smart Search Failed: {e}")
+        logger.error("Smart Search failed: %s", e)
         import traceback
         traceback.print_exc()
         return [], {}

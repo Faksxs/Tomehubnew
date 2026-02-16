@@ -3,23 +3,26 @@ import os
 import json
 import asyncio
 import logging
+import time
 from typing import List, Optional, Dict, Any
-import google.generativeai as genai
 from tenacity import retry, stop_after_attempt, wait_exponential
 from dotenv import load_dotenv
 
+from config import settings
 from services.epistemic_service import get_prompt_for_mode, build_epistemic_context
+from services.llm_client import (
+    MODEL_TIER_FLASH,
+    ROUTE_MODE_DEFAULT,
+    ROUTE_MODE_EXPLORER_QWEN_PILOT,
+    generate_text,
+    get_model_for_tier,
+)
 
 # Load environment variables
 env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
 load_dotenv(dotenv_path=env_path)
 
 logger = logging.getLogger(__name__)
-
-# Configure Gemini
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
 
 def _format_conversation_state(state: Dict[str, Any]) -> str:
     """
@@ -76,10 +79,12 @@ async def generate_work_ai_answer(
     confidence_score: float,
     feedback_hints: Optional[List[str]] = None,
     network_status: str = "IN_NETWORK",
-    conversation_state: Optional[Dict[str, Any]] = None
+    conversation_state: Optional[Dict[str, Any]] = None,
+    allow_pro_fallback: bool = False,
+    fallback_state: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
-    Generate an answer using the Work AI (Gemini 2.0 Flash).
+    Generate an answer using Flash with optional Pro fallback.
     
     Args:
         question: User's question
@@ -90,11 +95,11 @@ async def generate_work_ai_answer(
         network_status: IN_NETWORK | OUT_OF_NETWORK | HYBRID
         conversation_state: Structured state from previous conversation turns
         
-    Returns:
+        Returns:
         {
             "answer": "Generated answer text",
             "metadata": {
-                "model": "gemini-2.0-flash",
+                "model": "dynamic",
                 "mode": answer_mode,
                 "hints_used": bool
             }
@@ -103,6 +108,35 @@ async def generate_work_ai_answer(
     try:
         # 1. Build Context
         context_str, used_chunks = build_epistemic_context(chunks, answer_mode)
+        graph_bridge_attempted = False
+        graph_bridge_used = False
+        graph_bridge_timeout = False
+        graph_bridge_latency_ms = 0.0
+        graph_bridge_text = ""
+
+        if answer_mode == 'EXPLORER' and bool(getattr(settings, "SEARCH_GRAPH_BRIDGE_EXPLORER_ALWAYS_ATTEMPT", False)):
+            graph_bridge_attempted = True
+            bridge_started = time.perf_counter()
+            timeout_sec = max(
+                0.05,
+                float(getattr(settings, "SEARCH_GRAPH_BRIDGE_EXPLORER_TIMEOUT_MS", 950)) / 1000.0,
+            )
+            try:
+                from services.search_service import get_graph_enriched_context
+                graph_bridge_text = await asyncio.wait_for(
+                    asyncio.to_thread(get_graph_enriched_context, chunks, ""),
+                    timeout=timeout_sec,
+                )
+                graph_bridge_text = str(graph_bridge_text or "").strip()
+                if graph_bridge_text:
+                    graph_bridge_used = True
+                    context_str = f"{graph_bridge_text}\n\n{context_str}"
+            except asyncio.TimeoutError:
+                graph_bridge_timeout = True
+            except Exception as bridge_err:
+                logger.warning("Explorer graph bridge skipped: %s", bridge_err)
+            finally:
+                graph_bridge_latency_ms = (time.perf_counter() - bridge_started) * 1000.0
         
         # 1.5 Inject conversation state for Explorer mode
         if answer_mode == 'EXPLORER' and conversation_state and conversation_state.get('active_topic'):
@@ -118,7 +152,7 @@ async def generate_work_ai_answer(
         # {
         #     "answer": content,
         #     "metadata": {
-        #         "model": "gemini-2.0-flash",
+        #         "model": "dynamic",
         #         "mode": answer_mode,
         #         "chunks": used_chunks # <--- NEW
         #     }
@@ -136,7 +170,19 @@ async def generate_work_ai_answer(
                 prompt += hint_block
                 
         # 4. Generate Content
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        route_mode = ROUTE_MODE_DEFAULT
+        provider_hint = None
+        allow_secondary_fallback = False
+        model = get_model_for_tier(MODEL_TIER_FLASH)
+        effective_allow_pro_fallback = allow_pro_fallback
+
+        if answer_mode == 'EXPLORER' and settings.LLM_EXPLORER_QWEN_PILOT_ENABLED:
+            route_mode = ROUTE_MODE_EXPLORER_QWEN_PILOT
+            provider_hint = settings.LLM_EXPLORER_PRIMARY_PROVIDER
+            model = settings.LLM_EXPLORER_PRIMARY_MODEL
+            allow_secondary_fallback = True
+            # Explorer pilot path uses Qwen primary and Gemini fallback.
+            effective_allow_pro_fallback = False
         
         # Adjust temperature based on mode
         # QUOTE/DIRECT needs lower temp for precision
@@ -149,25 +195,50 @@ async def generate_work_ai_answer(
         else:
             temperature = 0.5 # Default Synthesis
         
-        response = await asyncio.to_thread(
-            model.generate_content, 
-            prompt,
-            generation_config=genai.types.GenerationConfig(
-                temperature=temperature,
-                max_output_tokens=2048,
-            )
+        # Explorer tuning: Allow comprehensive dialectical analysis
+        # Standard uses 2800, Explorer needs more room for multi-stage reasoning
+        max_output_tokens = 2048
+        llm_timeout_s = None
+        if answer_mode == 'EXPLORER':
+            max_output_tokens = 3000  # Allow full dialectical response structure
+            llm_timeout_s = 16.0  # Proportional timeout increase
+
+        result = await asyncio.to_thread(
+            generate_text,
+            model=model,
+            prompt=prompt,
+            task="work_ai_answer",
+            model_tier=MODEL_TIER_FLASH,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+            response_mime_type=None,
+            timeout_s=llm_timeout_s,
+            allow_pro_fallback=effective_allow_pro_fallback,
+            fallback_state=fallback_state,
+            provider_hint=provider_hint,
+            route_mode=route_mode,
+            allow_secondary_fallback=allow_secondary_fallback,
         )
         
-        answer_text = response.text.strip()
+        answer_text = result.text.strip()
         
         return {
             "answer": answer_text,
             "metadata": {
-                "model": "gemini-2.0-flash",
+                "model": result.model_used,
+                "model_tier": result.model_tier,
+                "provider_name": result.provider_name,
+                "model_fallback_applied": bool(result.fallback_applied),
+                "secondary_fallback_applied": bool(result.secondary_fallback_applied),
+                "fallback_reason": result.fallback_reason,
                 "mode": answer_mode,
                 "temperature": temperature,
                 "hints_used": bool(feedback_hints),
-                "chunks": used_chunks
+                "chunks": used_chunks,
+                "graph_bridge_attempted": graph_bridge_attempted,
+                "graph_bridge_used": graph_bridge_used,
+                "graph_bridge_timeout": graph_bridge_timeout,
+                "graph_bridge_latency_ms": graph_bridge_latency_ms,
             }
         }
         

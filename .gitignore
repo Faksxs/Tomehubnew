@@ -52,6 +52,23 @@ backend/env/
 .venv/
 venv/
 
+# Backend generated diagnostics/artifacts
+apps/backend/*output*.txt
+apps/backend/cleanup_log*.txt
+apps/backend/debug_output*.txt
+apps/backend/book_*output*.txt
+apps/backend/books_output.txt
+apps/backend/cols*.txt
+apps/backend/content_columns*.txt
+apps/backend/context_out.txt
+apps/backend/pdf_list.txt
+apps/backend/pdf_titles.txt
+apps/backend/routes.txt
+apps/backend/titles_debug.txt
+apps/backend/verification_output.txt
+apps/backend/verify_output.txt
+apps/backend/secrets/
+
 # Oracle Wallet - CRITICAL: Never commit these files!
 backend/wallet/
 wallet/

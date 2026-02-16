@@ -11,13 +11,21 @@ Date: 2026-01-07
 
 import os
 import time
+import re
+import json
 from typing import List, Dict, Optional, Tuple, Any
-from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from dotenv import load_dotenv
 import oracledb
-import google.generativeai as genai
 from config import settings
+from services.llm_client import (
+    MODEL_TIER_FLASH,
+    MODEL_TIER_LITE,
+    ROUTE_MODE_DEFAULT,
+    ROUTE_MODE_EXPLORER_QWEN_PILOT,
+    generate_text,
+    get_model_for_tier,
+)
 
 # Import TomeHub services
 from services.embedding_service import get_embedding, batch_get_embeddings
@@ -60,12 +68,85 @@ from services.graph_service import get_graph_candidates, GraphRetrievalError
 from services.rerank_service import rerank_candidates
 from services.network_classifier import classify_network_status
 from services.network_classifier import classify_network_status
-from services.monitoring import GRAPH_BRIDGES_FOUND, SEARCH_DIVERSITY_COUNT, SEARCH_RESULT_COUNT
+from services.monitoring import (
+    GRAPH_BRIDGES_FOUND,
+    SEARCH_DIVERSITY_COUNT,
+    SEARCH_RESULT_COUNT,
+    L3_PERF_GUARD_APPLIED_TOTAL,
+    L3_PHASE_LATENCY_SECONDS,
+)
+from services.cache_service import get_cache, generate_cache_key
+from services.external_kb_service import (
+    get_external_graph_candidates,
+    get_external_meta,
+    maybe_refresh_external_for_explorer_async,
+)
 from services.analytics_service import (
     is_analytic_word_count,
     extract_target_term,
     count_lemma_occurrences,
 )
+
+NOISE_SOURCE_ALLOWLIST = {
+    "PDF", "EPUB", "PDF_CHUNK", "BOOK",
+    "HIGHLIGHT", "INSIGHT", "NOTES", "PERSONAL_NOTE",
+    "ARTICLE", "WEBSITE", "GRAPH_RELATION", 
+    "UNKNOWN", "OTHER" 
+}
+
+_REWRITE_TRIGGER_TOKENS = {
+    "bu", "bunu", "buna", "bunun", "bundan",
+    "su", "sunu", "boyle", "soyle",
+    "o", "onu", "ona", "onun", "ondan",
+    "bunlar", "onlar", "ikisi", "ikisinin", "ikisinde",
+    "ayni", "fark", "farki", "iliski", "ilgili",
+    "devam", "peki", "ya", "pekiya",
+}
+
+_REWRITE_LEADIN_PHRASES = (
+    "peki", "o zaman", "bu durumda", "buna gore",
+    "bununla", "bunun icin", "buradan",
+)
+
+_REWRITE_GREETING_TOKENS = {
+    "merhaba", "selam", "selamlar", "hey", "hi", "hello", "gunaydin",
+    "iyiaksamlar", "iyiaksam", "iyigunler",
+}
+
+def _passes_noise_guard_for_chunk(chunk: Dict[str, Any]) -> bool:
+    if not getattr(settings, "SEARCH_NOISE_GUARD_ENABLED", True):
+        return True
+
+    content = str(chunk.get("content_chunk", "") or chunk.get("content", "")).strip()
+    title = str(chunk.get("title", "")).strip().lower()
+    source_type = str(chunk.get("source_type", "") or chunk.get("type", "")).strip().upper()
+    content_lc = content.lower()
+
+    if source_type and source_type not in NOISE_SOURCE_ALLOWLIST:
+        return False
+
+    if len(content) < 60:
+        return False
+
+    if "website deneme" in content_lc:
+        return False
+
+    if source_type in {"WEBSITE", "ARTICLE"} and len(content) < 100:
+        return False
+
+    if content_lc.startswith("title:") and len(content) < 220:
+        return False
+
+    if content_lc.startswith("author:") and len(content) < 220:
+        return False
+
+    if "deneme" in title and len(content) < 180:
+        return False
+
+    if "unknown" in title and len(content) < 220:
+        return False
+
+    return True
 
 def get_graph_enriched_context(base_results: List[Dict], firebase_uid: str) -> str:
     """
@@ -75,7 +156,8 @@ def get_graph_enriched_context(base_results: List[Dict], firebase_uid: str) -> s
     if not base_results:
         return ""
         
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] GraphRAG: Analyzing semantic bridges (Batched)...")
+    if settings.DEBUG_VERBOSE_PIPELINE:
+        logger.debug("GraphRAG: analyzing semantic bridges (batched)")
     
     try:
         # Collect IDs for batch processing
@@ -142,7 +224,7 @@ def get_graph_enriched_context(base_results: List[Dict], firebase_uid: str) -> s
                 for c1_name, rtype, c2_name in rows_rels:
                     # Filter to keep only if one side is in our original concept set?
                     # The graph query ensures at least one side is. This bridge connects them.
-                    bridges.append(f"🔗 {c1_name} is connected to {c2_name} via '{rtype}' relationship.")
+                    bridges.append(f"[BRIDGE] {c1_name} is connected to {c2_name} via '{rtype}' relationship.")
         
         GRAPH_BRIDGES_FOUND.observe(len(bridges))
         
@@ -151,7 +233,7 @@ def get_graph_enriched_context(base_results: List[Dict], firebase_uid: str) -> s
         return ""
         
     except Exception as e:
-        print(f"[WARNING] Graph enrichment failed: {e}")
+        logger.warning("Graph enrichment failed: %s", e)
         return ""
 
 def get_book_context(book_id: str, query_text: str, firebase_uid: str) -> List[Dict]:
@@ -165,7 +247,8 @@ def get_book_context(book_id: str, query_text: str, firebase_uid: str) -> List[D
     4. Logical Proximity: (Implied by semantic density, but could specific prev/next fetch).
     5. Scoring: Combined semantic + fuzzy keyword match.
     """
-    print(f"\n[CTX] Fetching context for Book: {book_id} | Query: {query_text}")
+    if settings.DEBUG_VERBOSE_PIPELINE:
+        logger.debug("Fetching context for book_id=%s query=%s", book_id, query_text)
     
     try:
         with DatabaseManager.get_read_connection() as conn:
@@ -216,7 +299,7 @@ def get_book_context(book_id: str, query_text: str, firebase_uid: str) -> List[D
                 return chunks
         
     except Exception as e:
-        print(f"[ERROR] Context retrieval failed: {e}")
+        logger.error("Context retrieval failed: %s", e)
         return []
 
 
@@ -450,11 +533,6 @@ def search_similar_content(query_text: str, firebase_uid: str, top_k: int = 5) -
                         "duration_ms": int((time.time() - t3) * 1000)
                     })
 
-                logger.info("Re-ranking Complete", extra={
-                    "input_count": len(rerank_input),
-                    "output_count": len(reranked_results),
-                    "duration_ms": int((time.time() - t3) * 1000)
-                })
 
                 # 7. FORMATTING & DIVERSITY
                 selected_chunks = []
@@ -471,7 +549,6 @@ def search_similar_content(query_text: str, firebase_uid: str, top_k: int = 5) -
                         'page_number': res['page'],
                         'title': res['title'],
                         'similarity_score': res.get('rerank_score', 0), # New score
-                        'final_score': res['rrf_score'], # Keep original for debug
                         'final_score': res['rrf_score'], # Keep original for debug
                         'source_type': res['type']
                     })
@@ -495,24 +572,146 @@ def search_similar_content(query_text: str, firebase_uid: str, top_k: int = 5) -
 
 from concurrent.futures import ThreadPoolExecutor
 
+def _normalize_ascii(text: str) -> str:
+    return (
+        (text or "")
+        .replace("ç", "c").replace("Ç", "C")
+        .replace("ğ", "g").replace("Ğ", "G")
+        .replace("ı", "i").replace("İ", "I")
+        .replace("ö", "o").replace("Ö", "O")
+        .replace("ş", "s").replace("Ş", "S")
+        .replace("ü", "u").replace("Ü", "U")
+    )
+
+
+def _should_rewrite_with_history(question: str, history: List[Dict]) -> bool:
+    if not history:
+        return False
+    q = (question or "").strip()
+    if not q:
+        return False
+
+    q_ascii = _normalize_ascii(q).lower()
+    tokens = re.findall(r"[^\W_]+", q_ascii, flags=re.UNICODE)
+    token_set = set(tokens)
+
+    if len(tokens) <= 4:
+        return True
+    if any(q_ascii.startswith(prefix) for prefix in _REWRITE_LEADIN_PHRASES):
+        return True
+    if token_set.intersection(_REWRITE_TRIGGER_TOKENS):
+        return True
+    if "?" in q and len(tokens) <= 8:
+        return True
+    return False
+
+
+def _rewrite_history_fingerprint(history: List[Dict]) -> str:
+    if not history:
+        return ""
+    parts = []
+    for msg in history[-settings.CHAT_PROMPT_TURNS:]:
+        role = str(msg.get("role", "")).strip().lower()
+        content = str(msg.get("content", "")).strip()
+        if content:
+            parts.append(f"{role}:{content[:220]}")
+    return "\n".join(parts)
+
+
+def _rewrite_guard_skip_reason(question: str) -> Optional[str]:
+    """
+    Optional Layer-3 perf guard: skip rewrite if query is already specific enough.
+    Flag-off path must preserve legacy behavior.
+    """
+    if not getattr(settings, "L3_PERF_REWRITE_GUARD_ENABLED", False):
+        return None
+
+    q = (question or "").strip()
+    if not q:
+        return "empty_query"
+
+    q_ascii = _normalize_ascii(q).lower()
+    tokens = re.findall(r"[^\W_]+", q_ascii, flags=re.UNICODE)
+    if not tokens:
+        return "empty_query"
+
+    if len(tokens) == 1 and tokens[0] in _REWRITE_GREETING_TOKENS:
+        return "standalone_greeting"
+
+    if len(tokens) == 1:
+        return None
+
+    token_set = set(tokens)
+    has_leadin = any(q_ascii.startswith(prefix) for prefix in _REWRITE_LEADIN_PHRASES)
+    has_trigger = bool(token_set.intersection(_REWRITE_TRIGGER_TOKENS))
+    has_short_question_signal = "?" in q and len(tokens) <= 8
+
+    if (
+        2 <= len(tokens) <= 7
+        and not has_leadin
+        and not has_trigger
+        and not has_short_question_signal
+    ):
+        return "standalone_short_query"
+
+    if not has_leadin and not has_trigger and not has_short_question_signal:
+        return "lexically_specific_query"
+    return None
+
+
+def _infer_explorer_book_ids(question_results: List[Dict[str, Any]], hard_limit: int = 3) -> List[str]:
+    counts: Dict[str, int] = {}
+    for chunk in question_results[:60]:
+        book_id = str(chunk.get("book_id") or "").strip()
+        if not book_id:
+            continue
+        counts[book_id] = counts.get(book_id, 0) + 1
+    ordered = sorted(counts.items(), key=lambda item: item[1], reverse=True)
+    return [book_id for book_id, _ in ordered[: max(1, hard_limit)]]
+
+
 def rewrite_query_with_history(question: str, history: List[Dict]) -> str:
     """
-    Memory Layer: Rewrites the user query to be standalone using conversation history.
-    Resolves pronouns and coreferences (e.g., 'What did he say?' -> 'What did Socrates say?').
+    Rewrite short/ambiguous follow-up queries into standalone form.
+    Uses lightweight gating + cache to avoid LLM rewrite on every turn.
     """
     if not history:
         return question
-        
+    skip_reason = _rewrite_guard_skip_reason(question)
+    if skip_reason:
+        try:
+            L3_PERF_GUARD_APPLIED_TOTAL.labels(guard_name=f"rewrite_skip_{skip_reason}").inc()
+        except Exception:
+            pass
+        return question
+    if not _should_rewrite_with_history(question, history):
+        return question
+
     try:
-        # Avoid circular import by using genai locally if needed, but it's already at top
         history_str = ""
-        for msg in history[-settings.CHAT_PROMPT_TURNS:]: # Only need very recent for rewrite
+        for msg in history[-settings.CHAT_PROMPT_TURNS:]:
             role = "Kullanıcı" if msg['role'] == 'user' else "Asistan"
             history_str += f"{role}: {msg['content']}\n"
-            
+
+        cache = get_cache()
+        cache_key = None
+        if cache:
+            history_fingerprint = _rewrite_history_fingerprint(history)
+            cache_key = generate_cache_key(
+                service="query_rewrite",
+                query=f"{question}\n{history_fingerprint}",
+                firebase_uid="",
+                book_id=None,
+                limit=settings.CHAT_PROMPT_TURNS,
+                version=settings.LLM_MODEL_VERSION
+            )
+            cached = cache.get(cache_key)
+            if isinstance(cached, str) and cached.strip():
+                return cached
+
         prompt = f"""
         Aşağıdaki konuşma geçmişine dayanarak, kullanıcının son sorusunu bağlamı içerecek şekilde (tek başına anlamlı) yeniden yaz.
-        Eğer soru zaten tam ve anlaşılırsa, olduğu gibi bırak. 
+        Eğer soru zaten tam ve anlaşılırsa, olduğu gibi bırak.
         Sadece yeniden yazılmış soruyu döndür. Dil: Türkçe.
 
         GEÇMİŞ:
@@ -522,15 +721,99 @@ def rewrite_query_with_history(question: str, history: List[Dict]) -> str:
 
         YENİDEN YAZILMIŞ SORU:
         """
-        
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
-        response = model.generate_content(prompt)
-        rewritten = response.text.strip() if response else question
+
+        model = get_model_for_tier(MODEL_TIER_LITE)
+        result = generate_text(
+            model=model,
+            prompt=prompt,
+            task="query_rewrite",
+            model_tier=MODEL_TIER_LITE,
+            timeout_s=4.0,
+        )
+        rewritten = result.text.strip() if result and result.text else question
+        if not rewritten:
+            return question
+        if len(rewritten) > max(220, len(question) * 3):
+            return question
+        if cache and cache_key:
+            cache.set(cache_key, rewritten, ttl=1800)
         return rewritten
     except Exception as e:
-        print(f"[WARNING] Query rewriting failed: {e}")
+        logger.warning("Query rewriting failed: %s", e)
         return question
 
+
+def _compute_quote_target_count(confidence_score: float, chunk_count: int) -> int:
+    min_quotes = int(getattr(settings, "L3_QUOTE_DYNAMIC_MIN", 2) or 2)
+    max_quotes = int(getattr(settings, "L3_QUOTE_DYNAMIC_MAX", 5) or 5)
+    if max_quotes < min_quotes:
+        max_quotes = min_quotes
+    default_quotes = max(2, min(5, min_quotes))
+
+    if not bool(getattr(settings, "L3_QUOTE_DYNAMIC_COUNT_ENABLED", False)):
+        return min(default_quotes, max(1, int(chunk_count or 0))) if chunk_count else default_quotes
+
+    score = float(confidence_score or 0.0)
+    if score >= 4.6:
+        desired = max_quotes
+    elif score >= 4.1:
+        desired = min(max_quotes, max(min_quotes, 4))
+    elif score >= 3.4:
+        desired = min(max_quotes, max(min_quotes, 3))
+    else:
+        desired = min_quotes
+    if chunk_count > 0:
+        desired = min(desired, int(chunk_count))
+    return max(min_quotes, min(max_quotes, desired))
+
+
+def _append_search_log_diagnostics(search_log_id: Optional[int], diagnostics: Dict[str, Any]) -> None:
+    if not search_log_id:
+        return
+    if not bool(getattr(settings, "SEARCH_LOG_DIAGNOSTICS_PERSIST_ENABLED", False)):
+        return
+    try:
+        with DatabaseManager.get_write_connection() as conn:
+            with conn.cursor() as cursor:
+                try:
+                    cursor.execute(
+                        """
+                        SELECT STRATEGY_DETAILS
+                        FROM TOMEHUB_SEARCH_LOGS
+                        WHERE ID = :p_id
+                        """,
+                        {"p_id": search_log_id},
+                    )
+                    row = cursor.fetchone()
+                except Exception as col_err:
+                    if "ORA-00904" in str(col_err):
+                        return
+                    raise
+
+                payload: Dict[str, Any] = {}
+                if row and row[0] is not None:
+                    try:
+                        payload = json.loads(safe_read_clob(row[0]) or "{}")
+                        if not isinstance(payload, dict):
+                            payload = {}
+                    except Exception:
+                        payload = {}
+                payload.update(diagnostics or {})
+
+                cursor.execute(
+                    """
+                    UPDATE TOMEHUB_SEARCH_LOGS
+                    SET STRATEGY_DETAILS = :p_payload
+                    WHERE ID = :p_id
+                    """,
+                    {
+                        "p_payload": json.dumps(payload, ensure_ascii=False),
+                        "p_id": search_log_id,
+                    },
+                )
+            conn.commit()
+    except Exception as e:
+        logger.warning("Failed to append search log diagnostics id=%s: %s", search_log_id, e)
 def get_rag_context(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, mode: str = 'STANDARD', resource_type: Optional[str] = None, limit: Optional[int] = None, offset: int = 0, session_id: Optional[int | str] = None) -> Optional[Dict[str, Any]]:
     """
     Retrieves and processes context for RAG.
@@ -544,21 +827,27 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
     - confidence: float
     - keywords: List[str]
     """
-    print(f"\n[RAG] Retrieving context for: {question} (Mode: {mode})")
+    if settings.DEBUG_VERBOSE_PIPELINE:
+        logger.debug("Retrieving RAG context for mode=%s question=%s", mode, question)
     
     # 0. Query Rewriting (Memory Layer)
     effective_query = question
     if chat_history:
         effective_query = rewrite_query_with_history(question, chat_history)
-        if effective_query != question:
-            print(f"[MEMORY] Contextual Rewriting: '{question}' -> '{effective_query}'")
+        if effective_query != question and settings.DEBUG_VERBOSE_PIPELINE:
+            logger.debug(
+                "Contextual query rewrite applied: original=%s rewritten=%s",
+                question,
+                effective_query,
+            )
 
     # 1. Keyword Extraction & Intent Classification
     # We classify intent EARLY now (Phase 4) to guide retrieval strategy
     intent, complexity = classify_question_intent(effective_query)
     keywords = extract_core_concepts(effective_query)
     
-    print(f"[RAG] Intent: {intent} | Complexity: {complexity}")
+    if settings.DEBUG_VERBOSE_PIPELINE:
+        logger.debug("RAG intent=%s complexity=%s", intent, complexity)
     
     all_chunks_map = {}
     
@@ -577,13 +866,32 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
 
     graph_results = []
     question_results = []
+    vec_meta = {}
+    graph_timeout_triggered = False
+    graph_latency_budget_applied = False
+    graph_skipped_by_intent = False
+    noise_guard_applied = bool(getattr(settings, "SEARCH_NOISE_GUARD_ENABLED", True))
+    graph_filtered_count = 0
+    external_graph_results: List[Dict[str, Any]] = []
+    external_kb_used = False
+    external_graph_candidates_count = 0
+    academic_scope = False
+    wikidata_qid = None
+    openalex_used = False
+    dbpedia_used = False
+    orkg_used = False
     
     degradations = []
     
     # Replaced Sentry Spans with Standard Threading
     with ThreadPoolExecutor(max_workers=3) as executor:
         future_vector = executor.submit(run_vector_search)
-        future_graph = executor.submit(run_graph_search)
+        future_graph = None
+        if getattr(settings, "SEARCH_GRAPH_DIRECT_SKIP", True) and intent in {"DIRECT", "FOLLOW_UP"}:
+            graph_skipped_by_intent = True
+        else:
+            future_graph = executor.submit(run_graph_search)
+            graph_latency_budget_applied = True
 
         try:
             # Result is now (list, dict)
@@ -597,16 +905,27 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
             vec_meta = {}
             search_log_id = None
             
-        try:
-            graph_results = future_graph.result()
-        except GraphRetrievalError as gre:
-            logger.error(f"Graph retrieval failed (Fail Loud): {gre}")
-            degradations.append({"component": "GRAPH_SERVICE", "reason": str(gre), "severity": "HIGH"})
-            graph_results = []
-        except Exception as e:
-            logger.error(f"Graph retrieval unexpected error: {e}")
-            degradations.append({"component": "GRAPH_SERVICE", "reason": str(e), "severity": "HIGH"})
-            graph_results = []
+        if future_graph is not None:
+            try:
+                timeout_sec = max(0.05, float(getattr(settings, "SEARCH_GRAPH_TIMEOUT_MS", 120)) / 1000.0)
+                graph_results = future_graph.result(timeout=timeout_sec)
+            except FutureTimeoutError:
+                graph_timeout_triggered = True
+                graph_results = []
+                future_graph.cancel()
+                degradations.append({
+                    "component": "GRAPH_SERVICE",
+                    "reason": f"timeout>{int(getattr(settings, 'SEARCH_GRAPH_TIMEOUT_MS', 120))}ms",
+                    "severity": "MEDIUM"
+                })
+            except GraphRetrievalError as gre:
+                logger.error(f"Graph retrieval failed (Fail Loud): {gre}")
+                degradations.append({"component": "GRAPH_SERVICE", "reason": str(gre), "severity": "HIGH"})
+                graph_results = []
+            except Exception as e:
+                logger.error(f"Graph retrieval unexpected error: {e}")
+                degradations.append({"component": "GRAPH_SERVICE", "reason": str(e), "severity": "HIGH"})
+                graph_results = []
 
     # Merge Results
     if question_results:
@@ -628,20 +947,133 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
                 'score': g_score,       # Use graph score as the similarity score
                 'graph_score': g_score 
             }
+            if not _passes_noise_guard_for_chunk(c_std):
+                graph_filtered_count += 1
+                continue
+            key = f"{c_std['title']}_{str(c_std['content_chunk'])[:20]}"
+            if key not in all_chunks_map:
+                all_chunks_map[key] = c_std
+
+    # Optional External KB candidate injection.
+    # Explorer only, but no longer requires explicit context_book_id.
+    if mode == "EXPLORER" and bool(getattr(settings, "EXTERNAL_KB_ENABLED", False)):
+        candidate_book_ids: List[str] = []
+        if context_book_id:
+            candidate_book_ids.append(str(context_book_id).strip())
+        else:
+            candidate_book_ids = _infer_explorer_book_ids(question_results, hard_limit=3)
+            if not candidate_book_ids:
+                candidate_book_ids = _infer_explorer_book_ids(list(all_chunks_map.values()), hard_limit=3)
+
+        ext_limit_total = max(1, min(int(getattr(settings, "EXTERNAL_KB_MAX_CANDIDATES", 5) or 5), 10))
+        per_book_limit = max(1, min(3, ext_limit_total))
+        seen_external = set()
+
+        for candidate_book_id in candidate_book_ids:
+            if not candidate_book_id:
+                continue
+            external_meta = get_external_meta(candidate_book_id, firebase_uid)
+            academic_scope = academic_scope or bool(external_meta.get("academic_scope"))
+            if not wikidata_qid:
+                wikidata_qid = external_meta.get("wikidata_qid")
+            openalex_used = openalex_used or bool(external_meta.get("openalex_id"))
+            dbpedia_used = dbpedia_used or bool(external_meta.get("dbpedia_uri"))
+            orkg_used = orkg_used or bool(external_meta.get("orkg_id"))
+
+            try:
+                maybe_refresh_external_for_explorer_async(
+                    book_id=candidate_book_id,
+                    firebase_uid=firebase_uid,
+                )
+            except Exception:
+                pass
+
+            book_external = get_external_graph_candidates(
+                book_id=candidate_book_id,
+                firebase_uid=firebase_uid,
+                question=effective_query,
+                limit=per_book_limit,
+                min_confidence=float(getattr(settings, "EXTERNAL_KB_MIN_CONFIDENCE", 0.45)),
+            )
+            for candidate in book_external:
+                c_key = f"{candidate.get('title','')}_{str(candidate.get('content_chunk',''))[:80]}"
+                if c_key in seen_external:
+                    continue
+                seen_external.add(c_key)
+                external_graph_results.append(candidate)
+                if len(external_graph_results) >= ext_limit_total:
+                    break
+            if len(external_graph_results) >= ext_limit_total:
+                break
+
+        external_graph_candidates_count = len(external_graph_results)
+        external_kb_used = external_graph_candidates_count > 0
+
+        for c in external_graph_results:
+            c_std = {
+                "title": c.get("title", "External KB"),
+                "content_chunk": c.get("content_chunk", ""),
+                "page_number": c.get("page_number", 0),
+                "source_type": "EXTERNAL_KB",
+                "epistemic_level": "B",
+                "score": c.get("score", 0.5),
+                "external_weight": float(
+                    c.get("external_weight", getattr(settings, "EXTERNAL_KB_GRAPH_WEIGHT", 0.15))
+                ),
+            }
             key = f"{c_std['title']}_{str(c_std['content_chunk'])[:20]}"
             if key not in all_chunks_map:
                 all_chunks_map[key] = c_std
 
     # 3. Supplementary Keyword Search (Gap Filling)
-    if keywords:
-        search_kw = " ".join(keywords[:2])
-        if search_kw and search_kw != question:
-            kw_res, kw_meta = perform_search(search_kw, firebase_uid, session_id=session_id)
+    # Only run when primary retrieval is sparse to avoid extra latency.
+    supplementary_search_applied = False
+    supplementary_search_skipped_reason = None
+    gap_fill_threshold = max(10, min(20, (limit or 20)))
+    should_run_supplementary = False
+
+    if not keywords:
+        supplementary_search_skipped_reason = "no_keywords"
+    else:
+        if not getattr(settings, "L3_PERF_SUPPLEMENTARY_GATE_ENABLED", False):
+            should_run_supplementary = len(all_chunks_map) < gap_fill_threshold
+        else:
+            low_evidence_threshold = max(4, min(10, (limit or 20) // 2))
+            sparse_primary = len(question_results) <= low_evidence_threshold
+            sparse_combined = len(all_chunks_map) < gap_fill_threshold
+            should_run_supplementary = sparse_primary and sparse_combined
+            if not should_run_supplementary:
+                supplementary_search_skipped_reason = "sufficient_primary_evidence"
+                try:
+                    L3_PERF_GUARD_APPLIED_TOTAL.labels(
+                        guard_name="supplementary_gate_skip_sufficient_evidence"
+                    ).inc()
+                except Exception:
+                    pass
+
+    if should_run_supplementary:
+        search_kw = " ".join(keywords[:2]).strip()
+        if search_kw and search_kw != effective_query:
+            supplementary_search_applied = True
+            kw_limit = min(14, max(8, (limit or 12)))
+            kw_res, _ = perform_search(
+                search_kw,
+                firebase_uid,
+                intent=intent,
+                resource_type=resource_type,
+                limit=kw_limit,
+                offset=0,
+                session_id=session_id,
+                result_mix_policy="lexical_then_semantic_tail",
+                semantic_tail_cap=getattr(settings, "SEARCH_SMART_SEMANTIC_TAIL_CAP", 6),
+            )
             if kw_res:
                 for c in kw_res:
                     key = f"{c.get('title','')}_{str(c.get('content_chunk',''))[:20]}"
                     if key not in all_chunks_map:
                         all_chunks_map[key] = c
+        else:
+            supplementary_search_skipped_reason = "keyword_variant_missing"
     
     combined_chunks = list(all_chunks_map.values())
     
@@ -677,6 +1109,12 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
                     chunk['epistemic_level'] = 'A'
                 elif boost >= 1.0:
                     chunk['epistemic_level'] = 'B'
+        elif chunk.get('source_type') == 'EXTERNAL_KB':
+            ext_weight = float(chunk.get('external_weight', getattr(settings, "EXTERNAL_KB_GRAPH_WEIGHT", 0.15)))
+            ext_boost = max(0.4, min(1.3, ext_weight * 3.2))
+            if ext_boost > chunk.get('answerability_score', 0):
+                chunk['answerability_score'] = ext_boost
+                chunk['epistemic_level'] = 'B'
         
     # Passage Weighting & Sorting
     standard_top_40 = combined_chunks[:40]
@@ -697,6 +1135,10 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         base = float(chunk.get('answerability_score', 0))
         level = chunk.get('epistemic_level', 'C')
         is_lit = len(str(chunk.get('content_chunk', ''))) > 300 and level != 'A'
+
+        if chunk.get('source_type') == 'EXTERNAL_KB':
+            ext_weight = float(chunk.get('external_weight', getattr(settings, "EXTERNAL_KB_GRAPH_WEIGHT", 0.15)))
+            return base * max(0.05, min(0.30, ext_weight))
         
         weight = 1.0
         if intent in ['NARRATIVE', 'SOCIETAL']:
@@ -719,24 +1161,138 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
     # Network Classification (Phase 3)
     network_info = classify_network_status(question, final_chunks)
 
+    retrieval_fusion_mode = vec_meta.get("retrieval_fusion_mode", "concat")
+    vector_retrieval_path = vec_meta.get("retrieval_path", "hybrid")
+    retrieval_path = (
+        f"{vector_retrieval_path}+graph"
+        if graph_latency_budget_applied and not graph_skipped_by_intent
+        else vector_retrieval_path
+    )
+    router_mode = vec_meta.get("router_mode", "static")
+    router_reason = vec_meta.get("router_reason")
+    retrieval_mode = vec_meta.get("retrieval_mode", "balanced")
+    selected_buckets = vec_meta.get("selected_buckets", [])
+    executed_strategies = vec_meta.get("executed_strategies", [])
+    expansion_skipped_reason = vec_meta.get("expansion_skipped_reason")
+
+    dynamic_confidence = max(0.5, min(5.0, float(avg_conf or 0.0)))
+    source_diversity_count = len(
+        {
+            str(c.get("title") or "").strip().lower()
+            for c in final_chunks
+            if str(c.get("title") or "").strip()
+        }
+    )
+    source_type_diversity_count = len(
+        {
+            str(c.get("source_type") or "").strip().upper()
+            for c in final_chunks
+            if str(c.get("source_type") or "").strip()
+        }
+    )
+    level_a_count = sum(1 for c in final_chunks if c.get('epistemic_level') == 'A')
+    level_b_count = sum(1 for c in final_chunks if c.get('epistemic_level') == 'B')
+    level_c_count = sum(1 for c in final_chunks if c.get('epistemic_level') == 'C')
+    _append_search_log_diagnostics(
+        search_log_id,
+        {
+            "vector_candidates_count": len(question_results),
+            "graph_candidates_count": len(graph_results),
+            "external_graph_candidates_count": external_graph_candidates_count,
+            "retrieval_fusion_mode": retrieval_fusion_mode,
+            "degradations": degradations,
+            "retrieval_path": retrieval_path,
+            "latency_budget_applied": graph_latency_budget_applied,
+            "graph_timeout_triggered": graph_timeout_triggered,
+            "graph_skipped_by_intent": graph_skipped_by_intent,
+            "source_diversity_count": source_diversity_count,
+            "source_type_diversity_count": source_type_diversity_count,
+            "level_counts": {"A": level_a_count, "B": level_b_count, "C": level_c_count},
+        },
+    )
+
     return {
         "chunks": final_chunks,
         "intent": intent,
         "complexity": complexity,
         "mode": answer_mode, # Use pre-calculated mode
-        "confidence": 0.85, # dynamic in future
+        "confidence": dynamic_confidence,
         "network_status": network_info["status"],
         "network_reason": network_info["reason"],
         "keywords": keywords,
         "search_log_id": search_log_id, # Return the log ID for feedback loop
+        "graph_candidates_count": len(graph_results),
+        "external_graph_candidates_count": external_graph_candidates_count,
+        "vector_candidates_count": len(question_results),
+        "source_diversity_count": source_diversity_count,
+        "source_type_diversity_count": source_type_diversity_count,
+        "academic_scope": academic_scope,
+        "external_kb_used": external_kb_used,
+        "wikidata_qid": wikidata_qid,
+        "openalex_used": openalex_used,
+        "dbpedia_used": dbpedia_used,
+        "orkg_used": orkg_used,
+        "retrieval_fusion_mode": retrieval_fusion_mode,
+        "retrieval_path": retrieval_path,
+        "router_mode": router_mode,
+        "router_reason": router_reason,
+        "retrieval_mode": retrieval_mode,
+        "selected_buckets": selected_buckets,
+        "executed_strategies": executed_strategies,
+        "latency_budget_applied": graph_latency_budget_applied,
+        "graph_timeout_triggered": graph_timeout_triggered,
+        "graph_skipped_by_intent": graph_skipped_by_intent,
+        "noise_guard_applied": noise_guard_applied,
+        "noise_guard_filtered_graph_count": graph_filtered_count,
+        "supplementary_keyword_search_applied": supplementary_search_applied,
+        "supplementary_search_skipped_reason": supplementary_search_skipped_reason,
+        "expansion_skipped_reason": expansion_skipped_reason,
         "level_counts": {
-            'A': sum(1 for c in final_chunks if c.get('epistemic_level') == 'A'),
-            'B': sum(1 for c in final_chunks if c.get('epistemic_level') == 'B'),
+            'A': level_a_count,
+            'B': level_b_count,
+            'C': level_c_count,
         },
         "metadata": {
             "degradations": degradations,
             "status": "partial" if degradations else "healthy",
-            "search_log_id": search_log_id
+            "search_log_id": search_log_id,
+            "graph_candidates_count": len(graph_results),
+            "external_graph_candidates_count": external_graph_candidates_count,
+            "vector_candidates_count": len(question_results),
+            "source_diversity_count": source_diversity_count,
+            "source_type_diversity_count": source_type_diversity_count,
+            "academic_scope": academic_scope,
+            "external_kb_used": external_kb_used,
+            "wikidata_qid": wikidata_qid,
+            "openalex_used": openalex_used,
+            "dbpedia_used": dbpedia_used,
+            "orkg_used": orkg_used,
+            "retrieval_fusion_mode": retrieval_fusion_mode,
+            "retrieval_path": retrieval_path,
+            "router_mode": router_mode,
+            "router_reason": router_reason,
+            "retrieval_mode": retrieval_mode,
+            "latency_budget_applied": graph_latency_budget_applied,
+            "graph_timeout_triggered": graph_timeout_triggered,
+            "graph_skipped_by_intent": graph_skipped_by_intent,
+            "noise_guard_applied": noise_guard_applied,
+            "noise_guard_filtered_graph_count": graph_filtered_count,
+            "supplementary_keyword_search_applied": supplementary_search_applied,
+            "supplementary_search_skipped_reason": supplementary_search_skipped_reason,
+            "expansion_skipped_reason": expansion_skipped_reason,
+            "level_counts": {"A": level_a_count, "B": level_b_count, "C": level_c_count},
+            "selected_buckets": selected_buckets,
+            "executed_strategies": executed_strategies,
+            "vector_metadata": {
+                "cached": vec_meta.get("cached"),
+                "duration_ms": vec_meta.get("duration_ms"),
+                "retrieval_steps": vec_meta.get("retrieval_steps", {}),
+                "router_mode": router_mode,
+                "router_reason": router_reason,
+                "retrieval_mode": retrieval_mode,
+                "selected_buckets": selected_buckets,
+                "executed_strategies": executed_strategies,
+            },
         }
     }
 
@@ -748,7 +1304,7 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
     if is_analytic_word_count(question):
         if not context_book_id:
             return (
-                "Analitik sayım için önce bir kitap seçmelisin.",
+                "Analitik sayÄ±m iÃ§in Ã¶nce bir kitap seÃ§melisin.",
                 [],
                 {
                     "status": "analytic",
@@ -761,7 +1317,7 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
         term = extract_target_term(question)
         if not term:
             return (
-                "Sayılacak kelimeyi belirtir misin?",
+                "SayÄ±lacak kelimeyi belirtir misin?",
                 [],
                 {
                     "status": "analytic",
@@ -773,7 +1329,7 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
             )
         count = count_lemma_occurrences(firebase_uid, context_book_id, term)
         contexts = get_keyword_contexts(firebase_uid, context_book_id, term, limit=10) # Initial 10 for the short-circuit
-        answer = f"\"{term}\" kelimesi bu kitapta toplam {count} kez geçiyor."
+        answer = f"\"{term}\" kelimesi bu kitapta toplam {count} kez geÃ§iyor."
         return (
             answer,
             [],
@@ -791,30 +1347,78 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
         )
 
     # 1. Retrieve Context
-    ctx = get_rag_context(question, firebase_uid, context_book_id, chat_history=chat_history, limit=limit, offset=offset, session_id=session_id)
+    retrieval_phase_start = time.perf_counter()
+    ctx = get_rag_context(
+        question,
+        firebase_uid,
+        context_book_id,
+        chat_history=chat_history,
+        limit=limit,
+        offset=offset,
+        session_id=session_id,
+    )
+    retrieval_phase_sec = time.perf_counter() - retrieval_phase_start
+    try:
+        L3_PHASE_LATENCY_SECONDS.labels(phase="retrieval").observe(retrieval_phase_sec)
+    except Exception:
+        pass
     if not ctx:
-        return "Üzgünüm, şu an cevap üretemiyorum. İlgili içerik bulunamadı.", [], {"status": "failed"}
+        return "ÃœzgÃ¼nÃ¼m, ÅŸu an cevap Ã¼retemiyorum. Ä°lgili iÃ§erik bulunamadÄ±.", [], {"status": "failed"}
         
     chunks = ctx['chunks']
     answer_mode = ctx['mode']
     avg_conf = ctx['confidence']
     keywords = ctx['keywords']
+    quote_target_count = _compute_quote_target_count(avg_conf, len(chunks))
+    context_budget_applied = bool(
+        getattr(settings, "L3_PERF_CONTEXT_BUDGET_ENABLED", False) and answer_mode != "EXPLORER"
+    )
     
     # 2. Build Context String
+    prompt_build_phase_start = time.perf_counter()
     level_counts = ctx['level_counts']
-    evidence_meta = f"[SİSTEM NOTU: Kullanıcının kütüphanesinde '{', '.join(keywords)}' ile ilgili toplam {level_counts['A'] + level_counts['B']} adet doğrudan not bulundu.]"
+    evidence_meta = f"[SÄ°STEM NOTU: KullanÄ±cÄ±nÄ±n kÃ¼tÃ¼phanesinde '{', '.join(keywords)}' ile ilgili toplam {level_counts['A'] + level_counts['B']} adet doÄŸrudan not bulundu.]"
     
-    context_str_base, used_chunks = build_epistemic_context(chunks, answer_mode)
-    context_str = evidence_meta + "\n\n" + context_str_base
-    
-    # Add Graph insights if synthesis
-    if answer_mode == 'SYNTHESIS':
-        try:
-            graph_insight = get_graph_enriched_context(chunks, firebase_uid)
-            if graph_insight:
-                context_str = graph_insight + "\n\n" + context_str
-        except:
-            pass
+    graph_bridge_used = False
+    graph_bridge_attempted = False
+    graph_bridge_timeout_triggered = False
+    graph_bridge_latency_ms = 0.0
+    graph_insight = ""
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        future_context = executor.submit(build_epistemic_context, chunks, answer_mode)
+        future_graph_bridge = None
+        graph_bridge_started_at = None
+
+        if answer_mode == 'SYNTHESIS':
+            graph_bridge_attempted = True
+            graph_bridge_started_at = time.perf_counter()
+            future_graph_bridge = executor.submit(get_graph_enriched_context, chunks, firebase_uid)
+
+        context_str_base, used_chunks = future_context.result()
+        context_str = evidence_meta + "\n\n" + context_str_base
+
+        if future_graph_bridge is not None:
+            timeout_sec = max(
+                0.05,
+                float(getattr(settings, "SEARCH_GRAPH_BRIDGE_TIMEOUT_MS", 650)) / 1000.0
+            )
+            try:
+                graph_insight = future_graph_bridge.result(timeout=timeout_sec) or ""
+                if graph_bridge_started_at is not None:
+                    graph_bridge_latency_ms = (time.perf_counter() - graph_bridge_started_at) * 1000.0
+                if graph_insight:
+                    graph_bridge_used = True
+                    context_str = graph_insight + "\n\n" + context_str
+            except FutureTimeoutError:
+                graph_bridge_timeout_triggered = True
+                future_graph_bridge.cancel()
+                if graph_bridge_started_at is not None:
+                    graph_bridge_latency_ms = (time.perf_counter() - graph_bridge_started_at) * 1000.0
+            except Exception as bridge_err:
+                logger.warning("Graph bridge enrichment skipped: %s", bridge_err)
+                if graph_bridge_started_at is not None:
+                    graph_bridge_latency_ms = (time.perf_counter() - graph_bridge_started_at) * 1000.0
             
     # 3. Generate Answer (Ensure sources match IDs)
     sources = [{
@@ -832,18 +1436,18 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
         history_str = ""
         if chat_history:
             for msg in chat_history[-settings.CHAT_PROMPT_TURNS:]: # Just last N turns
-                role = "Kullanıcı" if msg['role'] == 'user' else "Asistan"
+                role = "KullanÄ±cÄ±" if msg['role'] == 'user' else "Asistan"
                 history_str += f"{role}: {msg['content']}\n"
         
         # In Memory Layer, we explicitly label context zones (Structured Phase 3)
         structured_context = []
         if session_summary:
-            structured_context.append(f"### KONUŞMA ÖZETİ (LONG-TERM MEMORY)\n{session_summary}")
+            structured_context.append(f"### KONUÅžMA Ã–ZETÄ° (LONG-TERM MEMORY)\n{session_summary}")
         
         if history_str:
-            structured_context.append(f"### SON YAZIŞMALAR (SHORT-TERM MEMORY)\n{history_str}")
+            structured_context.append(f"### SON YAZIÅžMALAR (SHORT-TERM MEMORY)\n{history_str}")
         
-        structured_context.append(f"### KAYNAK DOKÜMANLAR (FOUND EVIDENCE)\n{context_str}")
+        structured_context.append(f"### KAYNAK DOKÃœMANLAR (FOUND EVIDENCE)\n{context_str}")
         
         full_context_str = "\n\n---\n\n".join(structured_context)
             
@@ -852,18 +1456,148 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
             full_context_str, 
             question, 
             confidence_score=avg_conf, 
-            network_status=network_status
+            network_status=network_status,
+            quote_target_count=quote_target_count,
         )
+        prompt_build_phase_sec = time.perf_counter() - prompt_build_phase_start
+        try:
+            L3_PHASE_LATENCY_SECONDS.labels(phase="prompt_build").observe(prompt_build_phase_sec)
+        except Exception:
+            pass
         
-        # Use Flash for conversational speed
-        model_name = settings.ANSWER_MODEL_NAME
-        model = genai.GenerativeModel(model_name)
-        response = model.generate_content(prompt)
-        answer = response.text if response else "Cevap üretilemedi."
-        
+        # Use Flash for conversational speed with controlled Pro fallback.
+        route_mode = ROUTE_MODE_DEFAULT
+        provider_hint = None
+        allow_secondary_fallback = False
+        allow_pro_fallback_effective = True
+        model_name = get_model_for_tier(MODEL_TIER_FLASH)
+
+        if answer_mode == 'EXPLORER' and settings.LLM_EXPLORER_QWEN_PILOT_ENABLED:
+            route_mode = ROUTE_MODE_EXPLORER_QWEN_PILOT
+            provider_hint = settings.LLM_EXPLORER_PRIMARY_PROVIDER
+            model_name = settings.LLM_EXPLORER_PRIMARY_MODEL
+            allow_secondary_fallback = True
+            allow_pro_fallback_effective = False
+
+        max_output_tokens = None
+        llm_timeout_s = None
+        llm_generation_timeout_applied = False
+        if getattr(settings, "L3_PERF_OUTPUT_BUDGET_ENABLED", False) and answer_mode != "EXPLORER":
+            max_output_tokens = int(getattr(settings, "L3_PERF_MAX_OUTPUT_TOKENS_STANDARD", 650) or 650)
+            if max_output_tokens < 128:
+                max_output_tokens = 650
+            llm_timeout_s = 18.0
+            llm_generation_timeout_applied = True
+            try:
+                L3_PERF_GUARD_APPLIED_TOTAL.labels(guard_name="output_budget_standard").inc()
+            except Exception:
+                pass
+
+        fallback_state = {"pro_fallback_used": 0}
+        llm_phase_start = time.perf_counter()
+        result = generate_text(
+            model=model_name,
+            prompt=prompt,
+            task="search_generate_answer",
+            model_tier=MODEL_TIER_FLASH,
+            max_output_tokens=max_output_tokens,
+            timeout_s=llm_timeout_s,
+            allow_pro_fallback=allow_pro_fallback_effective,
+            fallback_state=fallback_state,
+            provider_hint=provider_hint,
+            route_mode=route_mode,
+            allow_secondary_fallback=allow_secondary_fallback,
+        )
+        llm_phase_sec = time.perf_counter() - llm_phase_start
+        try:
+            L3_PHASE_LATENCY_SECONDS.labels(phase="llm_generate").observe(llm_phase_sec)
+        except Exception:
+            pass
+        answer = result.text if result and result.text else "Cevap üretilemedi."
+
+        # Recovery guard: if Standard mode answer is underfilled, regenerate once in richer mode.
+        short_answer_recovery_applied = False
+        normalized_answer = (answer or "").lower()
+        heading_count = answer.count("## ")
+        paragraph_count = len([p for p in re.split(r"\n\s*\n", answer) if p.strip()])
+        looks_underfilled = (
+            len(answer.strip()) < 520
+            or paragraph_count < 2
+            or (answer_mode in {"QUOTE", "HYBRID"} and heading_count < 2)
+            or (
+                "doğrudan tanımlar" in normalized_answer
+                and "bağlamsal analiz" not in normalized_answer
+                and "bağlamsal kanıtlar" not in normalized_answer
+            )
+        )
+
+        if looks_underfilled and answer_mode != "EXPLORER":
+            try:
+                recovery_mode = "HYBRID" if answer_mode == "HYBRID" else "SYNTHESIS"
+                recovery_prompt = get_prompt_for_mode(
+                    recovery_mode,
+                    full_context_str,
+                    question,
+                    confidence_score=max(float(avg_conf or 0.0), 4.0),
+                    network_status=network_status,
+                )
+                recovery_prompt += (
+                    "\n\nADDITIONAL REQUIREMENT:\n"
+                    "- Do not answer in a single paragraph.\n"
+                    "- Provide at least 3 substantial paragraphs.\n"
+                    "- Explain reasoning with concrete links to the provided context.\n"
+                )
+                recovery_max_tokens = (
+                    max(int(max_output_tokens or 0), 1600)
+                    if getattr(settings, "L3_PERF_OUTPUT_BUDGET_ENABLED", False)
+                    else 1600
+                )
+                recovery_timeout_s = 25.0 if llm_timeout_s else None
+
+                recovery_result = generate_text(
+                    model=model_name,
+                    prompt=recovery_prompt,
+                    task="search_generate_answer_recovery",
+                    model_tier=MODEL_TIER_FLASH,
+                    max_output_tokens=recovery_max_tokens,
+                    timeout_s=recovery_timeout_s,
+                    allow_pro_fallback=allow_pro_fallback_effective,
+                    fallback_state=fallback_state,
+                    provider_hint=provider_hint,
+                    route_mode=route_mode,
+                    allow_secondary_fallback=allow_secondary_fallback,
+                )
+                recovered = recovery_result.text if recovery_result and recovery_result.text else ""
+                if recovered.strip() and (
+                    len(recovered.strip()) >= 260
+                    and len(recovered.strip()) > len(answer.strip()) + 40
+                ):
+                    answer = recovered
+                    result = recovery_result
+                    short_answer_recovery_applied = True
+            except Exception as recovery_err:
+                logger.warning("Short answer recovery skipped: %s", recovery_err)
+
         # Merge degradations from context
         meta = ctx.get('metadata', {}) or {}
-        meta["model_name"] = model_name
+        meta["model_name"] = result.model_used
+        meta["model_tier"] = result.model_tier
+        meta["provider_name"] = result.provider_name
+        meta["model_fallback_applied"] = bool(result.fallback_applied)
+        meta["secondary_fallback_applied"] = bool(result.secondary_fallback_applied)
+        meta["fallback_reason"] = result.fallback_reason
+        meta["llm_generation_timeout_applied"] = llm_generation_timeout_applied
+        meta["context_budget_applied"] = context_budget_applied
+        meta["quote_target_count"] = quote_target_count
+        meta["short_answer_recovery_applied"] = short_answer_recovery_applied
+        meta["supplementary_search_skipped_reason"] = ctx.get("supplementary_search_skipped_reason")
+        meta["expansion_skipped_reason"] = ctx.get("expansion_skipped_reason")
+        meta["source_diversity_count"] = ctx.get("source_diversity_count", 0)
+        meta["source_type_diversity_count"] = ctx.get("source_type_diversity_count", 0)
+        meta["graph_bridge_attempted"] = graph_bridge_attempted
+        meta["graph_bridge_used"] = graph_bridge_used
+        meta["graph_bridge_timeout_triggered"] = graph_bridge_timeout_triggered
+        meta["graph_bridge_latency_ms"] = graph_bridge_latency_ms
         search_log_id = meta.get("search_log_id")
         if search_log_id:
             try:
@@ -875,7 +1609,7 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
                             SET MODEL_NAME = :p_model
                             WHERE ID = :p_id
                             """,
-                            {"p_model": model_name, "p_id": search_log_id}
+                            {"p_model": result.model_used, "p_id": search_log_id}
                         )
                     conn.commit()
             except Exception as e:
@@ -883,8 +1617,13 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
         
         return answer, sources, meta
     except Exception as e:
-        print(f"[ERROR] Generate Answer failed: {e}")
-        return "Bir hata oluştu.", sources, {"status": "error", "error": str(e)}
+        import traceback as _tb
+        logger.error(
+            "Generate Answer failed",
+            extra={"error": str(e), "traceback": _tb.format_exc()},
+            exc_info=True,
+        )
+        return "Bir hata oluÅŸtu.", sources, {"status": "error", "error": str(e)}
 
 
 # ============================================================================
@@ -957,3 +1696,7 @@ if __name__ == "__main__":
             print("  1. Database contains content for this user")
             print("  2. GEMINI_API_KEY is configured")
             print("  3. Internet connectivity")
+
+
+
+

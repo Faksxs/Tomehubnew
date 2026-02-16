@@ -55,3 +55,42 @@ build/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Secrets & Wallet (Included in private registry build)
+# wallet/
+# secrets/
+*.pem
+oci_private_key.pem
+
+# Debug & utility scripts (not needed in production)
+scripts/
+*.sql
+audit_*.py
+check_*.py
+clean_*.py
+count_*.py
+demo_*.py
+find_*.py
+fix_*.py
+get_*.py
+hard_delete_*.py
+inspect_*.py
+investigate_*.py
+list_*.py
+migrate_*.py
+repair_*.py
+revert_*.py
+scrub_*.py
+search_*.py
+tail_*.py
+verify_*.py
+run_janitor.py
+health_check.py
+
+# Data & schema files
+data/
+*.json
+!openapi.json
+all_titles*.txt
+uid_debug.json
+schema.json

@@ -19,11 +19,27 @@ from models.flow_models import (
 from services.flow_service import get_flow_service
 from services.flow_session_service import get_flow_session_manager
 from middleware.auth_middleware import verify_firebase_token
+from config import settings
 
 logger = logging.getLogger("tomehub_api")
 
 # Create Router
 router = APIRouter(prefix="/api/flow", tags=["Flux (Layer 4)"])
+
+
+def _allow_dev_unverified_auth() -> bool:
+    return (
+        settings.ENVIRONMENT == "development"
+        and bool(getattr(settings, "DEV_UNSAFE_AUTH_BYPASS", False))
+    )
+
+
+def _resolve_flow_uid(token_uid: Optional[str], body_uid: Optional[str] = None) -> str:
+    if token_uid:
+        return token_uid
+    if _allow_dev_unverified_auth() and body_uid:
+        return body_uid
+    raise HTTPException(status_code=401, detail="Authentication required")
 
 
 # ============================================================================
@@ -41,18 +57,14 @@ async def flow_start(
     Start a new Flux session.
 
     """
-    print(f"\n[FLOW-API] Incoming request: {flow_request}")
-    print(f"[FLOW-API] Token-derived UID: {user_id}")
+    if settings.DEBUG_VERBOSE_PIPELINE:
+        logger.debug("[FLOW-API] Incoming request: %s", flow_request)
+        logger.debug("[FLOW-API] Token-derived UID: %s", user_id)
     
     # SECURITY NOTE: For local dev, if token verification is bypassed (returns None),
     # we use the firebase_uid from request body.
     # In production, this should be strictly enforced from token.
-    if user_id is None:
-        # Use request body UID for local development
-        print(f"[FLOW-API] Using request body UID: {flow_request.firebase_uid}")
-    else:
-        # Override with token UID for security
-        flow_request.firebase_uid = user_id
+    flow_request.firebase_uid = _resolve_flow_uid(user_id, flow_request.firebase_uid)
     
     logger.info(f"[FLOW] Starting session for UID: {flow_request.firebase_uid}")
     
@@ -87,10 +99,7 @@ async def flow_next(
     Get the next batch of cards in the Flux.
     """
     # SECURITY NOTE: Handle bypassed token verification for local dev
-    if user_id is None:
-        print(f"[FLOW-API] Using request body UID: {flow_request.firebase_uid}")
-    else:
-        flow_request.firebase_uid = user_id
+    flow_request.firebase_uid = _resolve_flow_uid(user_id, flow_request.firebase_uid)
         
     logger.info(f"[FLOW] Next batch for session: {flow_request.session_id}")
     
@@ -124,8 +133,7 @@ async def flow_feedback(
     Submit feedback on a card (like, dislike, skip, save).
     Used to adjust the stream in real-time.
     """
-    # SECURITY: Enforce UID from token
-    feedback.firebase_uid = user_id
+    feedback.firebase_uid = _resolve_flow_uid(user_id, feedback.firebase_uid)
     logger.info(f"[FLOW] Feedback: {feedback.action} on {feedback.chunk_id}")
     
     try:
@@ -154,6 +162,7 @@ async def flow_adjust(
     """
     Adjust the Horizon Slider mid-session.
     """
+    _resolve_flow_uid(user_id)
     logger.info(f"[FLOW] Adjusting horizon to {horizon_value} for session {session_id}")
     
     try:
@@ -190,7 +199,7 @@ async def flow_reset_anchor(
     Explicitly reset the session anchor (Change Topic).
     """
     # SECURITY: Enforce UID from token
-    effective_uid = user_id
+    effective_uid = _resolve_flow_uid(user_id, firebase_uid)
     logger.info(f"[FLOW] Resetting anchor for session {session_id} to {anchor_type}:{anchor_id}")
     
     try:
@@ -224,6 +233,7 @@ async def get_session_info(
     Get current session state (for debugging/UI sync).
     """
     try:
+        _resolve_flow_uid(user_id)
         session_manager = get_flow_session_manager()
         state = session_manager.get_session(session_id)
         

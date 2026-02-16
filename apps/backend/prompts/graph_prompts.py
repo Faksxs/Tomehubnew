@@ -3,7 +3,7 @@
 
 GRAPH_EXTRACTION_PROMPT = """Analyze the following text fragment and extract the key concepts and their relationships.
 Format your response as a valid JSON object with two keys:
-- 'concepts': list of objects {"name": "...", "type": "...", "description": "..."}
+- 'concepts': list of objects {{"name": "...", "type": "...", "description": "..."}}
 - 'relations': list of [source, type, target, confidence]
 
 Text: "{text}"
@@ -48,8 +48,8 @@ Rules for Extraction:
 EXAMPLE OUTPUT:
 {{
   "concepts": [
-    {"name": "Camus", "type": "PERSON", "description": "Albert Camus, existentialist philosopher and writer."},
-    {"name": "isyan", "type": "CONCEPT", "description": "The act of rebellion against meaninglessness or oppression."}
+    {{"name": "Camus", "type": "PERSON", "description": "Albert Camus, existentialist philosopher and writer."}},
+    {{"name": "isyan", "type": "CONCEPT", "description": "The act of rebellion against meaninglessness or oppression."}}
   ],
   "relations": [
     ["Camus", "TANIMLAR", "insan isyan eden hayvandır", 1.0],

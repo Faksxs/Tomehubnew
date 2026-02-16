@@ -32,9 +32,14 @@ from utils.tag_utils import prepare_labels
 import json
 from concurrent.futures import ThreadPoolExecutor
 from utils.logger import get_logger
+from config import settings
 
 logger = get_logger("ingestion_service")
 from services.monitoring import INGESTION_LATENCY
+from services.epistemic_distribution_service import (
+    delete_epistemic_distribution,
+    maybe_trigger_epistemic_distribution_refresh_async,
+)
 import time
 
 # Phase 6: Semantic Classification at Ingest Time
@@ -53,6 +58,30 @@ load_dotenv(dotenv_path=env_path)
 from infrastructure.db_manager import DatabaseManager, acquire_lock
 
 # Removed local get_database_connection
+
+
+def _runtime_log(message: str, level: str = "info") -> None:
+    normalized = (level or "info").lower()
+    msg = str(message)
+    if normalized == "info":
+        lowered = msg.lower()
+        if "[error]" in lowered:
+            normalized = "error"
+        elif "[warning]" in lowered or "[warn]" in lowered:
+            normalized = "warning"
+        elif "[debug]" in lowered:
+            normalized = "debug"
+    if normalized == "debug":
+        if settings.DEBUG_VERBOSE_PIPELINE:
+            logger.debug(msg)
+        return
+    if normalized == "warning":
+        logger.warning(msg)
+        return
+    if normalized == "error":
+        logger.error(msg)
+        return
+    logger.info(msg)
 
 def _insert_content_categories(cursor, content_id: int, prepared_categories):
     if not prepared_categories:
@@ -118,6 +147,32 @@ def normalize_highlight_type(highlight_type: Optional[str]) -> str:
     if st in {"insight", "note"}:
         return "INSIGHT"
     return "HIGHLIGHT"
+
+
+def _invalidate_search_cache(firebase_uid: str, book_id: Optional[str] = None) -> None:
+    """
+    Best-effort cache invalidation for user/book search results.
+    """
+    if not firebase_uid:
+        return
+
+    try:
+        from services.cache_service import get_cache
+
+        cache = get_cache()
+        if not cache:
+            return
+
+        user_pattern = f"search:*:{firebase_uid}:*"
+        cache.delete_pattern(user_pattern)
+        logger.info(f"Cache invalidated for user {firebase_uid} (pattern: {user_pattern})")
+
+        if book_id:
+            book_pattern = f"search:*:*:{book_id}:*"
+            cache.delete_pattern(book_pattern)
+            logger.info(f"Cache invalidated for book {book_id} (pattern: {book_pattern})")
+    except Exception as e:
+        logger.warning(f"Cache invalidation failed (non-critical): {e}")
 
 
 def check_book_exists(title: str, author: str, firebase_uid: str, conn=None) -> bool:
@@ -202,13 +257,107 @@ def delete_book_content(title: str, author: str, firebase_uid: str, conn=None) -
             conn.close()
 
 
+def _is_missing_table_error(error: Exception) -> bool:
+    if not isinstance(error, oracledb.DatabaseError):
+        return False
+    try:
+        return getattr(error.args[0], "code", None) == 942
+    except Exception:
+        return False
+
+
+def purge_item_content(firebase_uid: str, book_id: str) -> dict:
+    """
+    Hard-delete all DB rows linked to a specific user item id.
+    """
+    deleted = 0
+    aux_deleted = {
+        "ingested_files": 0,
+        "file_reports": 0,
+        "external_meta": 0,
+        "external_edges": 0,
+    }
+
+    if not firebase_uid:
+        return {"success": False, "deleted": 0, "error": "firebase_uid required"}
+    if not book_id:
+        return {"success": False, "deleted": 0, "error": "book_id required"}
+
+    binds = {"p_uid": firebase_uid, "p_book": book_id}
+
+    try:
+        with DatabaseManager.get_write_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    DELETE FROM TOMEHUB_CONTENT
+                    WHERE firebase_uid = :p_uid
+                      AND book_id = :p_book
+                    """,
+                    binds,
+                )
+                deleted = cursor.rowcount or 0
+
+                for key, query in (
+                    (
+                        "ingested_files",
+                        """
+                        DELETE FROM TOMEHUB_INGESTED_FILES
+                        WHERE FIREBASE_UID = :p_uid
+                          AND BOOK_ID = :p_book
+                        """,
+                    ),
+                    (
+                        "file_reports",
+                        """
+                        DELETE FROM TOMEHUB_FILE_REPORTS
+                        WHERE FIREBASE_UID = :p_uid
+                          AND BOOK_ID = :p_book
+                        """,
+                    ),
+                    (
+                        "external_meta",
+                        """
+                        DELETE FROM TOMEHUB_EXTERNAL_BOOK_META
+                        WHERE FIREBASE_UID = :p_uid
+                          AND BOOK_ID = :p_book
+                        """,
+                    ),
+                    (
+                        "external_edges",
+                        """
+                        DELETE FROM TOMEHUB_EXTERNAL_EDGES
+                        WHERE FIREBASE_UID = :p_uid
+                          AND BOOK_ID = :p_book
+                        """,
+                    ),
+                ):
+                    try:
+                        cursor.execute(query, binds)
+                        aux_deleted[key] = cursor.rowcount or 0
+                    except Exception as aux_error:
+                        if _is_missing_table_error(aux_error):
+                            logger.debug(f"[DEBUG] purge_item_content skipped missing table for {key}")
+                            continue
+                        raise
+
+            connection.commit()
+
+        _invalidate_search_cache(firebase_uid=firebase_uid, book_id=book_id)
+        delete_epistemic_distribution(book_id=book_id, firebase_uid=firebase_uid)
+        return {"success": True, "deleted": deleted, "aux_deleted": aux_deleted}
+    except Exception as e:
+        logger.error(f"[ERROR] purge_item_content failed: {e}")
+        return {"success": False, "deleted": deleted, "aux_deleted": aux_deleted, "error": str(e)}
+
+
 def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "test_user_001", book_id: str = None, categories: Optional[str] = None) -> bool:
     # Normalize categories: remove newlines and extra spaces
     if categories:
         categories = ",".join([c.strip() for c in categories.replace("\n", ",").split(",") if c.strip()])
     prepared_categories = prepare_labels(categories) if categories else []
     # DEBUG: Verify file exists at start
-    print(f"[DEBUG] File exists at start: {os.path.exists(file_path)}")
+    _runtime_log(f"[DEBUG] File exists at start: {os.path.exists(file_path)}")
     
     start_time = time.time()
     source_type = "PDF" if file_path.lower().endswith(".pdf") else "EPUB"
@@ -224,18 +373,18 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
     if not book_id:
         book_id = str(uuid.uuid4())
 
-    print("=" * 70)
-    print("TomeHub Book Ingestion Pipeline")
-    print("=" * 70)
-    print(f"\n[INFO] Book: {title}")
-    print(f"[INFO] Author: {author}")
-    print(f"[INFO] File: {file_path}")
-    print(f"[INFO] Book ID: {book_id}")
+    _runtime_log("=" * 70)
+    _runtime_log("TomeHub Book Ingestion Pipeline")
+    _runtime_log("=" * 70)
+    _runtime_log(f"\n[INFO] Book: {title}")
+    _runtime_log(f"[INFO] Author: {author}")
+    _runtime_log(f"[INFO] File: {file_path}")
+    _runtime_log(f"[INFO] Book ID: {book_id}")
     
     # Step 1: Extract Content
-    print(f"\n{'='*70}")
-    print("Step 1: Extracting Content")
-    print(f"{'='*70}")
+    _runtime_log(f"\n{'='*70}")
+    _runtime_log("Step 1: Extracting Content")
+    _runtime_log(f"{'='*70}")
     
     file_ext = os.path.splitext(file_path)[1].lower()
     chunks = []
@@ -255,9 +404,9 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
     logger.info("Content extraction successful", extra={"chunk_count": len(chunks), "file": file_path})
     
     # Step 2: Connect to database & ATOMIC TRANSACTION START
-    print(f"\n{'='*70}")
-    print("Step 2 & 3: Atomic Database Transaction (Locking -> Processing -> Ingestion)")
-    print(f"{'='*70}")
+    _runtime_log(f"\n{'='*70}")
+    _runtime_log("Step 2 & 3: Atomic Database Transaction (Locking -> Processing -> Ingestion)")
+    _runtime_log(f"{'='*70}")
     
     try:
         with DatabaseManager.get_write_connection() as connection:
@@ -309,9 +458,9 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
                 logger.info("Connected to database & Locked.")
             
                 # Step 3: Process chunks in batches
-                print(f"\n{'='*70}")
-                print("Step 3: Processing Chunks (Parallel NLP + Batch Embeddings)")
-                print(f"{'='*70}")
+                _runtime_log(f"\n{'='*70}")
+                _runtime_log("Step 3: Processing Chunks (Parallel NLP + Batch Embeddings)")
+                _runtime_log(f"{'='*70}")
                 
                 insert_sql = """
                 INSERT INTO TOMEHUB_CONTENT 
@@ -434,9 +583,9 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
                                 _insert_content_categories(cursor, int(new_id), prepared_categories)
                             successful_inserts += 1
                         except Exception as e:
-                            print(f"[FAILED] Chunk {res['index']} DB insert: {e}")
+                            _runtime_log(f"[FAILED] Chunk {res['index']} DB insert: {e}")
                     
-                    print(f"[PROGRESS] Processed {min(i + BATCH_SIZE, len(valid_chunks))}/{len(valid_chunks)} chunks...")
+                    _runtime_log(f"[PROGRESS] Processed {min(i + BATCH_SIZE, len(valid_chunks))}/{len(valid_chunks)} chunks...")
                 
                 # Step 4: Commit (Releases Lock)
                 # Fail Loud Check: Abort if "Swiss Cheese" (Too many missing embeddings)
@@ -449,9 +598,9 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
                         connection.rollback()
                         raise Exception(error_msg)
 
-                print(f"\n{'='*70}")
-                print("Step 4: Committing to Database (Releases Lock)")
-                print(f"{'='*70}")
+                _runtime_log(f"\n{'='*70}")
+                _runtime_log("Step 4: Committing to Database (Releases Lock)")
+                _runtime_log(f"{'='*70}")
                 
                 connection.commit()
                 logger.info("Ingestion complete (Lock Released)", extra={
@@ -467,23 +616,23 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
         return False
     
     # Step 5: Cleanup
-    print(f"\n{'='*70}")
-    print("Step 5: Cleaning Up File")
-    print(f"{'='*70}")
+    _runtime_log(f"\n{'='*70}")
+    _runtime_log("Step 5: Cleaning Up File")
+    _runtime_log(f"{'='*70}")
     
     try:
         if successful_inserts > 0:
             if os.path.exists(file_path):
                 os.remove(file_path)
-                print(f"[SUCCESS] Ingestion successful. Deleted temp file: {file_path}")
+                _runtime_log(f"[SUCCESS] Ingestion successful. Deleted temp file: {file_path}")
             else:
-                print("[WARNING] File not found for deletion.")
+                _runtime_log("[WARNING] File not found for deletion.")
         else:
              logger.warning(f"Ingestion incomplete (0 inserts). Preserving file for inspection: {file_path}")
-             print(f"[WARNING] File preserved: {file_path}")
+             _runtime_log(f"[WARNING] File preserved: {file_path}")
              
     except Exception as e:
-        print(f"[ERROR] Failed to delete file: {e}")
+        _runtime_log(f"[ERROR] Failed to delete file: {e}")
     
     if successful_inserts == 0:
         INGESTION_LATENCY.labels(status="fail", source_type=source_type).observe(time.time() - start_time)
@@ -491,25 +640,9 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
         return False
     
     INGESTION_LATENCY.labels(status="success", source_type=source_type).observe(time.time() - start_time)
-    # Invalidate cache for this user (new content added)
-    try:
-        from services.cache_service import get_cache
-        cache = get_cache()
-        if cache:
-            # Invalidate all search results for this user
-            # Pattern: search:*:{firebase_uid}:*
-            pattern = f"search:*:{firebase_uid}:*"
-            cache.delete_pattern(pattern)
-            logger.info(f"Cache invalidated for user {firebase_uid} (pattern: {pattern})")
-            
-            # Also invalidate book-specific caches if book_id is available
-            if book_id:
-                pattern = f"search:*:*:{book_id}:*"
-                cache.delete_pattern(pattern)
-                logger.info(f"Cache invalidated for book {book_id} (pattern: {pattern})")
-    except Exception as e:
-        logger.warning(f"Cache invalidation failed (non-critical): {e}")
-        
+    _invalidate_search_cache(firebase_uid=firebase_uid, book_id=book_id)
+    maybe_trigger_epistemic_distribution_refresh_async(book_id=book_id, firebase_uid=firebase_uid, reason="ingest_book")
+
     return True
 def ingest_text_item(
     text: str,
@@ -529,13 +662,13 @@ def ingest_text_item(
     if categories:
         categories = ",".join([c.strip() for c in categories.replace("\n", ",").split(",") if c.strip()])
     prepared_categories = prepare_labels(categories) if categories else []
-    print(f"\n[INFO] Text Ingestion: {title}")
+    _runtime_log(f"\n[INFO] Text Ingestion: {title}")
     try:
         with DatabaseManager.get_write_connection() as connection:
             with connection.cursor() as cursor:
                 # Gatekeeper: Validation
                 if not DataHealthService.validate_content(text):
-                    print(f"[SKIPPED] Content too short or empty: {title}")
+                    _runtime_log(f"[SKIPPED] Content too short or empty: {title}")
                     return False
 
                 # NLP Processing
@@ -584,14 +717,16 @@ def ingest_text_item(
                         _insert_content_categories(cursor, int(new_id), prepared_categories)
                         _insert_content_tags(cursor, int(new_id), prepared_tags)
                     connection.commit()
-                    print(f"[SUCCESS] Text Item Ingested: {title} (Type: {db_source_type})")
+                    _invalidate_search_cache(firebase_uid=firebase_uid, book_id=book_id)
+                    maybe_trigger_epistemic_distribution_refresh_async(book_id=book_id, firebase_uid=firebase_uid, reason="ingest_text_item")
+                    _runtime_log(f"[SUCCESS] Text Item Ingested: {title} (Type: {db_source_type})")
                     return True
                 
-                print(f"[ERROR] Embedding was None for: {title}")
+                _runtime_log(f"[ERROR] Embedding was None for: {title}")
                 return False
                 
     except Exception as e:
-        print(f"Error: {e}")
+        _runtime_log(f"Error: {e}")
         return False
 
 def sync_highlights_for_item(
@@ -627,6 +762,8 @@ def sync_highlights_for_item(
 
                 if not highlights:
                     connection.commit()
+                    _invalidate_search_cache(firebase_uid=firebase_uid, book_id=book_id)
+                    maybe_trigger_epistemic_distribution_refresh_async(book_id=book_id, firebase_uid=firebase_uid, reason="sync_highlights_empty")
                     return {"success": True, "deleted": deleted, "inserted": 0}
 
                 texts = [h.get("text", "") for h in highlights]
@@ -685,6 +822,8 @@ def sync_highlights_for_item(
                     inserted += 1
 
                 connection.commit()
+                _invalidate_search_cache(firebase_uid=firebase_uid, book_id=book_id)
+                maybe_trigger_epistemic_distribution_refresh_async(book_id=book_id, firebase_uid=firebase_uid, reason="sync_highlights")
                 return {"success": True, "deleted": deleted, "inserted": inserted}
     except Exception as e:
         logger.error(f"[ERROR] sync_highlights_for_item failed: {e}")
@@ -729,11 +868,15 @@ def sync_personal_note_for_item(
                 normalized_category = str(category or "PRIVATE").strip().upper()
                 if delete_only or normalized_category != "IDEAS":
                     connection.commit()
+                    _invalidate_search_cache(firebase_uid=firebase_uid, book_id=book_id)
+                    maybe_trigger_epistemic_distribution_refresh_async(book_id=book_id, firebase_uid=firebase_uid, reason="sync_personal_note_delete")
                     return {"success": True, "deleted": deleted, "inserted": 0}
 
                 text = (content or "").strip()
                 if not DataHealthService.validate_content(text):
                     connection.commit()
+                    _invalidate_search_cache(firebase_uid=firebase_uid, book_id=book_id)
+                    maybe_trigger_epistemic_distribution_refresh_async(book_id=book_id, firebase_uid=firebase_uid, reason="sync_personal_note_invalid")
                     return {"success": True, "deleted": deleted, "inserted": 0}
 
                 embedding = get_embedding(text)
@@ -776,13 +919,15 @@ def sync_personal_note_for_item(
                     _insert_content_tags(cursor, int(new_id), prepared_tags)
                 inserted = 1
                 connection.commit()
+                _invalidate_search_cache(firebase_uid=firebase_uid, book_id=book_id)
+                maybe_trigger_epistemic_distribution_refresh_async(book_id=book_id, firebase_uid=firebase_uid, reason="sync_personal_note")
                 return {"success": True, "deleted": deleted, "inserted": inserted}
     except Exception as e:
         logger.error(f"[ERROR] sync_personal_note_for_item failed: {e}")
         return {"success": False, "deleted": deleted, "inserted": inserted, "error": str(e)}
 
 def process_bulk_items_logic(items: list, firebase_uid: str) -> dict:
-    print(f"Bulk processing {len(items)} items...")
+    _runtime_log(f"Bulk processing {len(items)} items...")
     success = 0
     
     try:
@@ -797,7 +942,7 @@ def process_bulk_items_logic(items: list, firebase_uid: str) -> dict:
                         
                         embedding = get_embedding(text)
                         if not embedding:
-                            print("[WARN] Embedding missing for item, skipping.")
+                            _runtime_log("[WARN] Embedding missing for item, skipping.")
                             continue
 
                         # NLP Processing
@@ -850,10 +995,10 @@ def process_bulk_items_logic(items: list, firebase_uid: str) -> dict:
                         success += 1
                         time.sleep(0.2) # Rate limit
                     except Exception as e:
-                        print(f"Item failed: {e}")
+                        _runtime_log(f"Item failed: {e}")
                 conn.commit()
     except Exception as e:
-        print(f"Bulk process error: {e}")
+        _runtime_log(f"Bulk process error: {e}")
         
     return {"success": success}
 

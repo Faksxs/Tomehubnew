@@ -5,10 +5,12 @@ Test script to verify the 'zaman' search fix in Layer 2
 
 import sys
 import os
+from pathlib import Path
 
-# Add backend dir to path
-backend_dir = os.path.join(os.path.dirname(__file__), 'apps', 'backend')
-sys.path.insert(0, backend_dir)
+# Resolve repository root from scripts/diagnostics/test_zaman_fix.py
+repo_root = Path(__file__).resolve().parents[2]
+backend_dir = repo_root / 'apps' / 'backend'
+sys.path.insert(0, str(backend_dir))
 
 import asyncio
 from dotenv import load_dotenv
@@ -20,7 +22,7 @@ from services.cache_service import MultiLayerCache
 from infrastructure.db_manager import DatabaseManager
 
 # Load environment
-load_dotenv(os.path.join(os.path.dirname(__file__), 'apps', 'backend', '.env'))
+load_dotenv(str(backend_dir / '.env'))
 
 async def test_zaman_search():
     print("=" * 80)

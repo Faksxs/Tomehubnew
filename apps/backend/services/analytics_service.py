@@ -7,6 +7,7 @@ Deterministic analytics (Layer-3) for questions like:
 """
 
 import re
+import logging
 from typing import Optional, Tuple, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -18,6 +19,8 @@ from utils.text_utils import (
     normalize_canonical,
     normalize_text,
 )
+
+logger = logging.getLogger(__name__)
 
 ANALYTIC_PATTERNS = [
     r"\bkaç\s+(defa|kez|kere)\s+geç",  # "kaç kez geçiyor"
@@ -136,7 +139,7 @@ def resolve_book_id_from_question(firebase_uid: str, question: str) -> Optional[
                 candidates.append((book_id, score))
 
     except Exception as e:
-        print(f"[ERROR] resolve_book_id_from_question failed: {e}")
+        logger.error("resolve_book_id_from_question failed: %s", e)
         return None
 
     if not candidates:
@@ -179,7 +182,7 @@ def resolve_all_book_ids(
                 cursor.execute(sql, params)
                 return [str(row[0]) for row in cursor.fetchall()]
     except Exception as e:
-        print(f"[ERROR] resolve_all_book_ids failed: {e}")
+        logger.error("resolve_all_book_ids failed: %s", e)
         return []
 
 
@@ -219,7 +222,7 @@ def resolve_ingested_book_ids(
                 for row in cursor.fetchall():
                     if row[0]: book_ids.add(str(row[0]))
     except Exception as e:
-        print(f"[WARNING] resolve_ingested_book_ids (table check) failed: {e}")
+        logger.warning("resolve_ingested_book_ids (table check) failed: %s", e)
 
     # 2. Check TOMEHUB_CONTENT as fallback/addition (looks for actual data)
     try:
@@ -227,7 +230,7 @@ def resolve_ingested_book_ids(
         for bid in content_ids:
             book_ids.add(bid)
     except Exception as e:
-        print(f"[WARNING] resolve_ingested_book_ids (content check) failed: {e}")
+        logger.warning("resolve_ingested_book_ids (content check) failed: %s", e)
 
     return sorted(list(book_ids))
 
@@ -367,7 +370,7 @@ def count_lemma_occurrences(
             cache.set(cache_key, count, ttl=ttl)
                         
     except Exception as e:
-        print(f"[ERROR] count_lemma_occurrences failed: {e}")
+        logger.error("count_lemma_occurrences failed: %s", e)
         count = 0
 
     return count
@@ -484,7 +487,7 @@ def get_keyword_contexts(
                         break # One snippet per chunk for now to avoid duplication
 
     except Exception as e:
-        print(f"[ERROR] Concordance retrieval failed: {e}")
+        logger.error("Concordance retrieval failed: %s", e)
         return []
 
     return results
@@ -580,7 +583,7 @@ def get_keyword_distribution(
                         distribution[page_num] = distribution.get(page_num, 0) + total_hits
 
     except Exception as e:
-        print(f"[ERROR] Distribution retrieval failed: {e}")
+        logger.error("Distribution retrieval failed: %s", e)
         return []
 
     # Convert to sorted list
@@ -632,7 +635,7 @@ def count_all_notes_occurrences(firebase_uid: str, term: str) -> int:
                     total_count = int(row[0])
 
     except Exception as e:
-        print(f"[ERROR] count_all_notes_occurrences failed: {e}")
+        logger.error("count_all_notes_occurrences failed: %s", e)
         return 0
 
     return total_count
@@ -676,7 +679,7 @@ def get_comparative_stats(
             
             return {"book_id": b_id, "title": title, "count": count}
         except Exception as e:
-            print(f"[ERROR] Comparative fetch failed for {b_id}: {e}")
+            logger.error("Comparative fetch failed for %s: %s", b_id, e)
             return None
 
     # Parallel execution

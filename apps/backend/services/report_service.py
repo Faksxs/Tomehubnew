@@ -3,7 +3,7 @@
 TomeHub Report Service
 ======================
 Generates comprehensive summaries (File Reports) for ingested books.
-Uses Gemini 2.0 Flash with adaptive sampling for large documents.
+Uses centralized Flash model tier with adaptive sampling for large documents.
 """
 
 import os
@@ -11,22 +11,15 @@ import json
 import random
 import logging
 import time
-import google.generativeai as genai
 from typing import List, Dict, Optional
 import re
 import oracledb
 from infrastructure.db_manager import DatabaseManager, safe_read_clob
+from services.llm_client import MODEL_TIER_FLASH, generate_text, get_model_for_tier
 
 logger = logging.getLogger("report_service")
 
-# Configure Gemini
-api_key = os.getenv("GEMINI_API_KEY")
-if not api_key:
-    logger.warning("GEMINI_API_KEY is not set. Report generation will fail.")
-else:
-    genai.configure(api_key=api_key)
-
-MODEL_NAME = "gemini-flash-latest" # Using 1.5 Flash for better quota/stability
+MODEL_NAME = get_model_for_tier(MODEL_TIER_FLASH)
 
 def get_book_chunks(book_id: str, firebase_uid: str) -> List[Dict]:
     """Retrieve all text chunks for a book, sorted by sequence."""
@@ -179,8 +172,6 @@ def search_reports_by_topic(firebase_uid: str, topic: str, limit: int = 20) -> L
     
     # 3. Generate with Gemini
     try:
-        model = genai.GenerativeModel(MODEL_NAME)
-        
         prompt = """
         Analyze the following book content and provide a structured report.
         
@@ -192,13 +183,17 @@ def search_reports_by_topic(firebase_uid: str, topic: str, limit: int = 20) -> L
         Content:
         {text}
         """
-        
-        response = model.generate_content(
-            prompt.format(text=context_text),
-            generation_config={"response_mime_type": "application/json"}
+
+        result = generate_text(
+            model=MODEL_NAME,
+            prompt=prompt.format(text=context_text),
+            task="report_generation",
+            model_tier=MODEL_TIER_FLASH,
+            response_mime_type="application/json",
+            timeout_s=60.0,
         )
-        
-        data = json.loads(response.text)
+
+        data = json.loads(result.text)
         
         summary = data.get("summary", "No summary generated.")
         topics = json.dumps(data.get("key_topics", []), ensure_ascii=False)

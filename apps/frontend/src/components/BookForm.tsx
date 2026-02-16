@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LibraryItem, PersonalNoteCategory, PhysicalStatus, ReadingStatus, ResourceType } from '../types';
+import { LibraryItem, PersonalNoteCategory, PhysicalStatus, ReadingStatus, ResourceType, ContentLanguageMode } from '../types';
 import { X, Loader2, Search, ChevronRight, Book as BookIcon, SkipForward, Image as ImageIcon, FileText, Globe, PenTool, Wand2, RefreshCw, Sparkles, Calendar, Upload, FilePlus, AlertCircle, CheckCircle } from 'lucide-react';
 import { searchResourcesAI, ItemDraft, generateTagsForNote } from '../services/geminiService';
 import { useAuth } from '../contexts/AuthContext';
@@ -57,6 +57,9 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
     lentDate: '',
     addedAt: new Date().toISOString().split('T')[0], // Format YYYY-MM-DD
     pageCount: '',
+    contentLanguageMode: 'AUTO' as ContentLanguageMode,
+    contentLanguageResolved: '' as '' | 'tr' | 'en',
+    sourceLanguageHint: '' as '' | 'tr' | 'en',
     personalNoteCategory: 'DAILY' as PersonalNoteCategory,
     personalFolderId: '',
     folderPath: ''
@@ -82,6 +85,9 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
         lentDate: initialData.lentInfo?.lentDate || '',
         addedAt: new Date(initialData.addedAt).toISOString().split('T')[0],
         pageCount: initialData.pageCount?.toString() || '',
+        contentLanguageMode: initialData.contentLanguageMode || 'AUTO',
+        contentLanguageResolved: initialData.contentLanguageResolved || '',
+        sourceLanguageHint: (initialData.sourceLanguageHint as '' | 'tr' | 'en') || '',
         personalNoteCategory: initialData.personalNoteCategory || 'DAILY',
         personalFolderId: initialData.personalFolderId || '',
         folderPath: initialData.folderPath || ''
@@ -154,11 +160,18 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
   };
 
   // Trigger Enrichment if needed
-  const triggerEnrichment = async (draft: ItemDraft) => {
+  const triggerEnrichment = async (draft: ItemDraft, forceRegenerate: boolean = false) => {
     setIsEnriching(true);
     try {
       const { enrichBookWithAI } = await import('../services/geminiService');
-      const enriched = await enrichBookWithAI(draft);
+      const enriched = await enrichBookWithAI(
+        {
+          ...draft,
+          contentLanguageMode: formData.contentLanguageMode,
+          sourceLanguageHint: formData.sourceLanguageHint || draft.sourceLanguageHint,
+        },
+        { forceRegenerate: forceRegenerate }
+      );
 
       setFormData(prev => ({
         ...prev,
@@ -168,7 +181,9 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
         publicationYear: enriched.publishedDate ? String(enriched.publishedDate) : prev.publicationYear,
         isbn: enriched.isbn || prev.isbn,
         pageCount: enriched.pageCount ? String(enriched.pageCount) : prev.pageCount,
-        translator: enriched.translator || prev.translator
+        translator: enriched.translator || prev.translator,
+        contentLanguageResolved:
+          ((enriched as any).content_language_resolved || enriched.contentLanguageResolved || prev.contentLanguageResolved || '') as '' | 'tr' | 'en'
       }));
     } catch (e) {
       console.error("Enrichment failed", e);
@@ -192,7 +207,10 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
       coverUrl: draft.coverUrl || '',
       // Only populate URL for websites/articles
       url: (initialType === 'WEBSITE' || initialType === 'ARTICLE') ? (draft.url || '') : '',
-      pageCount: draft.pageCount?.toString() || ''
+      pageCount: draft.pageCount?.toString() || '',
+      contentLanguageMode: (draft.contentLanguageMode || formData.contentLanguageMode || 'AUTO') as ContentLanguageMode,
+      contentLanguageResolved: ((draft.contentLanguageResolved || '').toLowerCase() === 'tr' ? 'tr' : ((draft.contentLanguageResolved || '').toLowerCase() === 'en' ? 'en' : '')) as '' | 'tr' | 'en',
+      sourceLanguageHint: ((draft.sourceLanguageHint || '').toLowerCase() === 'tr' ? 'tr' : ((draft.sourceLanguageHint || '').toLowerCase() === 'en' ? 'en' : '')) as '' | 'tr' | 'en'
     }));
 
     setMode('edit');
@@ -201,8 +219,8 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
     if (initialType === 'BOOK') {
       triggerCoverFetch(draft.title, draft.author, draft.isbn || '');
 
-      // 3. Auto-Enrich if missing details (tags or summary)
-      if (!draft.summary || !draft.tags || draft.tags.length === 0) {
+      // 3. Auto-Enrich if missing details or language may need normalization
+      if (!draft.summary || !draft.tags || draft.tags.length === 0 || !!draft.sourceLanguageHint) {
         triggerEnrichment(draft);
       }
     }
@@ -210,7 +228,12 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData(prev => {
+      if (name === 'contentLanguageMode') {
+        return { ...prev, [name]: value, contentLanguageResolved: '' };
+      }
+      return { ...prev, [name]: value };
+    });
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -289,6 +312,9 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
       readingStatus: formData.readingStatus as ReadingStatus,
       tags: formData.tags.split(',').map(t => t.trim()).filter(t => t.length > 0),
       generalNotes: formData.generalNotes,
+      contentLanguageMode: formData.contentLanguageMode,
+      contentLanguageResolved: (formData.contentLanguageResolved || undefined) as 'tr' | 'en' | undefined,
+      sourceLanguageHint: (formData.sourceLanguageHint || undefined) as 'tr' | 'en' | undefined,
       personalNoteCategory: isNote ? formData.personalNoteCategory : undefined,
       personalFolderId: isNote ? (formData.personalFolderId.trim() || undefined) : undefined,
       folderPath: isNote ? (formData.folderPath.trim() || undefined) : undefined,
@@ -319,6 +345,9 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
   }
 
   const isNote = initialType === 'PERSONAL_NOTE';
+  const noteLabelClass = isNote ? 'text-slate-900 dark:text-slate-900' : 'text-slate-700 dark:text-slate-300';
+  const noteSubLabelClass = isNote ? 'text-slate-800 dark:text-slate-900' : 'text-slate-700 dark:text-slate-300';
+  const noteHelperClass = isNote ? 'text-slate-700 dark:text-slate-700' : 'text-slate-500 dark:text-slate-400';
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
@@ -417,7 +446,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
             <div className={isNote ? 'space-y-3' : 'space-y-5'}>
               <div className={`grid grid-cols-1 md:grid-cols-2 ${isNote ? 'gap-3' : 'gap-4'}`}>
                 <div className={isNote ? "md:col-span-2" : "md:col-span-2"}>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Title *</label>
+                  <label className={`block text-sm font-medium mb-1 ${noteLabelClass}`}>Title *</label>
                   <input
                     required
                     name="title"
@@ -447,7 +476,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                 {isNote && (
                   <>
                     <div>
-                      <label className="block text-[13px] font-medium text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1">
+                      <label className={`block text-[13px] font-medium mb-1 flex items-center gap-1 ${noteSubLabelClass}`}>
                         <Calendar size={14} className="text-slate-400" />
                         Date
                       </label>
@@ -460,7 +489,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                       />
                     </div>
                     <div>
-                      <label className="block text-[13px] font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      <label className={`block text-[13px] font-medium mb-1 ${noteSubLabelClass}`}>
                         Category
                       </label>
                       <select
@@ -473,7 +502,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                         <option value="DAILY">Daily</option>
                         <option value="IDEAS">Ideas</option>
                       </select>
-                      <p className="mt-0.5 text-[10px] text-slate-500 leading-tight">
+                      <p className={`mt-0.5 text-[10px] leading-tight ${noteHelperClass}`}>
                         Private/Daily sadece local aramada kalir. Ideas AI aramalara da katilir.
                       </p>
                     </div>
@@ -489,6 +518,27 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                       onChange={handleChange}
                       className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                     />
+                  </div>
+                )}
+
+                {initialType === 'BOOK' && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Content Language</label>
+                    <select
+                      name="contentLanguageMode"
+                      value={formData.contentLanguageMode}
+                      onChange={handleChange}
+                      className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                    >
+                      <option value="AUTO">AUTO (Recommended)</option>
+                      <option value="TR">TR</option>
+                      <option value="EN">EN</option>
+                    </select>
+                    {(formData.contentLanguageResolved || formData.sourceLanguageHint) && (
+                      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                        Resolved: {formData.contentLanguageResolved || '-'} | Source Hint: {formData.sourceLanguageHint || '-'}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -579,7 +629,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
 
               {isNote && (
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  <label className={`block text-sm font-medium mb-1 ${noteLabelClass}`}>
                     Sub-file (optional)
                   </label>
                   <input
@@ -700,7 +750,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
             {/* Notes Section moved UP for Personal Notes to prioritize writing */}
             {isNote && (
               <div className="mb-4 flex-1 flex flex-col">
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className={`block text-sm font-medium mb-1 ${noteLabelClass}`}>
                   Content
                 </label>
                 <PersonalNoteEditor
@@ -708,7 +758,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                   onChange={(next) => setFormData(prev => ({ ...prev, generalNotes: next }))}
                   minHeight={420}
                 />
-                <p className="mt-1 text-[10px] text-slate-500">
+                <p className={`mt-1 text-[10px] ${noteHelperClass}`}>
                   Toolbar supports heading, bold, underline, bullet list, numbered list and checklist.
                 </p>
               </div>
@@ -752,7 +802,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
               )}
 
               <div className="relative">
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 flex justify-between">
+                <label className={`block text-sm font-medium mb-1 flex justify-between ${noteLabelClass}`}>
                   <div className="flex items-center gap-2">
                     Tags (comma separated)
                     {isEnriching && (

@@ -1,13 +1,10 @@
-
 import React, { useState } from 'react';
 import { Search, Loader2, BookOpen, AlertCircle, Sparkles, Type, ChevronLeft, LayoutPanelLeft, FileSearch } from 'lucide-react';
 import { ConcordanceView } from './ConcordanceView';
 import { LibraryItem } from '../types';
 import { SmartSearchLogo } from './ui/FeatureLogos';
 
-const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? 'http://localhost:5000'
-    : 'https://api.tomehub.nl'; // ✅ Real Production Endpoint
+import { API_BASE_URL, fetchWithAuth, getFriendlyApiErrorMessage, parseApiErrorMessage } from '../services/apiClient';
 
 interface SmartSearchProps {
     userId: string;
@@ -27,6 +24,12 @@ interface SearchResult {
     score: number;
     match_type: string;
 }
+
+const HIGHLIGHT_STOP_WORDS = new Set([
+    've', 'veya', 'ile', 'ama', 'fakat', 'ancak', 'lakin', 'ki',
+    'de', 'da', 'gibi', 'icin', 'için', 'gore', 'göre', 'kadar',
+    'hem', 'ya', 'yada', 'yahut', 'mi', 'mu', 'mı', 'mü'
+]);
 
 export default function SmartSearch({ userId, onBack, books = [] }: SmartSearchProps) {
     const [query, setQuery] = useState('');
@@ -59,7 +62,11 @@ export default function SmartSearch({ userId, onBack, books = [] }: SmartSearchP
             'ü': '[uüUÜ]'
         };
 
-        const words = query.toLowerCase().split(/\s+/).filter(w => w.length >= 2);
+        const words = query
+            .toLowerCase()
+            .split(/\s+/)
+            .map((w) => w.trim())
+            .filter((w) => w.length >= 2 && !HIGHLIGHT_STOP_WORDS.has(w));
         if (words.length === 0) return text;
 
         try {
@@ -67,11 +74,14 @@ export default function SmartSearch({ userId, onBack, books = [] }: SmartSearchP
                 return word.split('').map(char => turkishCharMap[char] || char).join('');
             });
 
-            const regex = new RegExp(`(${patterns.join('|')})`, 'gi');
+            const regex = new RegExp(
+                `((?<![\\p{L}\\p{N}])(?:${patterns.join('|')})[\\p{L}\\p{N}]*(?![\\p{L}\\p{N}]))`,
+                'giu'
+            );
             const parts = text.split(regex);
 
             return parts.map((part, index) =>
-                regex.test(part) ? (
+                index % 2 === 1 ? (
                     <mark key={index} className="bg-[rgba(204,86,30,0.12)] dark:bg-[rgba(204,86,30,0.25)] text-[#111827] dark:text-white px-0.5 rounded font-medium shadow-sm transition-colors duration-200">
                         {part}
                     </mark>
@@ -101,7 +111,7 @@ export default function SmartSearch({ userId, onBack, books = [] }: SmartSearchP
             const apiUrl = `${API_BASE_URL}/api/smart-search`;
             console.log('[SmartSearch] Calling:', apiUrl, 'Offset:', newOffset);
 
-            const response = await fetch(apiUrl, {
+            const response = await fetchWithAuth(apiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -112,7 +122,9 @@ export default function SmartSearch({ userId, onBack, books = [] }: SmartSearchP
                 }),
             });
 
-            if (!response.ok) throw new Error('Search failed');
+            if (!response.ok) {
+                throw new Error(await parseApiErrorMessage(response, 'Search failed'));
+            }
             const data = await response.json();
 
             if (data.metadata?.status === 'analytic' && data.metadata?.analytics) {
@@ -129,7 +141,7 @@ export default function SmartSearch({ userId, onBack, books = [] }: SmartSearchP
             }
         } catch (err) {
             console.error('[SmartSearch] Error:', err);
-            setError(err instanceof Error ? err.message : 'An error occurred');
+            setError(getFriendlyApiErrorMessage(err));
         } finally {
             setLoading(false);
         }

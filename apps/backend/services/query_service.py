@@ -1,16 +1,12 @@
 
 import os
 import json
-import google.generativeai as genai
 from dotenv import load_dotenv
+from services.llm_client import MODEL_TIER_LITE, generate_text, get_model_for_tier
 
 # Load env variables
 env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
 load_dotenv(dotenv_path=env_path)
-
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
 
 def intelligent_query_expansion(user_query: str) -> dict:
     """
@@ -40,10 +36,15 @@ def intelligent_query_expansion(user_query: str) -> dict:
     """
     
     try:
-        model = genai.GenerativeModel('gemini-2.0-flash')
-        # Task 2.4: Add timeout
-        response = model.generate_content(prompt, request_options={'timeout': 20})
-        text = response.text.replace('```json', '').replace('```', '').strip()
+        model = get_model_for_tier(MODEL_TIER_LITE)
+        result = generate_text(
+            model=model,
+            prompt=prompt,
+            task="query_optimizer",
+            model_tier=MODEL_TIER_LITE,
+            timeout_s=20.0,
+        )
+        text = result.text.replace('```json', '').replace('```', '').strip()
         data = json.loads(text)
         return data
     except Exception as e:

@@ -4,10 +4,8 @@
  */
 
 import { getAuth } from 'firebase/auth';
+import { API_BASE_URL } from './apiClient';
 
-const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? 'http://localhost:5000'
-    : 'https://api.tomehub.nl'; // ✅ Real Production Endpoint
 
 // ============================================================================
 // AUTH HELPER
@@ -99,6 +97,90 @@ export interface FlowSessionInfo {
     horizon_value: number;
     mode: FlowMode;
     anchor_id: string;
+}
+
+// ============================================================================
+// PREWARM CACHE (Layer 4 first-open latency reduction)
+// ============================================================================
+
+const FLOW_START_PREWARM_TTL_MS = 120_000;
+
+type FlowStartPrewarmEntry = {
+    response: FlowStartResponse;
+    createdAt: number;
+};
+
+const flowStartPrewarmCache = new Map<string, FlowStartPrewarmEntry>();
+const flowStartPrewarmInFlight = new Map<string, Promise<FlowStartResponse>>();
+
+const normalizeFlowStartForKey = (request: FlowStartRequest): string => {
+    const anchorType = request.anchor_type || 'note';
+    const anchorId = request.anchor_id || '';
+    const mode = request.mode || 'FOCUS';
+    const horizon = Number(request.horizon_value ?? 0.25).toFixed(2);
+    const resourceType = (request.resource_type || '').toUpperCase();
+    const category = (request.category || '').toUpperCase();
+    return [
+        request.firebase_uid,
+        anchorType,
+        anchorId,
+        mode,
+        horizon,
+        resourceType,
+        category,
+    ].join('|');
+};
+
+const isPrewarmFresh = (entry: FlowStartPrewarmEntry | undefined): entry is FlowStartPrewarmEntry => {
+    if (!entry) return false;
+    return (Date.now() - entry.createdAt) <= FLOW_START_PREWARM_TTL_MS;
+};
+
+/**
+ * Prewarm default Flow start response in background.
+ * - Deduplicates in-flight requests
+ * - Keeps a short-lived cache entry for instant first open
+ */
+export async function prewarmFlowStartSession(request: FlowStartRequest): Promise<void> {
+    const key = normalizeFlowStartForKey(request);
+    const existing = flowStartPrewarmCache.get(key);
+    if (isPrewarmFresh(existing)) {
+        return;
+    }
+
+    const inflight = flowStartPrewarmInFlight.get(key);
+    if (inflight) {
+        await inflight;
+        return;
+    }
+
+    const task = (async () => {
+        const response = await startFlowSession(request);
+        flowStartPrewarmCache.set(key, { response, createdAt: Date.now() });
+        return response;
+    })();
+
+    flowStartPrewarmInFlight.set(key, task);
+    try {
+        await task;
+    } finally {
+        flowStartPrewarmInFlight.delete(key);
+    }
+}
+
+/**
+ * Consume (read-once) prewarmed Flow start response if available and fresh.
+ */
+export function consumePrewarmedFlowStartSession(request: FlowStartRequest): FlowStartResponse | null {
+    const key = normalizeFlowStartForKey(request);
+    const entry = flowStartPrewarmCache.get(key);
+    if (!isPrewarmFresh(entry)) {
+        flowStartPrewarmCache.delete(key);
+        return null;
+    }
+
+    flowStartPrewarmCache.delete(key);
+    return entry.response;
 }
 
 // ============================================================================
@@ -262,3 +344,4 @@ export async function getFlowSessionInfo(sessionId: string): Promise<FlowSession
 
     return response.json();
 }
+

@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from services.flow_service import _limit_flow_content, _prepare_flow_card_content
 
@@ -37,6 +38,17 @@ class TestFlowContentLimit(unittest.TestCase):
 
         self.assertLessEqual(len(limited), 653)
         self.assertEqual(untouched, long_text)
+
+    def test_prepare_flow_card_content_calls_repair_before_limit(self):
+        raw_text = "kelime-\nler bazen kirilir."
+        repaired_text = ("duzeltilmis " * 120).strip()
+
+        with patch("services.flow_service.repair_for_flow_card", return_value=repaired_text) as mocked_repair:
+            limited = _prepare_flow_card_content(raw_text, "PDF")
+
+        mocked_repair.assert_called_once_with(raw_text, "PDF")
+        self.assertLessEqual(len(limited), 653)
+        self.assertNotEqual(limited, raw_text)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,9 @@
+baseline=documentation/reports/diagnostics/l3_metrics_baseline_20260213_025107.txt
+current=documentation/reports/diagnostics/l3_metrics_current_20260213_025212.txt
+generated_at=2026-02-13T01:52:38.032376Z
+
+endpoint:/api/search: delta_count=0 delta_sum_s=0 avg_s=N/A
+endpoint:/api/chat: delta_count=2 delta_sum_s=52.433220 avg_s=26.216610
+phase:retrieval: delta_count=0 delta_sum_s=0 avg_s=N/A
+phase:prompt_build: delta_count=1 delta_sum_s=0.000039 avg_s=0.000039
+phase:llm_generate: delta_count=0 delta_sum_s=0 avg_s=N/A

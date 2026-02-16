@@ -8,7 +8,7 @@ Orchestrates the "Expanding Horizons" algorithm with Dual Anchor gravity.
 
 import logging
 import re
-from typing import List, Optional, Tuple, Set
+from typing import List, Optional, Tuple, Set, Dict, Any
 from datetime import datetime
 import numpy as np
 import array
@@ -23,6 +23,7 @@ from services.flow_session_service import (
     FlowSessionManager, get_flow_session_manager
 )
 from services.embedding_service import get_embedding, get_query_embedding
+from services.flow_text_repair_service import repair_for_flow_card
 from infrastructure.db_manager import DatabaseManager, safe_read_clob
 import oracledb  # For DatabaseError exception handling
 from config import settings
@@ -139,6 +140,15 @@ def _limit_flow_content(text: str, limit: int = FLOW_CONTENT_CHAR_LIMIT) -> str:
         return ""
 
     if len(normalized) <= limit:
+        # Start-Trimming Logic (New)
+        # If text does not start with upper case and is not a quote, find first full sentence.
+        if normalized and len(normalized) > 10 and not normalized[0].isupper() and not normalized.startswith(('"', "'", "“", "‘")):
+             # Look for ". X" pattern
+             match = re.search(r'[.!?]\s+([A-ZĞÜŞİÖÇ])', normalized)
+             if match:
+                 # Start from the capital letter found
+                 normalized = normalized[match.start(1):]
+
         return normalized
 
     sentence_end_pattern = r"[.!?\u2026]"
@@ -166,15 +176,26 @@ def _limit_flow_content(text: str, limit: int = FLOW_CONTENT_CHAR_LIMIT) -> str:
     candidate = normalized[:fallback_idx].strip()
     if not candidate:
         candidate = normalized[:limit].strip()
+    if not candidate:
+        candidate = normalized[:limit].strip()
+    
+    # Start-Trimming Logic (Applied to result)
+    if candidate and len(candidate) > 10 and not candidate[0].isupper() and not candidate.startswith(('"', "'", "“", "‘")):
+         match = re.search(r'[.!?]\s+([A-ZĞÜŞİÖÇ])', candidate)
+         if match:
+             candidate = candidate[match.start(1):]
+             
     return f"{candidate}..."
 
 
 def _prepare_flow_card_content(content: str, source_type: Optional[str]) -> str:
     """Apply source-aware text limiting for flow cards."""
     source = str(source_type or "").strip().upper()
+    safe_content = "" if content is None else str(content)
+    repaired = repair_for_flow_card(safe_content, source)
     if source in LIMITED_SOURCE_TYPES:
-        return _limit_flow_content(content, FLOW_CONTENT_CHAR_LIMIT)
-    return "" if content is None else content
+        return _limit_flow_content(repaired, FLOW_CONTENT_CHAR_LIMIT)
+    return repaired
 
 
 class FlowService:

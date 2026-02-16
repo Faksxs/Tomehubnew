@@ -13,6 +13,8 @@ fails to recognize that retrieved information constitutes a direct answer.
 
 import re
 from typing import List, Dict, Tuple, Optional
+from config import settings
+from services.monitoring import L3_PERF_GUARD_APPLIED_TOTAL
 
 # Import semantic classifier (use fast version by default for performance)
 try:
@@ -485,12 +487,24 @@ def build_epistemic_context(chunks: List[Dict], answer_mode: str) -> Tuple[str, 
     Returns (context_string, used_chunks_list)
     """
     context_parts = []
-    
+
+    top_k = 12
+    text_char_budget = 700
+    if getattr(settings, "L3_PERF_CONTEXT_BUDGET_ENABLED", False) and answer_mode != "EXPLORER":
+        configured_top_k = int(getattr(settings, "L3_PERF_CONTEXT_TOPK_STANDARD", 8) or 8)
+        configured_chars = int(getattr(settings, "L3_PERF_CONTEXT_CHARS_STANDARD", 450) or 450)
+        top_k = max(3, min(12, configured_top_k))
+        text_char_budget = max(160, min(700, configured_chars))
+        try:
+            L3_PERF_GUARD_APPLIED_TOTAL.labels(guard_name="context_budget_standard").inc()
+        except Exception:
+            pass
+
     # Sort by Answerability Score (High to Low)
     sorted_chunks = sorted(chunks, key=lambda c: c.get('answerability_score', 0), reverse=True)
-    
-    # LIMIT CONTEXT: Only use top 12 chunks
-    used_chunks = sorted_chunks[:12]
+
+    # LIMIT CONTEXT: default top-12 (or lower when perf guard is enabled)
+    used_chunks = sorted_chunks[:top_k]
     
     for i, chunk in enumerate(used_chunks, 1):
         level = chunk.get('epistemic_level', 'C')
@@ -503,7 +517,7 @@ def build_epistemic_context(chunks: List[Dict], answer_mode: str) -> Tuple[str, 
         text = chunk.get('content_chunk', '')
         if hasattr(text, 'read'):
             text = text.read()
-        text = str(text)[:700]
+        text = str(text)[:text_char_budget]
         
         # Simple ID-focused header for LLM citations
         meta_header = f"[ID: {i} | Kaynak: {title} | Güven: {level}]"
@@ -519,7 +533,14 @@ def build_epistemic_context(chunks: List[Dict], answer_mode: str) -> Tuple[str, 
 
 
 
-def get_prompt_for_mode(answer_mode: str, context: str, question: str, confidence_score: float = 5.0, network_status: str = "IN_NETWORK") -> str:
+def get_prompt_for_mode(
+    answer_mode: str,
+    context: str,
+    question: str,
+    confidence_score: float = 5.0,
+    network_status: str = "IN_NETWORK",
+    quote_target_count: int = 3,
+) -> str:
     """
     Get the appropriate prompt based on answer mode, confidence, and network coverage.
     """
@@ -552,14 +573,14 @@ def get_prompt_for_mode(answer_mode: str, context: str, question: str, confidenc
 ## AŞAMA 0: MİKRO İÇ KONTROL (Silent Self-Review)
 Cevabı yazmadan önce zihninde şunları kontrol et:
 1. Seçilen metinde OCR hatası (örn: "dagas1") var mı? Varsa düzelt.
-2. Tam olarak 3 adet tanım seçtin mi?
+2. Tam olarak {max(2, int(quote_target_count or 3))} adet tanım seçtin mi?
 3. Kaynaklar doğru mu?
 
 ## AŞAMA 1: DOĞRUDAN ALINTI (Quote Section)
 Quotability=HIGH veya Type=DEFINITION/THEORY olan notlardan KELİMESİ KELİMESİNE alıntı yap, ANCAK:
 
 1. **OCR HATALARINI DÜZELT:** Metindeki bozuk karakterleri (örn: "dagas1" -> "doğası", "c;:ah~an" -> "çalışan") düzgün Türkçe ile yaz.
-2. **SADECE EN İYİ 3 TANIMI SEÇ:** Listeyi uzatma. En alakalı ve net 3 tanımı al.
+2. **SADECE EN İYİ {max(2, int(quote_target_count or 3))} TANIMI SEÇ:** Listeyi uzatma. En alakalı ve net {max(2, int(quote_target_count or 3))} tanımı al.
 3. Kaynak belirt: [Kaynak: Kitap Adı]
 
 ## AŞAMA 2: GENİŞ KAPSAMLI BAĞLAMSAL ANALİZ (Synthesis Section)  
@@ -676,20 +697,31 @@ CEVAP:"""
 DURUM: Sentez ve yorumlama modu aktif.
 (Doğrudan tanım bulunamamış olabilir ancak bağlamsal kanıtlar mevcut.)
 
-TALİMATLAR:
-1. Mevcut notları birleştirerek çıkarım yap
-2. "Notlarından çıkarıma göre..." ile başla
-3. Kesin hüküm verme, belirsizliği ifade et
-4. Kaynak göster ama doğrudan alıntı yapma
-5. TÜRKÇE cevap ver
+TALIMATLAR:
+1. Tek paragrafla cevaplama; en az 3 paragraf yaz.
+2. Ilk paragrafta soruya net cevap ver.
+3. Sonraki paragraflarda gerekce ve baglam baglantilarini acikla.
+4. Kesin hukum verme, belirsizlik varsa acikca belirt.
+5. Kaynaklara dayan ama dogrudan alinti zorunlu degil.
+6. Cevabi 220-450 kelime araliginda tut.
 
-BAĞLAM (Metadata + Content):
+BAGLAM (Metadata + Content):
 {context}
 
 KULLANICI SORUSU:
 {question}
 
-CEVAP (Sentez ve çıkarım):"""
+ZORUNLU CIKTI FORMATI:
+## Temel Cevap
+[Soruya net yanit]
+
+## Gerekceler ve Baglam
+[Notlardan destekli aciklama]
+
+## Sonuc
+[Kisa toparlama]
+
+CEVAP:"""
 
 
 # ============================================================================

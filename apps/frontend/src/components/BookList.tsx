@@ -131,6 +131,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
         IDEAS: FOLDER_PAGE_SIZE,
     });
     const [isPersonalPanelOpen, setIsPersonalPanelOpen] = useState(false);
+    const [isQuickCaptureOpen, setIsQuickCaptureOpen] = useState(false);
     const [quickCaptureCategory, setQuickCaptureCategory] = useState<PersonalNoteCategory>('DAILY');
     const [quickNoteTitle, setQuickNoteTitle] = useState('');
     const [quickNoteBody, setQuickNoteBody] = useState('');
@@ -788,6 +789,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                 }>
                     <KnowledgeDashboard
                         items={books}
+                        userId={userId}
                         onCategorySelect={(cat) => onCategoryNavigate?.(cat)}
                         onStatusSelect={(status) => onStatusNavigate?.(status)}
                         onNavigateToTab={(tab) => onTabChange?.(tab as any)}
@@ -928,379 +930,391 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                         onDragEnd={handleDragEnd}
                     >
                         <div className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] gap-4 md:gap-6">
-                        <aside className={`bg-white dark:bg-slate-900 border border-[#E6EAF2] dark:border-slate-800 rounded-xl p-3 md:p-4 h-fit ${isPersonalPanelOpen ? 'block' : 'hidden lg:block'}`}>
-                            <div className="flex items-center justify-between mb-3">
-                                <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500 flex items-center gap-2">
-                                    <ListFilter size={14} />
-                                    Note Space
-                                </h3>
-                                <button
-                                    onClick={() => setIsPersonalPanelOpen(false)}
-                                    className="lg:hidden text-slate-400 hover:text-slate-700"
-                                >
-                                    <X size={16} />
-                                </button>
-                            </div>
+                            <aside className={`bg-white dark:bg-slate-900 border border-[#E6EAF2] dark:border-slate-800 rounded-xl p-3 md:p-4 h-fit ${isPersonalPanelOpen ? 'block' : 'hidden lg:block'}`}>
+                                <div className="flex items-center justify-between mb-3">
+                                    <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500 flex items-center gap-2">
+                                        <ListFilter size={14} />
+                                        Note Space
+                                    </h3>
+                                    <button
+                                        onClick={() => setIsPersonalPanelOpen(false)}
+                                        className="lg:hidden text-slate-400 hover:text-slate-700"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                </div>
 
-                            <div className="space-y-2">
-                                <button
-                                    onClick={() => {
-                                        setNoteSmartFilter('NONE');
-                                        setNoteTagFilter(null);
-                                        setNoteCategoryFilter('ALL');
-                                        setNoteFolderFilter('ALL');
-                                        onPageChange(1);
-                                    }}
-                                    className={`w-full text-left px-2.5 py-2 rounded-lg text-sm transition-colors ${noteCategoryFilter === 'ALL' && noteFolderFilter === 'ALL' && noteSmartFilter === 'NONE' && !noteTagFilter ? 'bg-[#262D40]/20 text-[#262D40] dark:text-white font-semibold' : 'hover:bg-[#F3F5FA] dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300'}`}
-                                >
-                                    All Notes ({allNotesVisibleCount})
-                                </button>
-                                <div className="rounded-lg border border-[#E6EAF2] dark:border-slate-800 p-2">
-                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Smart Folders</p>
+                                <div className="space-y-2">
                                     <button
                                         onClick={() => {
-                                            setNoteSmartFilter('FAVORITES');
+                                            setNoteSmartFilter('NONE');
                                             setNoteTagFilter(null);
                                             setNoteCategoryFilter('ALL');
                                             setNoteFolderFilter('ALL');
                                             onPageChange(1);
                                         }}
-                                        className={`w-full text-left px-2 py-1.5 rounded-md text-xs md:text-sm transition-colors flex items-center justify-between ${noteSmartFilter === 'FAVORITES' ? 'bg-[#CC561E]/10 text-[#CC561E] font-semibold' : 'text-slate-500 hover:bg-[#F3F5FA] dark:hover:bg-slate-800'}`}
+                                        className={`w-full text-left px-2.5 py-2 rounded-lg text-sm transition-colors ${noteCategoryFilter === 'ALL' && noteFolderFilter === 'ALL' && noteSmartFilter === 'NONE' && !noteTagFilter ? 'bg-[#262D40]/20 text-[#262D40] dark:text-white font-semibold' : 'hover:bg-[#F3F5FA] dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300'}`}
                                     >
-                                        <span className="inline-flex items-center gap-1.5">
-                                            <Star size={12} />
-                                            Favorites
-                                        </span>
-                                        <span className="text-[10px] opacity-70">{favoriteNotesVisibleCount}</span>
+                                        All Notes ({allNotesVisibleCount})
                                     </button>
-                                    <button
-                                        onClick={() => {
-                                            setNoteSmartFilter('RECENT');
-                                            setNoteTagFilter(null);
-                                            setNoteCategoryFilter('ALL');
-                                            setNoteFolderFilter('ALL');
-                                            onPageChange(1);
-                                        }}
-                                        className={`mt-1 w-full text-left px-2 py-1.5 rounded-md text-xs md:text-sm transition-colors flex items-center justify-between ${noteSmartFilter === 'RECENT' ? 'bg-[#CC561E]/10 text-[#CC561E] font-semibold' : 'text-slate-500 hover:bg-[#F3F5FA] dark:hover:bg-slate-800'}`}
-                                    >
-                                        <span className="inline-flex items-center gap-1.5">
-                                            <Clock3 size={12} />
-                                            Recent Notes
-                                        </span>
-                                        <span className="text-[10px] opacity-70">{recentNotesVisibleCount}</span>
-                                    </button>
-                                    <div className="mt-2 border-t border-[#E6EAF2] dark:border-slate-800 pt-2">
-                                        <div className="flex items-center justify-between mb-1">
-                                            <button
-                                                onClick={() => setIsTopTagsOpen((prev) => !prev)}
-                                                className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 inline-flex items-center gap-1 hover:text-slate-700 dark:hover:text-slate-300"
-                                            >
-                                                <ChevronDown size={11} className={`transition-transform ${isTopTagsOpen ? 'rotate-180' : ''}`} />
-                                                Top Tags
-                                            </button>
-                                            {noteTagFilter && (
+                                    <div className="rounded-lg border border-[#E6EAF2] dark:border-slate-800 p-2">
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Smart Folders</p>
+                                        <button
+                                            onClick={() => {
+                                                setNoteSmartFilter('FAVORITES');
+                                                setNoteTagFilter(null);
+                                                setNoteCategoryFilter('ALL');
+                                                setNoteFolderFilter('ALL');
+                                                onPageChange(1);
+                                            }}
+                                            className={`w-full text-left px-2 py-1.5 rounded-md text-xs md:text-sm transition-colors flex items-center justify-between ${noteSmartFilter === 'FAVORITES' ? 'bg-[#CC561E]/10 text-[#CC561E] font-semibold' : 'text-slate-500 hover:bg-[#F3F5FA] dark:hover:bg-slate-800'}`}
+                                        >
+                                            <span className="inline-flex items-center gap-1.5">
+                                                <Star size={12} />
+                                                Favorites
+                                            </span>
+                                            <span className="text-[10px] opacity-70">{favoriteNotesVisibleCount}</span>
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setNoteSmartFilter('RECENT');
+                                                setNoteTagFilter(null);
+                                                setNoteCategoryFilter('ALL');
+                                                setNoteFolderFilter('ALL');
+                                                onPageChange(1);
+                                            }}
+                                            className={`mt-1 w-full text-left px-2 py-1.5 rounded-md text-xs md:text-sm transition-colors flex items-center justify-between ${noteSmartFilter === 'RECENT' ? 'bg-[#CC561E]/10 text-[#CC561E] font-semibold' : 'text-slate-500 hover:bg-[#F3F5FA] dark:hover:bg-slate-800'}`}
+                                        >
+                                            <span className="inline-flex items-center gap-1.5">
+                                                <Clock3 size={12} />
+                                                Recent Notes
+                                            </span>
+                                            <span className="text-[10px] opacity-70">{recentNotesVisibleCount}</span>
+                                        </button>
+                                        <div className="mt-2 border-t border-[#E6EAF2] dark:border-slate-800 pt-2">
+                                            <div className="flex items-center justify-between mb-1">
                                                 <button
-                                                    onClick={() => {
-                                                        setNoteTagFilter(null);
-                                                        onPageChange(1);
-                                                    }}
-                                                    className="text-[10px] text-[#CC561E] hover:underline"
+                                                    onClick={() => setIsTopTagsOpen((prev) => !prev)}
+                                                    className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 inline-flex items-center gap-1 hover:text-slate-700 dark:hover:text-slate-300"
                                                 >
-                                                    Clear tag filter
+                                                    <ChevronDown size={11} className={`transition-transform ${isTopTagsOpen ? 'rotate-180' : ''}`} />
+                                                    Top Tags
                                                 </button>
+                                                {noteTagFilter && (
+                                                    <button
+                                                        onClick={() => {
+                                                            setNoteTagFilter(null);
+                                                            onPageChange(1);
+                                                        }}
+                                                        className="text-[10px] text-[#CC561E] hover:underline"
+                                                    >
+                                                        Clear tag filter
+                                                    </button>
+                                                )}
+                                            </div>
+                                            {isTopTagsOpen && (
+                                                topTagEntries.length === 0 ? (
+                                                    <p className="text-[11px] text-slate-400 px-1 py-1">No tags yet</p>
+                                                ) : (
+                                                    <div className="space-y-1">
+                                                        {topTagEntries.map((tag) => (
+                                                            <button
+                                                                key={tag.key}
+                                                                onClick={() => {
+                                                                    setNoteTagFilter(tag.key);
+                                                                    onPageChange(1);
+                                                                }}
+                                                                className={`w-full text-left px-2 py-1.5 rounded-md text-xs md:text-sm transition-colors flex items-center justify-between ${noteTagFilter === tag.key ? 'bg-[#CC561E]/10 text-[#CC561E] font-semibold' : 'text-slate-500 hover:bg-[#F3F5FA] dark:hover:bg-slate-800'}`}
+                                                            >
+                                                                <span className="truncate">#{tag.label}</span>
+                                                                <span className="text-[10px] opacity-70">{tag.count}</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )
                                             )}
                                         </div>
-                                        {isTopTagsOpen && (
-                                            topTagEntries.length === 0 ? (
-                                                <p className="text-[11px] text-slate-400 px-1 py-1">No tags yet</p>
-                                            ) : (
-                                                <div className="space-y-1">
-                                                    {topTagEntries.map((tag) => (
+                                    </div>
+                                    {(['PRIVATE', 'DAILY', 'IDEAS'] as PersonalNoteCategory[]).map((category) => (
+                                        <DroppableZone key={category} id={`cat-group:${category}`}>
+                                            {(isOverCategory) => (
+                                                <div className={`rounded-lg border p-2 ${isOverCategory ? 'border-[#CC561E]/40 bg-[#CC561E]/5' : 'border-[#E6EAF2] dark:border-slate-800'}`}>
+                                                    <div className="flex items-center justify-between mb-1">
                                                         <button
-                                                            key={tag.key}
                                                             onClick={() => {
-                                                                setNoteTagFilter(tag.key);
+                                                                setNoteSmartFilter('NONE');
+                                                                setNoteTagFilter(null);
+                                                                setNoteCategoryFilter(category);
+                                                                setNoteFolderFilter('ALL');
                                                                 onPageChange(1);
                                                             }}
-                                                            className={`w-full text-left px-2 py-1.5 rounded-md text-xs md:text-sm transition-colors flex items-center justify-between ${noteTagFilter === tag.key ? 'bg-[#CC561E]/10 text-[#CC561E] font-semibold' : 'text-slate-500 hover:bg-[#F3F5FA] dark:hover:bg-slate-800'}`}
+                                                            className={`text-xs font-semibold uppercase tracking-wide ${noteCategoryFilter === category && noteFolderFilter === 'ALL' && noteSmartFilter === 'NONE' && !noteTagFilter ? 'text-[#CC561E]' : 'text-slate-600 dark:text-slate-300'}`}
                                                         >
-                                                            <span className="truncate">#{tag.label}</span>
-                                                            <span className="text-[10px] opacity-70">{tag.count}</span>
+                                                            {categoryLabel(category)} ({noteCategoryCounts[category]})
                                                         </button>
-                                                    ))}
-                                                </div>
-                                            )
-                                        )}
-                                    </div>
-                                </div>
-                                {(['PRIVATE', 'DAILY', 'IDEAS'] as PersonalNoteCategory[]).map((category) => (
-                                    <DroppableZone key={category} id={`cat-group:${category}`}>
-                                        {(isOverCategory) => (
-                                            <div className={`rounded-lg border p-2 ${isOverCategory ? 'border-[#CC561E]/40 bg-[#CC561E]/5' : 'border-[#E6EAF2] dark:border-slate-800'}`}>
-                                        <div className="flex items-center justify-between mb-1">
-                                            <button
-                                                onClick={() => {
-                                                    setNoteSmartFilter('NONE');
-                                                    setNoteTagFilter(null);
-                                                    setNoteCategoryFilter(category);
-                                                    setNoteFolderFilter('ALL');
-                                                    onPageChange(1);
-                                                }}
-                                                className={`text-xs font-semibold uppercase tracking-wide ${noteCategoryFilter === category && noteFolderFilter === 'ALL' && noteSmartFilter === 'NONE' && !noteTagFilter ? 'text-[#CC561E]' : 'text-slate-600 dark:text-slate-300'}`}
-                                            >
-                                                {categoryLabel(category)} ({noteCategoryCounts[category]})
-                                            </button>
-                                            <button
-                                                onClick={() => handleCreateFolder(category)}
-                                                className="text-[11px] text-[#CC561E] hover:underline inline-flex items-center gap-1"
-                                            >
-                                                <FolderPlus size={11} />
-                                                Folder
-                                            </button>
-                                        </div>
-                                        <DroppableZone id={`cat-root:${category}`}>
-                                            {(isOver) => (
-                                                <button
-                                                    onClick={() => {
-                                                        setNoteSmartFilter('NONE');
-                                                        setNoteTagFilter(null);
-                                                        setNoteCategoryFilter(category);
-                                                        setNoteFolderFilter('__ROOT__');
-                                                        onPageChange(1);
-                                                    }}
-                                                    className={`w-full text-left px-2 py-1.5 rounded-md text-xs md:text-sm transition-colors ${isOver ? 'bg-[#CC561E]/15 border border-[#CC561E]/30' : 'border border-transparent'} ${noteCategoryFilter === category && noteFolderFilter === '__ROOT__' && noteSmartFilter === 'NONE' && !noteTagFilter ? 'bg-[#CC561E]/10 text-[#CC561E] font-semibold' : 'text-slate-500 hover:bg-[#F3F5FA] dark:hover:bg-slate-800'}`}
-                                                >
-                                                    Unfiled ({rootNoteCounts[category]})
-                                                </button>
-                                            )}
-                                        </DroppableZone>
-                                        <div className="mt-1">
-                                            <button
-                                                onClick={() => setCollapsedFolderCategories((prev) => ({ ...prev, [category]: !prev[category] }))}
-                                                className="w-full text-left px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 inline-flex items-center gap-1"
-                                            >
-                                                <ChevronDown size={11} className={`transition-transform ${collapsedFolderCategories[category] ? '' : 'rotate-180'}`} />
-                                                Folders ({categoryFolderMap[category].length})
-                                            </button>
-                                            {!collapsedFolderCategories[category] && (
-                                                <div className="mt-1 space-y-1">
-                                                    {categoryFolderMap[category].length === 0 ? (
-                                                        <p className="text-[11px] text-slate-400 px-1 py-1">No folders yet</p>
-                                                    ) : (
-                                                        categoryFolderMap[category].slice(0, visibleFolderCounts[category]).map((folder) => (
-                                                            <DroppableZone key={folder.id} id={`folder:${folder.id}`}>
-                                                                {(isOver) => (
-                                                                    <DraggableWrapper id={`folder-item:${folder.id}`}>
-                                                                        {({ setNodeRef, style, isDragging, attributes, listeners }) => (
-                                                                            <div
-                                                                                ref={setNodeRef}
-                                                                                style={isDragging ? undefined : style}
-                                                                                className={`w-full text-left px-2 py-1.5 rounded-md text-xs md:text-sm flex items-center gap-2 ${isOver ? 'bg-[#CC561E]/15 border border-[#CC561E]/30' : 'border border-transparent'} ${noteCategoryFilter === category && noteFolderFilter === folder.id && noteSmartFilter === 'NONE' && !noteTagFilter ? 'bg-[#CC561E]/10 text-[#CC561E] font-semibold' : 'text-slate-500 hover:bg-[#F3F5FA] dark:hover:bg-slate-800'} ${isDragging ? 'opacity-60 ring-2 ring-[#CC561E]/40' : ''}`}
-                                                                            >
-                                                                                <button
-                                                                                    {...(attributes as any)}
-                                                                                    {...(listeners as any)}
-                                                                                    onClick={(e) => e.stopPropagation()}
-                                                                                    className="p-1 rounded text-slate-400 hover:text-slate-700 cursor-grab active:cursor-grabbing"
-                                                                                    title="Move folder"
-                                                                                >
-                                                                                    <GripVertical size={12} />
-                                                                                </button>
-                                                                                <button
-                                                                                    onClick={() => {
-                                                                                        setNoteSmartFilter('NONE');
-                                                                                        setNoteTagFilter(null);
-                                                                                        setNoteCategoryFilter(category);
-                                                                                        setNoteFolderFilter(folder.id);
-                                                                                        onPageChange(1);
-                                                                                    }}
-                                                                                    className="flex items-center gap-2 flex-1 min-w-0"
-                                                                                >
-                                                                                    <Folder size={12} />
-                                                                                    <span className="truncate">{folder.name}</span>
-                                                                                </button>
-                                                                                <span className="text-[10px] opacity-70">{folder.count}</span>
-                                                                                <button
-                                                                                    onClick={() => handleRenameFolder(folder.id, folder.name)}
-                                                                                    className="text-slate-400 hover:text-slate-700"
-                                                                                    title="Rename folder"
-                                                                                >
-                                                                                    <Pencil size={12} />
-                                                                                </button>
-                                                                                <button
-                                                                                    onClick={() => handleDeleteFolder(folder.id)}
-                                                                                    className="text-slate-400 hover:text-red-500"
-                                                                                    title="Delete folder"
-                                                                                >
-                                                                                    <Trash2 size={12} />
-                                                                                </button>
-                                                                            </div>
-                                                                        )}
-                                                                    </DraggableWrapper>
-                                                                )}
-                                                            </DroppableZone>
-                                                        ))
-                                                    )}
-                                                    {categoryFolderMap[category].length > visibleFolderCounts[category] && (
                                                         <button
-                                                            onClick={() =>
-                                                                setVisibleFolderCounts((prev) => ({
-                                                                    ...prev,
-                                                                    [category]: prev[category] + FOLDER_PAGE_SIZE,
-                                                                }))
-                                                            }
-                                                            className="w-full text-left px-2 py-1.5 rounded-md text-[11px] font-semibold text-[#CC561E] hover:bg-[#CC561E]/10"
+                                                            onClick={() => handleCreateFolder(category)}
+                                                            className="text-[11px] text-[#CC561E] hover:underline inline-flex items-center gap-1"
                                                         >
-                                                            Load more ({categoryFolderMap[category].length - visibleFolderCounts[category]} left)
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                        )}
-                                    </DroppableZone>
-                                ))}
-                            </div>
-
-                        </aside>
-
-                        <div className="space-y-3">
-                            <div className="lg:hidden">
-                                <button
-                                    onClick={() => setIsPersonalPanelOpen((prev) => !prev)}
-                                    className="px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-[#E6EAF2] dark:border-slate-800 rounded-lg flex items-center gap-2"
-                                >
-                                    <ListFilter size={14} />
-                                    Note Navigator
-                                </button>
-                            </div>
-
-                            <div className="bg-white dark:bg-slate-900 border border-[#E6EAF2] dark:border-slate-800 rounded-2xl p-4 md:p-5">
-                                <div className="flex items-center justify-between gap-2 mb-2">
-                                    <h4 className="text-sm md:text-base font-semibold uppercase tracking-[0.12em] text-slate-500">
-                                        Quick Capture
-                                    </h4>
-                                    <div className="flex items-center gap-2">
-                                        <select
-                                            value={quickCaptureCategory}
-                                            onChange={(e) => setQuickCaptureCategory(e.target.value as PersonalNoteCategory)}
-                                            className="text-[11px] border border-[#E6EAF2] dark:border-slate-700 rounded-md px-2 py-1 bg-white dark:bg-slate-950 text-slate-500"
-                                        >
-                                            <option value="DAILY">Daily</option>
-                                            <option value="PRIVATE">Private</option>
-                                            <option value="IDEAS">Ideas</option>
-                                        </select>
-                                        {noteSmartFilter === 'NONE' && noteFolderFilter !== 'ALL' && noteFolderFilter !== '__ROOT__' && (
-                                            <span className="text-[11px] text-slate-400">
-                                                / {folderById.get(noteFolderFilter)?.name || noteFolderFilter}
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                                <input
-                                    value={quickNoteTitle}
-                                    onChange={(e) => setQuickNoteTitle(e.target.value)}
-                                    placeholder="Note title (optional)"
-                                    className="w-full mb-3 border border-[#E6EAF2] dark:border-slate-700 rounded-xl px-4 py-3 text-sm md:text-base bg-white dark:bg-slate-950"
-                                />
-                                <PersonalNoteEditor
-                                    value={quickNoteBody}
-                                    onChange={setQuickNoteBody}
-                                    autoFocus={isPersonalNotes}
-                                    placeholder="Start writing immediately..."
-                                    minHeight={242}
-                                />
-                                <div className="mt-3 flex justify-end">
-                                    <button
-                                        onClick={handleQuickCapture}
-                                        disabled={!hasMeaningfulPersonalNoteContent(quickNoteBody)}
-                                        className="px-4 py-2 rounded-lg bg-[#262D40] text-white text-sm md:text-base disabled:opacity-40"
-                                    >
-                                        Save Quick Note
-                                    </button>
-                                </div>
-                            </div>
-
-                            {displayedBooks.length === 0 ? (
-                                <div className="text-center py-10 bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700">
-                                    <PenTool size={26} className="mx-auto mb-2 text-slate-300" />
-                                    <h3 className="text-base font-medium text-slate-900 dark:text-white">No notes matched this filter</h3>
-                                    <p className="text-xs md:text-sm text-slate-500 mt-1">Change category/folder filter or create a new note.</p>
-                                </div>
-                            ) : (
-                                <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 md:gap-4">
-                                    {displayedBooks.map(note => {
-                                        const notePreview = extractPersonalNoteText(note.generalNotes || '');
-                                        return (
-                                        <DraggableWrapper key={note.id} id={`note:${note.id}`}>
-                                            {({ setNodeRef, style, isDragging, attributes, listeners }) => (
-                                                <div
-                                                    ref={setNodeRef}
-                                                    style={isDragging ? undefined : style}
-                                                    onClick={() => onSelectBook(note)}
-                                                    className={`bg-white dark:bg-slate-800 p-3 md:p-5 rounded-xl border border-[#E6EAF2] dark:border-slate-800 hover:border-[#262D40]/20 dark:hover:border-[#262D40]/30 hover:shadow-md transition-all cursor-pointer flex flex-col group relative ${isDragging || activeDraggedNoteId === note.id ? 'opacity-60 ring-2 ring-[#CC561E]/40' : ''}`}
-                                                >
-                                                    <div className="absolute top-2 left-2 z-10">
-                                                        <button
-                                                            {...(attributes as any)}
-                                                            {...(listeners as any)}
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            className="p-1.5 rounded-full bg-white/85 dark:bg-slate-800/85 text-slate-400 hover:text-slate-700 shadow-sm"
-                                                            title="Drag note"
-                                                        >
-                                                            <GripVertical size={13} />
+                                                            <FolderPlus size={11} />
+                                                            Folder
                                                         </button>
                                                     </div>
-                                            <div className="absolute top-2 right-2 flex gap-1 z-10">
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); onToggleFavorite(note.id); }}
-                                                    className={`p-1.5 rounded-full transition-all shadow-sm ${note.isFavorite
-                                                        ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-500 dark:text-orange-400 opacity-100'
-                                                        : 'bg-white/80 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 hover:text-orange-500 dark:hover:text-orange-400 opacity-0 group-hover:opacity-100 focus:opacity-100'
-                                                        }`}
-                                                    title={note.isFavorite ? "Remove from Favorites" : "Add to Favorites"}
-                                                >
-                                                    <Star size={14} fill={note.isFavorite ? "currentColor" : "none"} />
-                                                </button>
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); onDeleteBook(note.id); }}
-                                                    className="p-1.5 bg-white/80 dark:bg-slate-800/80 hover:bg-[#F3F5FA] dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white rounded-full transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 shadow-sm"
-                                                    title="Delete Note"
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
-                                            </div>
-
-                                            <h3 className="font-bold text-sm md:text-base text-slate-900 dark:text-white mb-2 leading-tight pl-8 pr-8">{note.title}</h3>
-                                            <div className="text-slate-600 dark:text-slate-300 text-xs md:text-sm whitespace-pre-wrap leading-relaxed max-h-[180px] overflow-hidden relative font-lora mb-3">
-                                                {notePreview || <span className="italic text-slate-400 dark:text-slate-500">Empty</span>}
-                                                {notePreview.length > 140 && (
-                                                    <div className="absolute bottom-0 inset-x-0 h-8 bg-gradient-to-t from-white dark:from-slate-900 to-transparent" />
-                                                )}
-                                            </div>
-
-                                            <div className="mt-auto pt-2 flex flex-wrap gap-1.5 border-t border-slate-100 dark:border-slate-800 items-center">
-                                                <span className="px-2 py-0.5 bg-[#CC561E]/10 text-[#CC561E] text-[10px] md:text-xs rounded border border-[#CC561E]/20 font-semibold">
-                                                    {getPersonalNoteCategory(note)}
-                                                </span>
-                                                {getResolvedNoteFolderName(note) && (
-                                                    <span className="px-2 py-0.5 bg-[#F3F5FA] dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-[10px] md:text-xs rounded border border-[#E6EAF2] dark:border-slate-700 truncate max-w-[150px]">
-                                                        {getResolvedNoteFolderName(note)}
-                                                    </span>
-                                                )}
-                                                <span className="ml-auto text-[10px] md:text-xs text-slate-400 flex items-center gap-1">
-                                                    <Calendar size={10} className="md:w-3 md:h-3" />
-                                                    {new Date(note.addedAt).toLocaleDateString()}
-                                                </span>
-                                            </div>
+                                                    <DroppableZone id={`cat-root:${category}`}>
+                                                        {(isOver) => (
+                                                            <button
+                                                                onClick={() => {
+                                                                    setNoteSmartFilter('NONE');
+                                                                    setNoteTagFilter(null);
+                                                                    setNoteCategoryFilter(category);
+                                                                    setNoteFolderFilter('__ROOT__');
+                                                                    onPageChange(1);
+                                                                }}
+                                                                className={`w-full text-left px-2 py-1.5 rounded-md text-xs md:text-sm transition-colors ${isOver ? 'bg-[#CC561E]/15 border border-[#CC561E]/30' : 'border border-transparent'} ${noteCategoryFilter === category && noteFolderFilter === '__ROOT__' && noteSmartFilter === 'NONE' && !noteTagFilter ? 'bg-[#CC561E]/10 text-[#CC561E] font-semibold' : 'text-slate-500 hover:bg-[#F3F5FA] dark:hover:bg-slate-800'}`}
+                                                            >
+                                                                Unfiled ({rootNoteCounts[category]})
+                                                            </button>
+                                                        )}
+                                                    </DroppableZone>
+                                                    <div className="mt-1">
+                                                        <button
+                                                            onClick={() => setCollapsedFolderCategories((prev) => ({ ...prev, [category]: !prev[category] }))}
+                                                            className="w-full text-left px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 inline-flex items-center gap-1"
+                                                        >
+                                                            <ChevronDown size={11} className={`transition-transform ${collapsedFolderCategories[category] ? '' : 'rotate-180'}`} />
+                                                            Folders ({categoryFolderMap[category].length})
+                                                        </button>
+                                                        {!collapsedFolderCategories[category] && (
+                                                            <div className="mt-1 space-y-1">
+                                                                {categoryFolderMap[category].length === 0 ? (
+                                                                    <p className="text-[11px] text-slate-400 px-1 py-1">No folders yet</p>
+                                                                ) : (
+                                                                    categoryFolderMap[category].slice(0, visibleFolderCounts[category]).map((folder) => (
+                                                                        <DroppableZone key={folder.id} id={`folder:${folder.id}`}>
+                                                                            {(isOver) => (
+                                                                                <DraggableWrapper id={`folder-item:${folder.id}`}>
+                                                                                    {({ setNodeRef, style, isDragging, attributes, listeners }) => (
+                                                                                        <div
+                                                                                            ref={setNodeRef}
+                                                                                            style={isDragging ? undefined : style}
+                                                                                            className={`w-full text-left px-2 py-1.5 rounded-md text-xs md:text-sm flex items-center gap-2 ${isOver ? 'bg-[#CC561E]/15 border border-[#CC561E]/30' : 'border border-transparent'} ${noteCategoryFilter === category && noteFolderFilter === folder.id && noteSmartFilter === 'NONE' && !noteTagFilter ? 'bg-[#CC561E]/10 text-[#CC561E] font-semibold' : 'text-slate-500 hover:bg-[#F3F5FA] dark:hover:bg-slate-800'} ${isDragging ? 'opacity-60 ring-2 ring-[#CC561E]/40' : ''}`}
+                                                                                        >
+                                                                                            <button
+                                                                                                {...(attributes as any)}
+                                                                                                {...(listeners as any)}
+                                                                                                onClick={(e) => e.stopPropagation()}
+                                                                                                className="p-1 rounded text-slate-400 hover:text-slate-700 cursor-grab active:cursor-grabbing"
+                                                                                                title="Move folder"
+                                                                                            >
+                                                                                                <GripVertical size={12} />
+                                                                                            </button>
+                                                                                            <button
+                                                                                                onClick={() => {
+                                                                                                    setNoteSmartFilter('NONE');
+                                                                                                    setNoteTagFilter(null);
+                                                                                                    setNoteCategoryFilter(category);
+                                                                                                    setNoteFolderFilter(folder.id);
+                                                                                                    onPageChange(1);
+                                                                                                }}
+                                                                                                className="flex items-center gap-2 flex-1 min-w-0"
+                                                                                            >
+                                                                                                <Folder size={12} />
+                                                                                                <span className="truncate">{folder.name}</span>
+                                                                                            </button>
+                                                                                            <span className="text-[10px] opacity-70">{folder.count}</span>
+                                                                                            <button
+                                                                                                onClick={() => handleRenameFolder(folder.id, folder.name)}
+                                                                                                className="text-slate-400 hover:text-slate-700"
+                                                                                                title="Rename folder"
+                                                                                            >
+                                                                                                <Pencil size={12} />
+                                                                                            </button>
+                                                                                            <button
+                                                                                                onClick={() => handleDeleteFolder(folder.id)}
+                                                                                                className="text-slate-400 hover:text-red-500"
+                                                                                                title="Delete folder"
+                                                                                            >
+                                                                                                <Trash2 size={12} />
+                                                                                            </button>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </DraggableWrapper>
+                                                                            )}
+                                                                        </DroppableZone>
+                                                                    ))
+                                                                )}
+                                                                {categoryFolderMap[category].length > visibleFolderCounts[category] && (
+                                                                    <button
+                                                                        onClick={() =>
+                                                                            setVisibleFolderCounts((prev) => ({
+                                                                                ...prev,
+                                                                                [category]: prev[category] + FOLDER_PAGE_SIZE,
+                                                                            }))
+                                                                        }
+                                                                        className="w-full text-left px-2 py-1.5 rounded-md text-[11px] font-semibold text-[#CC561E] hover:bg-[#CC561E]/10"
+                                                                    >
+                                                                        Load more ({categoryFolderMap[category].length - visibleFolderCounts[category]} left)
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             )}
-                                        </DraggableWrapper>
-                                    )})}
+                                        </DroppableZone>
+                                    ))}
                                 </div>
-                            )}
-                        </div>
+
+                            </aside>
+
+                            <div className="space-y-3">
+                                <div className="lg:hidden">
+                                    <button
+                                        onClick={() => setIsPersonalPanelOpen((prev) => !prev)}
+                                        className="px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-[#E6EAF2] dark:border-slate-800 rounded-lg flex items-center gap-2"
+                                    >
+                                        <ListFilter size={14} />
+                                        Note Navigator
+                                    </button>
+                                </div>
+
+                                <div className="bg-white dark:bg-slate-900 border border-[#E6EAF2] dark:border-slate-800 rounded-2xl overflow-hidden">
+                                    <button
+                                        onClick={() => setIsQuickCaptureOpen(!isQuickCaptureOpen)}
+                                        className="w-full flex items-center justify-between p-4 md:p-5 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                                    >
+                                        <h4 className="text-sm md:text-base font-semibold uppercase tracking-[0.12em] text-slate-500 flex items-center gap-2">
+                                            <ChevronDown size={16} className={`transition-transform duration-200 ${isQuickCaptureOpen ? 'rotate-180' : ''}`} />
+                                            Quick Capture
+                                        </h4>
+                                        {isQuickCaptureOpen && (
+                                            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                                                <select
+                                                    value={quickCaptureCategory}
+                                                    onChange={(e) => setQuickCaptureCategory(e.target.value as PersonalNoteCategory)}
+                                                    className="text-[11px] border border-[#E6EAF2] dark:border-slate-700 rounded-md px-2 py-1 bg-white dark:bg-slate-950 text-slate-500"
+                                                >
+                                                    <option value="DAILY">Daily</option>
+                                                    <option value="PRIVATE">Private</option>
+                                                    <option value="IDEAS">Ideas</option>
+                                                </select>
+                                                {noteSmartFilter === 'NONE' && noteFolderFilter !== 'ALL' && noteFolderFilter !== '__ROOT__' && (
+                                                    <span className="text-[11px] text-slate-400">
+                                                        / {folderById.get(noteFolderFilter)?.name || noteFolderFilter}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
+                                    </button>
+
+                                    {isQuickCaptureOpen && (
+                                        <div className="px-4 pb-4 md:px-5 md:pb-5 pt-0 animate-in slide-in-from-top-2 duration-200">
+                                            <input
+                                                value={quickNoteTitle}
+                                                onChange={(e) => setQuickNoteTitle(e.target.value)}
+                                                placeholder="Note title (optional)"
+                                                className="w-full mb-3 border border-[#E6EAF2] dark:border-slate-700 rounded-xl px-4 py-3 text-sm md:text-base bg-white dark:bg-slate-950"
+                                            />
+                                            <PersonalNoteEditor
+                                                value={quickNoteBody}
+                                                onChange={setQuickNoteBody}
+                                                autoFocus={isPersonalNotes}
+                                                placeholder="Start writing immediately..."
+                                                minHeight={242}
+                                            />
+                                            <div className="mt-3 flex justify-end">
+                                                <button
+                                                    onClick={handleQuickCapture}
+                                                    disabled={!hasMeaningfulPersonalNoteContent(quickNoteBody)}
+                                                    className="px-4 py-2 rounded-lg bg-[#262D40] text-white text-sm md:text-base disabled:opacity-40"
+                                                >
+                                                    Save Quick Note
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {displayedBooks.length === 0 ? (
+                                    <div className="text-center py-10 bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700">
+                                        <PenTool size={26} className="mx-auto mb-2 text-slate-300" />
+                                        <h3 className="text-base font-medium text-slate-900 dark:text-white">No notes matched this filter</h3>
+                                        <p className="text-xs md:text-sm text-slate-500 mt-1">Change category/folder filter or create a new note.</p>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 md:gap-4">
+                                        {displayedBooks.map(note => {
+                                            const notePreview = extractPersonalNoteText(note.generalNotes || '');
+                                            return (
+                                                <DraggableWrapper key={note.id} id={`note:${note.id}`}>
+                                                    {({ setNodeRef, style, isDragging, attributes, listeners }) => (
+                                                        <div
+                                                            ref={setNodeRef}
+                                                            style={isDragging ? undefined : style}
+                                                            onClick={() => onSelectBook(note)}
+                                                            className={`bg-white dark:bg-slate-800 p-3 md:p-5 rounded-xl border border-[#E6EAF2] dark:border-slate-800 hover:border-[#262D40]/20 dark:hover:border-[#262D40]/30 hover:shadow-md transition-all cursor-pointer flex flex-col group relative ${isDragging || activeDraggedNoteId === note.id ? 'opacity-60 ring-2 ring-[#CC561E]/40' : ''}`}
+                                                        >
+                                                            <div className="absolute top-2 left-2 z-10">
+                                                                <button
+                                                                    {...(attributes as any)}
+                                                                    {...(listeners as any)}
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                    className="p-1.5 rounded-full bg-white/85 dark:bg-slate-800/85 text-slate-400 hover:text-slate-700 shadow-sm"
+                                                                    title="Drag note"
+                                                                >
+                                                                    <GripVertical size={13} />
+                                                                </button>
+                                                            </div>
+                                                            <div className="absolute top-2 right-2 flex gap-1 z-10">
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); onToggleFavorite(note.id); }}
+                                                                    className={`p-1.5 rounded-full transition-all shadow-sm ${note.isFavorite
+                                                                        ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-500 dark:text-orange-400 opacity-100'
+                                                                        : 'bg-white/80 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 hover:text-orange-500 dark:hover:text-orange-400 opacity-0 group-hover:opacity-100 focus:opacity-100'
+                                                                        }`}
+                                                                    title={note.isFavorite ? "Remove from Favorites" : "Add to Favorites"}
+                                                                >
+                                                                    <Star size={14} fill={note.isFavorite ? "currentColor" : "none"} />
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); onDeleteBook(note.id); }}
+                                                                    className="p-1.5 bg-white/80 dark:bg-slate-800/80 hover:bg-[#F3F5FA] dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white rounded-full transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 shadow-sm"
+                                                                    title="Delete Note"
+                                                                >
+                                                                    <Trash2 size={14} />
+                                                                </button>
+                                                            </div>
+
+                                                            <h3 className="font-bold text-sm md:text-base text-slate-900 dark:text-white mb-2 leading-tight pl-8 pr-8">{note.title}</h3>
+                                                            <div className="text-slate-600 dark:text-slate-300 text-xs md:text-sm whitespace-pre-wrap leading-relaxed max-h-[180px] overflow-hidden relative font-lora mb-3">
+                                                                {notePreview || <span className="italic text-slate-400 dark:text-slate-500">Empty</span>}
+                                                                {notePreview.length > 140 && (
+                                                                    <div className="absolute bottom-0 inset-x-0 h-8 bg-gradient-to-t from-white dark:from-slate-900 to-transparent" />
+                                                                )}
+                                                            </div>
+
+                                                            <div className="mt-auto pt-2 flex flex-wrap gap-1.5 border-t border-slate-100 dark:border-slate-800 items-center">
+                                                                <span className="px-2 py-0.5 bg-[#CC561E]/10 text-[#CC561E] text-[10px] md:text-xs rounded border border-[#CC561E]/20 font-semibold">
+                                                                    {getPersonalNoteCategory(note)}
+                                                                </span>
+                                                                {getResolvedNoteFolderName(note) && (
+                                                                    <span className="px-2 py-0.5 bg-[#F3F5FA] dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-[10px] md:text-xs rounded border border-[#E6EAF2] dark:border-slate-700 truncate max-w-[150px]">
+                                                                        {getResolvedNoteFolderName(note)}
+                                                                    </span>
+                                                                )}
+                                                                <span className="ml-auto text-[10px] md:text-xs text-slate-400 flex items-center gap-1">
+                                                                    <Calendar size={10} className="md:w-3 md:h-3" />
+                                                                    {new Date(note.addedAt).toLocaleDateString()}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </DraggableWrapper>
+                                            )
+                                        })}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                         <DragOverlay modifiers={[restrictToWindowEdges]}>
                             {activeDraggedNote ? (
