@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Loader2, BookOpen, ChevronDown, ChevronUp, RotateCcw, MessageCircle, User, Bot, Compass, Brain, Gauge, Quote, ExternalLink } from 'lucide-react';
-import { sendChatMessage, ChatResponse } from '../services/backendApiService';
+import { sendChatMessage } from '../services/backendApiService';
 import { ContextBar } from './ContextBar';
 
 interface Message {
@@ -85,17 +85,19 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack }) =>
         setError(null);
 
         try {
-            const response: ChatResponse = await sendChatMessage(
+            const response = await sendChatMessage(
                 userMessage.content,
                 userId,
                 sessionId,
-                'EXPLORER'
+                'EXPLORER',
+                null,
+                20
             );
 
-            // Update session ID for continued conversation
-            setSessionId(response.session_id);
+            if (response.session_id) {
+                setSessionId(response.session_id);
+            }
 
-            // Update Context Bar State
             if (response.conversation_state) {
                 setConversationState(response.conversation_state);
             }
@@ -103,17 +105,14 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack }) =>
             const assistantMessage: Message = {
                 id: Date.now() + 1,
                 role: 'assistant',
-                content: response.answer,
-                sources: response.sources,
-                thinkingHistory: response.thinking_history,
-                timestamp: response.timestamp
+                content: response.answer || '',
+                sources: response.sources || [],
+                thinkingHistory: response.thinking_history || [],
+                timestamp: response.timestamp || new Date().toISOString()
             };
-
             setMessages(prev => [...prev, assistantMessage]);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to send message');
-            // Remove the user message if request failed
-            setMessages(prev => prev.filter(m => m.id !== userMessage.id));
         } finally {
             setIsLoading(false);
             inputRef.current?.focus();

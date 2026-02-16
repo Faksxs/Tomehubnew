@@ -1,12 +1,9 @@
 import { normalizeHighlightType } from '../lib/highlightType';
+import { API_BASE_URL, fetchWithAuth } from './apiClient';
 /**
  * TomeHub Backend API Service
  * Connects React frontend to Flask backend for RAG search and document ingestion
  */
-
-const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? 'http://localhost:5000'
-    : 'https://api.tomehub.nl';
 
 const normalizeSourceTypeForBackend = (type: string): string => {
     const normalized = (type || '').trim().toUpperCase();
@@ -98,6 +95,8 @@ export interface ChatRequest {
     book_id?: string | null;
     resource_type?: 'BOOK' | 'ARTICLE' | 'WEBSITE' | 'PERSONAL_NOTE' | null;
     mode?: 'STANDARD' | 'EXPLORER';
+    limit?: number;
+    offset?: number;
 }
 
 export interface ChatResponse {
@@ -166,6 +165,24 @@ export interface IngestedBooksResponse {
     count: number;
 }
 
+export interface EpistemicDistributionRow {
+    book_id: string;
+    level_a: number;
+    level_b: number;
+    level_c: number;
+    total_chunks: number;
+    ratio_a: number;
+    ratio_b: number;
+    ratio_c: number;
+    updated_at: string | null;
+}
+
+export interface EpistemicDistributionResponse {
+    items: EpistemicDistributionRow[];
+    count: number;
+    error?: string;
+}
+
 /**
  * Check if backend API is online
  */
@@ -196,7 +213,7 @@ export async function searchLibrary(
         throw new Error('User must be authenticated to search');
     }
 
-    const response = await fetch(`${API_BASE_URL}/api/search`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/search`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -229,13 +246,14 @@ export async function sendChatMessage(
     firebaseUid: string,
     sessionId: number | null = null,
     mode: 'STANDARD' | 'EXPLORER' = 'EXPLORER',
-    resourceType: 'BOOK' | 'ARTICLE' | 'WEBSITE' | 'PERSONAL_NOTE' | null = null
+    resourceType: 'BOOK' | 'ARTICLE' | 'WEBSITE' | 'PERSONAL_NOTE' | null = null,
+    limit: number = 20
 ): Promise<ChatResponse> {
     if (!firebaseUid) {
         throw new Error('User must be authenticated to chat');
     }
 
-    const response = await fetch(`${API_BASE_URL}/api/chat`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/chat`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -245,7 +263,8 @@ export async function sendChatMessage(
             firebase_uid: firebaseUid,
             session_id: sessionId,
             mode,
-            resource_type: resourceType
+            resource_type: resourceType,
+            limit
         } as ChatRequest),
     });
 
@@ -288,7 +307,7 @@ export async function ingestDocument(
         formData.append('tags', tags);
     }
 
-    const response = await fetch(`${API_BASE_URL}/api/ingest`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/ingest`, {
         method: 'POST',
         body: formData, // No Content-Type header needed, fetch sets it for FormData
     });
@@ -305,7 +324,7 @@ export async function ingestDocument(
  * Submit feedback for a search response
  */
 export async function submitFeedback(request: FeedbackRequest): Promise<{ success: boolean }> {
-    const response = await fetch(`${API_BASE_URL}/api/feedback`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/feedback`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -332,7 +351,7 @@ export async function searchReportsByTopic(
     if (!firebaseUid) {
         throw new Error('User must be authenticated to search reports');
     }
-    const response = await fetch(
+    const response = await fetchWithAuth(
         `${API_BASE_URL}/api/reports/search?topic=${encodeURIComponent(topic)}&limit=${encodeURIComponent(limit)}&firebase_uid=${encodeURIComponent(firebaseUid)}`,
         {
             method: 'GET',
@@ -362,7 +381,7 @@ export async function getIngestionStatus(
         throw new Error('User must be authenticated to fetch ingestion status');
     }
 
-    const response = await fetch(
+    const response = await fetchWithAuth(
         `${API_BASE_URL}/api/books/${encodeURIComponent(bookId)}/ingestion-status?firebase_uid=${encodeURIComponent(firebaseUid)}`,
         {
             method: 'GET',
@@ -393,7 +412,7 @@ export async function extractMetadata(file: File): Promise<{
     const formData = new FormData();
     formData.append('file', file);
 
-    const response = await fetch(`${API_BASE_URL}/api/extract-metadata`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/extract-metadata`, {
         method: 'POST',
         body: formData,
     });
@@ -425,7 +444,7 @@ export async function addTextItem(
     }
 ): Promise<{ success: boolean; message: string }> {
     const normalizedType = normalizeSourceTypeForBackend(type);
-    const response = await fetch(`${API_BASE_URL}/api/add-item`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/add-item`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -467,7 +486,7 @@ export async function migrateBulkItems(
         ...item,
         type: normalizeSourceTypeForBackend(item.type),
     }));
-    const response = await fetch(`${API_BASE_URL}/api/migrate_bulk`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/migrate_bulk`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -505,7 +524,7 @@ export async function syncHighlights(
         ...highlight,
         type: normalizeHighlightType(highlight.type),
     }));
-    const response = await fetch(`${API_BASE_URL}/api/books/${encodeURIComponent(bookId)}/sync-highlights`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/books/${encodeURIComponent(bookId)}/sync-highlights`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -537,7 +556,7 @@ export async function syncPersonalNote(
     noteId: string,
     payload: Omit<SyncPersonalNoteRequest, 'firebase_uid'>
 ): Promise<{ success: boolean; deleted: number; inserted: number }> {
-    const response = await fetch(`${API_BASE_URL}/api/notes/${encodeURIComponent(noteId)}/sync-personal-note`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/notes/${encodeURIComponent(noteId)}/sync-personal-note`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -548,6 +567,24 @@ export async function syncPersonalNote(
 
     if (!response.ok) {
         throw new Error('Failed to sync personal note');
+    }
+    return response.json();
+}
+
+export async function purgeResourceContent(
+    firebaseUid: string,
+    bookId: string
+): Promise<{ success: boolean; deleted: number; aux_deleted?: Record<string, number> }> {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/resources/${encodeURIComponent(bookId)}/purge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            firebase_uid: firebaseUid,
+        }),
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to purge resource content');
     }
     return response.json();
 }
@@ -569,9 +606,8 @@ export async function getConcordance(
     url.searchParams.append('offset', offset.toString());
     url.searchParams.append('firebase_uid', firebaseUid);
 
-    const response = await fetch(url.toString(), {
+    const response = await fetchWithAuth(url.toString(), {
         headers: {
-            'Authorization': `Bearer ${firebaseUid}`, // Assuming the backend verify_firebase_token handles this dependency
             'Content-Type': 'application/json'
         }
     });
@@ -595,9 +631,8 @@ export async function getDistribution(
     url.searchParams.append('term', term);
     url.searchParams.append('firebase_uid', firebaseUid);
 
-    const response = await fetch(url.toString(), {
+    const response = await fetchWithAuth(url.toString(), {
         headers: {
-            'Authorization': `Bearer ${firebaseUid}`,
             'Content-Type': 'application/json'
         }
     });
@@ -616,10 +651,9 @@ export async function getComparativeStats(
     targetBookIds: string[],
     term: string
 ): Promise<ComparisonResponse> {
-    const response = await fetch(`${API_BASE_URL}/api/analytics/compare?firebase_uid=${encodeURIComponent(firebaseUid)}`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/analytics/compare?firebase_uid=${encodeURIComponent(firebaseUid)}`, {
         method: 'POST',
         headers: {
-            'Authorization': `Bearer ${firebaseUid}`,
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -644,15 +678,38 @@ export async function getIngestedBookIds(
     const url = new URL(`${API_BASE_URL}/api/analytics/ingested-books`);
     url.searchParams.append('firebase_uid', firebaseUid);
 
-    const response = await fetch(url.toString(), {
+    const response = await fetchWithAuth(url.toString(), {
         headers: {
-            'Authorization': `Bearer ${firebaseUid}`,
             'Content-Type': 'application/json'
         }
     });
 
     if (!response.ok) {
         throw new Error('Failed to fetch ingested books');
+    }
+    return response.json();
+}
+
+export async function getEpistemicDistribution(
+    firebaseUid: string,
+    bookId?: string,
+    limit: number = 250
+): Promise<EpistemicDistributionResponse> {
+    const url = new URL(`${API_BASE_URL}/api/analytics/epistemic-distribution`);
+    url.searchParams.append('firebase_uid', firebaseUid);
+    url.searchParams.append('limit', String(limit));
+    if (bookId) {
+        url.searchParams.append('book_id', bookId);
+    }
+
+    const response = await fetchWithAuth(url.toString(), {
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to fetch epistemic distribution');
     }
     return response.json();
 }

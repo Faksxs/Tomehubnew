@@ -1,52 +1,106 @@
-from pydantic import BaseModel, Field, field_validator
+﻿from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Any
 
+_UID_MAX = 128
+_BOOK_ID_MAX = 256
+_TEXT_MAX = 2000
+_NOTE_MAX = 20000
+_TAG_MAX = 64
+
+
 class SearchRequest(BaseModel):
-    question: str
-    firebase_uid: str
-    book_id: Optional[str] = None
-    mode: Optional[str] = "STANDARD" # STANDARD or EXPLORER
-    limit: Optional[int] = 20
-    offset: Optional[int] = 0
-    
+    question: str = Field(..., min_length=1, max_length=_TEXT_MAX)
+    firebase_uid: str = Field(..., min_length=1, max_length=_UID_MAX)
+    book_id: Optional[str] = Field(default=None, max_length=_BOOK_ID_MAX)
+    mode: str = Field(default="STANDARD")  # STANDARD or EXPLORER
+    limit: int = Field(default=20, ge=1, le=100)
+    offset: int = Field(default=0, ge=0, le=10000)
+
+    @field_validator("question")
+    @classmethod
+    def validate_question(cls, value: str) -> str:
+        text = (value or "").strip()
+        if not text:
+            raise ValueError("question cannot be empty or whitespace")
+        return text
+
+    @field_validator("firebase_uid")
+    @classmethod
+    def normalize_uid(cls, value: str) -> str:
+        uid = (value or "").strip()
+        if not uid:
+            raise ValueError("firebase_uid cannot be empty")
+        return uid
+
+    @field_validator("book_id")
+    @classmethod
+    def normalize_book_id(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        book_id = value.strip()
+        return book_id or None
+
+    @field_validator("mode", mode="before")
+    @classmethod
+    def normalize_mode(cls, value: Optional[str]) -> str:
+        mode = str(value or "STANDARD").strip().upper()
+        if mode not in {"STANDARD", "EXPLORER"}:
+            raise ValueError("mode must be STANDARD or EXPLORER")
+        return mode
+
+
 class SearchResponse(BaseModel):
     answer: str
     sources: List[Any]
     timestamp: str
     metadata: Optional[dict] = None
-    # We use dict for metadata to allow flexibility, but we must ensure
-    # Pydantic doesn't strip fields if we were to use a strict model.
-    # Currently it's permissive.
+
 
 class FeedbackRequest(BaseModel):
-    firebase_uid: str
-    query: str
-    answer: str
-    rating: Optional[int] = None
-    comment: Optional[str] = None
+    firebase_uid: str = Field(..., min_length=1, max_length=_UID_MAX)
+    query: str = Field(..., min_length=1, max_length=_TEXT_MAX)
+    answer: str = Field(..., min_length=1, max_length=10000)
+    rating: Optional[int] = Field(default=None, ge=1, le=5)
+    comment: Optional[str] = Field(default=None, max_length=2000)
     search_log_id: Optional[int] = None
-    book_id: Optional[str] = None
+    book_id: Optional[str] = Field(default=None, max_length=_BOOK_ID_MAX)
+
+    @field_validator("firebase_uid", "query", "answer", mode="before")
+    @classmethod
+    def normalize_required_text(cls, value: Optional[str]) -> str:
+        text = str(value or "").strip()
+        if not text:
+            raise ValueError("field cannot be empty")
+        return text
+
 
 class IngestRequest(BaseModel):
-    # For file uploads, Pydantic is less useful directly in the endpoint signature 
-    # (FastAPI uses UploadFile), but we can use this for validation if needed.
-    title: str
-    author: str
-    firebase_uid: str
-    book_id: Optional[str] = None
+    title: str = Field(..., min_length=1, max_length=256)
+    author: str = Field(..., min_length=1, max_length=256)
+    firebase_uid: str = Field(..., min_length=1, max_length=_UID_MAX)
+    book_id: Optional[str] = Field(default=None, max_length=_BOOK_ID_MAX)
+
 
 class AddItemRequest(BaseModel):
-    text: str
-    title: str
-    author: str
+    text: str = Field(..., min_length=1, max_length=_NOTE_MAX)
+    title: str = Field(..., min_length=1, max_length=256)
+    author: str = Field(..., min_length=1, max_length=256)
     type: str = "PERSONAL_NOTE"
-    firebase_uid: str
-    book_id: Optional[str] = None
-    page_number: Optional[int] = None
-    chunk_type: Optional[str] = None
-    chunk_index: Optional[int] = None
-    comment: Optional[str] = None
+    firebase_uid: str = Field(..., min_length=1, max_length=_UID_MAX)
+    book_id: Optional[str] = Field(default=None, max_length=_BOOK_ID_MAX)
+    page_number: Optional[int] = Field(default=None, ge=0, le=100000)
+    chunk_type: Optional[str] = Field(default=None, max_length=64)
+    chunk_index: Optional[int] = Field(default=None, ge=0, le=1000000)
+    comment: Optional[str] = Field(default=None, max_length=4000)
     tags: Optional[List[str]] = None
+
+    @field_validator("text", "title", "author", "firebase_uid", mode="before")
+    @classmethod
+    def normalize_required_fields(cls, value: Optional[str]) -> str:
+        text = str(value or "").strip()
+        if not text:
+            raise ValueError("field cannot be empty")
+        return text
 
     @field_validator("type", mode="before")
     @classmethod
@@ -60,40 +114,81 @@ class AddItemRequest(BaseModel):
             return "INSIGHT"
         return st
 
-class BatchMigrateRequest(BaseModel):
-    items: List[dict]
-    firebase_uid: str
+    @field_validator("tags", mode="before")
+    @classmethod
+    def normalize_tags(cls, value: Optional[List[str]]) -> Optional[List[str]]:
+        if value is None:
+            return None
+        out: List[str] = []
+        for item in value[:20]:
+            tag = str(item or "").strip()
+            if not tag:
+                continue
+            out.append(tag[:_TAG_MAX])
+        return out or None
 
-# NEW: Models for AI Service
+
+class BatchMigrateRequest(BaseModel):
+    items: List[dict] = Field(default_factory=list, min_length=1, max_length=500)
+    firebase_uid: str = Field(..., min_length=1, max_length=_UID_MAX)
+
+
 class EnrichBookRequest(BaseModel):
-    title: str
-    author: str
-    publisher: Optional[str] = None
-    isbn: Optional[str] = None
-    summary: Optional[str] = None
+    title: str = Field(..., min_length=1, max_length=256)
+    author: str = Field(..., min_length=1, max_length=256)
+    publisher: Optional[str] = Field(default=None, max_length=256)
+    isbn: Optional[str] = Field(default=None, max_length=64)
+    summary: Optional[str] = Field(default=None, max_length=4000)
     tags: Optional[List[str]] = None
-    
+    content_language_mode: Optional[str] = Field(default="AUTO", max_length=8)
+    source_language_hint: Optional[str] = Field(default=None, max_length=16)
+    force_regenerate: bool = False
+
     model_config = {
         "extra": "allow"
     }
+
+    @field_validator("content_language_mode", mode="before")
+    @classmethod
+    def normalize_content_language_mode(cls, value: Optional[str]) -> str:
+        mode = str(value or "AUTO").strip().upper()
+        if mode in {"TR", "EN"}:
+            return mode
+        return "AUTO"
+
+    @field_validator("source_language_hint", mode="before")
+    @classmethod
+    def normalize_source_language_hint(cls, value: Optional[str]) -> Optional[str]:
+        raw = str(value or "").strip().lower()
+        if not raw:
+            return None
+        if raw in {"tr", "turkish", "turkce", "türkçe"}:
+            return "tr"
+        if raw in {"en", "english", "ingilizce"}:
+            return "en"
+        return None
+
+
 class GenerateTagsRequest(BaseModel):
-    note_content: str
-    
+    note_content: str = Field(..., min_length=1, max_length=6000)
+
+
 class VerifyCoverRequest(BaseModel):
-    title: str
-    author: str
-    isbn: Optional[str] = None
+    title: str = Field(..., min_length=1, max_length=256)
+    author: str = Field(..., min_length=1, max_length=256)
+    isbn: Optional[str] = Field(default=None, max_length=64)
+
 
 class AnalyzeHighlightsRequest(BaseModel):
-    highlights: List[str]
+    highlights: List[str] = Field(default_factory=list, min_length=1, max_length=200)
 
 
 class HighlightItem(BaseModel):
-    id: Optional[str] = None
-    text: str
+    id: Optional[str] = Field(default=None, max_length=128)
+    text: str = Field(..., min_length=1, max_length=6000)
     type: Optional[str] = "highlight"  # highlight | insight (legacy: note)
-    comment: Optional[str] = None
-    pageNumber: Optional[int] = None
+    comment: Optional[str] = Field(default=None, max_length=2000)
+    pageNumber: Optional[int] = Field(default=None, ge=0, le=100000)
     tags: Optional[List[str]] = None
     createdAt: Optional[int] = None
 
@@ -107,18 +202,18 @@ class HighlightItem(BaseModel):
 
 
 class HighlightSyncRequest(BaseModel):
-    firebase_uid: str
-    title: str
-    author: str
-    resource_type: Optional[str] = None
-    highlights: List[HighlightItem]
+    firebase_uid: str = Field(..., min_length=1, max_length=_UID_MAX)
+    title: str = Field(..., min_length=1, max_length=256)
+    author: str = Field(..., min_length=1, max_length=256)
+    resource_type: Optional[str] = Field(default=None, max_length=64)
+    highlights: List[HighlightItem] = Field(default_factory=list, min_length=1, max_length=1000)
 
 
 class PersonalNoteSyncRequest(BaseModel):
-    firebase_uid: str
-    title: str
-    author: str
-    content: Optional[str] = None
+    firebase_uid: str = Field(..., min_length=1, max_length=_UID_MAX)
+    title: str = Field(..., min_length=1, max_length=256)
+    author: str = Field(..., min_length=1, max_length=256)
+    content: Optional[str] = Field(default=None, max_length=_NOTE_MAX)
     tags: Optional[List[str]] = None
     category: Optional[str] = "PRIVATE"
     delete_only: Optional[bool] = False
@@ -131,29 +226,73 @@ class PersonalNoteSyncRequest(BaseModel):
             return category
         return "PRIVATE"
 
-# --- Memory Layer Models ---
+
+class PurgeResourceRequest(BaseModel):
+    firebase_uid: str = Field(..., min_length=1, max_length=_UID_MAX)
+
+    @field_validator("firebase_uid", mode="before")
+    @classmethod
+    def normalize_uid(cls, value: Optional[str]) -> str:
+        uid = str(value or "").strip()
+        if not uid:
+            raise ValueError("firebase_uid cannot be empty")
+        return uid
+
+
 class ChatRequest(BaseModel):
-    message: str
-    firebase_uid: str
+    message: str = Field(..., min_length=1, max_length=_TEXT_MAX)
+    firebase_uid: str = Field(..., min_length=1, max_length=_UID_MAX)
     session_id: Optional[int] = None
-    book_id: Optional[str] = None # Optional focus context
-    resource_type: Optional[str] = None # Layer 4 Filter: BOOK, ARTICLE, WEBSITE, PERSONAL_NOTE
-    mode: Optional[str] = "STANDARD" # STANDARD (Default) or EXPLORER
-    limit: Optional[int] = 5
-    offset: Optional[int] = 0
+    book_id: Optional[str] = Field(default=None, max_length=_BOOK_ID_MAX)
+    resource_type: Optional[str] = Field(default=None, max_length=64)
+    mode: str = Field(default="STANDARD")
+    # Retrieval candidate limit for chat context (not quote count).
+    # Keep this aligned with SearchRequest defaults to avoid overly narrow context.
+    limit: int = Field(default=20, ge=1, le=100)
+    offset: int = Field(default=0, ge=0, le=10000)
+
+    @field_validator("message")
+    @classmethod
+    def validate_message(cls, value: str) -> str:
+        text = (value or "").strip()
+        if not text:
+            raise ValueError("message cannot be empty or whitespace")
+        return text
+
+    @field_validator("mode", mode="before")
+    @classmethod
+    def normalize_chat_mode(cls, value: Optional[str]) -> str:
+        mode = str(value or "STANDARD").strip().upper()
+        if mode not in {"STANDARD", "EXPLORER"}:
+            raise ValueError("mode must be STANDARD or EXPLORER")
+        return mode
+
 
 class ChatResponse(BaseModel):
     answer: str
     session_id: int
     sources: List[Any]
     timestamp: str
-    conversation_state: Optional[dict] = None  # Structured state for Context Bar
-    thinking_history: Optional[List[Any]] = None  # Process logs for UI
-    metadata: Optional[dict] = None  # Degradation info and other metadata
+    conversation_state: Optional[dict] = None
+    thinking_history: Optional[List[Any]] = None
+    metadata: Optional[dict] = None
 
 
 class ComparisonRequest(BaseModel):
-    firebase_uid: str
-    target_book_ids: List[str]
-    term: str
+    firebase_uid: str = Field(..., min_length=1, max_length=_UID_MAX)
+    target_book_ids: List[str] = Field(default_factory=list, min_length=2, max_length=20)
+    term: str = Field(..., min_length=1, max_length=128)
 
+    @field_validator("target_book_ids", mode="before")
+    @classmethod
+    def normalize_book_ids(cls, value: Optional[List[str]]) -> List[str]:
+        if not value:
+            raise ValueError("target_book_ids cannot be empty")
+        normalized: List[str] = []
+        for item in value:
+            book_id = str(item or "").strip()
+            if book_id:
+                normalized.append(book_id[:_BOOK_ID_MAX])
+        if len(normalized) < 2:
+            raise ValueError("target_book_ids must contain at least 2 items")
+        return normalized
