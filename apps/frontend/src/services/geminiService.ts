@@ -1,4 +1,4 @@
-import { ResourceType, LibraryItem } from "../types";
+import { ResourceType, LibraryItem, ContentLanguageMode, ContentLanguageResolved } from "../types";
 import { getAuth } from "firebase/auth";
 
 // Helper function to get Firebase Auth ID token
@@ -19,6 +19,13 @@ const API_BASE_URL = window.location.hostname === 'localhost' || window.location
   ? 'http://localhost:5000'
   : 'https://api.tomehub.nl'; // ✅ Real Production Endpoint
 
+const normalizeLangHint = (value?: string | null): "tr" | "en" | undefined => {
+  const raw = (value || "").toLowerCase().trim();
+  if (raw === "tr" || raw === "turkish" || raw === "turkce" || raw === "türkçe") return "tr";
+  if (raw === "en" || raw === "english" || raw === "ingilizce") return "en";
+  return undefined;
+};
+
 export interface ItemDraft {
   title: string;
   author: string;
@@ -31,6 +38,12 @@ export interface ItemDraft {
   url?: string;
   coverUrl?: string | null;
   pageCount?: number;
+  contentLanguageMode?: ContentLanguageMode;
+  contentLanguageResolved?: ContentLanguageResolved;
+  sourceLanguageHint?: string;
+  languageDecisionReason?: string;
+  languageDecisionConfidence?: number;
+  force_regenerate?: boolean;
 }
 
 /* ----------------------------------------------------
@@ -52,6 +65,9 @@ export const libraryItemToDraft = (item: LibraryItem): ItemDraft => {
     url: item.url,
     coverUrl: item.coverUrl ?? null,
     pageCount: (item as any).pageCount || undefined,
+    contentLanguageMode: item.contentLanguageMode || "AUTO",
+    contentLanguageResolved: item.contentLanguageResolved,
+    sourceLanguageHint: normalizeLangHint(item.sourceLanguageHint),
   };
 };
 
@@ -59,6 +75,13 @@ export const mergeEnrichedDraftIntoItem = (
   item: LibraryItem,
   draft: ItemDraft
 ): LibraryItem => {
+  const resolvedFromDraft = ((draft as any).content_language_resolved || draft.contentLanguageResolved || "").toString().toLowerCase();
+  const normalizedResolved = resolvedFromDraft === "tr" || resolvedFromDraft === "en"
+    ? (resolvedFromDraft as ContentLanguageResolved)
+    : item.contentLanguageResolved;
+  const decisionConfidenceRaw = Number((draft as any).language_decision_confidence ?? draft.languageDecisionConfidence ?? item.languageDecisionConfidence ?? NaN);
+  const decisionConfidence = Number.isFinite(decisionConfidenceRaw) ? decisionConfidenceRaw : item.languageDecisionConfidence;
+
   return {
     ...item,
     // AI’den gelen summary’i generalNotes’a yaz
@@ -78,6 +101,11 @@ export const mergeEnrichedDraftIntoItem = (
       : item.publicationYear,
     coverUrl: draft.coverUrl ?? item.coverUrl,
     pageCount: draft.pageCount || (item as any).pageCount || undefined,
+    contentLanguageMode: draft.contentLanguageMode || item.contentLanguageMode || "AUTO",
+    contentLanguageResolved: normalizedResolved,
+    sourceLanguageHint: normalizeLangHint(draft.sourceLanguageHint || item.sourceLanguageHint),
+    languageDecisionReason: ((draft as any).language_decision_reason || draft.languageDecisionReason || item.languageDecisionReason) as string | undefined,
+    languageDecisionConfidence: decisionConfidence,
   } as LibraryItem;
 };
 
@@ -184,6 +212,8 @@ export const searchResourcesAI = async (
     return data.results.map((item: any) => ({
       ...item,
       coverUrl: null,
+      sourceLanguageHint: normalizeLangHint(item.sourceLanguageHint || item.source_language_hint),
+      contentLanguageResolved: normalizeLangHint(item.contentLanguageResolved || item.content_language_resolved),
     })) as ItemDraft[];
 
   } catch (error) {
@@ -424,18 +454,29 @@ export const fetchBookCover = async (
 };
 
 // Export these for App.tsx usage if needed
-export const enrichBookWithAI = async (item: ItemDraft): Promise<ItemDraft> => {
-  if (!needsBookEnrichment(item)) return item;
+export const enrichBookWithAI = async (
+  item: ItemDraft,
+  options?: { forceRegenerate?: boolean }
+): Promise<ItemDraft> => {
+  const shouldRun = options?.forceRegenerate || needsBookEnrichment(item);
+  if (!shouldRun) return item;
 
   try {
     const idToken = await getAuthToken();
+    const payload = {
+      ...item,
+      content_language_mode: item.contentLanguageMode || "AUTO",
+      source_language_hint: item.sourceLanguageHint || undefined,
+      force_regenerate: !!options?.forceRegenerate,
+    };
+
     const response = await fetch(`${API_BASE_URL}/api/ai/enrich-book`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${idToken}`
       },
-      body: JSON.stringify(item)
+      body: JSON.stringify(payload)
     });
 
     if (!response.ok) {
@@ -456,7 +497,13 @@ export const enrichBookWithAI = async (item: ItemDraft): Promise<ItemDraft> => {
 export const needsBookEnrichment = (item: ItemDraft): boolean => {
   const needsSummary = !item.summary || item.summary.trim().length < 40;
   const needsTags = !item.tags || item.tags.length < 2;
-  return needsSummary || needsTags;
+  const mode = (item.contentLanguageMode || "AUTO").toUpperCase();
+  const resolved = (item.contentLanguageResolved || "").toLowerCase();
+  const needsLanguageNormalization =
+    (mode === "TR" && resolved !== "tr") ||
+    (mode === "EN" && resolved !== "en") ||
+    (!!item.sourceLanguageHint && !resolved);
+  return needsSummary || needsTags || needsLanguageNormalization;
 };
 
 export const enrichBooksBatch = async (items: ItemDraft[]): Promise<ItemDraft[]> => {

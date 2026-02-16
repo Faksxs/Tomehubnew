@@ -3,6 +3,7 @@ import { Search, BookOpen, Loader2, AlertCircle, ExternalLink, ThumbsUp, ThumbsD
 import { searchLibrary, submitFeedback, SearchResponse } from '../services/backendApiService';
 import { ExplorerChat } from './ExplorerChat';
 import { ConcordanceView } from './ConcordanceView';
+import { getFriendlyApiErrorMessage } from '../services/apiClient';
 
 import { LibraryItem } from '../types';
 
@@ -85,7 +86,7 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack,
             setResult(response);
             setLastQuestion(question);
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Search failed');
+            setError(getFriendlyApiErrorMessage(err));
         } finally {
             setIsSearching(false);
         }

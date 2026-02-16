@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.INFO)
 # Add apps/backend to path
 sys.path.append(os.path.join(os.getcwd(), 'apps', 'backend'))
 
-from services.search_system.strategies_final import ExactMatchStrategy
+from services.search_system._deprecated.strategies_final import ExactMatchStrategy
 from services.search_system.orchestrator import SearchOrchestrator
 
 import traceback

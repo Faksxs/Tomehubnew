@@ -1,0 +1,53 @@
+[
+  {
+    "id": "L3P1_Q001",
+    "category": "DIRECT",
+    "query": "ahlak nedir?",
+    "expected_terms": [
+      "ahlak"
+    ]
+  },
+  {
+    "id": "L3P1_Q002",
+    "category": "DIRECT",
+    "query": "vicdan ne demek?",
+    "expected_terms": [
+      "vicdan"
+    ]
+  },
+  {
+    "id": "L3P1_Q003",
+    "category": "SYNTHESIS",
+    "query": "insan neden etik bir varliktir?",
+    "expected_terms": [
+      "etik",
+      "insan"
+    ]
+  },
+  {
+    "id": "L3P1_Q004",
+    "category": "SYNTHESIS",
+    "query": "ozgurluk kavrami notlarda nasil aciklaniyor?",
+    "expected_terms": [
+      "ozgurluk"
+    ]
+  },
+  {
+    "id": "L3P1_Q005",
+    "category": "COMPARATIVE",
+    "query": "insanin isyan eden bir varlik oldugu iddiasi notlarda nasil temellendiriliyor?",
+    "expected_terms": [
+      "isyan",
+      "insan"
+    ]
+  },
+  {
+    "id": "L3P1_Q006",
+    "category": "COMPARATIVE",
+    "query": "vicdanin bireysel mi toplumsal mi oldugu notlarda hangi kanitlarla tartisiliyor?",
+    "expected_terms": [
+      "vicdan",
+      "toplumsal"
+    ]
+  }
+]

@@ -31,6 +31,18 @@ const normalizeTimestamp = (value: unknown, fallback: number): number => {
     return fallback;
 };
 
+const normalizeContentLanguageMode = (value: unknown): "AUTO" | "TR" | "EN" => {
+    const raw = String(value || "AUTO").trim().toUpperCase();
+    if (raw === "TR" || raw === "EN") return raw;
+    return "AUTO";
+};
+
+const normalizeContentLanguageResolved = (value: unknown): "tr" | "en" | undefined => {
+    const raw = String(value || "").trim().toLowerCase();
+    if (raw === "tr" || raw === "en") return raw;
+    return undefined;
+};
+
 const normalizeHighlight = (highlight: Partial<Highlight>, index: number): Highlight => {
     const createdAt = normalizeTimestamp(highlight.createdAt, Date.now());
     return {
@@ -51,6 +63,9 @@ const normalizeItemShape = (item: LibraryItem): LibraryItem => ({
     ...item,
     addedAt: normalizeTimestamp(item.addedAt, Date.now()),
     tags: Array.isArray(item.tags) ? item.tags : [],
+    contentLanguageMode: normalizeContentLanguageMode(item.contentLanguageMode),
+    contentLanguageResolved: normalizeContentLanguageResolved(item.contentLanguageResolved),
+    sourceLanguageHint: normalizeContentLanguageResolved(item.sourceLanguageHint),
     highlights: Array.isArray(item.highlights)
         ? item.highlights.map((h, index) => normalizeHighlight(h, index))
         : [],

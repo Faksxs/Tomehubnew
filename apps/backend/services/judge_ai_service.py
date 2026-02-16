@@ -5,7 +5,6 @@ import re
 import logging
 import asyncio
 from typing import Dict, List, Any, Optional, Tuple
-import google.generativeai as genai
 from services.rubric import (
     DEFAULT_RUBRIC, 
     get_rubric_for_question, 

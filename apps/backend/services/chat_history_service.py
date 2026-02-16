@@ -11,8 +11,62 @@ from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 from infrastructure.db_manager import DatabaseManager, safe_read_clob
 from config import settings
+from services.llm_client import (
+    MODEL_TIER_FLASH,
+    MODEL_TIER_LITE,
+    generate_text,
+    get_model_for_tier,
+)
 
 logger = logging.getLogger("chat_history_service")
+_CONV_STATE_COLUMN_AVAILABLE: Optional[bool] = None
+
+
+def _conversation_state_column_available() -> bool:
+    global _CONV_STATE_COLUMN_AVAILABLE
+    if _CONV_STATE_COLUMN_AVAILABLE is not None:
+        return bool(_CONV_STATE_COLUMN_AVAILABLE)
+    try:
+        with DatabaseManager.get_read_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM user_tab_columns
+                    WHERE table_name = 'TOMEHUB_CHAT_SESSIONS'
+                      AND column_name = 'CONVERSATION_STATE_JSON'
+                    """
+                )
+                row = cursor.fetchone()
+                _CONV_STATE_COLUMN_AVAILABLE = bool(row and int(row[0] or 0) > 0)
+    except Exception:
+        _CONV_STATE_COLUMN_AVAILABLE = False
+    return bool(_CONV_STATE_COLUMN_AVAILABLE)
+
+
+def _update_conversation_state_column(session_id: int, state_json: str) -> bool:
+    if not _conversation_state_column_available():
+        return False
+    try:
+        with DatabaseManager.get_write_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE TOMEHUB_CHAT_SESSIONS
+                    SET CONVERSATION_STATE_JSON = :p_state, UPDATED_AT = CURRENT_TIMESTAMP
+                    WHERE ID = :p_sid
+                    """,
+                    {"p_state": state_json, "p_sid": session_id},
+                )
+                conn.commit()
+        return True
+    except Exception as e:
+        if "ORA-00904" in str(e):
+            global _CONV_STATE_COLUMN_AVAILABLE
+            _CONV_STATE_COLUMN_AVAILABLE = False
+            return False
+        logger.error(f"Failed to update conversation_state_json {session_id}: {e}")
+        return False
 
 def create_session(firebase_uid: str, title: str = "New Chat") -> int:
     """Create a new chat session and return its ID."""
@@ -90,15 +144,33 @@ def get_session_context(session_id: int) -> Dict:
     """Return both running summary and recent messages."""
     result = {
         "summary": "",
+        "conversation_state_json": "",
         "recent_messages": []
     }
     try:
         with DatabaseManager.get_read_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute("SELECT RUNNING_SUMMARY FROM TOMEHUB_CHAT_SESSIONS WHERE ID = :p_sid", {"p_sid": session_id})
-                row = cursor.fetchone()
-                if row:
-                    result["summary"] = safe_read_clob(row[0]) or ""
+                if _conversation_state_column_available():
+                    try:
+                        cursor.execute(
+                            "SELECT RUNNING_SUMMARY, CONVERSATION_STATE_JSON FROM TOMEHUB_CHAT_SESSIONS WHERE ID = :p_sid",
+                            {"p_sid": session_id},
+                        )
+                        row = cursor.fetchone()
+                        if row:
+                            result["summary"] = safe_read_clob(row[0]) or ""
+                            result["conversation_state_json"] = safe_read_clob(row[1]) or ""
+                    except Exception as e:
+                        if "ORA-00904" in str(e):
+                            global _CONV_STATE_COLUMN_AVAILABLE
+                            _CONV_STATE_COLUMN_AVAILABLE = False
+                        else:
+                            raise
+                if not result["summary"]:
+                    cursor.execute("SELECT RUNNING_SUMMARY FROM TOMEHUB_CHAT_SESSIONS WHERE ID = :p_sid", {"p_sid": session_id})
+                    row = cursor.fetchone()
+                    if row:
+                        result["summary"] = safe_read_clob(row[0]) or ""
                     
         result["recent_messages"] = get_session_history(session_id, limit=settings.CHAT_CONTEXT_LIMIT)
     except Exception as e:
@@ -154,7 +226,6 @@ def generate_and_update_session_tags(session_id: int):
 
         # LLM-based tag generation
         try:
-            import google.generativeai as genai
             prompt = f"""
 Aşağıdaki konuşmadan 3-5 adet kısa etiket üret.
 Kurallar:
@@ -165,9 +236,15 @@ Kurallar:
 KONUŞMA:
 {history_str}
 """
-            model = genai.GenerativeModel('gemini-1.5-flash-latest')
-            response = model.generate_content(prompt)
-            tags_text = response.text.strip() if response else "[]"
+            model = get_model_for_tier(MODEL_TIER_LITE)
+            result = generate_text(
+                model=model,
+                prompt=prompt,
+                task="chat_tags",
+                model_tier=MODEL_TIER_LITE,
+                timeout_s=20.0,
+            )
+            tags_text = result.text.strip() if result else "[]"
         except Exception as e:
             logger.error(f"Tag generation failed: {e}")
             tags_text = "[]"
@@ -201,9 +278,10 @@ KONUŞMA:
         logger.error(f"Failed to generate/update session tags {session_id}: {e}")
 
 def update_conversation_state(session_id: int, state: Dict):
-    """Update the structured conversation state (stored as JSON in RUNNING_SUMMARY)."""
+    """Dual-write structured conversation state into dedicated JSON column and legacy summary."""
     try:
         state_json = json.dumps(state, ensure_ascii=False)
+        _update_conversation_state_column(session_id, state_json)
         update_session_summary(session_id, state_json)
         logger.info(f"Session {session_id} conversation state updated.")
     except Exception as e:
@@ -314,7 +392,6 @@ def generate_and_update_session_title(session_id: int):
 
         # LLM-based title generation
         try:
-            import google.generativeai as genai
             prompt = f"""
 Aşağıdaki konuşmayı özetleyen kısa ve açıklayıcı bir başlık üret.
 Kurallar:
@@ -326,9 +403,15 @@ Kurallar:
 KONUŞMA:
 {history_str}
 """
-            model = genai.GenerativeModel('gemini-1.5-flash-latest')
-            response = model.generate_content(prompt)
-            title = response.text.strip() if response else ""
+            model = get_model_for_tier(MODEL_TIER_LITE)
+            result = generate_text(
+                model=model,
+                prompt=prompt,
+                task="chat_title",
+                model_tier=MODEL_TIER_LITE,
+                timeout_s=20.0,
+            )
+            title = result.text.strip() if result else ""
         except Exception as e:
             logger.error(f"Title generation failed: {e}")
             title = ""
@@ -359,6 +442,14 @@ def get_conversation_state(session_id: int) -> Dict:
     
     try:
         ctx = get_session_context(session_id)
+        state_json = str(ctx.get("conversation_state_json") or "").strip()
+        if state_json.startswith("{"):
+            try:
+                parsed = json.loads(state_json)
+                if isinstance(parsed, dict):
+                    return parsed
+            except Exception:
+                pass
         summary = ctx.get('summary', '')
         
         if not summary:
@@ -390,7 +481,6 @@ def extract_structured_state(session_id: int):
     - established_facts: Verified information from user's notes
     """
     try:
-        import google.generativeai as genai
         
         # 1. Fetch Context
         current_state = get_conversation_state(session_id)
@@ -443,12 +533,18 @@ KURALLAR:
 
 JSON ÇIKTISI:"""
 
-        model = genai.GenerativeModel('gemini-2.0-flash')
-        response = model.generate_content(prompt)
-        
-        if response and response.text:
+        model = get_model_for_tier(MODEL_TIER_FLASH)
+        result = generate_text(
+            model=model,
+            prompt=prompt,
+            task="chat_structured_state",
+            model_tier=MODEL_TIER_FLASH,
+            timeout_s=30.0,
+        )
+
+        if result and result.text:
             # Parse the JSON response
-            response_text = response.text.strip()
+            response_text = result.text.strip()
             
             # Clean potential markdown code blocks
             if response_text.startswith('```'):

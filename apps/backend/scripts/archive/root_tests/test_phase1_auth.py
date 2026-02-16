@@ -80,6 +80,7 @@ class TestJWTVerification:
         with patch("middleware.auth_middleware.settings") as mock_settings:
             mock_settings.ENVIRONMENT = "development"
             mock_settings.FIREBASE_READY = False
+            mock_settings.DEV_UNSAFE_AUTH_BYPASS = True
             
             # In dev mode with no Firebase, should allow request body UID
             result = await verify_firebase_token(mock_request)
@@ -95,13 +96,14 @@ class TestJWTVerification:
         with patch("middleware.auth_middleware.settings") as mock_settings:
             mock_settings.ENVIRONMENT = "development"
             mock_settings.FIREBASE_READY = False
+            mock_settings.DEV_UNSAFE_AUTH_BYPASS = True
             
             result = await verify_firebase_token(mock_request)
             assert result is None
     
     @pytest.mark.asyncio
     async def test_malformed_auth_header_dev_mode(self):
-        """Malformed auth header in dev mode should return None"""
+        """Malformed auth header in dev mode should return 401"""
         mock_request = Mock(spec=Request)
         mock_request.headers = {
             "authorization": "InvalidFormat"
@@ -110,9 +112,11 @@ class TestJWTVerification:
         with patch("middleware.auth_middleware.settings") as mock_settings:
             mock_settings.ENVIRONMENT = "development"
             mock_settings.FIREBASE_READY = False
-            
-            result = await verify_firebase_token(mock_request)
-            assert result is None
+            mock_settings.DEV_UNSAFE_AUTH_BYPASS = True
+
+            with pytest.raises(HTTPException) as exc:
+                await verify_firebase_token(mock_request)
+            assert exc.value.status_code == 401
 
 
 class TestEndpointAuthProtection:

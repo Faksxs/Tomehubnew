@@ -1,0 +1,47 @@
+{
+  "started_at": "2026-02-11T01:34:29.051610+00:00",
+  "finished_at": "2026-02-11T01:34:29.176314+00:00",
+  "base_url": "http://127.0.0.1:5001",
+  "uid": "vpq1p0UzcCSLAh1d18WgZZWPBE63",
+  "book_id": "1764982122036",
+  "timeout_sec": 20.0,
+  "interval_sec": 2.0,
+  "total_elapsed_sec": 0.125,
+  "timed_out": false,
+  "first_seen_sec": {
+    "processing_sec": null,
+    "completed_sec": 0.0,
+    "vector_ready_sec": 0.0,
+    "graph_ready_sec": 0.0,
+    "fully_ready_sec": 0.0
+  },
+  "sample_count": 1,
+  "last_sample": {
+    "t_sec": 0.0,
+    "at": "2026-02-11T01:34:29.176296+00:00",
+    "http_status": 200,
+    "error": null,
+    "status": "COMPLETED",
+    "index_freshness_state": "fully_ready",
+    "total_chunks": 192,
+    "embedded_chunks": 192,
+    "graph_linked_chunks": 1,
+    "vector_coverage_ratio": 1.0,
+    "graph_coverage_ratio": 0.0052
+  },
+  "rows": [
+    {
+      "t_sec": 0.0,
+      "at": "2026-02-11T01:34:29.176296+00:00",
+      "http_status": 200,
+      "error": null,
+      "status": "COMPLETED",
+      "index_freshness_state": "fully_ready",
+      "total_chunks": 192,
+      "embedded_chunks": 192,
+      "graph_linked_chunks": 1,
+      "vector_coverage_ratio": 1.0,
+      "graph_coverage_ratio": 0.0052
+    }
+  ]
+}

@@ -1,0 +1,391 @@
+﻿# HELP python_gc_objects_collected_total Objects collected during gc
+# TYPE python_gc_objects_collected_total counter
+python_gc_objects_collected_total{generation="0"} 0.0
+python_gc_objects_collected_total{generation="1"} 470.0
+python_gc_objects_collected_total{generation="2"} 0.0
+# HELP python_gc_objects_uncollectable_total Uncollectable objects found during GC
+# TYPE python_gc_objects_uncollectable_total counter
+python_gc_objects_uncollectable_total{generation="0"} 0.0
+python_gc_objects_uncollectable_total{generation="1"} 0.0
+python_gc_objects_uncollectable_total{generation="2"} 0.0
+# HELP python_gc_collections_total Number of times this generation was collected
+# TYPE python_gc_collections_total counter
+python_gc_collections_total{generation="0"} 0.0
+python_gc_collections_total{generation="1"} 28.0
+python_gc_collections_total{generation="2"} 0.0
+# HELP python_info Python platform information
+# TYPE python_info gauge
+python_info{implementation="CPython",major="3",minor="14",patchlevel="2",version="3.14.2"} 1.0
+# HELP tomehub_judge_score Quality score assigned by Judge AI (0.0 to 1.0)
+# TYPE tomehub_judge_score histogram
+tomehub_judge_score_bucket{intent="DIRECT",le="0.1",network_status="UNKNOWN",verdict="PASS"} 0.0
+tomehub_judge_score_bucket{intent="DIRECT",le="0.3",network_status="UNKNOWN",verdict="PASS"} 0.0
+tomehub_judge_score_bucket{intent="DIRECT",le="0.5",network_status="UNKNOWN",verdict="PASS"} 0.0
+tomehub_judge_score_bucket{intent="DIRECT",le="0.7",network_status="UNKNOWN",verdict="PASS"} 1.0
+tomehub_judge_score_bucket{intent="DIRECT",le="0.8",network_status="UNKNOWN",verdict="PASS"} 1.0
+tomehub_judge_score_bucket{intent="DIRECT",le="0.9",network_status="UNKNOWN",verdict="PASS"} 1.0
+tomehub_judge_score_bucket{intent="DIRECT",le="0.95",network_status="UNKNOWN",verdict="PASS"} 1.0
+tomehub_judge_score_bucket{intent="DIRECT",le="1.0",network_status="UNKNOWN",verdict="PASS"} 1.0
+tomehub_judge_score_bucket{intent="DIRECT",le="+Inf",network_status="UNKNOWN",verdict="PASS"} 1.0
+tomehub_judge_score_count{intent="DIRECT",network_status="UNKNOWN",verdict="PASS"} 1.0
+tomehub_judge_score_sum{intent="DIRECT",network_status="UNKNOWN",verdict="PASS"} 0.6966774151208516
+# HELP tomehub_judge_score_created Quality score assigned by Judge AI (0.0 to 1.0)
+# TYPE tomehub_judge_score_created gauge
+tomehub_judge_score_created{intent="DIRECT",network_status="UNKNOWN",verdict="PASS"} 1.7709474657498724e+09
+# HELP tomehub_graph_bridges_found Number of semantic bridges found via GraphRAG per query
+# TYPE tomehub_graph_bridges_found histogram
+tomehub_graph_bridges_found_bucket{le="0.0"} 0.0
+tomehub_graph_bridges_found_bucket{le="1.0"} 0.0
+tomehub_graph_bridges_found_bucket{le="3.0"} 0.0
+tomehub_graph_bridges_found_bucket{le="5.0"} 0.0
+tomehub_graph_bridges_found_bucket{le="10.0"} 0.0
+tomehub_graph_bridges_found_bucket{le="20.0"} 0.0
+tomehub_graph_bridges_found_bucket{le="+Inf"} 0.0
+tomehub_graph_bridges_found_count 0.0
+tomehub_graph_bridges_found_sum 0.0
+# HELP tomehub_graph_bridges_found_created Number of semantic bridges found via GraphRAG per query
+# TYPE tomehub_graph_bridges_found_created gauge
+tomehub_graph_bridges_found_created 1.7709470751877346e+09
+# HELP tomehub_search_diversity_source_count Number of unique sources (books) in the final top results
+# TYPE tomehub_search_diversity_source_count histogram
+tomehub_search_diversity_source_count_bucket{le="1.0"} 0.0
+tomehub_search_diversity_source_count_bucket{le="2.0"} 0.0
+tomehub_search_diversity_source_count_bucket{le="3.0"} 0.0
+tomehub_search_diversity_source_count_bucket{le="5.0"} 0.0
+tomehub_search_diversity_source_count_bucket{le="8.0"} 0.0
+tomehub_search_diversity_source_count_bucket{le="10.0"} 0.0
+tomehub_search_diversity_source_count_bucket{le="15.0"} 0.0
+tomehub_search_diversity_source_count_bucket{le="+Inf"} 0.0
+tomehub_search_diversity_source_count_count 0.0
+tomehub_search_diversity_source_count_sum 0.0
+# HELP tomehub_search_diversity_source_count_created Number of unique sources (books) in the final top results
+# TYPE tomehub_search_diversity_source_count_created gauge
+tomehub_search_diversity_source_count_created 1.7709470751877794e+09
+# HELP tomehub_search_result_count Total number of chunks retrieved before filtering
+# TYPE tomehub_search_result_count histogram
+tomehub_search_result_count_bucket{le="0.0"} 0.0
+tomehub_search_result_count_bucket{le="5.0"} 0.0
+tomehub_search_result_count_bucket{le="10.0"} 0.0
+tomehub_search_result_count_bucket{le="30.0"} 0.0
+tomehub_search_result_count_bucket{le="50.0"} 0.0
+tomehub_search_result_count_bucket{le="100.0"} 0.0
+tomehub_search_result_count_bucket{le="+Inf"} 0.0
+tomehub_search_result_count_count 0.0
+tomehub_search_result_count_sum 0.0
+# HELP tomehub_search_result_count_created Total number of chunks retrieved before filtering
+# TYPE tomehub_search_result_count_created gauge
+tomehub_search_result_count_created 1.7709470751878006e+09
+# HELP tomehub_search_fusion_mode_total Count of retrieval fusion mode usage
+# TYPE tomehub_search_fusion_mode_total counter
+tomehub_search_fusion_mode_total{fusion_mode="concat"} 3.0
+# HELP tomehub_search_fusion_mode_created Count of retrieval fusion mode usage
+# TYPE tomehub_search_fusion_mode_created gauge
+tomehub_search_fusion_mode_created{fusion_mode="concat"} 1.770947425628123e+09
+# HELP tomehub_graph_enrich_jobs_total Graph enrichment jobs by status and reason
+# TYPE tomehub_graph_enrich_jobs_total counter
+# HELP tomehub_graph_enrich_chunks_total Graph enrichment chunk outcomes
+# TYPE tomehub_graph_enrich_chunks_total counter
+# HELP tomehub_graph_enrich_duration_seconds Graph enrichment job duration in seconds
+# TYPE tomehub_graph_enrich_duration_seconds histogram
+# HELP tomehub_db_pool_utilization Database connection pool statistics
+# TYPE tomehub_db_pool_utilization gauge
+tomehub_db_pool_utilization{metric_type="active",pool_type="read"} 0.0
+tomehub_db_pool_utilization{metric_type="opened",pool_type="read"} 2.0
+tomehub_db_pool_utilization{metric_type="max",pool_type="read"} 30.0
+tomehub_db_pool_utilization{metric_type="active",pool_type="write"} 0.0
+tomehub_db_pool_utilization{metric_type="opened",pool_type="write"} 1.0
+tomehub_db_pool_utilization{metric_type="max",pool_type="write"} 10.0
+# HELP tomehub_ingestion_duration_seconds Latency of document ingestion in seconds
+# TYPE tomehub_ingestion_duration_seconds histogram
+# HELP tomehub_ai_service_duration_seconds Latency of external AI service calls
+# TYPE tomehub_ai_service_duration_seconds histogram
+tomehub_ai_service_duration_seconds_bucket{le="0.1",operation="generate",service="gemini_flash"} 0.0
+tomehub_ai_service_duration_seconds_bucket{le="0.5",operation="generate",service="gemini_flash"} 1.0
+tomehub_ai_service_duration_seconds_bucket{le="1.0",operation="generate",service="gemini_flash"} 1.0
+tomehub_ai_service_duration_seconds_bucket{le="2.0",operation="generate",service="gemini_flash"} 2.0
+tomehub_ai_service_duration_seconds_bucket{le="5.0",operation="generate",service="gemini_flash"} 2.0
+tomehub_ai_service_duration_seconds_bucket{le="10.0",operation="generate",service="gemini_flash"} 2.0
+tomehub_ai_service_duration_seconds_bucket{le="20.0",operation="generate",service="gemini_flash"} 3.0
+tomehub_ai_service_duration_seconds_bucket{le="+Inf",operation="generate",service="gemini_flash"} 3.0
+tomehub_ai_service_duration_seconds_count{operation="generate",service="gemini_flash"} 3.0
+tomehub_ai_service_duration_seconds_sum{operation="generate",service="gemini_flash"} 15.246745100012049
+tomehub_ai_service_duration_seconds_bucket{le="0.1",operation="generate",service="nvidia_qwen"} 0.0
+tomehub_ai_service_duration_seconds_bucket{le="0.5",operation="generate",service="nvidia_qwen"} 0.0
+tomehub_ai_service_duration_seconds_bucket{le="1.0",operation="generate",service="nvidia_qwen"} 0.0
+tomehub_ai_service_duration_seconds_bucket{le="2.0",operation="generate",service="nvidia_qwen"} 0.0
+tomehub_ai_service_duration_seconds_bucket{le="5.0",operation="generate",service="nvidia_qwen"} 0.0
+tomehub_ai_service_duration_seconds_bucket{le="10.0",operation="generate",service="nvidia_qwen"} 1.0
+tomehub_ai_service_duration_seconds_bucket{le="20.0",operation="generate",service="nvidia_qwen"} 1.0
+tomehub_ai_service_duration_seconds_bucket{le="+Inf",operation="generate",service="nvidia_qwen"} 1.0
+tomehub_ai_service_duration_seconds_count{operation="generate",service="nvidia_qwen"} 1.0
+tomehub_ai_service_duration_seconds_sum{operation="generate",service="nvidia_qwen"} 7.512861300026998
+tomehub_ai_service_duration_seconds_bucket{le="0.1",operation="embed",service="google_embedding"} 0.0
+tomehub_ai_service_duration_seconds_bucket{le="0.5",operation="embed",service="google_embedding"} 2.0
+tomehub_ai_service_duration_seconds_bucket{le="1.0",operation="embed",service="google_embedding"} 2.0
+tomehub_ai_service_duration_seconds_bucket{le="2.0",operation="embed",service="google_embedding"} 2.0
+tomehub_ai_service_duration_seconds_bucket{le="5.0",operation="embed",service="google_embedding"} 2.0
+tomehub_ai_service_duration_seconds_bucket{le="10.0",operation="embed",service="google_embedding"} 2.0
+tomehub_ai_service_duration_seconds_bucket{le="20.0",operation="embed",service="google_embedding"} 2.0
+tomehub_ai_service_duration_seconds_bucket{le="+Inf",operation="embed",service="google_embedding"} 2.0
+tomehub_ai_service_duration_seconds_count{operation="embed",service="google_embedding"} 2.0
+tomehub_ai_service_duration_seconds_sum{operation="embed",service="google_embedding"} 0.5023331999545917
+# HELP tomehub_ai_service_duration_seconds_created Latency of external AI service calls
+# TYPE tomehub_ai_service_duration_seconds_created gauge
+tomehub_ai_service_duration_seconds_created{operation="generate",service="gemini_flash"} 1.770947423963045e+09
+tomehub_ai_service_duration_seconds_created{operation="generate",service="nvidia_qwen"} 1.7709474577126436e+09
+tomehub_ai_service_duration_seconds_created{operation="embed",service="google_embedding"} 1.7709474652260823e+09
+# HELP tomehub_llm_calls_total Total number of LLM calls
+# TYPE tomehub_llm_calls_total counter
+tomehub_llm_calls_total{model_tier="lite",status="success",task="query_expansion"} 2.0
+tomehub_llm_calls_total{model_tier="flash",status="success",task="search_generate_answer"} 1.0
+tomehub_llm_calls_total{model_tier="flash",status="success",task="work_ai_answer"} 1.0
+tomehub_llm_calls_total{model_tier="embedding",status="success",task="embedding"} 2.0
+# HELP tomehub_llm_calls_created Total number of LLM calls
+# TYPE tomehub_llm_calls_created gauge
+tomehub_llm_calls_created{model_tier="lite",status="success",task="query_expansion"} 1.770947425123717e+09
+tomehub_llm_calls_created{model_tier="flash",status="success",task="search_generate_answer"} 1.770947439273098e+09
+tomehub_llm_calls_created{model_tier="flash",status="success",task="work_ai_answer"} 1.7709474652255926e+09
+tomehub_llm_calls_created{model_tier="embedding",status="success",task="embedding"} 1.7709474655161407e+09
+# HELP tomehub_llm_provider_calls_total Total number of LLM calls by provider
+# TYPE tomehub_llm_provider_calls_total counter
+tomehub_llm_provider_calls_total{provider="gemini",status="success",task="query_expansion"} 2.0
+tomehub_llm_provider_calls_total{provider="gemini",status="success",task="search_generate_answer"} 1.0
+tomehub_llm_provider_calls_total{provider="qwen",status="success",task="work_ai_answer"} 1.0
+tomehub_llm_provider_calls_total{provider="gemini",status="success",task="embedding"} 2.0
+# HELP tomehub_llm_provider_calls_created Total number of LLM calls by provider
+# TYPE tomehub_llm_provider_calls_created gauge
+tomehub_llm_provider_calls_created{provider="gemini",status="success",task="query_expansion"} 1.7709474251237319e+09
+tomehub_llm_provider_calls_created{provider="gemini",status="success",task="search_generate_answer"} 1.770947439273109e+09
+tomehub_llm_provider_calls_created{provider="qwen",status="success",task="work_ai_answer"} 1.7709474652256026e+09
+tomehub_llm_provider_calls_created{provider="gemini",status="success",task="embedding"} 1.770947465516151e+09
+# HELP tomehub_llm_fallback_total Total number of model/provider fallback events
+# TYPE tomehub_llm_fallback_total counter
+# HELP tomehub_llm_tokens_total Total number of LLM tokens by direction
+# TYPE tomehub_llm_tokens_total counter
+tomehub_llm_tokens_total{direction="prompt",model_tier="lite",task="query_expansion"} 236.0
+tomehub_llm_tokens_total{direction="output",model_tier="lite",task="query_expansion"} 49.0
+tomehub_llm_tokens_total{direction="total",model_tier="lite",task="query_expansion"} 285.0
+tomehub_llm_tokens_total{direction="prompt",model_tier="flash",task="search_generate_answer"} 2484.0
+tomehub_llm_tokens_total{direction="output",model_tier="flash",task="search_generate_answer"} 731.0
+tomehub_llm_tokens_total{direction="total",model_tier="flash",task="search_generate_answer"} 5360.0
+tomehub_llm_tokens_total{direction="prompt",model_tier="flash",task="work_ai_answer"} 2200.0
+tomehub_llm_tokens_total{direction="output",model_tier="flash",task="work_ai_answer"} 598.0
+tomehub_llm_tokens_total{direction="total",model_tier="flash",task="work_ai_answer"} 2798.0
+# HELP tomehub_llm_tokens_created Total number of LLM tokens by direction
+# TYPE tomehub_llm_tokens_created gauge
+tomehub_llm_tokens_created{direction="prompt",model_tier="lite",task="query_expansion"} 1.7709474251237428e+09
+tomehub_llm_tokens_created{direction="output",model_tier="lite",task="query_expansion"} 1.7709474251237495e+09
+tomehub_llm_tokens_created{direction="total",model_tier="lite",task="query_expansion"} 1.7709474251237545e+09
+tomehub_llm_tokens_created{direction="prompt",model_tier="flash",task="search_generate_answer"} 1.7709474392731194e+09
+tomehub_llm_tokens_created{direction="output",model_tier="flash",task="search_generate_answer"} 1.7709474392731264e+09
+tomehub_llm_tokens_created{direction="total",model_tier="flash",task="search_generate_answer"} 1.770947439273132e+09
+tomehub_llm_tokens_created{direction="prompt",model_tier="flash",task="work_ai_answer"} 1.7709474652256114e+09
+tomehub_llm_tokens_created{direction="output",model_tier="flash",task="work_ai_answer"} 1.7709474652256167e+09
+tomehub_llm_tokens_created{direction="total",model_tier="flash",task="work_ai_answer"} 1.7709474652256215e+09
+# HELP tomehub_l3_perf_guard_applied_total Total number of Layer-3 performance guard applications
+# TYPE tomehub_l3_perf_guard_applied_total counter
+# HELP tomehub_l3_phase_latency_seconds Layer-3 phase latency in seconds
+# TYPE tomehub_l3_phase_latency_seconds histogram
+tomehub_l3_phase_latency_seconds_bucket{le="0.01",phase="retrieval"} 0.0
+tomehub_l3_phase_latency_seconds_bucket{le="0.05",phase="retrieval"} 0.0
+tomehub_l3_phase_latency_seconds_bucket{le="0.1",phase="retrieval"} 0.0
+tomehub_l3_phase_latency_seconds_bucket{le="0.3",phase="retrieval"} 0.0
+tomehub_l3_phase_latency_seconds_bucket{le="0.6",phase="retrieval"} 0.0
+tomehub_l3_phase_latency_seconds_bucket{le="1.0",phase="retrieval"} 0.0
+tomehub_l3_phase_latency_seconds_bucket{le="2.0",phase="retrieval"} 1.0
+tomehub_l3_phase_latency_seconds_bucket{le="5.0",phase="retrieval"} 1.0
+tomehub_l3_phase_latency_seconds_bucket{le="10.0",phase="retrieval"} 1.0
+tomehub_l3_phase_latency_seconds_bucket{le="20.0",phase="retrieval"} 1.0
+tomehub_l3_phase_latency_seconds_bucket{le="40.0",phase="retrieval"} 1.0
+tomehub_l3_phase_latency_seconds_bucket{le="+Inf",phase="retrieval"} 1.0
+tomehub_l3_phase_latency_seconds_count{phase="retrieval"} 1.0
+tomehub_l3_phase_latency_seconds_sum{phase="retrieval"} 1.7230145999928936
+tomehub_l3_phase_latency_seconds_bucket{le="0.01",phase="prompt_build"} 1.0
+tomehub_l3_phase_latency_seconds_bucket{le="0.05",phase="prompt_build"} 1.0
+tomehub_l3_phase_latency_seconds_bucket{le="0.1",phase="prompt_build"} 1.0
+tomehub_l3_phase_latency_seconds_bucket{le="0.3",phase="prompt_build"} 1.0
+tomehub_l3_phase_latency_seconds_bucket{le="0.6",phase="prompt_build"} 1.0
+tomehub_l3_phase_latency_seconds_bucket{le="1.0",phase="prompt_build"} 1.0
+tomehub_l3_phase_latency_seconds_bucket{le="2.0",phase="prompt_build"} 1.0
+tomehub_l3_phase_latency_seconds_bucket{le="5.0",phase="prompt_build"} 1.0
+tomehub_l3_phase_latency_seconds_bucket{le="10.0",phase="prompt_build"} 1.0
+tomehub_l3_phase_latency_seconds_bucket{le="20.0",phase="prompt_build"} 1.0
+tomehub_l3_phase_latency_seconds_bucket{le="40.0",phase="prompt_build"} 1.0
+tomehub_l3_phase_latency_seconds_bucket{le="+Inf",phase="prompt_build"} 1.0
+tomehub_l3_phase_latency_seconds_count{phase="prompt_build"} 1.0
+tomehub_l3_phase_latency_seconds_sum{phase="prompt_build"} 6.480002775788307e-05
+tomehub_l3_phase_latency_seconds_bucket{le="0.01",phase="llm_generate"} 0.0
+tomehub_l3_phase_latency_seconds_bucket{le="0.05",phase="llm_generate"} 0.0
+tomehub_l3_phase_latency_seconds_bucket{le="0.1",phase="llm_generate"} 0.0
+tomehub_l3_phase_latency_seconds_bucket{le="0.3",phase="llm_generate"} 0.0
+tomehub_l3_phase_latency_seconds_bucket{le="0.6",phase="llm_generate"} 0.0
+tomehub_l3_phase_latency_seconds_bucket{le="1.0",phase="llm_generate"} 0.0
+tomehub_l3_phase_latency_seconds_bucket{le="2.0",phase="llm_generate"} 0.0
+tomehub_l3_phase_latency_seconds_bucket{le="5.0",phase="llm_generate"} 0.0
+tomehub_l3_phase_latency_seconds_bucket{le="10.0",phase="llm_generate"} 0.0
+tomehub_l3_phase_latency_seconds_bucket{le="20.0",phase="llm_generate"} 1.0
+tomehub_l3_phase_latency_seconds_bucket{le="40.0",phase="llm_generate"} 1.0
+tomehub_l3_phase_latency_seconds_bucket{le="+Inf",phase="llm_generate"} 1.0
+tomehub_l3_phase_latency_seconds_count{phase="llm_generate"} 1.0
+tomehub_l3_phase_latency_seconds_sum{phase="llm_generate"} 13.58932539995294
+# HELP tomehub_l3_phase_latency_seconds_created Layer-3 phase latency in seconds
+# TYPE tomehub_l3_phase_latency_seconds_created gauge
+tomehub_l3_phase_latency_seconds_created{phase="retrieval"} 1.7709474256836731e+09
+tomehub_l3_phase_latency_seconds_created{phase="prompt_build"} 1.7709474256837857e+09
+tomehub_l3_phase_latency_seconds_created{phase="llm_generate"} 1.7709474392731476e+09
+# HELP tomehub_flow_text_repair_applied_total Number of flow card texts repaired successfully
+# TYPE tomehub_flow_text_repair_applied_total counter
+# HELP tomehub_flow_text_repair_skipped_total Number of flow card texts skipped from repair
+# TYPE tomehub_flow_text_repair_skipped_total counter
+# HELP tomehub_flow_text_repair_high_delta_reject_total Number of flow card texts rejected due to high delta ratio
+# TYPE tomehub_flow_text_repair_high_delta_reject_total counter
+# HELP tomehub_flow_text_repair_latency_seconds Latency of flow text repair execution in seconds
+# TYPE tomehub_flow_text_repair_latency_seconds histogram
+# HELP tomehub_circuit_breaker_state Current state of the embedding API circuit breaker
+# TYPE tomehub_circuit_breaker_state gauge
+tomehub_circuit_breaker_state{service="embedding"} 0.0
+# HELP http_requests_total Total number of requests by method, status and handler.
+# TYPE http_requests_total counter
+http_requests_total{handler="none",method="GET",status="4xx"} 1.0
+http_requests_total{handler="/openapi.json",method="GET",status="2xx"} 1.0
+http_requests_total{handler="/docs",method="GET",status="2xx"} 1.0
+http_requests_total{handler="/",method="GET",status="2xx"} 1.0
+http_requests_total{handler="/metrics",method="GET",status="2xx"} 2.0
+http_requests_total{handler="none",method="OPTIONS",status="2xx"} 2.0
+http_requests_total{handler="/api/search",method="POST",status="2xx"} 1.0
+# HELP http_requests_created Total number of requests by method, status and handler.
+# TYPE http_requests_created gauge
+http_requests_created{handler="none",method="GET",status="4xx"} 1.7709472809669483e+09
+http_requests_created{handler="/openapi.json",method="GET",status="2xx"} 1.7709472884576511e+09
+http_requests_created{handler="/docs",method="GET",status="2xx"} 1.7709472884580941e+09
+http_requests_created{handler="/",method="GET",status="2xx"} 1.7709472884595482e+09
+http_requests_created{handler="/metrics",method="GET",status="2xx"} 1.770947409313839e+09
+http_requests_created{handler="none",method="OPTIONS",status="2xx"} 1.7709474236502771e+09
+http_requests_created{handler="/api/search",method="POST",status="2xx"} 1.770947439304977e+09
+# HELP http_request_size_bytes Content length of incoming requests by handler. Only value of header is respected. Otherwise ignored. No percentile calculated. 
+# TYPE http_request_size_bytes summary
+http_request_size_bytes_count{handler="none"} 3.0
+http_request_size_bytes_sum{handler="none"} 0.0
+http_request_size_bytes_count{handler="/openapi.json"} 1.0
+http_request_size_bytes_sum{handler="/openapi.json"} 0.0
+http_request_size_bytes_count{handler="/docs"} 1.0
+http_request_size_bytes_sum{handler="/docs"} 0.0
+http_request_size_bytes_count{handler="/"} 1.0
+http_request_size_bytes_sum{handler="/"} 0.0
+http_request_size_bytes_count{handler="/metrics"} 2.0
+http_request_size_bytes_sum{handler="/metrics"} 0.0
+http_request_size_bytes_count{handler="/api/search"} 1.0
+http_request_size_bytes_sum{handler="/api/search"} 102.0
+# HELP http_request_size_bytes_created Content length of incoming requests by handler. Only value of header is respected. Otherwise ignored. No percentile calculated. 
+# TYPE http_request_size_bytes_created gauge
+http_request_size_bytes_created{handler="none"} 1.77094728096697e+09
+http_request_size_bytes_created{handler="/openapi.json"} 1.7709472884576716e+09
+http_request_size_bytes_created{handler="/docs"} 1.770947288458105e+09
+http_request_size_bytes_created{handler="/"} 1.7709472884595594e+09
+http_request_size_bytes_created{handler="/metrics"} 1.7709474093138537e+09
+http_request_size_bytes_created{handler="/api/search"} 1.7709474393049936e+09
+# HELP http_response_size_bytes Content length of outgoing responses by handler. Only value of header is respected. Otherwise ignored. No percentile calculated. 
+# TYPE http_response_size_bytes summary
+http_response_size_bytes_count{handler="none"} 3.0
+http_response_size_bytes_sum{handler="none"} 26.0
+http_response_size_bytes_count{handler="/openapi.json"} 1.0
+http_response_size_bytes_sum{handler="/openapi.json"} 31774.0
+http_response_size_bytes_count{handler="/docs"} 1.0
+http_response_size_bytes_sum{handler="/docs"} 935.0
+http_response_size_bytes_count{handler="/"} 1.0
+http_response_size_bytes_sum{handler="/"} 112.0
+http_response_size_bytes_count{handler="/metrics"} 2.0
+http_response_size_bytes_sum{handler="/metrics"} 35344.0
+http_response_size_bytes_count{handler="/api/search"} 1.0
+http_response_size_bytes_sum{handler="/api/search"} 10207.0
+# HELP http_response_size_bytes_created Content length of outgoing responses by handler. Only value of header is respected. Otherwise ignored. No percentile calculated. 
+# TYPE http_response_size_bytes_created gauge
+http_response_size_bytes_created{handler="none"} 1.7709472809669952e+09
+http_response_size_bytes_created{handler="/openapi.json"} 1.770947288457695e+09
+http_response_size_bytes_created{handler="/docs"} 1.7709472884581184e+09
+http_response_size_bytes_created{handler="/"} 1.770947288459573e+09
+http_response_size_bytes_created{handler="/metrics"} 1.7709474093138692e+09
+http_response_size_bytes_created{handler="/api/search"} 1.7709474393050086e+09
+# HELP http_request_duration_highr_seconds Latency with many buckets but no API specific labels. Made for more accurate percentile calculations. 
+# TYPE http_request_duration_highr_seconds histogram
+http_request_duration_highr_seconds_bucket{le="0.01"} 7.0
+http_request_duration_highr_seconds_bucket{le="0.025"} 7.0
+http_request_duration_highr_seconds_bucket{le="0.05"} 7.0
+http_request_duration_highr_seconds_bucket{le="0.075"} 8.0
+http_request_duration_highr_seconds_bucket{le="0.1"} 8.0
+http_request_duration_highr_seconds_bucket{le="0.25"} 8.0
+http_request_duration_highr_seconds_bucket{le="0.5"} 8.0
+http_request_duration_highr_seconds_bucket{le="0.75"} 8.0
+http_request_duration_highr_seconds_bucket{le="1.0"} 8.0
+http_request_duration_highr_seconds_bucket{le="1.5"} 8.0
+http_request_duration_highr_seconds_bucket{le="2.0"} 8.0
+http_request_duration_highr_seconds_bucket{le="2.5"} 8.0
+http_request_duration_highr_seconds_bucket{le="3.0"} 8.0
+http_request_duration_highr_seconds_bucket{le="3.5"} 8.0
+http_request_duration_highr_seconds_bucket{le="4.0"} 8.0
+http_request_duration_highr_seconds_bucket{le="4.5"} 8.0
+http_request_duration_highr_seconds_bucket{le="5.0"} 8.0
+http_request_duration_highr_seconds_bucket{le="7.5"} 8.0
+http_request_duration_highr_seconds_bucket{le="10.0"} 8.0
+http_request_duration_highr_seconds_bucket{le="30.0"} 9.0
+http_request_duration_highr_seconds_bucket{le="60.0"} 9.0
+http_request_duration_highr_seconds_bucket{le="+Inf"} 9.0
+http_request_duration_highr_seconds_count 9.0
+http_request_duration_highr_seconds_sum 15.738139100023545
+# HELP http_request_duration_highr_seconds_created Latency with many buckets but no API specific labels. Made for more accurate percentile calculations. 
+# TYPE http_request_duration_highr_seconds_created gauge
+http_request_duration_highr_seconds_created 1.770947077492782e+09
+# HELP http_request_duration_seconds Latency with only few buckets by handler. Made to be only used if aggregation by handler is important. 
+# TYPE http_request_duration_seconds histogram
+http_request_duration_seconds_bucket{handler="none",le="0.1",method="GET"} 1.0
+http_request_duration_seconds_bucket{handler="none",le="0.5",method="GET"} 1.0
+http_request_duration_seconds_bucket{handler="none",le="1.0",method="GET"} 1.0
+http_request_duration_seconds_bucket{handler="none",le="+Inf",method="GET"} 1.0
+http_request_duration_seconds_count{handler="none",method="GET"} 1.0
+http_request_duration_seconds_sum{handler="none",method="GET"} 0.0005883999401703477
+http_request_duration_seconds_bucket{handler="/openapi.json",le="0.1",method="GET"} 1.0
+http_request_duration_seconds_bucket{handler="/openapi.json",le="0.5",method="GET"} 1.0
+http_request_duration_seconds_bucket{handler="/openapi.json",le="1.0",method="GET"} 1.0
+http_request_duration_seconds_bucket{handler="/openapi.json",le="+Inf",method="GET"} 1.0
+http_request_duration_seconds_count{handler="/openapi.json",method="GET"} 1.0
+http_request_duration_seconds_sum{handler="/openapi.json",method="GET"} 0.07245140010491014
+http_request_duration_seconds_bucket{handler="/docs",le="0.1",method="GET"} 1.0
+http_request_duration_seconds_bucket{handler="/docs",le="0.5",method="GET"} 1.0
+http_request_duration_seconds_bucket{handler="/docs",le="1.0",method="GET"} 1.0
+http_request_duration_seconds_bucket{handler="/docs",le="+Inf",method="GET"} 1.0
+http_request_duration_seconds_count{handler="/docs",method="GET"} 1.0
+http_request_duration_seconds_sum{handler="/docs",method="GET"} 0.00027189997490495443
+http_request_duration_seconds_bucket{handler="/",le="0.1",method="GET"} 1.0
+http_request_duration_seconds_bucket{handler="/",le="0.5",method="GET"} 1.0
+http_request_duration_seconds_bucket{handler="/",le="1.0",method="GET"} 1.0
+http_request_duration_seconds_bucket{handler="/",le="+Inf",method="GET"} 1.0
+http_request_duration_seconds_count{handler="/",method="GET"} 1.0
+http_request_duration_seconds_sum{handler="/",method="GET"} 0.0010218999814242125
+http_request_duration_seconds_bucket{handler="/metrics",le="0.1",method="GET"} 2.0
+http_request_duration_seconds_bucket{handler="/metrics",le="0.5",method="GET"} 2.0
+http_request_duration_seconds_bucket{handler="/metrics",le="1.0",method="GET"} 2.0
+http_request_duration_seconds_bucket{handler="/metrics",le="+Inf",method="GET"} 2.0
+http_request_duration_seconds_count{handler="/metrics",method="GET"} 2.0
+http_request_duration_seconds_sum{handler="/metrics",method="GET"} 0.009454500046558678
+http_request_duration_seconds_bucket{handler="none",le="0.1",method="OPTIONS"} 2.0
+http_request_duration_seconds_bucket{handler="none",le="0.5",method="OPTIONS"} 2.0
+http_request_duration_seconds_bucket{handler="none",le="1.0",method="OPTIONS"} 2.0
+http_request_duration_seconds_bucket{handler="none",le="+Inf",method="OPTIONS"} 2.0
+http_request_duration_seconds_count{handler="none",method="OPTIONS"} 2.0
+http_request_duration_seconds_sum{handler="none",method="OPTIONS"} 0.0010221999837085605
+http_request_duration_seconds_bucket{handler="/api/search",le="0.1",method="POST"} 0.0
+http_request_duration_seconds_bucket{handler="/api/search",le="0.5",method="POST"} 0.0
+http_request_duration_seconds_bucket{handler="/api/search",le="1.0",method="POST"} 0.0
+http_request_duration_seconds_bucket{handler="/api/search",le="+Inf",method="POST"} 1.0
+http_request_duration_seconds_count{handler="/api/search",method="POST"} 1.0
+http_request_duration_seconds_sum{handler="/api/search",method="POST"} 15.653328799991868
+# HELP http_request_duration_seconds_created Latency with only few buckets by handler. Made to be only used if aggregation by handler is important. 
+# TYPE http_request_duration_seconds_created gauge
+http_request_duration_seconds_created{handler="none",method="GET"} 1.7709472809670248e+09
+http_request_duration_seconds_created{handler="/openapi.json",method="GET"} 1.7709472884577243e+09
+http_request_duration_seconds_created{handler="/docs",method="GET"} 1.770947288458133e+09
+http_request_duration_seconds_created{handler="/",method="GET"} 1.7709472884595878e+09
+http_request_duration_seconds_created{handler="/metrics",method="GET"} 1.770947409313889e+09
+http_request_duration_seconds_created{handler="none",method="OPTIONS"} 1.7709474236503356e+09
+http_request_duration_seconds_created{handler="/api/search",method="POST"} 1.7709474393050287e+09
+

@@ -13,12 +13,14 @@ import { CategorySelector } from './CategorySelector';
 import {
     FlowCard as FlowCardType,
     startFlowSession,
+    consumePrewarmedFlowStartSession,
     getNextFlowBatch,
     adjustFlowHorizon,
     resetFlowAnchor,
     PivotInfo,
 } from '../services/flowService';
 import SourceNavigator, { SourceFilter } from './SourceNavigator';
+import { getFriendlyApiErrorMessage } from '../services/apiClient';
 
 interface FlowContainerProps {
     firebaseUid: string;
@@ -75,7 +77,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
 
         try {
             const resourceType = resolveResourceType(filter);
-            const response = await startFlowSession({
+            const startRequest = {
                 firebase_uid: firebaseUid,
                 anchor_type: anchorType,
                 anchor_id: anchorId,
@@ -83,14 +85,17 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                 horizon_value: horizonValue,
                 resource_type: resourceType,
                 category: category || undefined
-            });
+            } as const;
+
+            const prewarmed = consumePrewarmedFlowStartSession(startRequest);
+            const response = prewarmed ?? await startFlowSession(startRequest);
 
             setSessionId(response.session_id);
             setCards(response.initial_cards);
             setTopicLabel(response.topic_label);
             setPivotInfo(null); // Clear pivot info on new session start
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to start session');
+            setError(getFriendlyApiErrorMessage(err));
         } finally {
             setIsLoading(false);
         }
@@ -200,8 +205,8 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
             if (nextBatch.pivot_info) {
                 setPivotInfo(nextBatch.pivot_info);
             }
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err) {
+            setError(getFriendlyApiErrorMessage(err));
         } finally {
             setIsLoading(false);
             setIsJumping(false);
@@ -245,13 +250,13 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     }
                 }).catch(err => {
                     console.error("Failed to load initial batch after category pivot:", err);
-                    setError(err instanceof Error ? err.message : 'Failed to load cards after category change');
+                    setError(getFriendlyApiErrorMessage(err));
                 }).finally(() => {
                     setIsLoading(false);
                 });
             }).catch(err => {
                 console.error("Failed to pivot category:", err);
-                setError(err instanceof Error ? err.message : 'Failed to change category');
+                setError(getFriendlyApiErrorMessage(err));
                 setIsLoading(false);
             });
         }

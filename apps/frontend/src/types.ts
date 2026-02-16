@@ -4,6 +4,8 @@ export type ReadingStatus = 'To Read' | 'Reading' | 'Finished';
 export type PersonalNoteCategory = 'PRIVATE' | 'DAILY' | 'IDEAS';
 
 export type ResourceType = 'BOOK' | 'ARTICLE' | 'WEBSITE' | 'PERSONAL_NOTE';
+export type ContentLanguageMode = 'AUTO' | 'TR' | 'EN';
+export type ContentLanguageResolved = 'tr' | 'en';
 
 export interface Highlight {
   id: string;
@@ -39,6 +41,11 @@ export interface LibraryItem {
   readingStatus: ReadingStatus; // Progress Status
   tags: string[];
   generalNotes?: string;
+  contentLanguageMode?: ContentLanguageMode;
+  contentLanguageResolved?: ContentLanguageResolved;
+  sourceLanguageHint?: string;
+  languageDecisionReason?: string;
+  languageDecisionConfidence?: number;
   personalNoteCategory?: PersonalNoteCategory;
   personalFolderId?: string;
   folderPath?: string;

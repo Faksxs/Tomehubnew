@@ -5,9 +5,10 @@ import re
 from typing import List, Optional, Dict
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-# This ensures credentials are available regardless of import order
-load_dotenv()
+# Load backend/.env deterministically regardless of process working directory.
+_CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
+_ENV_PATH = os.path.join(_CONFIG_DIR, ".env")
+load_dotenv(dotenv_path=_ENV_PATH)
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +16,10 @@ class Settings:
     def __init__(self):
         # Environment mode
         self.ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
+        self.LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").strip().upper() or "INFO"
+        self.DEBUG_VERBOSE_PIPELINE = (
+            os.getenv("DEBUG_VERBOSE_PIPELINE", "false").strip().lower() == "true"
+        )
         
         # Database
         self.DB_USER = os.getenv("DB_USER", "ADMIN")
@@ -36,10 +41,53 @@ class Settings:
         self.FIREBASE_CREDENTIALS_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
         self.FIREBASE_READY = False
         self._init_firebase()
+        self.DEV_UNSAFE_AUTH_BYPASS = (
+            os.getenv("DEV_UNSAFE_AUTH_BYPASS", "false").strip().lower() == "true"
+        )
         
         # AI
         self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-        self.ANSWER_MODEL_NAME = os.getenv("ANSWER_MODEL_NAME", "gemini-flash-latest")
+        self.LLM_MODEL_LITE = os.getenv("LLM_MODEL_LITE", "gemini-2.5-flash-lite")
+        self.LLM_MODEL_FLASH = os.getenv("LLM_MODEL_FLASH", "gemini-2.5-flash")
+        self.LLM_MODEL_PRO = os.getenv("LLM_MODEL_PRO", "gemini-2.5-pro")
+        self.EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "gemini-embedding-001")
+        self.LLM_PRO_FALLBACK_ENABLED = os.getenv("LLM_PRO_FALLBACK_ENABLED", "true").strip().lower() == "true"
+        self.LLM_PRO_FALLBACK_MAX_PER_REQUEST = int(os.getenv("LLM_PRO_FALLBACK_MAX_PER_REQUEST", "1"))
+        if self.LLM_PRO_FALLBACK_MAX_PER_REQUEST < 0:
+            self.LLM_PRO_FALLBACK_MAX_PER_REQUEST = 0
+        self.NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
+        self.NVIDIA_BASE_URL = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com").strip().rstrip("/")
+        self.LLM_EXPLORER_QWEN_PILOT_ENABLED = (
+            os.getenv("LLM_EXPLORER_QWEN_PILOT_ENABLED", "true").strip().lower() == "true"
+        )
+        self.LLM_EXPLORER_PRIMARY_PROVIDER = (
+            os.getenv("LLM_EXPLORER_PRIMARY_PROVIDER", "qwen").strip().lower() or "qwen"
+        )
+        self.LLM_EXPLORER_PRIMARY_MODEL = (
+            os.getenv("LLM_EXPLORER_PRIMARY_MODEL", "qwen/qwen3-next-80b-a3b-instruct").strip()
+            or "qwen/qwen3-next-80b-a3b-instruct"
+        )
+        self.LLM_EXPLORER_FALLBACK_PROVIDER = (
+            os.getenv("LLM_EXPLORER_FALLBACK_PROVIDER", "gemini").strip().lower() or "gemini"
+        )
+        self.LLM_EXPLORER_RPM_CAP = int(os.getenv("LLM_EXPLORER_RPM_CAP", "35"))
+        if self.LLM_EXPLORER_RPM_CAP < 1:
+            self.LLM_EXPLORER_RPM_CAP = 35
+        self.LLM_EXPLORER_SECONDARY_MAX_PER_REQUEST = int(
+            os.getenv("LLM_EXPLORER_SECONDARY_MAX_PER_REQUEST", "1")
+        )
+        if self.LLM_EXPLORER_SECONDARY_MAX_PER_REQUEST < 0:
+            self.LLM_EXPLORER_SECONDARY_MAX_PER_REQUEST = 0
+
+        # Backward compatibility: ANSWER_MODEL_NAME still supported but deprecated.
+        answer_model_env = os.getenv("ANSWER_MODEL_NAME")
+        if answer_model_env:
+            self.ANSWER_MODEL_NAME = answer_model_env.strip()
+            logger.warning(
+                "ANSWER_MODEL_NAME is deprecated. Prefer LLM_MODEL_FLASH/LLM_MODEL_LITE/LLM_MODEL_PRO."
+            )
+        else:
+            self.ANSWER_MODEL_NAME = self.LLM_MODEL_FLASH
         
         # Validation
         if not self.DB_PASSWORD:
@@ -59,9 +107,124 @@ class Settings:
         self.CACHE_L1_TTL = int(os.getenv("CACHE_L1_TTL", "600"))  # 10 minutes
         self.CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() == "true"
         
+        # Retrieval Fusion Mode (Phase-1)
+        # - concat: strict bucket concatenation (exact > lemma > semantic)
+        # - rrf: reciprocal rank fusion over bucket rankings
+        self.RETRIEVAL_FUSION_MODE = os.getenv("RETRIEVAL_FUSION_MODE", "concat").strip().lower()
+        if self.RETRIEVAL_FUSION_MODE not in {"concat", "rrf"}:
+            logger.warning(
+                f"Invalid RETRIEVAL_FUSION_MODE='{self.RETRIEVAL_FUSION_MODE}', falling back to 'concat'"
+            )
+            self.RETRIEVAL_FUSION_MODE = "concat"
+
+        # Router mode for strategy selection
+        # - static: run all enabled strategies
+        # - rule_based: lightweight semantic router chooses strategy set per query
+        self.SEARCH_ROUTER_MODE = os.getenv("SEARCH_ROUTER_MODE", "rule_based").strip().lower()
+        if self.SEARCH_ROUTER_MODE not in {"static", "rule_based"}:
+            logger.warning(
+                f"Invalid SEARCH_ROUTER_MODE='{self.SEARCH_ROUTER_MODE}', falling back to 'rule_based'"
+            )
+            self.SEARCH_ROUTER_MODE = "rule_based"
+
+        # Search mode routing and latency/noise controls
+        self.SEARCH_MODE_ROUTING_ENABLED = os.getenv("SEARCH_MODE_ROUTING_ENABLED", "true").strip().lower() == "true"
+        self.SEARCH_DEFAULT_MODE = os.getenv("SEARCH_DEFAULT_MODE", "balanced").strip().lower()
+        if self.SEARCH_DEFAULT_MODE not in {"fast_exact", "balanced", "semantic_focus"}:
+            logger.warning(
+                f"Invalid SEARCH_DEFAULT_MODE='{self.SEARCH_DEFAULT_MODE}', falling back to 'balanced'"
+            )
+            self.SEARCH_DEFAULT_MODE = "balanced"
+        self.SEARCH_GRAPH_TIMEOUT_MS = int(os.getenv("SEARCH_GRAPH_TIMEOUT_MS", "120"))
+        if self.SEARCH_GRAPH_TIMEOUT_MS <= 0:
+            self.SEARCH_GRAPH_TIMEOUT_MS = 120
+        self.SEARCH_GRAPH_BRIDGE_TIMEOUT_MS = int(os.getenv("SEARCH_GRAPH_BRIDGE_TIMEOUT_MS", "650"))
+        if self.SEARCH_GRAPH_BRIDGE_TIMEOUT_MS <= 0:
+            self.SEARCH_GRAPH_BRIDGE_TIMEOUT_MS = 650
+        self.SEARCH_GRAPH_BRIDGE_EXPLORER_ALWAYS_ATTEMPT = (
+            os.getenv("SEARCH_GRAPH_BRIDGE_EXPLORER_ALWAYS_ATTEMPT", "false").strip().lower() == "true"
+        )
+        self.SEARCH_GRAPH_BRIDGE_EXPLORER_TIMEOUT_MS = int(
+            os.getenv("SEARCH_GRAPH_BRIDGE_EXPLORER_TIMEOUT_MS", "950")
+        )
+        if self.SEARCH_GRAPH_BRIDGE_EXPLORER_TIMEOUT_MS <= 0:
+            self.SEARCH_GRAPH_BRIDGE_EXPLORER_TIMEOUT_MS = 950
+        self.SEARCH_GRAPH_DIRECT_SKIP = os.getenv("SEARCH_GRAPH_DIRECT_SKIP", "true").strip().lower() == "true"
+        self.SEARCH_NOISE_GUARD_ENABLED = os.getenv("SEARCH_NOISE_GUARD_ENABLED", "true").strip().lower() == "true"
+        self.SEARCH_SMART_SEMANTIC_TAIL_CAP = int(os.getenv("SEARCH_SMART_SEMANTIC_TAIL_CAP", "6"))
+        if self.SEARCH_SMART_SEMANTIC_TAIL_CAP <= 0:
+            self.SEARCH_SMART_SEMANTIC_TAIL_CAP = 6
+        self.SEARCH_TYPO_RESCUE_ENABLED = os.getenv("SEARCH_TYPO_RESCUE_ENABLED", "true").strip().lower() == "true"
+        self.SEARCH_LEMMA_SEED_FALLBACK_ENABLED = os.getenv("SEARCH_LEMMA_SEED_FALLBACK_ENABLED", "true").strip().lower() == "true"
+        self.SEARCH_DYNAMIC_SINGLE_TOKEN_SEMANTIC_CAP_ENABLED = (
+            os.getenv("SEARCH_DYNAMIC_SINGLE_TOKEN_SEMANTIC_CAP_ENABLED", "true").strip().lower() == "true"
+        )
+        self.SEARCH_SEMANTIC_EXPANSION_MAX_VARIATIONS = int(
+            os.getenv("SEARCH_SEMANTIC_EXPANSION_MAX_VARIATIONS", "2")
+        )
+        if self.SEARCH_SEMANTIC_EXPANSION_MAX_VARIATIONS < 0:
+            self.SEARCH_SEMANTIC_EXPANSION_MAX_VARIATIONS = 0
+
+        # Layer-3 Performance Guards
+        # Default OFF to preserve legacy Layer-3 answer quality.
+        self.L3_PERF_CONTEXT_BUDGET_ENABLED = (
+            os.getenv("L3_PERF_CONTEXT_BUDGET_ENABLED", "false").strip().lower() == "true"
+        )
+        self.L3_PERF_OUTPUT_BUDGET_ENABLED = (
+            os.getenv("L3_PERF_OUTPUT_BUDGET_ENABLED", "false").strip().lower() == "true"
+        )
+        self.L3_PERF_REWRITE_GUARD_ENABLED = (
+            os.getenv("L3_PERF_REWRITE_GUARD_ENABLED", "false").strip().lower() == "true"
+        )
+        self.L3_PERF_SUPPLEMENTARY_GATE_ENABLED = (
+            os.getenv("L3_PERF_SUPPLEMENTARY_GATE_ENABLED", "false").strip().lower() == "true"
+        )
+        self.L3_PERF_EXPANSION_TAIL_FIX_ENABLED = (
+            os.getenv("L3_PERF_EXPANSION_TAIL_FIX_ENABLED", "false").strip().lower() == "true"
+        )
+        self.L3_PERF_MAX_OUTPUT_TOKENS_STANDARD = int(
+            os.getenv("L3_PERF_MAX_OUTPUT_TOKENS_STANDARD", "1600")
+        )
+        if self.L3_PERF_MAX_OUTPUT_TOKENS_STANDARD < 128:
+            self.L3_PERF_MAX_OUTPUT_TOKENS_STANDARD = 1600
+        self.L3_PERF_CONTEXT_TOPK_STANDARD = int(
+            os.getenv("L3_PERF_CONTEXT_TOPK_STANDARD", "12")
+        )
+        if self.L3_PERF_CONTEXT_TOPK_STANDARD < 1:
+            self.L3_PERF_CONTEXT_TOPK_STANDARD = 12
+        self.L3_PERF_CONTEXT_CHARS_STANDARD = int(
+            os.getenv("L3_PERF_CONTEXT_CHARS_STANDARD", "700")
+        )
+        if self.L3_PERF_CONTEXT_CHARS_STANDARD < 120:
+            self.L3_PERF_CONTEXT_CHARS_STANDARD = 700
+        self.L3_QUOTE_DYNAMIC_COUNT_ENABLED = (
+            os.getenv("L3_QUOTE_DYNAMIC_COUNT_ENABLED", "false").strip().lower() == "true"
+        )
+        self.L3_QUOTE_DYNAMIC_MIN = int(os.getenv("L3_QUOTE_DYNAMIC_MIN", "2"))
+        self.L3_QUOTE_DYNAMIC_MAX = int(os.getenv("L3_QUOTE_DYNAMIC_MAX", "5"))
+        if self.L3_QUOTE_DYNAMIC_MIN < 1:
+            self.L3_QUOTE_DYNAMIC_MIN = 2
+        if self.L3_QUOTE_DYNAMIC_MAX < self.L3_QUOTE_DYNAMIC_MIN:
+            self.L3_QUOTE_DYNAMIC_MAX = self.L3_QUOTE_DYNAMIC_MIN
+        self.L3_JUDGE_DIVERSITY_AUDIT_ENABLED = (
+            os.getenv("L3_JUDGE_DIVERSITY_AUDIT_ENABLED", "false").strip().lower() == "true"
+        )
+        self.L3_JUDGE_DIVERSITY_THRESHOLD = int(os.getenv("L3_JUDGE_DIVERSITY_THRESHOLD", "2"))
+        if self.L3_JUDGE_DIVERSITY_THRESHOLD < 1:
+            self.L3_JUDGE_DIVERSITY_THRESHOLD = 2
+        self.SEARCH_LOG_DIAGNOSTICS_PERSIST_ENABLED = (
+            os.getenv("SEARCH_LOG_DIAGNOSTICS_PERSIST_ENABLED", "false").strip().lower() == "true"
+        )
+        self.SEARCH_LOG_RETENTION_DAYS = int(os.getenv("SEARCH_LOG_RETENTION_DAYS", "90"))
+        if self.SEARCH_LOG_RETENTION_DAYS < 1:
+            self.SEARCH_LOG_RETENTION_DAYS = 90
+        self.SEARCH_LOG_RETENTION_CLEANUP_ENABLED = (
+            os.getenv("SEARCH_LOG_RETENTION_CLEANUP_ENABLED", "false").strip().lower() == "true"
+        )
+        
         # Model Versions (for cache invalidation)
-        self.EMBEDDING_MODEL_VERSION = os.getenv("EMBEDDING_MODEL_VERSION", "v2")
-        self.LLM_MODEL_VERSION = os.getenv("LLM_MODEL_VERSION", "v1")
+        self.EMBEDDING_MODEL_VERSION = os.getenv("EMBEDDING_MODEL_VERSION", "v3")
+        self.LLM_MODEL_VERSION = os.getenv("LLM_MODEL_VERSION", "v2")
         self._validate_model_versions()
 
         # Observability
@@ -88,6 +251,71 @@ class Settings:
 
         # Graph Concept Strength
         self.CONCEPT_STRENGTH_MIN = float(os.getenv("CONCEPT_STRENGTH_MIN", "0.7"))
+        self.GRAPH_ENRICH_ON_INGEST = os.getenv("GRAPH_ENRICH_ON_INGEST", "true").lower() == "true"
+        self.GRAPH_ENRICH_MAX_ITEMS = int(os.getenv("GRAPH_ENRICH_MAX_ITEMS", "1"))
+        self.GRAPH_ENRICH_TIMEOUT_SEC = int(os.getenv("GRAPH_ENRICH_TIMEOUT_SEC", "20"))
+
+        # External KB (Wikidata + OpenAlex)
+        default_academic_tags = (
+            "sosyoloji,felsefe,psikoloji,ekonomi,tarih,hukuk,bilim,siyaset,politika,"
+            "etik,metodoloji,teori,toplum,devlet,kamu,modernite"
+        )
+        academic_tag_raw = os.getenv("ACADEMIC_TAG_SET", default_academic_tags)
+        self.ACADEMIC_TAG_SET = {
+            tag.strip().lower()
+            for tag in academic_tag_raw.split(",")
+            if tag.strip()
+        }
+        self.EXTERNAL_KB_ENABLED = os.getenv("EXTERNAL_KB_ENABLED", "true").strip().lower() == "true"
+        self.EXTERNAL_KB_OPENALEX_EXPLORER_ONLY = (
+            os.getenv("EXTERNAL_KB_OPENALEX_EXPLORER_ONLY", "true").strip().lower() == "true"
+        )
+        self.EXTERNAL_KB_BACKFILL_BATCH_SIZE = int(os.getenv("EXTERNAL_KB_BACKFILL_BATCH_SIZE", "50"))
+        if self.EXTERNAL_KB_BACKFILL_BATCH_SIZE < 1:
+            self.EXTERNAL_KB_BACKFILL_BATCH_SIZE = 50
+        self.EXTERNAL_KB_SYNC_TTL_HOURS = int(os.getenv("EXTERNAL_KB_SYNC_TTL_HOURS", "72"))
+        if self.EXTERNAL_KB_SYNC_TTL_HOURS < 1:
+            self.EXTERNAL_KB_SYNC_TTL_HOURS = 72
+        self.EXTERNAL_KB_GRAPH_WEIGHT = float(os.getenv("EXTERNAL_KB_GRAPH_WEIGHT", "0.15"))
+        self.EXTERNAL_KB_MAX_CANDIDATES = int(os.getenv("EXTERNAL_KB_MAX_CANDIDATES", "5"))
+        self.EXTERNAL_KB_MIN_CONFIDENCE = float(os.getenv("EXTERNAL_KB_MIN_CONFIDENCE", "0.45"))
+        self.EXTERNAL_KB_WIKIDATA_TIMEOUT_SEC = float(os.getenv("EXTERNAL_KB_WIKIDATA_TIMEOUT_SEC", "2.5"))
+        self.EXTERNAL_KB_OPENALEX_TIMEOUT_SEC = float(os.getenv("EXTERNAL_KB_OPENALEX_TIMEOUT_SEC", "3.0"))
+        self.EXTERNAL_KB_DBPEDIA_ENABLED = os.getenv("EXTERNAL_KB_DBPEDIA_ENABLED", "false").strip().lower() == "true"
+        self.EXTERNAL_KB_ORKG_ENABLED = os.getenv("EXTERNAL_KB_ORKG_ENABLED", "false").strip().lower() == "true"
+        self.EXTERNAL_KB_DBPEDIA_EXPLORER_ONLY = (
+            os.getenv("EXTERNAL_KB_DBPEDIA_EXPLORER_ONLY", "true").strip().lower() == "true"
+        )
+        self.EXTERNAL_KB_ORKG_EXPLORER_ONLY = (
+            os.getenv("EXTERNAL_KB_ORKG_EXPLORER_ONLY", "true").strip().lower() == "true"
+        )
+        self.EXTERNAL_KB_DBPEDIA_TIMEOUT_SEC = float(os.getenv("EXTERNAL_KB_DBPEDIA_TIMEOUT_SEC", "2.5"))
+        self.EXTERNAL_KB_ORKG_TIMEOUT_SEC = float(os.getenv("EXTERNAL_KB_ORKG_TIMEOUT_SEC", "3.0"))
+        self.EXTERNAL_KB_DBPEDIA_WEIGHT = float(os.getenv("EXTERNAL_KB_DBPEDIA_WEIGHT", "0.08"))
+        self.EXTERNAL_KB_ORKG_WEIGHT = float(os.getenv("EXTERNAL_KB_ORKG_WEIGHT", "0.10"))
+        self.EXTERNAL_KB_HTTP_MAX_RETRY = int(os.getenv("EXTERNAL_KB_HTTP_MAX_RETRY", "1"))
+        
+        # Flow (Layer 4) text repair: deterministic display-time OCR/imla fix
+        self.FLOW_TEXT_REPAIR_ENABLED = os.getenv("FLOW_TEXT_REPAIR_ENABLED", "true").strip().lower() == "true"
+        source_types_raw = os.getenv(
+            "FLOW_TEXT_REPAIR_SOURCE_TYPES",
+            "PDF,EPUB,PDF_CHUNK,ARTICLE,WEBSITE"
+        )
+        self.FLOW_TEXT_REPAIR_SOURCE_TYPES = [
+            st.strip().upper() for st in source_types_raw.split(",") if st.strip()
+        ]
+        if not self.FLOW_TEXT_REPAIR_SOURCE_TYPES:
+            self.FLOW_TEXT_REPAIR_SOURCE_TYPES = ["PDF", "EPUB", "PDF_CHUNK", "ARTICLE", "WEBSITE"]
+        self.FLOW_TEXT_REPAIR_MAX_DELTA_RATIO = float(
+            os.getenv("FLOW_TEXT_REPAIR_MAX_DELTA_RATIO", "0.12")
+        )
+        self.FLOW_TEXT_REPAIR_MAX_INPUT_CHARS = int(
+            os.getenv("FLOW_TEXT_REPAIR_MAX_INPUT_CHARS", "4000")
+        )
+        self.FLOW_TEXT_REPAIR_RULESET_VERSION = os.getenv(
+            "FLOW_TEXT_REPAIR_RULESET_VERSION",
+            "tr_flow_v1"
+        ).strip() or "tr_flow_v1"
     
     def _init_firebase(self):
         """Initialize Firebase Admin SDK if credentials available."""

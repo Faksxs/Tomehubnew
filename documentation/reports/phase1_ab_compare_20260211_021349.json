@@ -1,0 +1,148 @@
+{
+  "generated_at": "2026-02-11T02:13:49.062556",
+  "concat_report_json": "C:\\Users\\aksoy\\Desktop\\yeni tomehub\\documentation\\reports\\phase1_ab_concat_20260211_020359.json",
+  "rrf_report_json": "C:\\Users\\aksoy\\Desktop\\yeni tomehub\\documentation\\reports\\phase1_ab_rrf_20260211_021349.json",
+  "endpoint_compare": {
+    "chat_explorer": {
+      "success_rate": {
+        "concat": 1.0,
+        "rrf": 1.0,
+        "delta": 0.0
+      },
+      "timeout_rate": {
+        "concat": 0.0,
+        "rrf": 0.0,
+        "delta": 0.0
+      },
+      "latency_p50_ms": {
+        "concat": 9896.248249977361,
+        "rrf": 6690.636099985568,
+        "delta": -3205.6121499917936
+      },
+      "latency_p95_ms": {
+        "concat": 16226.96488498477,
+        "rrf": 11714.114409990725,
+        "delta": -4512.850474994046
+      },
+      "mrr_mean": {
+        "concat": 0.52,
+        "rrf": 0.04242424242424242,
+        "delta": -0.4775757575757576
+      },
+      "ndcg_at_10_mean": {
+        "concat": 0.4823574785926528,
+        "rrf": 0.05,
+        "delta": -0.43235747859265283
+      },
+      "explorer_avg_attempts": {
+        "concat": 1.0,
+        "rrf": 1.0,
+        "delta": 0.0
+      },
+      "explorer_fallback_timeout_rate": {
+        "concat": 0.0,
+        "rrf": 0.0,
+        "delta": 0.0
+      }
+    },
+    "search": {
+      "success_rate": {
+        "concat": 0.8333333333333334,
+        "rrf": 0.875,
+        "delta": 0.04166666666666663
+      },
+      "timeout_rate": {
+        "concat": 0.16666666666666666,
+        "rrf": 0.125,
+        "delta": -0.04166666666666666
+      },
+      "latency_p50_ms": {
+        "concat": 17852.573999989545,
+        "rrf": 19613.252050010487,
+        "delta": 1760.6780500209425
+      },
+      "latency_p95_ms": {
+        "concat": 25017.4933599832,
+        "rrf": 25015.888124954654,
+        "delta": -1.6052350285463035
+      },
+      "mrr_mean": {
+        "concat": 0.4666666666666667,
+        "rrf": 0.1805357142857143,
+        "delta": -0.2861309523809524
+      },
+      "ndcg_at_10_mean": {
+        "concat": 0.4565312201650312,
+        "rrf": 0.20423586503245184,
+        "delta": -0.2522953551325794
+      },
+      "explorer_avg_attempts": {
+        "concat": 0.0,
+        "rrf": 0.0,
+        "delta": 0.0
+      },
+      "explorer_fallback_timeout_rate": {
+        "concat": 0.0,
+        "rrf": 0.0,
+        "delta": 0.0
+      }
+    },
+    "smart": {
+      "success_rate": {
+        "concat": 1.0,
+        "rrf": 1.0,
+        "delta": 0.0
+      },
+      "timeout_rate": {
+        "concat": 0.0,
+        "rrf": 0.0,
+        "delta": 0.0
+      },
+      "latency_p50_ms": {
+        "concat": 1572.4691500072367,
+        "rrf": 1882.0323500258382,
+        "delta": 309.5632000186015
+      },
+      "latency_p95_ms": {
+        "concat": 4521.00032000453,
+        "rrf": 3792.133929982083,
+        "delta": -728.8663900224474
+      },
+      "mrr_mean": {
+        "concat": 0.37401260504201683,
+        "rrf": 0.16617063492063494,
+        "delta": -0.2078419701213819
+      },
+      "ndcg_at_10_mean": {
+        "concat": 0.3222201559147909,
+        "rrf": 0.17220770120952844,
+        "delta": -0.15001245470526248
+      },
+      "explorer_avg_attempts": {
+        "concat": 0.0,
+        "rrf": 0.0,
+        "delta": 0.0
+      },
+      "explorer_fallback_timeout_rate": {
+        "concat": 0.0,
+        "rrf": 0.0,
+        "delta": 0.0
+      }
+    }
+  },
+  "aggregate": {
+    "quality_proxy_concat": 0.4048576619471264,
+    "quality_proxy_rrf": 0.18078747886208238,
+    "latency_p95_concat_ms": 14769.246839993866,
+    "latency_p95_rrf_ms": 14404.011027468368
+  },
+  "decision": {
+    "quality_gain_pct": -55.34542239052577,
+    "latency_change_pct": -2.4729481230990746,
+    "quality_target_pct": 5.0,
+    "latency_ceiling_pct": 10.0,
+    "quality_pass": false,
+    "latency_pass": true,
+    "recommend_rrf": false
+  }
+}

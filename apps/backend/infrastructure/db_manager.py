@@ -163,15 +163,91 @@ def acquire_lock(cursor, lock_name: str, timeout: int = 10):
         logger.error(f"Failed to acquire lock {lock_name}: {e}")
         raise
 
-def safe_read_clob(clob_obj) -> str:
+def safe_read_clob(clob_obj, max_chars: int = 10_000_000, chunk_size: int = 65_536) -> str:
     """
-    Safely reads a CLOB object, handling None, errors, or closed connections.
-    Returns empty string on failure to prevent crashes.
+    Safely read CLOB-like values with a hard size cap.
+
+    Supports three reader styles:
+    1) Oracle LOB style: read(offset, amount)
+    2) File-like style: read(size)
+    3) Read-all style: read()
     """
-    if not clob_obj:
+    if clob_obj is None:
         return ""
+
+    if isinstance(clob_obj, str):
+        return clob_obj[:max_chars]
+
+    read_fn = getattr(clob_obj, "read", None)
+    if not callable(read_fn):
+        try:
+            return str(clob_obj)[:max_chars]
+        except Exception:
+            return ""
+
+    # 1) Oracle LOB style reader (offset, amount)
     try:
-        return clob_obj.read()
+        offset = 1  # Oracle LOB offsets are 1-based
+        remaining = max_chars
+        parts: list[str] = []
+
+        while remaining > 0:
+            amount = min(chunk_size, remaining)
+            piece = read_fn(offset, amount)
+            if not piece:
+                break
+            if not isinstance(piece, str):
+                piece = str(piece)
+            if len(piece) > remaining:
+                piece = piece[:remaining]
+            parts.append(piece)
+            read_len = len(piece)
+            if read_len <= 0:
+                break
+            remaining -= read_len
+            offset += read_len
+
+        text = "".join(parts)
+        if text:
+            return text
+    except TypeError:
+        # Not an Oracle-style reader; try other signatures.
+        pass
     except Exception as e:
-        logger.error(f"Failed to read CLOB: {e}")
+        logger.warning(f"Oracle-style CLOB read failed, falling back: {e}")
+
+    # 2) File-like reader (size)
+    try:
+        remaining = max_chars
+        parts: list[str] = []
+
+        while remaining > 0:
+            piece = read_fn(min(chunk_size, remaining))
+            if not piece:
+                break
+            if not isinstance(piece, str):
+                piece = str(piece)
+            if len(piece) > remaining:
+                piece = piece[:remaining]
+            parts.append(piece)
+            remaining -= len(piece)
+
+        text = "".join(parts)
+        if text:
+            return text
+    except TypeError:
+        pass
+    except Exception as e:
+        logger.warning(f"Chunked CLOB read failed, falling back: {e}")
+
+    # 3) Read-all fallback
+    try:
+        text = read_fn()
+        if text is None:
+            return ""
+        if not isinstance(text, str):
+            text = str(text)
+        return text[:max_chars]
+    except Exception as e:
+        logger.error(f"Failed to read CLOB safely: {e}")
         return ""

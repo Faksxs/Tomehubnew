@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 import os
 import json
+import re
 import logging
-import google.generativeai as genai
 from typing import List, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from services.cache_service import MultiLayerCache, generate_cache_key, get_cache
 from config import settings
+from services.llm_client import MODEL_TIER_LITE, generate_text, get_model_for_tier
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,11 @@ class QueryExpander:
                 return cached_variations
         
         # Generate variations
-        variations = self._expand_query_impl(query, max_variations)
+        try:
+            variations = self._expand_query_impl(query, max_variations)
+        except Exception as exc:
+            logger.warning("Query expansion failed after retries: %s", exc)
+            return []
         
         # Store in cache (TTL: 7 days = 604800 seconds)
         if self.cache and variations:
@@ -76,10 +81,9 @@ class QueryExpander:
         """
         Internal implementation of query expansion (called by expand_query).
         """
-        try:
-            model = genai.GenerativeModel('gemini-2.0-flash')
-            
-            prompt = f"""
+        model = get_model_for_tier(MODEL_TIER_LITE)
+
+        prompt = f"""
             Act as a search optimization engine.
             Generate {max_variations} alternative search queries for the following user input.
             Focus on:
@@ -91,24 +95,27 @@ class QueryExpander:
             
             Return ONLY a JSON list of strings. Example: ["variation1", "variation2"]
             """
-            
-            response = model.generate_content(prompt, request_options={'timeout': 5})
-            text = response.text.strip()
-            
-            # Simple cleanup
-            import re
-            json_match = re.search(r'\[.*\]', text, re.DOTALL)
-            if json_match:
+
+        result = generate_text(
+            model=model,
+            prompt=prompt,
+            task="query_expansion",
+            model_tier=MODEL_TIER_LITE,
+            timeout_s=10.0,
+        )
+        text = (result.text or "").strip()
+
+        json_match = re.search(r'\[.*\]', text, re.DOTALL)
+        if json_match:
+            try:
                 variations = json.loads(json_match.group(0))
-                # Validate
-                cleaned = [v.strip() for v in variations if isinstance(v, str) and v.strip()]
-                return cleaned[:max_variations]
-            
-            return []
-            
-        except Exception as e:
-            logger.exception(f"Query expansion failed: {e}")
-            return []
+            except json.JSONDecodeError:
+                logger.debug("Query expansion JSON parse failed")
+                return []
+            cleaned = [v.strip() for v in variations if isinstance(v, str) and v.strip()]
+            return cleaned[:max_variations]
+
+        return []
 
 if __name__ == "__main__":
     # Test

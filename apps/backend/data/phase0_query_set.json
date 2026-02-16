@@ -1,0 +1,982 @@
+[
+  {
+    "id": "Q001",
+    "category": "DIRECT",
+    "query": "ahlak nedir?",
+    "expected_terms": [
+      "ahlak"
+    ]
+  },
+  {
+    "id": "Q002",
+    "category": "DIRECT",
+    "query": "etik ne demek?",
+    "expected_terms": [
+      "etik"
+    ]
+  },
+  {
+    "id": "Q003",
+    "category": "DIRECT",
+    "query": "vicdan kavramini kisa tanimlar misin?",
+    "expected_terms": [
+      "vicdan"
+    ]
+  },
+  {
+    "id": "Q004",
+    "category": "DIRECT",
+    "query": "adalet ile ilgili temel tanim nedir?",
+    "expected_terms": [
+      "adalet"
+    ]
+  },
+  {
+    "id": "Q005",
+    "category": "DIRECT",
+    "query": "ozgurluk nedir?",
+    "expected_terms": [
+      "ozgurluk"
+    ]
+  },
+  {
+    "id": "Q006",
+    "category": "DIRECT",
+    "query": "sorumluluk ne demek?",
+    "expected_terms": [
+      "sorumluluk"
+    ]
+  },
+  {
+    "id": "Q007",
+    "category": "DIRECT",
+    "query": "erdem kavramini kisa tanimlar misin?",
+    "expected_terms": [
+      "erdem"
+    ]
+  },
+  {
+    "id": "Q008",
+    "category": "DIRECT",
+    "query": "hakikat ile ilgili temel tanim nedir?",
+    "expected_terms": [
+      "hakikat"
+    ]
+  },
+  {
+    "id": "Q009",
+    "category": "DIRECT",
+    "query": "irade nedir?",
+    "expected_terms": [
+      "irade"
+    ]
+  },
+  {
+    "id": "Q010",
+    "category": "DIRECT",
+    "query": "bilgelik ne demek?",
+    "expected_terms": [
+      "bilgelik"
+    ]
+  },
+  {
+    "id": "Q011",
+    "category": "DIRECT",
+    "query": "toplum kavramini kisa tanimlar misin?",
+    "expected_terms": [
+      "toplum"
+    ]
+  },
+  {
+    "id": "Q012",
+    "category": "DIRECT",
+    "query": "devlet ile ilgili temel tanim nedir?",
+    "expected_terms": [
+      "devlet"
+    ]
+  },
+  {
+    "id": "Q013",
+    "category": "DIRECT",
+    "query": "hukuk nedir?",
+    "expected_terms": [
+      "hukuk"
+    ]
+  },
+  {
+    "id": "Q014",
+    "category": "DIRECT",
+    "query": "esitlik ne demek?",
+    "expected_terms": [
+      "esitlik"
+    ]
+  },
+  {
+    "id": "Q015",
+    "category": "DIRECT",
+    "query": "kimlik kavramini kisa tanimlar misin?",
+    "expected_terms": [
+      "kimlik"
+    ]
+  },
+  {
+    "id": "Q016",
+    "category": "DIRECT",
+    "query": "anlam ile ilgili temel tanim nedir?",
+    "expected_terms": [
+      "anlam"
+    ]
+  },
+  {
+    "id": "Q017",
+    "category": "DIRECT",
+    "query": "umut nedir?",
+    "expected_terms": [
+      "umut"
+    ]
+  },
+  {
+    "id": "Q018",
+    "category": "DIRECT",
+    "query": "kaygi ne demek?",
+    "expected_terms": [
+      "kaygi"
+    ]
+  },
+  {
+    "id": "Q019",
+    "category": "DIRECT",
+    "query": "ozne kavramini kisa tanimlar misin?",
+    "expected_terms": [
+      "ozne"
+    ]
+  },
+  {
+    "id": "Q020",
+    "category": "DIRECT",
+    "query": "diyalog ile ilgili temel tanim nedir?",
+    "expected_terms": [
+      "diyalog"
+    ]
+  },
+  {
+    "id": "Q021",
+    "category": "COMPARATIVE",
+    "query": "ahlak ile adalet arasindaki fark nedir?",
+    "expected_terms": [
+      "ahlak",
+      "adalet"
+    ]
+  },
+  {
+    "id": "Q022",
+    "category": "COMPARATIVE",
+    "query": "etik ve ozgurluk hangi acidan ayrisir?",
+    "expected_terms": [
+      "etik",
+      "ozgurluk"
+    ]
+  },
+  {
+    "id": "Q023",
+    "category": "COMPARATIVE",
+    "query": "vicdan ile sorumluluk arasinda benzerlik ve farklari acikla.",
+    "expected_terms": [
+      "vicdan",
+      "sorumluluk"
+    ]
+  },
+  {
+    "id": "Q024",
+    "category": "COMPARATIVE",
+    "query": "adalet mi yoksa erdem mi daha temel bir kavramdir?",
+    "expected_terms": [
+      "adalet",
+      "erdem"
+    ]
+  },
+  {
+    "id": "Q025",
+    "category": "COMPARATIVE",
+    "query": "ozgurluk ile hakikat arasindaki fark nedir?",
+    "expected_terms": [
+      "ozgurluk",
+      "hakikat"
+    ]
+  },
+  {
+    "id": "Q026",
+    "category": "COMPARATIVE",
+    "query": "sorumluluk ve irade hangi acidan ayrisir?",
+    "expected_terms": [
+      "sorumluluk",
+      "irade"
+    ]
+  },
+  {
+    "id": "Q027",
+    "category": "COMPARATIVE",
+    "query": "erdem ile bilgelik arasinda benzerlik ve farklari acikla.",
+    "expected_terms": [
+      "erdem",
+      "bilgelik"
+    ]
+  },
+  {
+    "id": "Q028",
+    "category": "COMPARATIVE",
+    "query": "hakikat mi yoksa toplum mi daha temel bir kavramdir?",
+    "expected_terms": [
+      "hakikat",
+      "toplum"
+    ]
+  },
+  {
+    "id": "Q029",
+    "category": "COMPARATIVE",
+    "query": "irade ile devlet arasindaki fark nedir?",
+    "expected_terms": [
+      "irade",
+      "devlet"
+    ]
+  },
+  {
+    "id": "Q030",
+    "category": "COMPARATIVE",
+    "query": "bilgelik ve hukuk hangi acidan ayrisir?",
+    "expected_terms": [
+      "bilgelik",
+      "hukuk"
+    ]
+  },
+  {
+    "id": "Q031",
+    "category": "COMPARATIVE",
+    "query": "toplum ile esitlik arasinda benzerlik ve farklari acikla.",
+    "expected_terms": [
+      "toplum",
+      "esitlik"
+    ]
+  },
+  {
+    "id": "Q032",
+    "category": "COMPARATIVE",
+    "query": "devlet mi yoksa kimlik mi daha temel bir kavramdir?",
+    "expected_terms": [
+      "devlet",
+      "kimlik"
+    ]
+  },
+  {
+    "id": "Q033",
+    "category": "COMPARATIVE",
+    "query": "hukuk ile anlam arasindaki fark nedir?",
+    "expected_terms": [
+      "hukuk",
+      "anlam"
+    ]
+  },
+  {
+    "id": "Q034",
+    "category": "COMPARATIVE",
+    "query": "esitlik ve umut hangi acidan ayrisir?",
+    "expected_terms": [
+      "esitlik",
+      "umut"
+    ]
+  },
+  {
+    "id": "Q035",
+    "category": "COMPARATIVE",
+    "query": "kimlik ile kaygi arasinda benzerlik ve farklari acikla.",
+    "expected_terms": [
+      "kimlik",
+      "kaygi"
+    ]
+  },
+  {
+    "id": "Q036",
+    "category": "COMPARATIVE",
+    "query": "anlam mi yoksa ozne mi daha temel bir kavramdir?",
+    "expected_terms": [
+      "anlam",
+      "ozne"
+    ]
+  },
+  {
+    "id": "Q037",
+    "category": "COMPARATIVE",
+    "query": "umut ile diyalog arasindaki fark nedir?",
+    "expected_terms": [
+      "umut",
+      "diyalog"
+    ]
+  },
+  {
+    "id": "Q038",
+    "category": "COMPARATIVE",
+    "query": "kaygi ve ahlak hangi acidan ayrisir?",
+    "expected_terms": [
+      "kaygi",
+      "ahlak"
+    ]
+  },
+  {
+    "id": "Q039",
+    "category": "COMPARATIVE",
+    "query": "ozne ile etik arasinda benzerlik ve farklari acikla.",
+    "expected_terms": [
+      "ozne",
+      "etik"
+    ]
+  },
+  {
+    "id": "Q040",
+    "category": "COMPARATIVE",
+    "query": "diyalog mi yoksa vicdan mi daha temel bir kavramdir?",
+    "expected_terms": [
+      "diyalog",
+      "vicdan"
+    ]
+  },
+  {
+    "id": "Q041",
+    "category": "SYNTHESIS",
+    "query": "ahlak kavramini sorumluluk baglaminda sentezleyerek acikla.",
+    "expected_terms": [
+      "ahlak",
+      "sorumluluk"
+    ]
+  },
+  {
+    "id": "Q042",
+    "category": "SYNTHESIS",
+    "query": "etik ile erdem iliskisini kapsamli ama net bir cercevede anlat.",
+    "expected_terms": [
+      "etik",
+      "erdem"
+    ]
+  },
+  {
+    "id": "Q043",
+    "category": "SYNTHESIS",
+    "query": "vicdan konusu hakikat ile birlikte nasil yorumlanabilir?",
+    "expected_terms": [
+      "vicdan",
+      "hakikat"
+    ]
+  },
+  {
+    "id": "Q044",
+    "category": "SYNTHESIS",
+    "query": "adalet ve irade uzerinden butunc ul bir aciklama yap.",
+    "expected_terms": [
+      "adalet",
+      "irade"
+    ]
+  },
+  {
+    "id": "Q045",
+    "category": "SYNTHESIS",
+    "query": "ozgurluk kavramini bilgelik baglaminda sentezleyerek acikla.",
+    "expected_terms": [
+      "ozgurluk",
+      "bilgelik"
+    ]
+  },
+  {
+    "id": "Q046",
+    "category": "SYNTHESIS",
+    "query": "sorumluluk ile toplum iliskisini kapsamli ama net bir cercevede anlat.",
+    "expected_terms": [
+      "sorumluluk",
+      "toplum"
+    ]
+  },
+  {
+    "id": "Q047",
+    "category": "SYNTHESIS",
+    "query": "erdem konusu devlet ile birlikte nasil yorumlanabilir?",
+    "expected_terms": [
+      "erdem",
+      "devlet"
+    ]
+  },
+  {
+    "id": "Q048",
+    "category": "SYNTHESIS",
+    "query": "hakikat ve hukuk uzerinden butunc ul bir aciklama yap.",
+    "expected_terms": [
+      "hakikat",
+      "hukuk"
+    ]
+  },
+  {
+    "id": "Q049",
+    "category": "SYNTHESIS",
+    "query": "irade kavramini esitlik baglaminda sentezleyerek acikla.",
+    "expected_terms": [
+      "irade",
+      "esitlik"
+    ]
+  },
+  {
+    "id": "Q050",
+    "category": "SYNTHESIS",
+    "query": "bilgelik ile kimlik iliskisini kapsamli ama net bir cercevede anlat.",
+    "expected_terms": [
+      "bilgelik",
+      "kimlik"
+    ]
+  },
+  {
+    "id": "Q051",
+    "category": "SYNTHESIS",
+    "query": "toplum konusu anlam ile birlikte nasil yorumlanabilir?",
+    "expected_terms": [
+      "toplum",
+      "anlam"
+    ]
+  },
+  {
+    "id": "Q052",
+    "category": "SYNTHESIS",
+    "query": "devlet ve umut uzerinden butunc ul bir aciklama yap.",
+    "expected_terms": [
+      "devlet",
+      "umut"
+    ]
+  },
+  {
+    "id": "Q053",
+    "category": "SYNTHESIS",
+    "query": "hukuk kavramini kaygi baglaminda sentezleyerek acikla.",
+    "expected_terms": [
+      "hukuk",
+      "kaygi"
+    ]
+  },
+  {
+    "id": "Q054",
+    "category": "SYNTHESIS",
+    "query": "esitlik ile ozne iliskisini kapsamli ama net bir cercevede anlat.",
+    "expected_terms": [
+      "esitlik",
+      "ozne"
+    ]
+  },
+  {
+    "id": "Q055",
+    "category": "SYNTHESIS",
+    "query": "kimlik konusu diyalog ile birlikte nasil yorumlanabilir?",
+    "expected_terms": [
+      "kimlik",
+      "diyalog"
+    ]
+  },
+  {
+    "id": "Q056",
+    "category": "SYNTHESIS",
+    "query": "anlam ve ahlak uzerinden butunc ul bir aciklama yap.",
+    "expected_terms": [
+      "anlam",
+      "ahlak"
+    ]
+  },
+  {
+    "id": "Q057",
+    "category": "SYNTHESIS",
+    "query": "umut kavramini etik baglaminda sentezleyerek acikla.",
+    "expected_terms": [
+      "umut",
+      "etik"
+    ]
+  },
+  {
+    "id": "Q058",
+    "category": "SYNTHESIS",
+    "query": "kaygi ile vicdan iliskisini kapsamli ama net bir cercevede anlat.",
+    "expected_terms": [
+      "kaygi",
+      "vicdan"
+    ]
+  },
+  {
+    "id": "Q059",
+    "category": "SYNTHESIS",
+    "query": "ozne konusu adalet ile birlikte nasil yorumlanabilir?",
+    "expected_terms": [
+      "ozne",
+      "adalet"
+    ]
+  },
+  {
+    "id": "Q060",
+    "category": "SYNTHESIS",
+    "query": "diyalog ve ozgurluk uzerinden butunc ul bir aciklama yap.",
+    "expected_terms": [
+      "diyalog",
+      "ozgurluk"
+    ]
+  },
+  {
+    "id": "Q061",
+    "category": "PHILOSOPHICAL",
+    "query": "ahlak degisen bir sey midir, yoksa sabit bir ilke midir?",
+    "expected_terms": [
+      "ahlak",
+      "vicdan"
+    ]
+  },
+  {
+    "id": "Q062",
+    "category": "PHILOSOPHICAL",
+    "query": "etik ile adalet arasindaki gerilim insan eylemini nasil etkiler?",
+    "expected_terms": [
+      "etik",
+      "adalet"
+    ]
+  },
+  {
+    "id": "Q063",
+    "category": "PHILOSOPHICAL",
+    "query": "vicdan olmadan ozgurluk mumkun mudur?",
+    "expected_terms": [
+      "vicdan",
+      "ozgurluk"
+    ]
+  },
+  {
+    "id": "Q064",
+    "category": "PHILOSOPHICAL",
+    "query": "adalet tartismasinda birey-toplum dengesi nasil kurulmalidir?",
+    "expected_terms": [
+      "adalet",
+      "sorumluluk"
+    ]
+  },
+  {
+    "id": "Q065",
+    "category": "PHILOSOPHICAL",
+    "query": "ozgurluk degisen bir sey midir, yoksa sabit bir ilke midir?",
+    "expected_terms": [
+      "ozgurluk",
+      "erdem"
+    ]
+  },
+  {
+    "id": "Q066",
+    "category": "PHILOSOPHICAL",
+    "query": "sorumluluk ile hakikat arasindaki gerilim insan eylemini nasil etkiler?",
+    "expected_terms": [
+      "sorumluluk",
+      "hakikat"
+    ]
+  },
+  {
+    "id": "Q067",
+    "category": "PHILOSOPHICAL",
+    "query": "erdem olmadan irade mumkun mudur?",
+    "expected_terms": [
+      "erdem",
+      "irade"
+    ]
+  },
+  {
+    "id": "Q068",
+    "category": "PHILOSOPHICAL",
+    "query": "hakikat tartismasinda birey-toplum dengesi nasil kurulmalidir?",
+    "expected_terms": [
+      "hakikat",
+      "bilgelik"
+    ]
+  },
+  {
+    "id": "Q069",
+    "category": "PHILOSOPHICAL",
+    "query": "irade degisen bir sey midir, yoksa sabit bir ilke midir?",
+    "expected_terms": [
+      "irade",
+      "toplum"
+    ]
+  },
+  {
+    "id": "Q070",
+    "category": "PHILOSOPHICAL",
+    "query": "bilgelik ile devlet arasindaki gerilim insan eylemini nasil etkiler?",
+    "expected_terms": [
+      "bilgelik",
+      "devlet"
+    ]
+  },
+  {
+    "id": "Q071",
+    "category": "PHILOSOPHICAL",
+    "query": "toplum olmadan hukuk mumkun mudur?",
+    "expected_terms": [
+      "toplum",
+      "hukuk"
+    ]
+  },
+  {
+    "id": "Q072",
+    "category": "PHILOSOPHICAL",
+    "query": "devlet tartismasinda birey-toplum dengesi nasil kurulmalidir?",
+    "expected_terms": [
+      "devlet",
+      "esitlik"
+    ]
+  },
+  {
+    "id": "Q073",
+    "category": "PHILOSOPHICAL",
+    "query": "hukuk degisen bir sey midir, yoksa sabit bir ilke midir?",
+    "expected_terms": [
+      "hukuk",
+      "kimlik"
+    ]
+  },
+  {
+    "id": "Q074",
+    "category": "PHILOSOPHICAL",
+    "query": "esitlik ile anlam arasindaki gerilim insan eylemini nasil etkiler?",
+    "expected_terms": [
+      "esitlik",
+      "anlam"
+    ]
+  },
+  {
+    "id": "Q075",
+    "category": "PHILOSOPHICAL",
+    "query": "kimlik olmadan umut mumkun mudur?",
+    "expected_terms": [
+      "kimlik",
+      "umut"
+    ]
+  },
+  {
+    "id": "Q076",
+    "category": "PHILOSOPHICAL",
+    "query": "anlam tartismasinda birey-toplum dengesi nasil kurulmalidir?",
+    "expected_terms": [
+      "anlam",
+      "kaygi"
+    ]
+  },
+  {
+    "id": "Q077",
+    "category": "PHILOSOPHICAL",
+    "query": "umut degisen bir sey midir, yoksa sabit bir ilke midir?",
+    "expected_terms": [
+      "umut",
+      "ozne"
+    ]
+  },
+  {
+    "id": "Q078",
+    "category": "PHILOSOPHICAL",
+    "query": "kaygi ile diyalog arasindaki gerilim insan eylemini nasil etkiler?",
+    "expected_terms": [
+      "kaygi",
+      "diyalog"
+    ]
+  },
+  {
+    "id": "Q079",
+    "category": "PHILOSOPHICAL",
+    "query": "ozne olmadan ahlak mumkun mudur?",
+    "expected_terms": [
+      "ozne",
+      "ahlak"
+    ]
+  },
+  {
+    "id": "Q080",
+    "category": "PHILOSOPHICAL",
+    "query": "diyalog tartismasinda birey-toplum dengesi nasil kurulmalidir?",
+    "expected_terms": [
+      "diyalog",
+      "etik"
+    ]
+  },
+  {
+    "id": "Q081",
+    "category": "ANALYTIC",
+    "query": "Bu kitapta 'zaman' kelimesi kac kez geciyor?",
+    "expected_terms": [
+      "zaman"
+    ]
+  },
+  {
+    "id": "Q082",
+    "category": "ANALYTIC",
+    "query": "Bu kitapta 'adalet' kelimesi kac kez geciyor?",
+    "expected_terms": [
+      "adalet"
+    ]
+  },
+  {
+    "id": "Q083",
+    "category": "ANALYTIC",
+    "query": "Bu kitapta 'ahlak' kelimesi kac kez geciyor?",
+    "expected_terms": [
+      "ahlak"
+    ]
+  },
+  {
+    "id": "Q084",
+    "category": "ANALYTIC",
+    "query": "Bu kitapta 'insan' kelimesi kac kez geciyor?",
+    "expected_terms": [
+      "insan"
+    ]
+  },
+  {
+    "id": "Q085",
+    "category": "ANALYTIC",
+    "query": "Bu kitapta 'toplum' kelimesi kac kez geciyor?",
+    "expected_terms": [
+      "toplum"
+    ]
+  },
+  {
+    "id": "Q086",
+    "category": "ANALYTIC",
+    "query": "Bu kitapta 'vicdan' kelimesi kac kez geciyor?",
+    "expected_terms": [
+      "vicdan"
+    ]
+  },
+  {
+    "id": "Q087",
+    "category": "ANALYTIC",
+    "query": "Bu kitapta 'ozgurluk' kelimesi kac kez geciyor?",
+    "expected_terms": [
+      "ozgurluk"
+    ]
+  },
+  {
+    "id": "Q088",
+    "category": "ANALYTIC",
+    "query": "Bu kitapta 'hakikat' kelimesi kac kez geciyor?",
+    "expected_terms": [
+      "hakikat"
+    ]
+  },
+  {
+    "id": "Q089",
+    "category": "ANALYTIC",
+    "query": "Bu kitapta 'erdem' kelimesi kac kez geciyor?",
+    "expected_terms": [
+      "erdem"
+    ]
+  },
+  {
+    "id": "Q090",
+    "category": "ANALYTIC",
+    "query": "Bu kitapta 'sorumluluk' kelimesi kac kez geciyor?",
+    "expected_terms": [
+      "sorumluluk"
+    ]
+  },
+  {
+    "id": "Q091",
+    "category": "ANALYTIC",
+    "query": "Bu kitapta 'kimlik' kelimesi kac kez geciyor?",
+    "expected_terms": [
+      "kimlik"
+    ]
+  },
+  {
+    "id": "Q092",
+    "category": "ANALYTIC",
+    "query": "Bu kitapta 'anlam' kelimesi kac kez geciyor?",
+    "expected_terms": [
+      "anlam"
+    ]
+  },
+  {
+    "id": "Q093",
+    "category": "ANALYTIC",
+    "query": "Bu kitapta 'umut' kelimesi kac kez geciyor?",
+    "expected_terms": [
+      "umut"
+    ]
+  },
+  {
+    "id": "Q094",
+    "category": "ANALYTIC",
+    "query": "Bu kitapta 'kaygi' kelimesi kac kez geciyor?",
+    "expected_terms": [
+      "kaygi"
+    ]
+  },
+  {
+    "id": "Q095",
+    "category": "ANALYTIC",
+    "query": "Bu kitapta 'irade' kelimesi kac kez geciyor?",
+    "expected_terms": [
+      "irade"
+    ]
+  },
+  {
+    "id": "Q096",
+    "category": "ANALYTIC",
+    "query": "Bu kitapta 'hukuk' kelimesi kac kez geciyor?",
+    "expected_terms": [
+      "hukuk"
+    ]
+  },
+  {
+    "id": "Q097",
+    "category": "ANALYTIC",
+    "query": "Bu kitapta 'esitlik' kelimesi kac kez geciyor?",
+    "expected_terms": [
+      "esitlik"
+    ]
+  },
+  {
+    "id": "Q098",
+    "category": "ANALYTIC",
+    "query": "Bu kitapta 'dusunce' kelimesi kac kez geciyor?",
+    "expected_terms": [
+      "dusunce"
+    ]
+  },
+  {
+    "id": "Q099",
+    "category": "ANALYTIC",
+    "query": "Bu kitapta 'bilgi' kelimesi kac kez geciyor?",
+    "expected_terms": [
+      "bilgi"
+    ]
+  },
+  {
+    "id": "Q100",
+    "category": "ANALYTIC",
+    "query": "Bu kitapta 'deger' kelimesi kac kez geciyor?",
+    "expected_terms": [
+      "deger"
+    ]
+  },
+  {
+    "id": "Q101",
+    "category": "FOLLOW_UP",
+    "query": "peki bu ne anlama geliyor?",
+    "expected_terms": []
+  },
+  {
+    "id": "Q102",
+    "category": "FOLLOW_UP",
+    "query": "o zaman bunu nasil yorumlamaliyim?",
+    "expected_terms": []
+  },
+  {
+    "id": "Q103",
+    "category": "FOLLOW_UP",
+    "query": "buna bir ornek verebilir misin?",
+    "expected_terms": []
+  },
+  {
+    "id": "Q104",
+    "category": "FOLLOW_UP",
+    "query": "peki bunun tersi durumda ne olur?",
+    "expected_terms": []
+  },
+  {
+    "id": "Q105",
+    "category": "FOLLOW_UP",
+    "query": "bu aciklama yeterli mi emin degilim, tekrar eder misin?",
+    "expected_terms": []
+  },
+  {
+    "id": "Q106",
+    "category": "FOLLOW_UP",
+    "query": "bunu daha sade anlatir misin?",
+    "expected_terms": []
+  },
+  {
+    "id": "Q107",
+    "category": "FOLLOW_UP",
+    "query": "tam olarak hangi noktayi vurguluyorsun?",
+    "expected_terms": []
+  },
+  {
+    "id": "Q108",
+    "category": "FOLLOW_UP",
+    "query": "buna karsi arguman var mi?",
+    "expected_terms": []
+  },
+  {
+    "id": "Q109",
+    "category": "FOLLOW_UP",
+    "query": "bu durumda neyi oncelemek gerekir?",
+    "expected_terms": []
+  },
+  {
+    "id": "Q110",
+    "category": "FOLLOW_UP",
+    "query": "peki bunun pratik sonucu ne olur?",
+    "expected_terms": []
+  },
+  {
+    "id": "Q111",
+    "category": "FOLLOW_UP",
+    "query": "bunu bir c\u00fcmlede ozetler misin?",
+    "expected_terms": []
+  },
+  {
+    "id": "Q112",
+    "category": "FOLLOW_UP",
+    "query": "buradaki ana fikir nedir?",
+    "expected_terms": []
+  },
+  {
+    "id": "Q113",
+    "category": "FOLLOW_UP",
+    "query": "buna benzer baska bir bakis acisi var mi?",
+    "expected_terms": []
+  },
+  {
+    "id": "Q114",
+    "category": "FOLLOW_UP",
+    "query": "buradaki risk nerede basliyor?",
+    "expected_terms": []
+  },
+  {
+    "id": "Q115",
+    "category": "FOLLOW_UP",
+    "query": "bunu daha sistematik aciklar misin?",
+    "expected_terms": []
+  },
+  {
+    "id": "Q116",
+    "category": "FOLLOW_UP",
+    "query": "peki neden boyle dusunuyorsun?",
+    "expected_terms": []
+  },
+  {
+    "id": "Q117",
+    "category": "FOLLOW_UP",
+    "query": "bu sonuca nasil ulasiyorsun?",
+    "expected_terms": []
+  },
+  {
+    "id": "Q118",
+    "category": "FOLLOW_UP",
+    "query": "bunu adim adim anlatabilir misin?",
+    "expected_terms": []
+  },
+  {
+    "id": "Q119",
+    "category": "FOLLOW_UP",
+    "query": "bu iddianin dayanagi ne?",
+    "expected_terms": []
+  },
+  {
+    "id": "Q120",
+    "category": "FOLLOW_UP",
+    "query": "peki ozetle neyi kabul etmeliyiz?",
+    "expected_terms": []
+  }
+]

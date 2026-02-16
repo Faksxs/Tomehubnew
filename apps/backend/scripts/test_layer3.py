@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import oracledb
 from dotenv import load_dotenv
 from services.search_service import generate_answer
-from services.smart_search_service import perform_smart_search
+from services.smart_search_service import perform_search
 from services.embedding_service import get_embedding
 from infrastructure.db_manager import DatabaseManager
 
@@ -123,7 +123,7 @@ print("TEST 4: LAYER 2 (SMART SEARCH)")
 print("=" * 80)
 
 try:
-    layer2_results = perform_smart_search(TEST_QUESTION, TEST_FIREBASE_UID)
+    layer2_results, _ = perform_search(TEST_QUESTION, TEST_FIREBASE_UID)
     
     if layer2_results:
         print(f"✓ Layer 2 returned {len(layer2_results)} results")
@@ -154,7 +154,7 @@ try:
     print(f"\n[INFO] Calling generate_answer()...")
     print(f"       This may take 10-30 seconds...\n")
     
-    answer, sources = generate_answer(TEST_QUESTION, TEST_FIREBASE_UID)
+    answer, sources, meta = generate_answer(TEST_QUESTION, TEST_FIREBASE_UID)
     
     if answer:
         print("✓ Layer 3 generated an answer\n")

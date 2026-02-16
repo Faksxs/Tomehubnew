@@ -1,0 +1,118 @@
+{
+  "generated_at": "2026-02-11T01:58:35.555848Z",
+  "uid": "vpq1p0UzcCSLAh1d18WgZZWPBE63",
+  "sample_size": 12,
+  "state_counts": {
+    "fully_ready": 12
+  },
+  "rows": [
+    {
+      "book_id": "1764982122036",
+      "status": "COMPLETED",
+      "state": "fully_ready",
+      "total_chunks": 192,
+      "embedded_chunks": 192,
+      "graph_linked_chunks": 1,
+      "graph_coverage_ratio": 0.0052
+    },
+    {
+      "book_id": "6cb4eacb-1332-40de-acd0-5ee476a96fad",
+      "status": "COMPLETED",
+      "state": "fully_ready",
+      "total_chunks": 36,
+      "embedded_chunks": 36,
+      "graph_linked_chunks": 1,
+      "graph_coverage_ratio": 0.0278
+    },
+    {
+      "book_id": "d52972ca-1d85-4e91-97ec-cf2f903f7bb3",
+      "status": "COMPLETED",
+      "state": "fully_ready",
+      "total_chunks": 22,
+      "embedded_chunks": 22,
+      "graph_linked_chunks": 5,
+      "graph_coverage_ratio": 0.2273
+    },
+    {
+      "book_id": "fdb94dcc-23dc-4a6e-b28d-180efdc57b6c",
+      "status": "COMPLETED",
+      "state": "fully_ready",
+      "total_chunks": 21,
+      "embedded_chunks": 21,
+      "graph_linked_chunks": 1,
+      "graph_coverage_ratio": 0.0476
+    },
+    {
+      "book_id": "4e56150b-07e8-431d-b588-d14fcad2b30f",
+      "status": "COMPLETED",
+      "state": "fully_ready",
+      "total_chunks": 21,
+      "embedded_chunks": 21,
+      "graph_linked_chunks": 1,
+      "graph_coverage_ratio": 0.0476
+    },
+    {
+      "book_id": "ba490e6c-8c79-40b6-992c-7880b7777806",
+      "status": "COMPLETED",
+      "state": "fully_ready",
+      "total_chunks": 20,
+      "embedded_chunks": 20,
+      "graph_linked_chunks": 1,
+      "graph_coverage_ratio": 0.05
+    },
+    {
+      "book_id": "cbca7f50-2993-46ae-9135-addef92bd685",
+      "status": "COMPLETED",
+      "state": "fully_ready",
+      "total_chunks": 20,
+      "embedded_chunks": 20,
+      "graph_linked_chunks": 1,
+      "graph_coverage_ratio": 0.05
+    },
+    {
+      "book_id": "7ac7e1cf-ae0b-4edc-97ed-d50ebdeb4657",
+      "status": "COMPLETED",
+      "state": "fully_ready",
+      "total_chunks": 19,
+      "embedded_chunks": 19,
+      "graph_linked_chunks": 1,
+      "graph_coverage_ratio": 0.0526
+    },
+    {
+      "book_id": "5fae6e79-029d-4716-9b6a-d70b7e5d91ec",
+      "status": "COMPLETED",
+      "state": "fully_ready",
+      "total_chunks": 19,
+      "embedded_chunks": 19,
+      "graph_linked_chunks": 3,
+      "graph_coverage_ratio": 0.1579
+    },
+    {
+      "book_id": "5b6a8884-a0c4-4853-a9f9-58227064d972",
+      "status": "COMPLETED",
+      "state": "fully_ready",
+      "total_chunks": 15,
+      "embedded_chunks": 15,
+      "graph_linked_chunks": 1,
+      "graph_coverage_ratio": 0.0667
+    },
+    {
+      "book_id": "974e89cd-e39c-4b88-b757-2941c3ce8b79",
+      "status": "COMPLETED",
+      "state": "fully_ready",
+      "total_chunks": 13,
+      "embedded_chunks": 13,
+      "graph_linked_chunks": 1,
+      "graph_coverage_ratio": 0.0769
+    },
+    {
+      "book_id": "4f2aae48-736c-4f5c-9c62-0c22bb9bc4c7",
+      "status": "COMPLETED",
+      "state": "fully_ready",
+      "total_chunks": 13,
+      "embedded_chunks": 13,
+      "graph_linked_chunks": 2,
+      "graph_coverage_ratio": 0.1538
+    }
+  ]
+}

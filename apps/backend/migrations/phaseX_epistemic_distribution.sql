@@ -1,0 +1,36 @@
+-- Phase X: Book-level epistemic quality distribution.
+DECLARE
+    v_count NUMBER := 0;
+BEGIN
+    SELECT COUNT(*)
+      INTO v_count
+      FROM user_tables
+     WHERE table_name = 'TOMEHUB_BOOK_EPISTEMIC_METRICS';
+
+    IF v_count = 0 THEN
+        EXECUTE IMMEDIATE '
+            CREATE TABLE TOMEHUB_BOOK_EPISTEMIC_METRICS (
+                ID NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                BOOK_ID VARCHAR2(255) NOT NULL,
+                FIREBASE_UID VARCHAR2(255) NOT NULL,
+                LEVEL_A NUMBER DEFAULT 0 NOT NULL,
+                LEVEL_B NUMBER DEFAULT 0 NOT NULL,
+                LEVEL_C NUMBER DEFAULT 0 NOT NULL,
+                TOTAL_CHUNKS NUMBER DEFAULT 0 NOT NULL,
+                UPDATED_AT TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT UQ_BOOK_EPISTEMIC UNIQUE (BOOK_ID, FIREBASE_UID)
+            )';
+    END IF;
+
+    SELECT COUNT(*)
+      INTO v_count
+      FROM user_indexes
+     WHERE index_name = 'IDX_EPISTEMIC_UID_UPDATED';
+
+    IF v_count = 0 THEN
+        EXECUTE IMMEDIATE '
+            CREATE INDEX IDX_EPISTEMIC_UID_UPDATED
+            ON TOMEHUB_BOOK_EPISTEMIC_METRICS (FIREBASE_UID, UPDATED_AT)';
+    END IF;
+END;
+/

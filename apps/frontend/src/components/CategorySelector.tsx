@@ -2,7 +2,7 @@ import React from 'react';
 
 export const CATEGORIES = [
     "Felsefe", "Sosyoloji", "Politika", "Ekonomi", "Edebiyat",
-    "Roman", "Bilim", "Tarih", "Inanç", "Sanat",
+    "Roman", "Bilim", "Tarih", "Sanat",
     "Psikoloji", "Hukuk", "Eğitim"
 ];
 

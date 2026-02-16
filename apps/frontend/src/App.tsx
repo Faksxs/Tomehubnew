@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { HashRouter } from "react-router-dom";
 import {
   LibraryItem,
@@ -14,7 +14,7 @@ import { BookDetail } from "./components/BookDetail";
 import { Sidebar } from "./components/Sidebar";
 import { ProfileView } from "./components/ProfileView";
 import SmartSearch from "./components/SmartSearch";
-import logo from './assets/logo_v5.png';
+import logo from './assets/logo_v7.png';
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import {
@@ -39,7 +39,8 @@ import { useBatchEnrichment } from "./hooks/useBatchEnrichment";
 
 import { RAGSearch } from "./components/RAGSearch";
 import { FlowContainer } from "./components/FlowContainer";
-import { addTextItem, syncHighlights, syncPersonalNote } from "./services/backendApiService";
+import { prewarmFlowStartSession } from "./services/flowService";
+import { addTextItem, syncHighlights, syncPersonalNote, purgeResourceContent } from "./services/backendApiService";
 import { getPersonalNoteBackendType, getPersonalNoteCategory, isPersonalNote } from "./lib/personalNotePolicy";
 import { extractPersonalNoteText } from "./lib/personalNoteRender";
 
@@ -77,6 +78,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   const [personalNoteDraftDefaults, setPersonalNoteDraftDefaults] = useState<{ personalNoteCategory?: PersonalNoteCategory; personalFolderId?: string; folderPath?: string }>({});
   const [personalNoteFolders, setPersonalNoteFolders] = useState<PersonalNoteFolder[]>([]);
   const [didRunLegacyFolderMigration, setDidRunLegacyFolderMigration] = useState(false);
+  const flowPrewarmStartedRef = useRef(false);
 
 
   useEffect(() => {
@@ -113,6 +115,51 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
 
     return () => {
       active = false;
+    };
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId || flowPrewarmStartedRef.current) return;
+
+    // Avoid background prewarm calls during local dev unless explicitly enabled.
+    // This prevents noisy connection reset errors when the backend is not running.
+    const allowDevPrewarm = import.meta.env.VITE_FLOW_PREWARM === "true";
+    if (import.meta.env.DEV && !allowDevPrewarm) return;
+
+    flowPrewarmStartedRef.current = true;
+
+    let cancelled = false;
+    let timeoutId: number | null = null;
+    let idleId: number | null = null;
+
+    const runPrewarm = () => {
+      if (cancelled) return;
+      void prewarmFlowStartSession({
+        firebase_uid: userId,
+        anchor_type: "topic",
+        anchor_id: "General Discovery",
+        mode: "FOCUS",
+        horizon_value: 0.25,
+        resource_type: "ALL_NOTES",
+      }).catch((err) => {
+        console.warn("Flow prewarm failed (non-critical):", err);
+      });
+    };
+
+    if (typeof window !== "undefined" && typeof (window as any).requestIdleCallback === "function") {
+      idleId = (window as any).requestIdleCallback(() => runPrewarm(), { timeout: 2500 });
+    } else {
+      timeoutId = window.setTimeout(runPrewarm, 1200);
+    }
+
+    return () => {
+      cancelled = true;
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+      if (idleId !== null && typeof window !== "undefined" && typeof (window as any).cancelIdleCallback === "function") {
+        (window as any).cancelIdleCallback(idleId);
+      }
     };
   }, [userId]);
 
@@ -322,15 +369,24 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
       setView("list");
     }
 
+    let firestoreDeleteSucceeded = false;
     try {
       await deleteItemForUser(userId, id);
+      firestoreDeleteSucceeded = true;
     } catch (err) {
       console.error("Failed to delete item from Firestore:", err);
     }
-    if (deletedItem && isPersonalNote(deletedItem)) {
-      syncPersonalNoteToBackend(deletedItem, true);
+
+    if (!firestoreDeleteSucceeded || !deletedItem) {
+      return;
     }
-  }, [books, selectedBookId, syncPersonalNoteToBackend, userId]);
+
+    try {
+      await purgeResourceContent(userId, deletedItem.id);
+    } catch (err) {
+      console.error("Failed to purge item from AI Backend:", err);
+    }
+  }, [books, selectedBookId, userId]);
 
   const handleBulkDelete = useCallback(async (ids: string[]) => {
     if (!window.confirm(`Are you sure you want to delete ${ids.length} items?`)) return;
@@ -343,18 +399,28 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
       setView("list");
     }
 
+    let firestoreDeleteSucceeded = false;
     try {
       await deleteMultipleItemsForUser(userId, ids);
+      firestoreDeleteSucceeded = true;
     } catch (err) {
       console.error("Failed to delete items from Firestore:", err);
     }
-    const deletedPersonalNotes = deletedItems.filter(isPersonalNote);
-    if (deletedPersonalNotes.length > 0) {
-      deletedPersonalNotes.forEach((note) => {
-        syncPersonalNoteToBackend(note, true);
-      });
+
+    if (!firestoreDeleteSucceeded || deletedItems.length === 0) {
+      return;
     }
-  }, [books, selectedBookId, syncPersonalNoteToBackend, userId]);
+
+    const purgeResults = await Promise.allSettled(
+      deletedItems.map((item) => purgeResourceContent(userId, item.id))
+    );
+
+    purgeResults.forEach((result, index) => {
+      if (result.status === "rejected") {
+        console.error(`Failed to purge item ${deletedItems[index].id} from AI Backend:`, result.reason);
+      }
+    });
+  }, [books, selectedBookId, userId]);
 
   const handleUpdateHighlights = useCallback(async (highlights: Highlight[]) => {
     if (!selectedBookId) return;

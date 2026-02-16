@@ -11,15 +11,12 @@ Classifies passages into:
 import os
 import re
 import json
-import google.generativeai as genai
 from typing import Dict, Optional
 from functools import lru_cache
+from services.llm_client import MODEL_TIER_LITE, generate_text, get_model_for_tier
 
-# Configure Gemini
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-
-# Use Flash for speed
-CLASSIFIER_MODEL = genai.GenerativeModel('gemini-2.0-flash')
+# Use Lite for lower-latency/low-cost classification
+CLASSIFIER_MODEL = get_model_for_tier(MODEL_TIER_LITE)
 
 # Classification prompt template
 CLASSIFICATION_PROMPT = """Aşağıdaki Türkçe metin parçasını analiz et ve JSON formatında sınıflandır.
@@ -67,17 +64,18 @@ def _call_gemini_classifier(passage: str) -> Dict:
         prompt = CLASSIFICATION_PROMPT.format(passage=passage_truncated)
         
         # Task 2.4: Add timeout
-        response = CLASSIFIER_MODEL.generate_content(
-            prompt,
-            request_options={'timeout': 20},
-            generation_config={
-                'temperature': 0.1,  # Low temperature for consistent classification
-                'max_output_tokens': 100
-            }
+        result = generate_text(
+            model=CLASSIFIER_MODEL,
+            prompt=prompt,
+            task="semantic_classifier",
+            model_tier=MODEL_TIER_LITE,
+            temperature=0.1,
+            max_output_tokens=100,
+            timeout_s=20.0,
         )
         
         # Parse JSON response
-        text = response.text.strip()
+        text = result.text.strip()
         
         # Extract JSON from response (handle markdown code blocks)
         json_match = re.search(r'\{[^}]+\}', text)
