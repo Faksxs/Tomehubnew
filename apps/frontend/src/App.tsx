@@ -119,6 +119,42 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   }, [userId]);
 
   useEffect(() => {
+    if (!userId) return;
+
+    // Placeholder for loadLegacyMigrationFlag() if it's meant to be added later
+    // For now, this useEffect is empty as per the provided snippet.
+    // loadLegacyMigrationFlag(); 
+  }, [userId]);
+
+  // Mobile keyboard zoom reset on input blur
+  useEffect(() => {
+    const handleInputBlur = () => {
+      // Small delay to ensure keyboard is fully dismissed
+      setTimeout(() => {
+        // Reset scroll position
+        window.scrollTo(0, 0);
+        // Force viewport reset (helps on some iOS devices)
+        if (document.activeElement && document.activeElement !== document.body) {
+          (document.activeElement as HTMLElement).blur();
+        }
+      }, 100);
+    };
+
+    // Listen to all input/textarea blur events
+    const inputs = document.querySelectorAll('input, textarea');
+    inputs.forEach(input => {
+      input.addEventListener('blur', handleInputBlur);
+    });
+
+    // Cleanup
+    return () => {
+      inputs.forEach(input => {
+        input.removeEventListener('blur', handleInputBlur);
+      });
+    };
+  }, []);
+
+  useEffect(() => {
     if (!userId || flowPrewarmStartedRef.current) return;
 
     // Avoid background prewarm calls during local dev unless explicitly enabled.
@@ -956,8 +992,6 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
             onDeleteMultiple={handleBulkDelete}
             onToggleFavorite={handleToggleFavorite}
             onToggleHighlightFavorite={handleToggleHighlightFavorite}
-            onLoadMore={handleLoadMore}
-            hasMore={hasMore}
             currentPage={currentPage}
             onPageChange={setCurrentPage}
             searchQuery={listSearch}
@@ -999,9 +1033,9 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
           initialType={
             editingBook
               ? editingBook.type
-              : activeTab === "NOTES" || activeTab === "DASHBOARD" || activeTab === "PROFILE"
+              : activeTab === "NOTES" || activeTab === "DASHBOARD" || activeTab === "PROFILE" || activeTab === "RAG_SEARCH" || activeTab === "SMART_SEARCH" || activeTab === "FLOW"
                 ? "BOOK"
-                : activeTab
+                : (activeTab as ResourceType)
           }
           initialData={editingBook}
           noteDefaults={!editingBook && (activeTab === "PERSONAL_NOTE")

@@ -149,11 +149,11 @@ export default function SmartSearch({ userId, onBack, books = [] }: SmartSearchP
 
     return (
         <div className="flex flex-col h-full p-6 max-w-[1100px] mx-auto w-full animate-in fade-in duration-500">
-            <div className="sticky top-0 z-50 -mx-6 px-6 pt-6 pb-4 bg-[#F7F8FB]/95 dark:bg-[#0b0e14]/95 backdrop-blur border-b border-[#E6EAF2]/60 dark:border-white/5">
+            <div className="sticky top-0 z-50 -mx-6 px-6 pt-2 md:pt-6 pb-2 md:pb-4 bg-[#F7F8FB]/95 dark:bg-[#0b0e14]/95 backdrop-blur border-b border-[#E6EAF2]/60 dark:border-white/5">
                 {!searched ? (
-                    <div className="text-center space-y-3 relative">
+                    <div className="flex flex-row md:flex-col items-center justify-center gap-3 md:space-y-3 relative">
                         {onBack && (
-                            <div className="absolute left-0 top-0">
+                            <div className="absolute left-0 top-1/2 -translate-y-1/2 md:top-0 md:translate-y-0">
                                 <button
                                     onClick={onBack}
                                     className="group flex items-center gap-2 text-slate-500 hover:text-[#CC561E] transition-all duration-300"
@@ -161,17 +161,16 @@ export default function SmartSearch({ userId, onBack, books = [] }: SmartSearchP
                                     <div className="p-1.5 rounded-lg bg-[#F3F5FA] dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
                                         <ChevronLeft size={16} />
                                     </div>
-                                    <span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">Back to Home</span>
+                                    <span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">Back</span>
                                 </button>
                             </div>
                         )}
-                        <div className="inline-flex items-center justify-center p-3 bg-[rgba(204,86,30,0.1)] dark:bg-[rgba(204,86,30,0.2)] rounded-2xl mb-2">
-                            <SmartSearchLogo className="w-8 h-8" />
+                        <div className="inline-flex items-center justify-center p-2 md:p-3 bg-[rgba(204,86,30,0.1)] dark:bg-[rgba(204,86,30,0.2)] rounded-2xl mb-0 md:mb-2 shrink-0">
+                            <SmartSearchLogo className="w-6 h-6 md:w-8 md:h-8" />
                         </div>
-                        <h2 className="text-4xl font-extrabold bg-gradient-to-r from-[#CC561E] to-[#e66a2e] bg-clip-text text-transparent tracking-tight">
+                        <h2 className="text-2xl md:text-4xl font-extrabold bg-gradient-to-r from-[#CC561E] to-[#e66a2e] bg-clip-text text-transparent tracking-tight">
                             Search
                         </h2>
-
                     </div>
                 ) : (
                     <div className="flex items-center gap-4">
@@ -183,7 +182,7 @@ export default function SmartSearch({ userId, onBack, books = [] }: SmartSearchP
                                 <div className="p-1.5 rounded-lg bg-[#F3F5FA] dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
                                     <ChevronLeft size={16} />
                                 </div>
-                                <span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">Back to Home</span>
+                                <span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">Back</span>
                             </button>
                         )}
                         <div className="flex items-center gap-2">
@@ -195,30 +194,31 @@ export default function SmartSearch({ userId, onBack, books = [] }: SmartSearchP
                     </div>
                 )}
 
-                <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl border border-[#E6EAF2] dark:border-gray-700 overflow-hidden mt-4">
-                    <div className="p-3">
+                <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl border border-[#E6EAF2] dark:border-gray-700 overflow-hidden mt-2 md:mt-4 max-w-2xl mx-auto">
+                    <div className="p-2 md:p-3">
                         <form onSubmit={handleSearch} className="flex items-center gap-2">
                             <div className="relative flex-1 group">
-                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-[#262D40]" />
+                                <Search className="absolute left-3 md:left-4 top-1/2 -translate-y-1/2 w-4 h-4 md:w-5 md:h-5 text-gray-400 group-focus-within:text-[#262D40]" />
                                 <input
                                     type="text"
                                     placeholder="Kütüphanende akıllı arama yap..."
                                     value={query}
                                     onChange={(e) => setQuery(e.target.value)}
-                                    className="w-full pl-12 pr-4 py-4 text-lg bg-transparent border-none outline-none text-gray-900 dark:text-gray-100 placeholder:text-gray-400 font-medium"
+                                    className="w-full pl-9 md:pl-12 pr-4 py-2 md:py-4 text-base md:text-lg bg-transparent border-none outline-none text-gray-900 dark:text-gray-100 placeholder:text-gray-400 font-medium"
                                 />
                             </div>
                             <button
                                 type="submit"
                                 disabled={loading || !query.trim()}
-                                className="px-8 py-4 bg-[#262D40] hover:bg-[#1d2333] text-white rounded-2xl font-bold text-base transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-[#262D40]/20"
+                                className="px-4 md:px-8 py-2 md:py-4 bg-[#262D40] hover:bg-[#1d2333] text-white rounded-xl md:rounded-2xl font-bold text-sm md:text-base transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-[#262D40]/20"
                             >
-                                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <span>Search</span>}
+                                {loading ? <Loader2 className="w-4 h-4 md:w-5 md:h-5 animate-spin" /> : <span>Search</span>}
                             </button>
                         </form>
                     </div>
                 </div>
             </div>
+
             {!searched && (
                 <div className="bg-[#F3F5FA] dark:bg-gray-900/40 px-6 py-3 rounded-2xl border border-[#E6EAF2] dark:border-gray-700 flex flex-wrap gap-4 text-sm text-gray-500 font-medium mt-6">
                     <span className="flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-1 rounded-full border border-[#E6EAF2] dark:border-gray-700 shadow-sm"><Sparkles className="w-4 h-4 text-[#CC561E]" /> AI Query Expansion</span>
@@ -281,7 +281,6 @@ export default function SmartSearch({ userId, onBack, books = [] }: SmartSearchP
                             ))}
                         </div>
 
-                        {/* Pagination UI */}
                         {totalResults > limit && (
                             <div className="flex items-center justify-between mt-10 pt-6 border-t border-[#E6EAF2] dark:border-gray-700">
                                 <button

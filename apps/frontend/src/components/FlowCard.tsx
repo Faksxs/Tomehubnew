@@ -131,11 +131,25 @@ export const FlowCard: React.FC<FlowCardProps> = ({
                     border: 1px solid #E6EAF2;
                     border-left: 3px solid var(--zone-color);
                     border-radius: 20px;
-                    padding: 24px;
-                    margin-bottom: 20px;
+                    padding: 20px;
+                    margin-bottom: 12px;
                     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
                     position: relative;
                     overflow: hidden;
+                }
+
+                @media (max-width: 768px) {
+                    .flow-card {
+                        padding: 16px;
+                        margin-bottom: 8px;
+                        border-radius: 16px;
+                    }
+                }
+
+                @media (min-width: 769px) {
+                    .flow-card {
+                            margin-bottom: 10px;
+                    }
                 }
                 
                 .dark .flow-card {
@@ -197,14 +211,26 @@ export const FlowCard: React.FC<FlowCardProps> = ({
                     opacity: 0.9;
                 }
 
+                @media (max-width: 768px) {
+                    .zone-label {
+                        font-size: 9px;
+                    }
+                }
+
                 .flow-card__meta-item {
                     font-size: 12px;
                     font-weight: 600;
                     color: #64748b;
                 }
 
+                @media (max-width: 768px) {
+                    .flow-card__meta-item {
+                        font-size: 10px;
+                    }
+                }
+
                 .flow-card__header {
-                    margin-bottom: 16px;
+                    margin-bottom: 12px;
                 }
 
                 .flow-card__title {
@@ -214,6 +240,12 @@ export const FlowCard: React.FC<FlowCardProps> = ({
                     color: #1e293b;
                     line-height: 1.3;
                     margin: 0 0 8px 0;
+                }
+
+                @media (max-width: 768px) {
+                    .flow-card__title {
+                        font-size: 15px;
+                    }
                 }
 
                 .dark .flow-card__title {
@@ -286,12 +318,18 @@ export const FlowCard: React.FC<FlowCardProps> = ({
                     letter-spacing: 0.02em;
                 }
 
+                @media (max-width: 768px) {
+                    .flow-card__footer-reason {
+                        font-size: 10px;
+                    }
+                }
+
                 .flow-card__footer {
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
-                    margin-top: 24px;
-                    padding-top: 20px;
+                    margin-top: 16px;
+                    padding-top: 14px;
                     border-top: 1px solid #E6EAF2;
                 }
 
@@ -351,6 +389,13 @@ export const FlowCard: React.FC<FlowCardProps> = ({
                     padding: 8px 16px;
                     border-radius: 8px;
                     transition: all 0.2s ease;
+                }
+
+                @media (max-width: 768px) {
+                    .expand-toggle {
+                        font-size: 11px;
+                        padding: 6px 12px;
+                    }
                 }
 
                 .expand-toggle:hover {

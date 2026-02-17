@@ -18,10 +18,10 @@ import {
     CheckCircle,
     Clock,
     PlayCircle,
-    Star,
     Zap,
     LayoutGrid,
-    Archive
+    Archive,
+    Menu
 } from 'lucide-react';
 import { LibraryItem } from '../../types';
 import { CATEGORIES } from '../CategorySelector';
@@ -45,6 +45,7 @@ interface KnowledgeDashboardProps {
     onCategorySelect?: (category: string) => void;
     onStatusSelect?: (status: string) => void;
     onNavigateToTab?: (tab: string) => void;
+    onMobileMenuClick?: () => void;
 }
 
 export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
@@ -52,7 +53,8 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
     userId,
     onCategorySelect,
     onStatusSelect,
-    onNavigateToTab
+    onNavigateToTab,
+    onMobileMenuClick
 }) => {
     const [showLevelC, setShowLevelC] = useState(false);
     const [epistemicRows, setEpistemicRows] = useState<EpistemicDistributionRow[]>([]);
@@ -204,9 +206,20 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
         <div className="min-h-full w-full space-y-5 md:space-y-8 animate-in fade-in duration-700 relative">
 
             {/* Header (Perfect Size) */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-5 relative z-20">
+            <div className="flex flex-row items-center justify-between gap-3 md:gap-5 relative z-20">
+                {/* Mobile Menu Trigger (Left) */}
+                <div className="lg:hidden">
+                    <button
+                        onClick={onMobileMenuClick}
+                        className="p-1 -ml-1 text-slate-600 dark:text-slate-400 hover:bg-[#F3F5FA] dark:hover:bg-slate-800 rounded-lg transition-colors shrink-0"
+                    >
+                        <Menu size={18} className="md:w-6 md:h-6" />
+                    </button>
+                </div>
+
+                {/* Dashboard Title (Right on mobile via justify-between, Left on Desktop via flex behavior) */}
                 <div className="space-y-1">
-                    <h2 className="text-xl md:text-3xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2.5 md:gap-3">
+                    <h2 className="text-xl md:text-3xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2.5 md:gap-3 flex-row-reverse md:flex-row">
                         <div className="relative group">
                             <div className="absolute -inset-2 bg-primary/20 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                             <div className="relative p-1.5 md:p-2 bg-primary/10 dark:bg-primary/20 rounded-xl border border-primary/30 dark:border-primary/40 shadow-[0_0_15px_rgba(204,86,30,0.2)]">
@@ -216,11 +229,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                         Dashboard
                     </h2>
                 </div>
-                <div className="flex items-center gap-2">
-                    <span className="px-2.5 py-1 rounded-xl bg-white/40 dark:bg-white/5 backdrop-blur-md text-slate-500 dark:text-slate-400 text-[9px] md:text-[10px] font-bold uppercase tracking-widest border border-slate-200/50 dark:border-white/10 shadow-sm">
-                        System v2.1.3 Balanced
-                    </span>
-                </div>
+                {/* System version badge removed as per request */}
             </div>
 
             <div className="max-w-6xl mx-auto space-y-5 md:space-y-8 relative z-20">
@@ -239,28 +248,33 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                 transition={{ delay: idx * 0.04 }}
                                 onClick={() => onNavigateToTab?.(stat.tab)}
                                 className="
-                    relative overflow-hidden
-                    group cursor-pointer
-                    rounded-xl md:rounded-[1.4rem] border border-slate-800/20 dark:border-white/10
-                    bg-card dark:bg-slate-900/50
-                    backdrop-blur-xl shadow-lg lg:shadow-md
-                    hover:shadow-2xl hover:border-primary/40 dark:hover:border-primary/40 hover:-translate-y-1
-                    transition-all duration-300
-                    flex flex-col items-center justify-center p-2.5 md:p-5 gap-1 md:gap-2.5 min-h-[86px] md:min-h-0
-                "
+                                    relative overflow-hidden
+                                    group cursor-pointer
+                                    rounded-2xl border border-slate-800/20 dark:border-white/10
+                                    bg-card dark:bg-slate-900/50
+                                    backdrop-blur-xl shadow-lg lg:shadow-md
+                                    hover:shadow-2xl hover:border-primary/40 dark:hover:border-primary/40 hover:-translate-y-1
+                                    transition-all duration-300
+                                    flex flex-col items-center p-2.5 md:p-4 gap-1.5 md:gap-3
+                                "
                             >
-                                <div className="relative">
-                                    <div className="absolute -inset-4 bg-orange-500/10 blur-2xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                                    <div className="relative p-1.5 md:p-2.5 bg-orange-500/5 dark:bg-orange-500/10 rounded-lg md:rounded-2xl border border-orange-500/10 dark:border-orange-500/20 transition-colors group-hover:border-orange-500/40">
-                                        <stat.icon className="w-4 h-4 md:w-[22px] md:h-[22px] text-[#CC561E] dark:text-[#f3a47b] drop-shadow-[0_0_5px_rgba(204,86,30,0.4)] group-hover:drop-shadow-[0_0_10px_rgba(204,86,30,0.8)] transition-all" />
+                                {/* Top Row: Icon and Label (Centered) */}
+                                <div className="flex items-center justify-center gap-2 md:gap-2.5 w-full">
+                                    <div className="relative shrink-0">
+                                        <div className="absolute -inset-2 bg-orange-500/10 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                                        <div className="relative p-1 md:p-1.5 bg-orange-500/5 dark:bg-orange-500/10 rounded-lg md:rounded-xl border border-orange-500/10 dark:border-orange-500/20 transition-colors group-hover:border-orange-500/40">
+                                            <stat.icon className="w-3.5 h-3.5 md:w-4.5 md:h-4.5 text-[#CC561E] dark:text-[#f3a47b] drop-shadow-[0_0_5px_rgba(204,86,30,0.4)] group-hover:drop-shadow-[0_0_10px_rgba(204,86,30,0.8)] transition-all" />
+                                        </div>
+                                    </div>
+                                    <div className="text-[8.5px] md:text-[11px] font-bold uppercase tracking-[0.05em] md:tracking-widest text-slate-400 group-hover:text-slate-300 transition-colors leading-tight">
+                                        {stat.label}
                                     </div>
                                 </div>
-                                <div className="text-center">
-                                    <div className="text-lg md:text-[28px] font-black tracking-tight text-white leading-none mb-0 md:mb-1">
+
+                                {/* Value Below (Centered) */}
+                                <div className="w-full text-center mt-auto">
+                                    <div className="text-lg md:text-[26px] font-black tracking-tight text-white leading-none">
                                         {stat.value}
-                                    </div>
-                                    <div className="text-[8px] md:text-[11px] font-bold uppercase tracking-[0.14em] md:tracking-widest text-slate-400/60 leading-none">
-                                        {stat.label}
                                     </div>
                                 </div>
                             </motion.div>
@@ -268,60 +282,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                     </div>
                 </section>
 
-                {/* 🔸 Level B – Organization (Perfect Fit Glass Pane) */}
-                <section className="space-y-2 md:space-y-4">
-                    <div className="flex items-center gap-1.5 md:gap-2 px-1 text-[9px] md:text-[10px] font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] text-slate-400 dark:text-slate-500">
-                        <LayoutGrid size={11} className="text-primary/60 md:w-3 md:h-3" /> Epistemic Quality
-                    </div>
 
-                    <div className="rounded-2xl md:rounded-3xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 backdrop-blur-xl p-3 md:p-6 shadow-lg space-y-3 md:space-y-5">
-                        <div className="grid grid-cols-3 gap-2 md:gap-4">
-                            <div className="p-2 md:p-3 rounded-xl border border-emerald-400/30 bg-emerald-500/10">
-                                <p className="text-[10px] md:text-xs uppercase tracking-wider text-emerald-300 font-bold">Level A</p>
-                                <p className="text-lg md:text-2xl font-black text-white">{epistemicTotals.levelA}</p>
-                            </div>
-                            <div className="p-2 md:p-3 rounded-xl border border-sky-400/30 bg-sky-500/10">
-                                <p className="text-[10px] md:text-xs uppercase tracking-wider text-sky-300 font-bold">Level B</p>
-                                <p className="text-lg md:text-2xl font-black text-white">{epistemicTotals.levelB}</p>
-                            </div>
-                            <div className="p-2 md:p-3 rounded-xl border border-amber-400/30 bg-amber-500/10">
-                                <p className="text-[10px] md:text-xs uppercase tracking-wider text-amber-300 font-bold">Level C</p>
-                                <p className="text-lg md:text-2xl font-black text-white">{epistemicTotals.levelC}</p>
-                            </div>
-                        </div>
-
-                        {epistemicLoading && (
-                            <div className="text-xs md:text-sm text-slate-400">Yukleniyor...</div>
-                        )}
-                        {epistemicError && !epistemicLoading && (
-                            <div className="text-xs md:text-sm text-rose-300">{epistemicError}</div>
-                        )}
-                        {!epistemicLoading && !epistemicError && topEpistemicBooks.length === 0 && (
-                            <div className="text-xs md:text-sm text-slate-400">Epistemik veri henuz olusmadi.</div>
-                        )}
-
-                        {!epistemicLoading && !epistemicError && topEpistemicBooks.length > 0 && (
-                            <div className="space-y-1.5">
-                                {topEpistemicBooks.map((row) => (
-                                    <div key={row.book_id} className="grid grid-cols-12 gap-2 items-center text-[10px] md:text-xs py-1.5 border-b border-white/5 last:border-b-0">
-                                        <div className="col-span-5 text-slate-200 truncate font-semibold">{row.title}</div>
-                                        <div className="col-span-2 text-emerald-300 font-bold text-right">{Math.round((row.ratio_a || 0) * 100)}%</div>
-                                        <div className="col-span-2 text-sky-300 font-bold text-right">{Math.round((row.ratio_b || 0) * 100)}%</div>
-                                        <div className="col-span-2 text-amber-300 font-bold text-right">{Math.round((row.ratio_c || 0) * 100)}%</div>
-                                        <div className="col-span-1 text-slate-400 text-right">{row.total_chunks}</div>
-                                    </div>
-                                ))}
-                                <div className="grid grid-cols-12 gap-2 text-[10px] md:text-xs text-slate-400 pt-1">
-                                    <div className="col-span-5">Book</div>
-                                    <div className="col-span-2 text-right">A</div>
-                                    <div className="col-span-2 text-right">B</div>
-                                    <div className="col-span-2 text-right">C</div>
-                                    <div className="col-span-1 text-right">N</div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </section>
 
                 <section className="space-y-1 md:space-y-4">
                     <div className="flex items-center gap-1.5 md:gap-2 px-1 text-xs md:text-sm font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] text-slate-400 dark:text-slate-500">
@@ -466,6 +427,60 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                 exit={{ opacity: 0, height: 0, y: 10 }}
                                 className="overflow-hidden"
                             >
+                                <div className="space-y-4 mb-4">
+                                    <div className="flex items-center gap-1.5 md:gap-2 px-1 text-[9px] md:text-[10px] font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] text-slate-400 dark:text-slate-500">
+                                        <LayoutGrid size={11} className="text-primary/60 md:w-3 md:h-3" /> Epistemic Quality
+                                    </div>
+
+                                    <div className="rounded-2xl md:rounded-3xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 backdrop-blur-xl p-3 md:p-6 shadow-lg space-y-3 md:space-y-5">
+                                        <div className="grid grid-cols-3 gap-2 md:gap-4">
+                                            <div className="p-2 md:p-3 rounded-xl border border-emerald-400/30 bg-emerald-500/10">
+                                                <p className="text-[10px] md:text-xs uppercase tracking-wider text-emerald-300 font-bold">Level A</p>
+                                                <p className="text-lg md:text-2xl font-black text-white">{epistemicTotals.levelA}</p>
+                                            </div>
+                                            <div className="p-2 md:p-3 rounded-xl border border-sky-400/30 bg-sky-500/10">
+                                                <p className="text-[10px] md:text-xs uppercase tracking-wider text-sky-300 font-bold">Level B</p>
+                                                <p className="text-lg md:text-2xl font-black text-white">{epistemicTotals.levelB}</p>
+                                            </div>
+                                            <div className="p-2 md:p-3 rounded-xl border border-amber-400/30 bg-amber-500/10">
+                                                <p className="text-[10px] md:text-xs uppercase tracking-wider text-amber-300 font-bold">Level C</p>
+                                                <p className="text-lg md:text-2xl font-black text-white">{epistemicTotals.levelC}</p>
+                                            </div>
+                                        </div>
+
+                                        {epistemicLoading && (
+                                            <div className="text-xs md:text-sm text-slate-400">Yukleniyor...</div>
+                                        )}
+                                        {epistemicError && !epistemicLoading && (
+                                            <div className="text-xs md:text-sm text-rose-300">{epistemicError}</div>
+                                        )}
+                                        {!epistemicLoading && !epistemicError && topEpistemicBooks.length === 0 && (
+                                            <div className="text-xs md:text-sm text-slate-400">Epistemik veri henuz olusmadi.</div>
+                                        )}
+
+                                        {!epistemicLoading && !epistemicError && topEpistemicBooks.length > 0 && (
+                                            <div className="space-y-1.5">
+                                                {topEpistemicBooks.map((row) => (
+                                                    <div key={row.book_id} className="grid grid-cols-12 gap-2 items-center text-[10px] md:text-xs py-1.5 border-b border-white/5 last:border-b-0">
+                                                        <div className="col-span-5 text-slate-200 truncate font-semibold">{row.title}</div>
+                                                        <div className="col-span-2 text-emerald-300 font-bold text-right">{Math.round((row.ratio_a || 0) * 100)}%</div>
+                                                        <div className="col-span-2 text-sky-300 font-bold text-right">{Math.round((row.ratio_b || 0) * 100)}%</div>
+                                                        <div className="col-span-2 text-amber-300 font-bold text-right">{Math.round((row.ratio_c || 0) * 100)}%</div>
+                                                        <div className="col-span-1 text-slate-400 text-right">{row.total_chunks}</div>
+                                                    </div>
+                                                ))}
+                                                <div className="grid grid-cols-12 gap-2 text-[10px] md:text-xs text-slate-400 pt-1">
+                                                    <div className="col-span-5">Book</div>
+                                                    <div className="col-span-2 text-right">A</div>
+                                                    <div className="col-span-2 text-right">B</div>
+                                                    <div className="col-span-2 text-right">C</div>
+                                                    <div className="col-span-1 text-right">N</div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 pt-0.5 md:pt-2">
                                     <div className="p-2.5 md:p-5 rounded-lg md:rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 backdrop-blur-xl flex flex-col gap-1 md:gap-2 shadow-lg min-h-[70px] md:min-h-0">
                                         <p className="text-[9px] md:text-[11px] font-black uppercase text-slate-300/80 flex items-center gap-1 md:gap-2">

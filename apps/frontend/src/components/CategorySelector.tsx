@@ -20,7 +20,7 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({ activeCatego
             <div className="flex flex-col gap-2">
                 <button
                     onClick={() => onCategoryChange(null)}
-                    className={`w-full text-left px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 border ${activeCategory === null
+                    className={`w-full text-left px-3 py-2 rounded-xl text-sm font-bold transition-all duration-300 border ${activeCategory === null
                         ? 'bg-card border-[#CC561E] text-card-foreground shadow-[0_0_12px_rgba(204,86,30,0.35)]'
                         : 'bg-card border-white/10 text-card-foreground hover:border-white/20 hover:bg-card/90'
                         }`}
@@ -31,7 +31,7 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({ activeCatego
                     <button
                         key={cat}
                         onClick={() => onCategoryChange(cat)}
-                        className={`w-full text-left px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 border ${activeCategory === cat
+                        className={`w-full text-left px-3 py-2 rounded-xl text-sm font-bold transition-all duration-300 border ${activeCategory === cat
                             ? 'bg-card border-[#CC561E] text-card-foreground shadow-[0_0_12px_rgba(204,86,30,0.35)]'
                             : 'bg-card border-white/10 text-card-foreground hover:border-white/20 hover:bg-card/90'
                             }`}

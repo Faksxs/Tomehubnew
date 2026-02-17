@@ -345,13 +345,13 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
   }
 
   const isNote = initialType === 'PERSONAL_NOTE';
-  const noteLabelClass = isNote ? 'text-slate-900 dark:text-slate-900' : 'text-slate-700 dark:text-slate-300';
-  const noteSubLabelClass = isNote ? 'text-slate-800 dark:text-slate-900' : 'text-slate-700 dark:text-slate-300';
-  const noteHelperClass = isNote ? 'text-slate-700 dark:text-slate-700' : 'text-slate-500 dark:text-slate-400';
+  const noteLabelClass = isNote ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300';
+  const noteSubLabelClass = isNote ? 'text-slate-800 dark:text-slate-200' : 'text-slate-700 dark:text-slate-300';
+  const noteHelperClass = isNote ? 'text-slate-700 dark:text-slate-400' : 'text-slate-500 dark:text-slate-400';
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className={`bg-white rounded-xl shadow-2xl w-full overflow-hidden flex flex-col ${isNote ? 'max-w-3xl max-h-[94vh]' : 'max-w-2xl max-h-[90vh]'}`}>
+      <div className={`bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full overflow-hidden flex flex-col ${isNote ? 'max-w-3xl max-h-[94vh]' : 'max-w-2xl max-h-[90vh]'}`}>
 
         {/* Header */}
         <div className={`${isNote ? 'p-4' : 'p-5'} border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-900 z-10`}>

@@ -56,9 +56,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen
           <img
             src={logo}
             alt="TomeHub Icon"
-            className="h-[77px] w-auto object-contain brightness-110 drop-shadow-md"
+            className="h-16 lg:h-[77px] w-auto object-contain brightness-110 drop-shadow-md"
           />
-          <h1 className="text-2xl font-bold text-white tracking-tighter leading-none">TomeHub</h1>
+          <h1 className="text-xl lg:text-2xl font-bold text-white tracking-tighter leading-none">TomeHub</h1>
 
           <button
             onClick={onClose}
@@ -79,14 +79,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen
                   onTabChange(item.id as any);
                   onClose();
                 }}
-                className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-200 group ${isActive
+                className={`w-full flex items-center gap-3 px-3 py-2.5 lg:py-3 rounded-xl text-xs lg:text-sm font-medium transition-all duration-200 group ${isActive
                   ? 'bg-white/10 text-white shadow-sm border-r-2 border-[#CC561E]'
                   : 'text-white/70 hover:bg-white/5 hover:text-white'
                   }`}
               >
                 <Icon
-                  size={20}
-                  className={`transition-colors ${isActive ? 'text-[#CC561E]' : 'text-white/60 group-hover:text-white'
+                  className={`w-[17px] h-[17px] lg:w-5 lg:h-5 transition-colors ${isActive ? 'text-[#CC561E]' : 'text-white/60 group-hover:text-white'
                     }`}
                 />
                 {item.label}
@@ -101,14 +100,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen
               onTabChange('PROFILE');
               onClose();
             }}
-            className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-200 group ${activeTab === 'PROFILE'
+            className={`w-full flex items-center gap-3 px-3 py-2.5 lg:py-3 rounded-xl text-xs lg:text-sm font-medium transition-all duration-200 group ${activeTab === 'PROFILE'
               ? 'bg-white/10 text-white shadow-sm border-r-2 border-[#CC561E]'
               : 'text-white/70 hover:bg-white/5 hover:text-white'
               }`}
           >
             <User
-              size={20}
-              className={`transition-colors ${activeTab === 'PROFILE' ? 'text-[#CC561E]' : 'text-white/60 group-hover:text-white'
+              className={`w-[17px] h-[17px] lg:w-5 lg:h-5 transition-colors ${activeTab === 'PROFILE' ? 'text-[#CC561E]' : 'text-white/60 group-hover:text-white'
                 }`}
             />
             Profile
@@ -116,16 +114,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen
 
           <button
             onClick={toggleTheme}
-            className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white transition-all duration-200 group mt-1"
+            className="w-full flex items-center gap-3 px-3 py-2.5 lg:py-3 rounded-xl text-xs lg:text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white transition-all duration-200 group mt-1"
           >
             {theme === 'light' ? (
               <>
-                <Moon size={20} className="text-white/60 group-hover:text-white" />
+                <Moon className="w-[17px] h-[17px] lg:w-5 lg:h-5 text-white/60 group-hover:text-white" />
                 Dark Mode
               </>
             ) : (
               <>
-                <Sun size={20} className="text-amber-400" />
+                <Sun className="w-[17px] h-[17px] lg:w-5 lg:h-5 text-amber-400" />
                 Light Mode
               </>
             )}

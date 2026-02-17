@@ -138,6 +138,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
     const [activeDraggedNoteId, setActiveDraggedNoteId] = useState<string | null>(null);
     const [activeDraggedFolderId, setActiveDraggedFolderId] = useState<string | null>(null);
     const [undoMove, setUndoMove] = useState<{ noteId: string; category: PersonalNoteCategory; folderId?: string; timeoutId: number } | null>(null);
+    const [lastTap, setLastTap] = useState<{ noteId: string; time: number } | null>(null);
 
     useEffect(() => {
         if (!isPersonalNotes) {
@@ -167,6 +168,25 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
             activationConstraint: { delay: 120, tolerance: 8 },
         })
     );
+
+    const handleNoteCardClick = (note: LibraryItem) => {
+        const now = Date.now();
+        const isMobile = window.innerWidth < 768;
+
+        if (isMobile && lastTap?.noteId === note.id && now - lastTap.time < 300) {
+            // Double tap detected - open in edit mode
+            setLastTap(null);
+            if (onSelectBookWithTab) {
+                onSelectBookWithTab(note, 'info');
+            } else {
+                onSelectBook(note);
+            }
+        } else {
+            // Single tap - just open note preview
+            setLastTap({ noteId: note.id, time: now });
+            onSelectBook(note);
+        }
+    };
 
     const folderById = useMemo(() => {
         const map = new Map<string, PersonalNoteFolder>();
@@ -739,7 +759,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
         };
 
         return (
-            <div className="flex justify-center items-center gap-2 mt-8 md:mt-12 select-none">
+            <div className="flex justify-center items-center gap-2 mt-4 md:mt-12 select-none">
                 <button
                     onClick={() => onPageChange(Math.max(currentPage - 1, 1))}
                     disabled={currentPage === 1}
@@ -793,6 +813,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                         onCategorySelect={(cat) => onCategoryNavigate?.(cat)}
                         onStatusSelect={(status) => onStatusNavigate?.(status)}
                         onNavigateToTab={(tab) => onTabChange?.(tab as any)}
+                        onMobileMenuClick={onMobileMenuClick}
                     />
                 </React.Suspense>
             );
@@ -824,8 +845,8 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
             }
 
             return (
-                <div className="pb-20">
-                    <div className="columns-2 lg:columns-3 gap-3 md:gap-6 space-y-3 md:space-y-6">
+                <div className="pb-10 md:pb-20">
+                    <div className="columns-2 lg:columns-3 gap-2 md:gap-6 space-y-2 md:space-y-6">
                         {displayedHighlights.map((highlight, idx) => {
                             const isNote = isInsightType(highlight.type);
                             return (
@@ -838,7 +859,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                             onSelectBook(highlight.source);
                                         }
                                     }}
-                                    className={`break-inside-avoid p-3 md:p-6 rounded-xl border hover:shadow-md transition-all group cursor-pointer relative flex flex-col ${isNote
+                                    className={`break-inside-avoid p-2.5 md:p-6 rounded-xl border hover:shadow-md transition-all group cursor-pointer relative flex flex-col ${isNote
                                         ? 'bg-white dark:bg-slate-800 border-[#E6EAF2] dark:border-slate-700 hover:border-[#262D40]/12 dark:hover:border-[#262D40]/30'
                                         : 'bg-white dark:bg-slate-800 border-[#E6EAF2] dark:border-slate-700 hover:border-[#262D40]/12 dark:hover:border-[#262D40]/30'
                                         }`}
@@ -907,7 +928,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                     <div className="bg-[#F3F5FA] dark:bg-slate-800 w-12 h-12 md:w-16 md:h-16 rounded-full flex items-center justify-center mx-auto mb-3 md:mb-4">
                         {activeTab === 'BOOK' ? <BookIcon size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" /> :
                             activeTab === 'ARTICLE' ? <FileText size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" /> :
-                                activeTab === 'PERSONAL_NOTE' ? <PenTool size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" /> :
+                                (activeTab as any) === 'PERSONAL_NOTE' ? <PenTool size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" /> :
                                     <Globe size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" />}
                     </div>
                     <h3 className="text-base md:text-lg font-medium text-slate-900 dark:text-white">No {getTabLabel(activeTab).toLowerCase()} found</h3>
@@ -919,7 +940,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
         }
 
         return (
-            <div className="pb-20">
+            <div className="pb-10 md:pb-20">
                 {isPersonalNotes ? (
                     <DndContext
                         sensors={dndSensors}
@@ -1168,44 +1189,58 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                             </aside>
 
                             <div className="space-y-3">
-                                <div className="lg:hidden">
+                                {/* Mobile Only: Side-by-Side Navigator and Quick Capture Toggles */}
+                                <div className="lg:hidden flex gap-2">
                                     <button
                                         onClick={() => setIsPersonalPanelOpen((prev) => !prev)}
-                                        className="px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-[#E6EAF2] dark:border-slate-800 rounded-lg flex items-center gap-2"
+                                        className="flex-1 px-3 py-2.5 bg-white dark:bg-slate-900 border border-[#E6EAF2] dark:border-slate-800 rounded-xl flex items-center justify-center gap-2 text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 shadow-sm active:scale-95 transition-all"
                                     >
                                         <ListFilter size={14} />
-                                        Note Navigator
+                                        Navigator
+                                    </button>
+                                    <button
+                                        onClick={() => setIsQuickCaptureOpen(!isQuickCaptureOpen)}
+                                        className={`flex-1 px-3 py-2.5 border rounded-xl flex items-center justify-center gap-2 text-[11px] font-bold uppercase tracking-wider transition-all shadow-sm active:scale-95 ${isQuickCaptureOpen ? 'bg-[#CC561E]/10 border-[#CC561E]/30 text-[#CC561E]' : 'bg-white dark:bg-slate-900 border-[#E6EAF2] dark:border-slate-800 text-slate-600 dark:text-slate-400'}`}
+                                    >
+                                        <ChevronDown size={14} className={`transition-transform duration-200 ${isQuickCaptureOpen ? 'rotate-180' : ''}`} />
+                                        Capture
                                     </button>
                                 </div>
 
-                                <div className="bg-white dark:bg-slate-900 border border-[#E6EAF2] dark:border-slate-800 rounded-2xl overflow-hidden">
-                                    <button
-                                        onClick={() => setIsQuickCaptureOpen(!isQuickCaptureOpen)}
-                                        className="w-full flex items-center justify-between p-4 md:p-5 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                                <div className={`bg-white dark:bg-slate-900 border border-[#E6EAF2] dark:border-slate-800 rounded-2xl overflow-hidden ${!isQuickCaptureOpen ? 'hidden lg:block' : 'block'}`}>
+                                    {/* Desktop Header & Mobile Expanded Controls */}
+                                    <div
+                                        className={`w-full flex items-center justify-between p-4 md:p-5 transition-colors ${!isQuickCaptureOpen ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50' : ''}`}
+                                        onClick={() => !isQuickCaptureOpen && setIsQuickCaptureOpen(true)}
                                     >
-                                        <h4 className="text-sm md:text-base font-semibold uppercase tracking-[0.12em] text-slate-500 flex items-center gap-2">
+                                        <h4 className="hidden lg:flex text-sm md:text-base font-semibold uppercase tracking-[0.12em] text-slate-500 items-center gap-2 cursor-pointer" onClick={(e) => { e.stopPropagation(); setIsQuickCaptureOpen(!isQuickCaptureOpen); }}>
                                             <ChevronDown size={16} className={`transition-transform duration-200 ${isQuickCaptureOpen ? 'rotate-180' : ''}`} />
                                             Quick Capture
                                         </h4>
-                                        {isQuickCaptureOpen && (
-                                            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                                                <select
-                                                    value={quickCaptureCategory}
-                                                    onChange={(e) => setQuickCaptureCategory(e.target.value as PersonalNoteCategory)}
-                                                    className="text-[11px] border border-[#E6EAF2] dark:border-slate-700 rounded-md px-2 py-1 bg-white dark:bg-slate-950 text-slate-500"
-                                                >
-                                                    <option value="DAILY">Daily</option>
-                                                    <option value="PRIVATE">Private</option>
-                                                    <option value="IDEAS">Ideas</option>
-                                                </select>
-                                                {noteSmartFilter === 'NONE' && noteFolderFilter !== 'ALL' && noteFolderFilter !== '__ROOT__' && (
-                                                    <span className="text-[11px] text-slate-400">
-                                                        / {folderById.get(noteFolderFilter)?.name || noteFolderFilter}
-                                                    </span>
-                                                )}
+
+                                        {/* Category select and label (Visible on desktop header OR mobile expanded) */}
+                                        {(isQuickCaptureOpen || window.innerWidth >= 1024) && (
+                                            <div className={`flex items-center gap-2 flex-1 lg:flex-none justify-between lg:justify-end ${!isQuickCaptureOpen ? 'hidden lg:flex' : 'flex'}`} onClick={(e) => e.stopPropagation()}>
+                                                <span className="lg:hidden text-[11px] font-bold text-slate-500 uppercase tracking-wider">Quick Capture</span>
+                                                <div className="flex items-center gap-2">
+                                                    <select
+                                                        value={quickCaptureCategory}
+                                                        onChange={(e) => setQuickCaptureCategory(e.target.value as PersonalNoteCategory)}
+                                                        className="text-[11px] border border-[#E6EAF2] dark:border-slate-700 rounded-md px-2 py-1 bg-white dark:bg-slate-950 text-slate-500 outline-none"
+                                                    >
+                                                        <option value="DAILY">Daily</option>
+                                                        <option value="PRIVATE">Private</option>
+                                                        <option value="IDEAS">Ideas</option>
+                                                    </select>
+                                                    {noteSmartFilter === 'NONE' && noteFolderFilter !== 'ALL' && noteFolderFilter !== '__ROOT__' && (
+                                                        <span className="hidden sm:inline text-[11px] text-slate-400">
+                                                            / {folderById.get(noteFolderFilter)?.name || noteFolderFilter}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </div>
                                         )}
-                                    </button>
+                                    </div>
 
                                     {isQuickCaptureOpen && (
                                         <div className="px-4 pb-4 md:px-5 md:pb-5 pt-0 animate-in slide-in-from-top-2 duration-200">
@@ -1213,16 +1248,19 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                                 value={quickNoteTitle}
                                                 onChange={(e) => setQuickNoteTitle(e.target.value)}
                                                 placeholder="Note title (optional)"
-                                                className="w-full mb-3 border border-[#E6EAF2] dark:border-slate-700 rounded-xl px-4 py-3 text-sm md:text-base bg-white dark:bg-slate-950"
+                                                className="w-full md:max-w-none max-w-[90%] mx-auto mb-3 border border-[#E6EAF2] dark:border-slate-700 rounded-xl px-4 py-3 text-sm md:text-base bg-white dark:bg-slate-950 block"
                                             />
-                                            <PersonalNoteEditor
-                                                value={quickNoteBody}
-                                                onChange={setQuickNoteBody}
-                                                autoFocus={isPersonalNotes}
-                                                placeholder="Start writing immediately..."
-                                                minHeight={242}
-                                            />
-                                            <div className="mt-3 flex justify-end">
+                                            <div className="max-w-[90%] md:max-w-none mx-auto">
+                                                <PersonalNoteEditor
+                                                    key="quick-capture-editor"
+                                                    value={quickNoteBody}
+                                                    onChange={setQuickNoteBody}
+                                                    autoFocus={isPersonalNotes}
+                                                    placeholder="Start writing immediately..."
+                                                    minHeight={242}
+                                                />
+                                            </div>
+                                            <div className="mt-3 flex justify-end max-w-[90%] md:max-w-none mx-auto">
                                                 <button
                                                     onClick={handleQuickCapture}
                                                     disabled={!hasMeaningfulPersonalNoteContent(quickNoteBody)}
@@ -1242,7 +1280,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                         <p className="text-xs md:text-sm text-slate-500 mt-1">Change category/folder filter or create a new note.</p>
                                     </div>
                                 ) : (
-                                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 md:gap-4">
+                                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-2 md:gap-4">
                                         {displayedBooks.map(note => {
                                             const notePreview = extractPersonalNoteText(note.generalNotes || '');
                                             return (
@@ -1251,8 +1289,8 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                                         <div
                                                             ref={setNodeRef}
                                                             style={isDragging ? undefined : style}
-                                                            onClick={() => onSelectBook(note)}
-                                                            className={`bg-white dark:bg-slate-800 p-3 md:p-5 rounded-xl border border-[#E6EAF2] dark:border-slate-800 hover:border-[#262D40]/20 dark:hover:border-[#262D40]/30 hover:shadow-md transition-all cursor-pointer flex flex-col group relative ${isDragging || activeDraggedNoteId === note.id ? 'opacity-60 ring-2 ring-[#CC561E]/40' : ''}`}
+                                                            onClick={() => handleNoteCardClick(note)}
+                                                            className={`bg-white dark:bg-slate-800 p-2.5 md:p-5 rounded-xl border border-[#E6EAF2] dark:border-slate-800 hover:border-[#262D40]/20 dark:hover:border-[#262D40]/30 hover:shadow-md transition-all cursor-pointer flex flex-col group relative ${isDragging || activeDraggedNoteId === note.id ? 'opacity-60 ring-2 ring-[#CC561E]/40' : ''}`}
                                                         >
                                                             <div className="absolute top-2 left-2 z-10">
                                                                 <button
@@ -1332,7 +1370,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                     </DndContext>
                 ) : (
                     // Standard Grid (Books/Articles/Websites)
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-6">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 md:gap-6">
                         {displayedBooks.map((book) => (
                             <div
                                 key={book.id}
@@ -1340,7 +1378,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                 className={`bg-white ${libraryCardDarkBg} rounded-xl border border-[#E6EAF2] dark:border-slate-800 overflow-hidden hover:shadow-lg hover:-translate-y-1 transition-all cursor-pointer group flex flex-col h-full relative`}
                             >
                                 {/* Compact Cover / Icon Container */}
-                                <div className="h-24 md:h-40 bg-[#F3F5FA] dark:bg-slate-800 relative flex items-end justify-between overflow-hidden group-hover:opacity-95 transition-opacity">
+                                <div className="h-[122px] md:h-40 bg-[#F3F5FA] dark:bg-slate-800 relative flex items-end justify-between overflow-hidden group-hover:opacity-95 transition-opacity">
 
                                     {/* Action Buttons Overlay */}
                                     <div className="absolute top-2 right-2 z-40 flex gap-1">
@@ -1414,8 +1452,8 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                     )}
 
                                     {/* Status Badges */}
-                                    <div className="relative z-30 p-2 md:p-4 w-full flex justify-between items-end">
-                                        <div className={`text-[9px] md:text-xs font-bold px-1.5 py-0.5 md:px-2 md:py-1 rounded shadow-sm backdrop-blur-md ${(book.type === 'BOOK' && book.coverUrl) || book.type !== 'BOOK' ? 'bg-white/90 dark:bg-slate-900/90 text-slate-900 dark:text-white border border-white/50 dark:border-slate-700' : statusColors[book.readingStatus]
+                                    <div className="relative z-30 p-1.5 md:p-4 w-full flex justify-between items-end">
+                                        <div className={`text-[8px] md:text-xs font-bold px-1 md:px-2 py-0.5 md:py-1 rounded shadow-sm backdrop-blur-md ${(book.type === 'BOOK' && book.coverUrl) || book.type !== 'BOOK' ? 'bg-white/90 dark:bg-slate-900/90 text-slate-900 dark:text-white border border-white/50 dark:border-slate-700' : statusColors[book.readingStatus]
                                             }`}>
                                             {book.readingStatus}
                                         </div>
@@ -1436,7 +1474,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                 </div>
 
                                 {/* Card Body */}
-                                <div className="p-3 md:p-5 flex-1 flex flex-col">
+                                <div className="p-2.5 md:p-5 flex-1 flex flex-col">
                                     <h3 className="font-bold text-sm md:text-lg text-slate-900 dark:text-white leading-tight mb-0.5 md:mb-1 line-clamp-2 group-hover:text-[#262D40] dark:group-hover:text-[#262D40] transition-colors">
                                         {book.title}
                                     </h3>
@@ -1492,17 +1530,17 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
     const TabLogo = getTabLogo(activeTab);
 
     return (
-        <div className="max-w-6xl w-full mx-auto p-6 md:p-8 lg:p-10 animate-in fade-in duration-500">
+        <div className="max-w-6xl w-full mx-auto p-3 md:p-8 lg:p-10 animate-in fade-in duration-500">
             {/* Compact Header for Mobile (Hide in Dashboard) */}
             {!isStats && (
-                <div className="flex items-center justify-between mb-4 md:mb-8 gap-2">
+                <div className="flex items-center justify-between mb-2 md:mb-8 gap-2">
                     <div className="flex items-center gap-2 md:gap-4 overflow-hidden flex-1">
                         {/* Mobile Menu Trigger */}
                         <button
                             onClick={onMobileMenuClick}
-                            className="lg:hidden p-1.5 md:p-2 -ml-1 text-slate-600 dark:text-slate-400 hover:bg-[#F3F5FA] dark:hover:bg-slate-800 rounded-lg transition-colors shrink-0"
+                            className="lg:hidden p-1 -ml-1 text-slate-600 dark:text-slate-400 hover:bg-[#F3F5FA] dark:hover:bg-slate-800 rounded-lg transition-colors shrink-0"
                         >
-                            <Menu size={20} className="md:w-6 md:h-6" />
+                            <Menu size={18} className="md:w-6 md:h-6" />
                         </button>
 
                         <div className="flex items-center gap-3">
@@ -1539,10 +1577,10 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                 }
                                 onAddBook();
                             }}
-                            className="bg-[#262D40] text-white px-3 py-1.5 md:px-5 md:py-2.5 rounded-lg hover:bg-[#1d2333] transition-all flex items-center gap-1.5 shadow-md shadow-[#262D40]/20 dark:shadow-none font-medium shrink-0 active:scale-95"
+                            className="bg-[#262D40] text-white px-2 py-1.5 md:px-5 md:py-2.5 rounded-lg hover:bg-[#1d2333] transition-all flex items-center gap-1 shadow-md shadow-[#262D40]/20 dark:shadow-none font-medium shrink-0 active:scale-95"
                         >
-                            <Plus size={16} className="md:w-5 md:h-5" />
-                            <span className="text-xs md:text-base">
+                            <Plus size={14} className="md:w-5 md:h-5" />
+                            <span className="text-[10px] md:text-base">
                                 Add {activeTab === 'ARTICLE' ? 'Article' : (activeTab === 'WEBSITE' ? 'Web' : (activeTab === 'PERSONAL_NOTE' ? 'Note' : 'Book'))}
                             </span>
                         </button>
@@ -1551,28 +1589,19 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
             )}
 
             {/* Mobile Menu Trigger for Dashboard (Only button, no text) */}
-            {isStats && (
-                <div className="lg:hidden mb-4">
-                    <button
-                        onClick={onMobileMenuClick}
-                        className="p-1.5 md:p-2 -ml-1 text-slate-600 dark:text-slate-400 hover:bg-[#F3F5FA] dark:hover:bg-slate-800 rounded-lg transition-colors shrink-0"
-                    >
-                        <Menu size={20} className="md:w-6 md:h-6" />
-                    </button>
-                </div>
-            )}
+            {/* Mobile Menu Trigger for Dashboard removed - moved inside Dashboard for alignment */}
 
             {/* Compact Filters for Mobile (Hide in Stats view) */}
             {!isStats && (
-                <div className="bg-white dark:bg-slate-900 p-2 md:p-4 rounded-xl shadow-sm border border-[#E6EAF2] dark:border-slate-800 mb-4 md:mb-8 flex flex-col md:flex-row gap-2 md:gap-4">
+                <div className="bg-white dark:bg-slate-900 p-1.5 md:p-4 rounded-xl shadow-sm border border-[#E6EAF2] dark:border-slate-800 mb-2 md:mb-8 flex flex-col md:flex-row gap-2 md:gap-4 max-w-[90%] md:max-w-none mx-auto w-full">
                     <div className="flex-1 relative">
-                        <Search className="absolute left-2 md:left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 w-4 h-4 md:w-5 md:h-5" />
+                        <Search className="absolute left-2 md:left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 w-3.5 h-3.5 md:w-5 md:h-5" />
                         <input
                             type="text"
                             placeholder={getSearchPlaceholder()}
                             value={localInput}
                             onChange={(e) => setLocalInput(e.target.value)}
-                            className="w-full pl-8 md:pl-10 pr-4 py-1.5 md:py-2 border border-[#E6EAF2] dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-[#CC561E] focus:border-transparent outline-none transition-all text-xs md:text-base bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500"
+                            className={`w-full pl-7 md:pl-10 ${(isNotesTab || isPersonalNotes) ? 'pr-10' : 'pr-4'} md:pr-4 py-1 border border-[#E6EAF2] dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-[#CC561E] focus:border-transparent outline-none transition-all text-[11px] md:text-base bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500`}
                         />
                         {/* Loading Spinner inside input */}
                         {isTyping && (
@@ -1580,13 +1609,27 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                 <Loader2 size={16} className="animate-spin text-[#CC561E]" />
                             </div>
                         )}
+
+                        {/* Favorites Toggle for Notes Views - Mobile Only (inside search bar) */}
+                        {(isNotesTab || isPersonalNotes) && (
+                            <button
+                                onClick={() => onStatusFilterChange(statusFilter === 'FAVORITES' ? 'ALL' : 'FAVORITES')}
+                                className={`md:hidden absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-lg border transition-all flex items-center justify-center shrink-0 ${statusFilter === 'FAVORITES'
+                                    ? 'bg-orange-100 dark:bg-orange-900/30 border-orange-200 dark:border-orange-800 text-orange-600 dark:text-orange-400'
+                                    : 'bg-white dark:bg-slate-800 border-[#E6EAF2] dark:border-slate-700 text-slate-400 dark:text-slate-500'
+                                    }`}
+                                title={statusFilter === 'FAVORITES' ? "Show All" : "Show Favorites Only"}
+                            >
+                                <Star size={14} fill={statusFilter === 'FAVORITES' ? "currentColor" : "none"} />
+                            </button>
+                        )}
                     </div>
 
-                    {/* Favorites Toggle for Notes Views */}
+                    {/* Favorites Toggle for Notes Views - Desktop Only (separate button) */}
                     {(isNotesTab || isPersonalNotes) && (
                         <button
                             onClick={() => onStatusFilterChange(statusFilter === 'FAVORITES' ? 'ALL' : 'FAVORITES')}
-                            className={`p-2 rounded-lg border transition-all flex items-center justify-center shrink-0 ${statusFilter === 'FAVORITES'
+                            className={`hidden md:flex p-2 rounded-lg border transition-all items-center justify-center shrink-0 ${statusFilter === 'FAVORITES'
                                 ? 'bg-orange-100 dark:bg-orange-900/30 border-orange-200 dark:border-orange-800 text-orange-600 dark:text-orange-400'
                                 : 'bg-white dark:bg-slate-800 border-[#E6EAF2] dark:border-slate-700 text-slate-400 dark:text-slate-500 hover:bg-[#F3F5FA] dark:hover:bg-slate-700'
                                 }`}

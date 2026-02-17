@@ -510,13 +510,11 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                             />
 
                             {/* Horizon Slider */}
-                            <div className="mb-0">
-                                <HorizonSlider
-                                    value={horizon}
-                                    onChange={handleHorizonChange}
-                                    disabled={isLoading}
-                                />
-                            </div>
+                            <HorizonSlider
+                                value={horizon}
+                                onChange={handleHorizonChange}
+                                disabled={isLoading}
+                            />
 
                             {/* Cards List */}
                             <button
@@ -541,7 +539,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
 
             <style>{`
                 .flow-container {
-                    max-width: 1100px;
+                    max-width: 1280px;
                     margin: 0 auto;
                     width: 100%;
                     display: flex;
@@ -550,6 +548,12 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     background: transparent;
                     position: relative;
                     padding: 24px;
+                }
+
+                @media (max-width: 768px) {
+                    .flow-container {
+                        padding: 12px;
+                    }
                 }
 
                 .flow-container::before {
@@ -568,18 +572,19 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
 
                 .flow-layout {
                     display: grid;
-                    grid-template-columns: 180px 1fr 250px;
-                    gap: 32px;
+                    grid-template-columns: 150px 1fr 220px;
+                    gap: 20px;
                     align-items: flex-start;
                     padding-top: 20px;
-                    max-width: 1100px;
+                    max-width: 1280px;
                     margin: 0 auto;
                 }
 
                 @media (max-width: 1024px) {
                     .flow-layout {
                         grid-template-columns: 1fr;
-                        gap: 28px;
+                        gap: 12px;
+                        padding-top: 4px;
                     }
 
                     .flow-left {
@@ -637,8 +642,9 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     }
 
                     .flow-sidebar {
-                        width: 100%;
-                        max-width: 340px;
+                        width: 55%;
+                        min-width: 250px;
+                        max-width: 400px;
                         height: 100%;
                         background: #fff;
                         transform: translateX(100%);
@@ -652,7 +658,8 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     }
 
                     .flow-category-sidebar {
-                        width: 100%;
+                        width: 25%;
+                        min-width: 150px;
                         max-width: 340px;
                         height: 100%;
                         background: #fff;
@@ -677,7 +684,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     .flow-sidebar__sticky {
                         height: 100%;
                         max-height: 100vh;
-                        padding: 24px;
+                        padding: 12px;
                         overflow-y: auto;
                         position: relative;
                         top: 0 !important;
@@ -752,7 +759,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     top: 24px;
                     display: flex;
                     flex-direction: column;
-                    gap: 14px;
+                    gap: 8px;
                 }
 
                 .flow-left {
@@ -786,13 +793,13 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     justify-content: center;
                     gap: 12px;
                     width: 100%;
-                    padding: 14px;
+                    padding: 12px;
                     background: #262D40;
                     border: none;
                     border-radius: 12px;
                     color: white;
                     font-weight: 700;
-                    font-size: 14px;
+                    font-size: 13px;
                     cursor: pointer;
                     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
                     box-shadow: 0 4px 15px rgba(38, 45, 64, 0.25);
@@ -811,7 +818,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                 }
 
                 .flow-sidebar__stats {
-                    padding: 20px;
+                    padding: 16px;
                     background: hsl(var(--card));
                     border-radius: 16px;
                     border: 1px solid rgba(255, 255, 255, 0.08);

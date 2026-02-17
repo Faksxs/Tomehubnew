@@ -18,13 +18,13 @@ const SourceNavigator: React.FC<SourceNavigatorProps> = ({ activeFilter, onFilte
     ];
 
     return (
-        <div className="w-full flex flex-col gap-3 p-6 bg-white/5 backdrop-blur-2xl border border-white/5 rounded-3xl h-full overflow-y-auto">
-            <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4 px-2 flex items-center gap-2">
+        <div className="w-full flex flex-col gap-2 p-3 bg-card border border-white/10 rounded-2xl">
+            <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 px-1 flex items-center gap-2">
                 <span className="w-1 h-1 bg-[#CC561E] rounded-full"></span>
                 Source Navigator
             </h3>
 
-            <div className="space-y-2">
+            <div className="space-y-1">
                 {categories.map((cat) => {
                     const Icon = cat.icon;
                     const isActive = activeFilter === cat.id;
@@ -33,16 +33,16 @@ const SourceNavigator: React.FC<SourceNavigatorProps> = ({ activeFilter, onFilte
                         <button
                             key={cat.id}
                             onClick={() => onFilterChange(cat.id as SourceFilter)}
-                            className={`w-full flex items-center justify-between px-3 py-3 rounded-xl transition-all duration-300 group relative overflow-hidden border bg-card text-card-foreground ${isActive
+                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-all duration-300 group relative overflow-hidden border bg-card text-card-foreground ${isActive
                                 ? 'border-[#CC561E] shadow-[0_0_12px_rgba(204,86,30,0.35)]'
                                 : 'border-white/10 hover:border-white/20 hover:bg-card/90'
                                 }`}
                         >
-                            <div className="flex items-center gap-3 relative z-10">
-                                <div className={`p-2 rounded-lg transition-all duration-300 ${isActive ? 'text-[#CC561E]' : 'text-card-foreground/70 group-hover:text-card-foreground'}`}>
-                                    <Icon size={20} />
+                            <div className="flex items-center gap-2.5 relative z-10">
+                                <div className={`p-1.5 rounded-lg transition-all duration-300 ${isActive ? 'text-[#CC561E]' : 'text-card-foreground/70 group-hover:text-card-foreground'}`}>
+                                    <Icon size={18} />
                                 </div>
-                                <span className={`text-sm font-medium tracking-tight ${isActive ? 'text-card-foreground' : 'text-card-foreground/80 group-hover:text-card-foreground'}`}>
+                                <span className={`text-xs font-medium tracking-tight ${isActive ? 'text-card-foreground' : 'text-card-foreground/80 group-hover:text-card-foreground'}`}>
                                     {cat.label}
                                 </span>
                             </div>
@@ -52,7 +52,7 @@ const SourceNavigator: React.FC<SourceNavigatorProps> = ({ activeFilter, onFilte
                 })}
             </div>
 
-            <div className="mt-2" />
+
         </div>
     );
 };
