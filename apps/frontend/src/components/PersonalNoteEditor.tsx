@@ -110,28 +110,28 @@ export const PersonalNoteEditor: React.FC<PersonalNoteEditorProps> = ({
 
   return (
     <div className="rounded-xl border border-[#E6EAF2] dark:border-slate-700 bg-white dark:bg-slate-950 overflow-hidden">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between px-2 md:px-3 py-1.5 md:py-2 border-b border-[#E6EAF2] dark:border-slate-700 bg-[#F8FAFC] dark:bg-slate-900 gap-1.5 md:gap-0">
-        {/* First Row: Basic formatting + Mode Switcher (mobile) */}
-        <div className="flex items-center justify-between gap-1">
-          <div className="flex items-center gap-0.5 md:gap-1 flex-wrap">
-            <ToolbarButton active={!!editor?.isActive('heading', { level: 1 })} onClick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()} title="Heading 1">
-              <Heading1 size={12} className="md:w-3.5 md:h-3.5" />
-            </ToolbarButton>
-            <ToolbarButton active={!!editor?.isActive('heading', { level: 2 })} onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()} title="Heading 2">
-              <Heading2 size={12} className="md:w-3.5 md:h-3.5" />
-            </ToolbarButton>
-            <ToolbarButton active={!!editor?.isActive('bold')} onClick={() => editor?.chain().focus().toggleBold().run()} title="Bold">
-              <Bold size={12} className="md:w-3.5 md:h-3.5" />
-            </ToolbarButton>
-            <ToolbarButton active={!!editor?.isActive('italic')} onClick={() => editor?.chain().focus().toggleItalic().run()} title="Italic">
-              <Italic size={12} className="md:w-3.5 md:h-3.5" />
-            </ToolbarButton>
-            <ToolbarButton active={!!editor?.isActive('underline')} onClick={() => editor?.chain().focus().toggleUnderline().run()} title="Underline">
-              <UnderlineIcon size={12} className="md:w-3.5 md:h-3.5" />
-            </ToolbarButton>
-          </div>
+      <div className="flex flex-col md:flex-row md:items-center md:flex-wrap px-2 md:px-3 py-1.5 md:py-2 border-b border-[#E6EAF2] dark:border-slate-700 bg-[#F8FAFC] dark:bg-slate-900 gap-2 md:gap-3">
+        {/* Formatting Buttons Group */}
+        <div className="flex items-center gap-0.5 md:gap-1 flex-wrap">
+          <ToolbarButton active={!!editor?.isActive('heading', { level: 1 })} onClick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()} title="Heading 1">
+            <Heading1 size={12} className="md:w-3.5 md:h-3.5" />
+          </ToolbarButton>
+          <ToolbarButton active={!!editor?.isActive('heading', { level: 2 })} onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()} title="Heading 2">
+            <Heading2 size={12} className="md:w-3.5 md:h-3.5" />
+          </ToolbarButton>
+          <ToolbarButton active={!!editor?.isActive('bold')} onClick={() => editor?.chain().focus().toggleBold().run()} title="Bold">
+            <Bold size={12} className="md:w-3.5 md:h-3.5" />
+          </ToolbarButton>
+          <ToolbarButton active={!!editor?.isActive('italic')} onClick={() => editor?.chain().focus().toggleItalic().run()} title="Italic">
+            <Italic size={12} className="md:w-3.5 md:h-3.5" />
+          </ToolbarButton>
+          <ToolbarButton active={!!editor?.isActive('underline')} onClick={() => editor?.chain().focus().toggleUnderline().run()} title="Underline">
+            <UnderlineIcon size={12} className="md:w-3.5 md:h-3.5" />
+          </ToolbarButton>
+        </div>
 
-          {/* Mode Switcher - Compact on Mobile */}
+        {/* Mode Switcher Group */}
+        <div className="flex items-center justify-end md:justify-start gap-1">
           <div className="flex items-center bg-white dark:bg-slate-800 rounded-md border border-[#E6EAF2] dark:border-slate-700">
             <button
               type="button"

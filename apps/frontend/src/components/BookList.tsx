@@ -38,20 +38,19 @@ type DraggableRenderProps = {
     setNodeRef: (element: HTMLElement | null) => void;
     style: React.CSSProperties;
     isDragging: boolean;
-    attributes: Record<string, unknown>;
-    listeners: Record<string, unknown>;
+    attributes: any;
+    listeners: any;
 };
 
 const DraggableWrapper: React.FC<{
     id: string;
     children: (props: DraggableRenderProps) => React.ReactNode;
 }> = ({ id, children }) => {
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useDraggable({ id });
+    const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id });
     const style = {
         transform: CSS.Transform.toString(transform),
-        transition,
     } as React.CSSProperties;
-    return <>{children({ setNodeRef, style, isDragging, attributes: attributes as Record<string, unknown>, listeners: listeners as Record<string, unknown> })}</>;
+    return <>{children({ setNodeRef, style, isDragging, attributes, listeners })}</>;
 };
 
 const DroppableZone: React.FC<{

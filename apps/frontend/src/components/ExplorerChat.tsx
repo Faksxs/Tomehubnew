@@ -41,6 +41,7 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack }) =>
     const [expandedSources, setExpandedSources] = useState<Set<number>>(new Set());
     const [expandedThinking, setExpandedThinking] = useState<Set<number>>(new Set());
     const [hoveredCitation, setHoveredCitation] = useState<{ id: number; messageId: number; x: number; y: number } | null>(null);
+    const [scopeMode, setScopeMode] = useState<'AUTO' | 'BOOK_FIRST'>('AUTO');
 
     // Structured Context State
     const [conversationState, setConversationState] = useState<{
@@ -91,7 +92,8 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack }) =>
                 sessionId,
                 'EXPLORER',
                 null,
-                20
+                20,
+                scopeMode
             );
 
             if (response.session_id) {
@@ -276,6 +278,16 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack }) =>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
+                        <label className="inline-flex items-center gap-2 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800">
+                            <input
+                                type="checkbox"
+                                checked={scopeMode === 'BOOK_FIRST'}
+                                onChange={(e) => setScopeMode(e.target.checked ? 'BOOK_FIRST' : 'AUTO')}
+                                className="w-3.5 h-3.5 rounded border-slate-300 text-[#CC561E] focus:ring-[#CC561E]/40"
+                                aria-label="Bu kitapla sınırla"
+                            />
+                            Bu kitapla sınırla
+                        </label>
                         <button
                             onClick={startNewConversation}
                             className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"

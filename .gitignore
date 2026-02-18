@@ -85,3 +85,4 @@ wallet/
 backend/wallet/
 __pycache__/
 backend/reports/
+apps/backend/uploads/

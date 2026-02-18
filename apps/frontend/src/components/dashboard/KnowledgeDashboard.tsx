@@ -236,7 +236,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
 
                 {/* 🔸 Level A – Core Assets (Perfect Ratios) */}
                 <section className="space-y-2 md:space-y-4">
-                    <div className="flex items-center gap-1.5 md:gap-2 px-1 text-[9px] md:text-[10px] font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] text-slate-400 dark:text-slate-500">
+                    <div className="flex items-center gap-1.5 md:gap-2 px-1 text-xs md:text-sm font-bold uppercase tracking-[0.15em] md:tracking-[0.18em] text-slate-400 dark:text-slate-500">
                         <Activity size={11} className="text-primary/60 md:w-3 md:h-3" /> Level A • Core Stats
                     </div>
                     <div className="grid grid-cols-2 min-[560px]:grid-cols-3 lg:grid-cols-5 gap-2.5 md:gap-4">
@@ -410,7 +410,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                         onClick={() => setShowLevelC(!showLevelC)}
                         className="w-full flex items-center gap-2 md:gap-4 px-1 py-0.5 md:py-2 group transition-all opacity-60 hover:opacity-100"
                     >
-                        <div className="flex items-center gap-1 md:gap-2 text-[8px] md:text-[10px] font-black uppercase tracking-[0.12em] md:tracking-[0.2em] text-primary/80">
+                        <div className="flex items-center gap-1 md:gap-2 text-xs md:text-sm font-black uppercase tracking-[0.12em] md:tracking-[0.18em] text-primary/80">
                             <Sparkles size={10} className="text-primary animate-pulse md:w-[14px] md:h-[14px]" /> Level C Insights
                         </div>
                         <div className="h-[1px] bg-slate-300 dark:bg-white/10 flex-1" />
@@ -428,7 +428,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                 className="overflow-hidden"
                             >
                                 <div className="space-y-4 mb-4">
-                                    <div className="flex items-center gap-1.5 md:gap-2 px-1 text-[9px] md:text-[10px] font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] text-slate-400 dark:text-slate-500">
+                                    <div className="flex items-center gap-1.5 md:gap-2 px-1 text-xs md:text-sm font-bold uppercase tracking-[0.15em] md:tracking-[0.18em] text-slate-400 dark:text-slate-500">
                                         <LayoutGrid size={11} className="text-primary/60 md:w-3 md:h-3" /> Epistemic Quality
                                     </div>
 

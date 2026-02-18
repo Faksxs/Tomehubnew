@@ -1,5 +1,6 @@
 import { ResourceType, LibraryItem, ContentLanguageMode, ContentLanguageResolved } from "../types";
 import { getAuth } from "firebase/auth";
+import { API_BASE_URL } from "./apiClient";
 
 // Helper function to get Firebase Auth ID token
 const getAuthToken = async (): Promise<string> => {
@@ -15,9 +16,7 @@ const getAuthToken = async (): Promise<string> => {
   return await user.getIdToken();
 };
 
-const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-  ? 'http://localhost:5000'
-  : 'https://api.tomehub.nl'; // ✅ Real Production Endpoint
+// API_BASE_URL is now imported from apiClient.ts
 
 const normalizeLangHint = (value?: string | null): "tr" | "en" | undefined => {
   const raw = (value || "").toLowerCase().trim();

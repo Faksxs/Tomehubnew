@@ -18,6 +18,9 @@ export interface SearchRequest {
     firebase_uid: string;
     mode?: 'STANDARD' | 'EXPLORER';
     book_id?: string;
+    context_book_id?: string;
+    resource_type?: 'BOOK' | 'ARTICLE' | 'WEBSITE' | 'PERSONAL_NOTE' | 'ALL_NOTES' | null;
+    scope_mode?: 'AUTO' | 'BOOK_FIRST' | 'HIGHLIGHT_FIRST' | 'GLOBAL';
 }
 
 export interface SearchResponse {
@@ -57,6 +60,8 @@ export interface IngestionStatusResponse {
     chunk_count: number | null;
     embedding_count: number | null;
     updated_at: string | null;
+    resolved_book_id?: string | null;
+    matched_by_title?: boolean;
 }
 
 export interface ApiError {
@@ -93,7 +98,9 @@ export interface ChatRequest {
     firebase_uid: string;
     session_id?: number | null;
     book_id?: string | null;
-    resource_type?: 'BOOK' | 'ARTICLE' | 'WEBSITE' | 'PERSONAL_NOTE' | null;
+    context_book_id?: string | null;
+    resource_type?: 'BOOK' | 'ARTICLE' | 'WEBSITE' | 'PERSONAL_NOTE' | 'ALL_NOTES' | null;
+    scope_mode?: 'AUTO' | 'BOOK_FIRST' | 'HIGHLIGHT_FIRST' | 'GLOBAL';
     mode?: 'STANDARD' | 'EXPLORER';
     limit?: number;
     offset?: number;
@@ -207,7 +214,9 @@ export async function searchLibrary(
     question: string,
     firebaseUid: string,
     mode: 'STANDARD' | 'EXPLORER' = 'STANDARD',
-    bookId?: string
+    bookId?: string,
+    scopeMode: 'AUTO' | 'BOOK_FIRST' | 'HIGHLIGHT_FIRST' | 'GLOBAL' = 'AUTO',
+    contextBookId?: string
 ): Promise<SearchResponse> {
     if (!firebaseUid) {
         throw new Error('User must be authenticated to search');
@@ -222,7 +231,9 @@ export async function searchLibrary(
             question,
             firebase_uid: firebaseUid,
             mode,
-            book_id: bookId
+            book_id: bookId,
+            context_book_id: contextBookId,
+            scope_mode: scopeMode
         } as SearchRequest),
     });
 
@@ -247,7 +258,10 @@ export async function sendChatMessage(
     sessionId: number | null = null,
     mode: 'STANDARD' | 'EXPLORER' = 'EXPLORER',
     resourceType: 'BOOK' | 'ARTICLE' | 'WEBSITE' | 'PERSONAL_NOTE' | null = null,
-    limit: number = 20
+    limit: number = 20,
+    scopeMode: 'AUTO' | 'BOOK_FIRST' | 'HIGHLIGHT_FIRST' | 'GLOBAL' = 'AUTO',
+    bookId: string | null = null,
+    contextBookId: string | null = null
 ): Promise<ChatResponse> {
     if (!firebaseUid) {
         throw new Error('User must be authenticated to chat');
@@ -264,6 +278,9 @@ export async function sendChatMessage(
             session_id: sessionId,
             mode,
             resource_type: resourceType,
+            scope_mode: scopeMode,
+            book_id: bookId,
+            context_book_id: contextBookId,
             limit
         } as ChatRequest),
     });
@@ -375,14 +392,21 @@ export async function searchReportsByTopic(
  */
 export async function getIngestionStatus(
     bookId: string,
-    firebaseUid: string
+    firebaseUid: string,
+    title?: string
 ): Promise<IngestionStatusResponse> {
     if (!firebaseUid) {
         throw new Error('User must be authenticated to fetch ingestion status');
     }
 
+    const params = new URLSearchParams();
+    params.set('firebase_uid', firebaseUid);
+    if (title && title.trim()) {
+        params.set('title', title.trim());
+    }
+
     const response = await fetchWithAuth(
-        `${API_BASE_URL}/api/books/${encodeURIComponent(bookId)}/ingestion-status?firebase_uid=${encodeURIComponent(firebaseUid)}`,
+        `${API_BASE_URL}/api/books/${encodeURIComponent(bookId)}/ingestion-status?${params.toString()}`,
         {
             method: 'GET',
             headers: {
