@@ -390,12 +390,12 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
                 : 'bg-white dark:bg-slate-900/50 border-[#E6EAF2] dark:border-white/10 hover:border-[#262D40]/12 dark:hover:border-orange-500/30 hover:shadow-md'
                 }`}
             >
-              {/* Action Buttons */}
-              <div className="absolute top-2 right-2 md:top-4 md:right-4 flex gap-1 md:gap-2 bg-white/80 dark:bg-slate-800/90 backdrop-blur-sm p-1 rounded-lg shadow-sm border border-[#E6EAF2] dark:border-white/10 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10">
+              {/* Action Buttons: Transparent & Compact on Mobile */}
+              <div className="absolute top-1 right-1 md:top-4 md:right-4 flex gap-0.5 md:gap-2 md:bg-white/80 md:dark:bg-slate-800/90 md:backdrop-blur-sm p-0 md:p-1 rounded-lg md:shadow-sm md:border md:border-[#E6EAF2] md:dark:border-white/10 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10">
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); handleEdit(h); }}
-                  className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-[#262D40] dark:hover:text-orange-500 hover:bg-[#262D40]/5 dark:hover:bg-white/5 rounded-md transition-colors"
+                  className="p-1.5 text-slate-400/70 dark:text-slate-500/70 hover:text-[#262D40] dark:hover:text-orange-500 hover:bg-[#262D40]/5 dark:hover:bg-white/5 rounded-md transition-colors"
                   title="Edit"
                 >
                   <Edit2 size={14} className="md:w-4 md:h-4" />
@@ -403,7 +403,7 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); handleDelete(h.id); }}
-                  className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                  className="p-1.5 text-slate-400/70 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
                   title="Delete"
                 >
                   <Trash2 size={14} className="md:w-4 md:h-4" />
@@ -420,7 +420,7 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
                   )}
                 </div>
                 <div className="flex-1">
-                  <p className={`text-sm md:text-lg leading-relaxed mb-2 md:mb-3 pr-14 md:pr-16 whitespace-pre-wrap font-lora ${isNote ? 'text-slate-700 dark:text-slate-300' : 'text-slate-900 dark:text-white'}`}>
+                  <p className={`text-sm md:text-lg leading-relaxed mb-2 md:mb-3 pr-0 md:pr-16 whitespace-pre-wrap font-lora ${isNote ? 'text-slate-700 dark:text-slate-300' : 'text-slate-900 dark:text-white'}`}>
                     {h.text}
                   </p>
 
