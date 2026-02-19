@@ -12,6 +12,11 @@ load_dotenv(dotenv_path=_ENV_PATH)
 
 logger = logging.getLogger(__name__)
 
+
+def _parse_csv_upper(raw: str) -> List[str]:
+    return [part.strip().upper() for part in str(raw or "").split(",") if part.strip()]
+
+
 class Settings:
     def __init__(self):
         # Environment mode
@@ -164,6 +169,111 @@ class Settings:
         )
         if self.SEARCH_SEMANTIC_EXPANSION_MAX_VARIATIONS < 0:
             self.SEARCH_SEMANTIC_EXPANSION_MAX_VARIATIONS = 0
+
+        # Chat scope policy (Phase: Chat-only rollout)
+        scope_policy_default = "true" if self.ENVIRONMENT == "development" else "false"
+        self.SEARCH_SCOPE_POLICY_ENABLED = (
+            os.getenv("SEARCH_SCOPE_POLICY_ENABLED", scope_policy_default).strip().lower() == "true"
+        )
+        self.SEARCH_SCOPE_POLICY_CHAT_MODES = _parse_csv_upper(
+            os.getenv("SEARCH_SCOPE_POLICY_CHAT_MODES", "STANDARD,EXPLORER")
+        )
+        if not self.SEARCH_SCOPE_POLICY_CHAT_MODES:
+            self.SEARCH_SCOPE_POLICY_CHAT_MODES = ["STANDARD", "EXPLORER"]
+        self.SEARCH_SCOPE_POLICY_CANARY_UIDS = {
+            uid.strip() for uid in os.getenv("SEARCH_SCOPE_POLICY_CANARY_UIDS", "").split(",") if uid.strip()
+        }
+
+        # Compare policy rollout controls (non-breaking, canary-first).
+        self.SEARCH_COMPARE_POLICY_ENABLED = (
+            os.getenv("SEARCH_COMPARE_POLICY_ENABLED", "false").strip().lower() == "true"
+        )
+        self.SEARCH_COMPARE_CANARY_UIDS = {
+            uid.strip() for uid in os.getenv("SEARCH_COMPARE_CANARY_UIDS", "").split(",") if uid.strip()
+        }
+        self.SEARCH_COMPARE_TARGET_MAX = int(os.getenv("SEARCH_COMPARE_TARGET_MAX", "8"))
+        if self.SEARCH_COMPARE_TARGET_MAX < 2:
+            self.SEARCH_COMPARE_TARGET_MAX = 8
+        self.SEARCH_COMPARE_PRIMARY_PER_BOOK = int(os.getenv("SEARCH_COMPARE_PRIMARY_PER_BOOK", "6"))
+        if self.SEARCH_COMPARE_PRIMARY_PER_BOOK < 1:
+            self.SEARCH_COMPARE_PRIMARY_PER_BOOK = 6
+        self.SEARCH_COMPARE_SECONDARY_PER_BOOK = int(os.getenv("SEARCH_COMPARE_SECONDARY_PER_BOOK", "2"))
+        if self.SEARCH_COMPARE_SECONDARY_PER_BOOK < 0:
+            self.SEARCH_COMPARE_SECONDARY_PER_BOOK = 2
+        self.SEARCH_COMPARE_GLOBAL_MAX = int(os.getenv("SEARCH_COMPARE_GLOBAL_MAX", "48"))
+        if self.SEARCH_COMPARE_GLOBAL_MAX < 8:
+            self.SEARCH_COMPARE_GLOBAL_MAX = 48
+        self.SEARCH_COMPARE_TIMEOUT_MS = int(os.getenv("SEARCH_COMPARE_TIMEOUT_MS", "2500"))
+        if self.SEARCH_COMPARE_TIMEOUT_MS < 100:
+            self.SEARCH_COMPARE_TIMEOUT_MS = 2500
+        self.SEARCH_COMPARE_SECONDARY_MAX_RATIO = float(
+            os.getenv("SEARCH_COMPARE_SECONDARY_MAX_RATIO", "0.25")
+        )
+        if self.SEARCH_COMPARE_SECONDARY_MAX_RATIO <= 0.0:
+            self.SEARCH_COMPARE_SECONDARY_MAX_RATIO = 0.25
+        if self.SEARCH_COMPARE_SECONDARY_MAX_RATIO > 0.9:
+            self.SEARCH_COMPARE_SECONDARY_MAX_RATIO = 0.9
+        self.SEARCH_COMPARE_SECONDARY_WEIGHT = float(
+            os.getenv("SEARCH_COMPARE_SECONDARY_WEIGHT", "0.45")
+        )
+        if self.SEARCH_COMPARE_SECONDARY_WEIGHT <= 0.0:
+            self.SEARCH_COMPARE_SECONDARY_WEIGHT = 0.45
+        if self.SEARCH_COMPARE_SECONDARY_WEIGHT > 1.0:
+            self.SEARCH_COMPARE_SECONDARY_WEIGHT = 1.0
+
+        # Highlight-first -> PDF augment controls
+        self.SEARCH_HIGHLIGHT_AUGMENT_ENABLED = (
+            os.getenv("SEARCH_HIGHLIGHT_AUGMENT_ENABLED", "true").strip().lower() == "true"
+        )
+        self.SEARCH_HIGHLIGHT_AUGMENT_MAX_BOOKS = int(
+            os.getenv("SEARCH_HIGHLIGHT_AUGMENT_MAX_BOOKS", "2")
+        )
+        if self.SEARCH_HIGHLIGHT_AUGMENT_MAX_BOOKS < 1:
+            self.SEARCH_HIGHLIGHT_AUGMENT_MAX_BOOKS = 2
+        self.SEARCH_HIGHLIGHT_AUGMENT_CHUNKS_PER_BOOK = int(
+            os.getenv("SEARCH_HIGHLIGHT_AUGMENT_CHUNKS_PER_BOOK", "1")
+        )
+        if self.SEARCH_HIGHLIGHT_AUGMENT_CHUNKS_PER_BOOK < 1:
+            self.SEARCH_HIGHLIGHT_AUGMENT_CHUNKS_PER_BOOK = 1
+        self.SEARCH_HIGHLIGHT_AUGMENT_TOTAL_MAX = int(
+            os.getenv("SEARCH_HIGHLIGHT_AUGMENT_TOTAL_MAX", "2")
+        )
+        if self.SEARCH_HIGHLIGHT_AUGMENT_TOTAL_MAX < 1:
+            self.SEARCH_HIGHLIGHT_AUGMENT_TOTAL_MAX = 2
+
+        # Stage-2 controlled expansion controls
+        self.SEARCH_STAGE2_ENABLED = os.getenv("SEARCH_STAGE2_ENABLED", "true").strip().lower() == "true"
+        self.SEARCH_STAGE2_MAX_BOOKS = int(os.getenv("SEARCH_STAGE2_MAX_BOOKS", "4"))
+        if self.SEARCH_STAGE2_MAX_BOOKS < 1:
+            self.SEARCH_STAGE2_MAX_BOOKS = 4
+        self.SEARCH_STAGE2_PER_BOOK_LIMIT = int(os.getenv("SEARCH_STAGE2_PER_BOOK_LIMIT", "2"))
+        if self.SEARCH_STAGE2_PER_BOOK_LIMIT < 1:
+            self.SEARCH_STAGE2_PER_BOOK_LIMIT = 2
+        self.SEARCH_STAGE2_MIN_CHUNKS = int(os.getenv("SEARCH_STAGE2_MIN_CHUNKS", "8"))
+        if self.SEARCH_STAGE2_MIN_CHUNKS < 1:
+            self.SEARCH_STAGE2_MIN_CHUNKS = 8
+        self.SEARCH_STAGE2_MIN_CONFIDENCE = float(os.getenv("SEARCH_STAGE2_MIN_CONFIDENCE", "2.8"))
+        if self.SEARCH_STAGE2_MIN_CONFIDENCE < 0.0:
+            self.SEARCH_STAGE2_MIN_CONFIDENCE = 2.8
+        self.SEARCH_STAGE2_MIN_SOURCE_DIVERSITY = int(
+            os.getenv("SEARCH_STAGE2_MIN_SOURCE_DIVERSITY", "2")
+        )
+        if self.SEARCH_STAGE2_MIN_SOURCE_DIVERSITY < 1:
+            self.SEARCH_STAGE2_MIN_SOURCE_DIVERSITY = 2
+        self.SEARCH_STAGE2_SCORE_DECAY = float(os.getenv("SEARCH_STAGE2_SCORE_DECAY", "0.85"))
+        if self.SEARCH_STAGE2_SCORE_DECAY <= 0.0:
+            self.SEARCH_STAGE2_SCORE_DECAY = 0.85
+
+        # Source scoring policy controls
+        self.SEARCH_SCOPE_HIGHLIGHT_PRIORITY_BONUS = float(
+            os.getenv("SEARCH_SCOPE_HIGHLIGHT_PRIORITY_BONUS", "0.8")
+        )
+        self.SEARCH_SCOPE_INSIGHT_PRIORITY_BONUS = float(
+            os.getenv("SEARCH_SCOPE_INSIGHT_PRIORITY_BONUS", "0.5")
+        )
+        self.SEARCH_SCOPE_NOTES_PRIORITY_BONUS = float(
+            os.getenv("SEARCH_SCOPE_NOTES_PRIORITY_BONUS", "0.2")
+        )
 
         # Layer-3 Performance Guards
         # Default OFF to preserve legacy Layer-3 answer quality.
@@ -329,9 +439,14 @@ class Settings:
                 return
             
             # Look for service account credentials
-            if self.FIREBASE_CREDENTIALS_PATH and os.path.exists(self.FIREBASE_CREDENTIALS_PATH):
+            cred_path = self.FIREBASE_CREDENTIALS_PATH
+            if cred_path and not os.path.isabs(cred_path):
+                rel = cred_path.lstrip("./\\")
+                cred_path = os.path.join(_CONFIG_DIR, rel)
+
+            if cred_path and os.path.exists(cred_path):
                 try:
-                    cred = credentials.Certificate(self.FIREBASE_CREDENTIALS_PATH)
+                    cred = credentials.Certificate(cred_path)
                     firebase_admin.initialize_app(cred)
                     self.FIREBASE_READY = True
                     logger.info("✓ Firebase Admin SDK initialized from credentials file")

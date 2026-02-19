@@ -83,17 +83,70 @@ class SearchStrategy:
     def search(self, query: str, firebase_uid: str, limit: int = 100, offset: int = 0, **kwargs) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
+def _normalize_resource_type(resource_type: Optional[str]) -> Optional[str]:
+    if resource_type is None:
+        return None
+    value = str(resource_type).strip().upper()
+    return value or None
+
+
 def _apply_resource_type_filter(sql: str, params: Dict[str, Any], resource_type: Optional[str]) -> tuple:
-    if resource_type:
-        sql += " AND source_type = :p_res_type"
-        params["p_res_type"] = resource_type
+    rt = _normalize_resource_type(resource_type)
+    if not rt:
+        return (sql, params)
+
+    if rt == "BOOK":
+        sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'BOOK', 'HIGHLIGHT', 'INSIGHT', 'NOTES') "
+    elif rt == "ALL_NOTES":
+        sql += " AND source_type IN ('HIGHLIGHT', 'INSIGHT', 'NOTES') "
+    elif rt == "PERSONAL_NOTE":
+        sql += " AND source_type = 'PERSONAL_NOTE' "
+    elif rt in {"ARTICLE", "WEBSITE"}:
+        sql += " AND source_type = :p_res_type "
+        params["p_res_type"] = rt
+    else:
+        # Backward-compatible strict mode for custom/legacy values.
+        sql += " AND source_type = :p_res_type "
+        params["p_res_type"] = rt
+
     return (sql, params)
+
+
+def _apply_book_id_filter(sql: str, params: Dict[str, Any], book_id: Optional[str]) -> tuple:
+    bid = str(book_id or "").strip()
+    if bid:
+        sql += " AND book_id = :p_book_id "
+        params["p_book_id"] = bid
+    return (sql, params)
+
+
+def _should_exclude_pdf_in_first_pass(resource_type: Optional[str], book_id: Optional[str]) -> bool:
+    # Scoped retrieval should never hide PDF chunks in first pass.
+    if str(book_id or "").strip():
+        return False
+
+    rt = _normalize_resource_type(resource_type)
+    if not rt:
+        return True
+
+    # Explicit scopes already constrain source_type; no extra PDF exclusion needed.
+    if rt in {"BOOK", "ALL_NOTES", "PERSONAL_NOTE", "ARTICLE", "WEBSITE", "PDF", "EPUB", "PDF_CHUNK"}:
+        return False
+    return False
 
 class ExactMatchStrategy(SearchStrategy):
     """
     Strategy for exact (de-accented) matching.
     """
-    def search(self, query: str, firebase_uid: str, limit: int = 1000, offset: int = 0, resource_type: Optional[str] = None) -> List[Dict[str, Any]]:
+    def search(
+        self,
+        query: str,
+        firebase_uid: str,
+        limit: int = 1000,
+        offset: int = 0,
+        resource_type: Optional[str] = None,
+        book_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         try:
             with DatabaseManager.get_read_connection() as conn:
                 with conn.cursor() as cursor:
@@ -116,13 +169,11 @@ class ExactMatchStrategy(SearchStrategy):
                         "p_candidate_limit": candidate_limit,
                     }
                     
-                    if resource_type:
-                        sql += " AND source_type = :p_res_type"
-                        params["p_res_type"] = resource_type
+                    sql, params = _apply_resource_type_filter(sql, params, resource_type)
+                    sql, params = _apply_book_id_filter(sql, params, book_id)
                     
                     # 1. TRY FIRST: Search without PDF (exclude raw PDF content)
-                    # Only exclude if resource_type is not explicitly PDF
-                    if not resource_type:
+                    if _should_exclude_pdf_in_first_pass(resource_type, book_id):
                         sql += " AND source_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK') "
                     
                     # 2. SEARCH CONDITION (Inlined values)
@@ -138,7 +189,7 @@ class ExactMatchStrategy(SearchStrategy):
                     rows = cursor.fetchall()
                     
                     # 4. FALLBACK: If no results found and no resource_type filter, search including PDF content
-                    if not rows and not resource_type:
+                    if not rows and not resource_type and not book_id:
                         logger.info(f"ExactMatchStrategy: No results without PDF content, trying with PDF fallback")
                         sql_with_pdf = """
                             SELECT id, content_chunk, title, source_type, page_number, 
@@ -190,7 +241,15 @@ class LemmaMatchStrategy(SearchStrategy):
     """
     Strategy for Lemma-based matching (Fuzzy-ish).
     """
-    def search(self, query: str, firebase_uid: str, limit: int = 1000, offset: int = 0, resource_type: Optional[str] = None) -> List[Dict[str, Any]]:
+    def search(
+        self,
+        query: str,
+        firebase_uid: str,
+        limit: int = 1000,
+        offset: int = 0,
+        resource_type: Optional[str] = None,
+        book_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         lemmas = _filter_query_lemmas(get_lemmas(query))
         if not lemmas:
             return []
@@ -211,10 +270,10 @@ class LemmaMatchStrategy(SearchStrategy):
                     params = {"p_uid": firebase_uid, "p_candidate_limit": candidate_limit}
                     
                     sql, params = _apply_resource_type_filter(sql, params, resource_type)
+                    sql, params = _apply_book_id_filter(sql, params, book_id)
 
                     # 1. TRY FIRST: Search without PDF (exclude raw PDF content)
-                    # Only exclude if resource_type is not explicitly PDF
-                    if not resource_type:
+                    if _should_exclude_pdf_in_first_pass(resource_type, book_id):
                         sql += " AND source_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK') "
                     
                     lemma_conditions = []
@@ -236,7 +295,7 @@ class LemmaMatchStrategy(SearchStrategy):
                     rows = cursor.fetchall()
                     
                     # 4. FALLBACK: If no results found and no resource_type filter, search including PDF content
-                    if not rows and not resource_type:
+                    if not rows and not resource_type and not book_id:
                         logger.info(f"LemmaMatchStrategy: No results without PDF content, trying with PDF fallback")
                         sql_with_pdf = """
                             SELECT id, content_chunk, title, source_type, page_number,
@@ -309,7 +368,16 @@ class SemanticMatchStrategy(SearchStrategy):
     def __init__(self, embedding_service_fn):
         self.get_embedding = embedding_service_fn
         
-    def search(self, query: str, firebase_uid: str, limit: int = 100, offset: int = 0, intent: str = 'SYNTHESIS', resource_type: Optional[str] = None) -> List[Dict[str, Any]]:
+    def search(
+        self,
+        query: str,
+        firebase_uid: str,
+        limit: int = 100,
+        offset: int = 0,
+        intent: str = 'SYNTHESIS',
+        resource_type: Optional[str] = None,
+        book_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         emb = self.get_embedding(query)
         if not emb:
             return []
@@ -330,12 +398,11 @@ class SemanticMatchStrategy(SearchStrategy):
                         
                         params = {"p_uid": firebase_uid, "vec": emb, "p_limit": custom_limit}
                         
-                        if resource_type:
-                            sql += " AND source_type = :p_res_type"
-                            params["p_res_type"] = resource_type
+                        sql, params = _apply_resource_type_filter(sql, params, resource_type)
+                        sql, params = _apply_book_id_filter(sql, params, book_id)
 
                         # Apply PDF exclusion filter if requested and no resource_type
-                        if exclude_pdf and not resource_type:
+                        if exclude_pdf and _should_exclude_pdf_in_first_pass(resource_type, book_id):
                             sql += " AND source_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK') "
 
                         if length_filter:
@@ -364,7 +431,7 @@ class SemanticMatchStrategy(SearchStrategy):
                         rows.extend(run_query(limit))
                     
                     # FALLBACK: If no results found and no resource_type filter, search including PDF content
-                    if not rows and not resource_type:
+                    if not rows and not resource_type and not book_id:
                         logger.info(f"SemanticMatchStrategy: No results without PDF content, trying with PDF fallback")
                         if intent == 'DIRECT' or intent == 'FOLLOW_UP':
                             sweep_limit = max(5, limit // 2)

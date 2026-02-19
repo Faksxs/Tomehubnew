@@ -242,9 +242,30 @@ class SearchOrchestrator:
 
                 executed_strategies.append(label)
                 if isinstance(strat, SemanticMatchStrategy):
-                    future_map[executor.submit(strat.search, query, firebase_uid, semantic_fetch_limit, 0, intent, resource_type)] = strat
+                    future_map[
+                        executor.submit(
+                            strat.search,
+                            query,
+                            firebase_uid,
+                            semantic_fetch_limit,
+                            0,
+                            intent=intent,
+                            resource_type=resource_type,
+                            book_id=book_id,
+                        )
+                    ] = strat
                 else:
-                    future_map[executor.submit(strat.search, query, firebase_uid, internal_pool_limit, 0, resource_type)] = strat
+                    future_map[
+                        executor.submit(
+                            strat.search,
+                            query,
+                            firebase_uid,
+                            internal_pool_limit,
+                            0,
+                            resource_type=resource_type,
+                            book_id=book_id,
+                        )
+                    ] = strat
             
             # C. Collect Results & Bucket
             for future in list(future_map.keys()):
@@ -300,8 +321,9 @@ class SearchOrchestrator:
                             firebase_uid,
                             variation_fetch_limit,
                             0,
-                            intent,
-                            resource_type,
+                            intent=intent,
+                            resource_type=resource_type,
+                            book_id=book_id,
                         )
                     ] = label
                 
@@ -346,7 +368,8 @@ class SearchOrchestrator:
                         firebase_uid,
                         rescue_limit,
                         0,
-                        resource_type,
+                        resource_type=resource_type,
+                        book_id=book_id,
                     )
                     if rescue_exact:
                         bucket_exact.extend(rescue_exact)
@@ -358,7 +381,8 @@ class SearchOrchestrator:
                         firebase_uid,
                         rescue_limit,
                         0,
-                        resource_type,
+                        resource_type=resource_type,
+                        book_id=book_id,
                     )
                     if rescue_lemma:
                         bucket_lemma.extend(rescue_lemma)
@@ -396,7 +420,8 @@ class SearchOrchestrator:
                             firebase_uid,
                             seed_limit,
                             0,
-                            resource_type,
+                            resource_type=resource_type,
+                            book_id=book_id,
                         )
                         for item in seed_hits:
                             patched = dict(item)
@@ -420,8 +445,9 @@ class SearchOrchestrator:
                     firebase_uid,
                     semantic_fallback_limit,
                     0,
-                    intent,
-                    resource_type
+                    intent=intent,
+                    resource_type=resource_type,
+                    book_id=book_id,
                 )
                 if fallback_semantic:
                     bucket_semantic.extend(fallback_semantic)

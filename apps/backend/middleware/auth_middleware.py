@@ -123,5 +123,5 @@ async def verify_firebase_token(request: Request) -> str | None:
         if "UserDisabledError" in exception_type:
             raise HTTPException(status_code=403, detail="User account disabled")
 
-        logger.error(f"Firebase verification failed ({exception_type}): {e}")
-        raise HTTPException(status_code=500, detail="Authentication service error")
+        logger.warning(f"Firebase verification failed ({exception_type}): {e}")
+        raise HTTPException(status_code=401, detail="Authentication verification failed")

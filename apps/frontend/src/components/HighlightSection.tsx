@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { Highlight } from '../types';
-import { Plus, Trash2, Quote, MapPin, FileText, Edit2, Save, X, StickyNote, Calendar, Sparkles, Loader2, Hash } from 'lucide-react';
+import { Plus, Trash2, Quote, MapPin, FileText, Edit2, Save, X, StickyNote, Calendar, Sparkles, Loader2, Hash, Camera } from 'lucide-react';
 import { generateTagsForNote } from '../services/geminiService';
 import { isInsightType, normalizeHighlightType } from '../lib/highlightType';
+import { CameraOcrModal } from './CameraOcrModal';
+import { appendRecognizedText, shouldEnableMobileCameraOcr } from '../lib/ocrHelpers';
 
 interface HighlightSectionProps {
   highlights: Highlight[];
@@ -16,6 +18,11 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<Highlight>>({});
   const [entryType, setEntryType] = useState<'highlight' | 'insight'>('highlight');
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [mobileCameraEnabled, setMobileCameraEnabled] = useState(false);
+  const [isOcrProcessing, setIsOcrProcessing] = useState(false);
+  const [ocrTextDraft, setOcrTextDraft] = useState('');
+  const [ocrError, setOcrError] = useState<string | null>(null);
 
   // New State for Date and Tags
   const [dateInput, setDateInput] = useState('');
@@ -32,6 +39,29 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
     }
   }, [autoEditHighlightId]); // Only run when autoEditHighlightId changes
 
+  React.useEffect(() => {
+    const evaluateMobileOcr = () => {
+      if (typeof window === 'undefined') {
+        setMobileCameraEnabled(false);
+        return;
+      }
+      const hasCoarsePointer =
+        typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+      const maxTouchPoints = typeof navigator !== 'undefined' ? Number(navigator.maxTouchPoints || 0) : 0;
+      setMobileCameraEnabled(
+        shouldEnableMobileCameraOcr({
+          viewportWidth: window.innerWidth || 0,
+          maxTouchPoints,
+          hasCoarsePointer,
+        })
+      );
+    };
+
+    evaluateMobileOcr();
+    window.addEventListener('resize', evaluateMobileOcr);
+    return () => window.removeEventListener('resize', evaluateMobileOcr);
+  }, []);
+
   const handleAddNew = () => {
     setEditingId(null);
     setFormData({});
@@ -39,6 +69,9 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
     // Default to today
     setDateInput(new Date().toISOString().split('T')[0]);
     setTagsInput('');
+    setIsCameraOpen(false);
+    setOcrError(null);
+    setOcrTextDraft('');
     setIsFormOpen(true);
   };
 
@@ -49,6 +82,9 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
     // Initialize date and tags
     setDateInput(new Date(h.createdAt).toISOString().split('T')[0]);
     setTagsInput(h.tags ? h.tags.join(', ') : '');
+    setIsCameraOpen(false);
+    setOcrError(null);
+    setOcrTextDraft('');
     setIsFormOpen(true);
   };
 
@@ -58,7 +94,21 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
     setFormData({});
     setTagsInput('');
     setDateInput('');
+    setIsCameraOpen(false);
+    setOcrError(null);
+    setOcrTextDraft('');
+    setIsOcrProcessing(false);
   };
+
+  const handleApplyOcrText = React.useCallback((recognizedText: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      text: appendRecognizedText(String(prev.text || ''), recognizedText),
+    }));
+    setOcrTextDraft(recognizedText);
+    setOcrError(null);
+    setIsCameraOpen(false);
+  }, []);
 
   const handleGenerateTags = async () => {
     if (!formData.text) return;
@@ -137,9 +187,27 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
               {editingId ? <Edit2 size={16} className="md:w-[18px] md:h-[18px] text-[#262D40] dark:text-orange-500" /> : <Plus size={16} className="md:w-[18px] md:h-[18px] text-[#262D40] dark:text-orange-500" />}
               {editingId ? (entryType === 'highlight' ? 'Edit Highlight' : 'Edit Note') : 'New Entry'}
             </h4>
-            <button onClick={handleCancel} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
-              <X size={18} className="md:w-5 md:h-5" />
-            </button>
+            <div className="flex items-center gap-2">
+              {entryType === 'highlight' && mobileCameraEnabled && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOcrError(null);
+                    setOcrTextDraft('');
+                    setIsCameraOpen(true);
+                  }}
+                  disabled={isOcrProcessing}
+                  className="inline-flex items-center gap-1 rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] font-semibold text-sky-700 transition-colors hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-sky-700 dark:bg-sky-950/35 dark:text-sky-200 dark:hover:bg-sky-950/55"
+                  title="Kamera ile metin tara"
+                >
+                  {isOcrProcessing ? <Loader2 size={12} className="animate-spin" /> : <Camera size={12} />}
+                  Tara
+                </button>
+              )}
+              <button onClick={handleCancel} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
+                <X size={18} className="md:w-5 md:h-5" />
+              </button>
+            </div>
           </div>
 
           {/* Type Toggle */}
@@ -151,6 +219,8 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
                   setEntryType('highlight');
                   setFormData({}); // Clear form when switching
                   setTagsInput('');
+                  setOcrError(null);
+                  setOcrTextDraft('');
                 }
               }}
               className={`flex-1 flex items-center justify-center gap-2 py-1.5 md:py-2 text-xs md:text-sm font-medium rounded-md transition-all ${entryType === 'highlight'
@@ -168,6 +238,9 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
                   setEntryType('insight');
                   setFormData({}); // Clear form when switching
                   setTagsInput('');
+                  setIsCameraOpen(false);
+                  setOcrError(null);
+                  setOcrTextDraft('');
                 }
               }}
               className={`flex-1 flex items-center justify-center gap-2 py-1.5 md:py-2 text-xs md:text-sm font-medium rounded-md transition-all ${entryType === 'insight'
@@ -194,6 +267,14 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
                 value={formData.text || ''}
                 onChange={e => setFormData(prev => ({ ...prev, text: e.target.value }))}
               ></textarea>
+              {entryType === 'highlight' && ocrTextDraft && (
+                <p className="mt-1 text-[10px] md:text-xs text-sky-700 dark:text-sky-300">
+                  OCR metni eklendi. Kaydetmeden once metni kontrol edebilirsiniz.
+                </p>
+              )}
+              {entryType === 'highlight' && ocrError && (
+                <p className="mt-1 text-[10px] md:text-xs text-red-600 dark:text-red-400">{ocrError}</p>
+              )}
             </div>
 
             {/* Comment input only for Highlights */}
@@ -394,6 +475,15 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
           </div>
         )}
       </div>
+
+      <CameraOcrModal
+        open={isCameraOpen}
+        onClose={() => setIsCameraOpen(false)}
+        onApply={handleApplyOcrText}
+        onProcessingChange={setIsOcrProcessing}
+        onErrorChange={setOcrError}
+        onDraftChange={setOcrTextDraft}
+      />
     </div>
   );
 };

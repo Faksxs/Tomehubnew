@@ -8,7 +8,7 @@ Orchestrates the "Expanding Horizons" algorithm with Dual Anchor gravity.
 
 import logging
 import re
-from typing import List, Optional, Tuple, Set, Dict, Any
+from typing import List, Optional, Tuple, Set, Dict, Any  # Added Dict explicit import
 from datetime import datetime
 import numpy as np
 import array
@@ -1733,7 +1733,7 @@ class FlowService:
         
         return filtered
 
-    def _get_candidate_metadata_batch(self, firebase_uid: str, chunk_ids: List[str], days: int = 30) -> Dict[str, dict]:
+    def _get_candidate_metadata_batch(self, firebase_uid: str, chunk_ids: list[str], days: int = 30) -> dict[str, dict]:
         """
         Fetch vector and seen status for a batch of chunk IDs in a SINGLE query.
         Returns: {chunk_id: {'vector': [...], 'is_seen': bool}}

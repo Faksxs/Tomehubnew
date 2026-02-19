@@ -6,12 +6,18 @@ _BOOK_ID_MAX = 256
 _TEXT_MAX = 2000
 _NOTE_MAX = 20000
 _TAG_MAX = 64
+_TARGET_BOOKS_MAX = 20
 
 
 class SearchRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=_TEXT_MAX)
     firebase_uid: str = Field(..., min_length=1, max_length=_UID_MAX)
     book_id: Optional[str] = Field(default=None, max_length=_BOOK_ID_MAX)
+    context_book_id: Optional[str] = Field(default=None, max_length=_BOOK_ID_MAX)
+    resource_type: Optional[str] = Field(default=None, max_length=64)
+    scope_mode: str = Field(default="AUTO")
+    compare_mode: str = Field(default="EXPLICIT_ONLY")
+    target_book_ids: Optional[List[str]] = None
     mode: str = Field(default="STANDARD")  # STANDARD or EXPLORER
     limit: int = Field(default=20, ge=1, le=100)
     offset: int = Field(default=0, ge=0, le=10000)
@@ -32,13 +38,21 @@ class SearchRequest(BaseModel):
             raise ValueError("firebase_uid cannot be empty")
         return uid
 
-    @field_validator("book_id")
+    @field_validator("book_id", "context_book_id")
     @classmethod
     def normalize_book_id(cls, value: Optional[str]) -> Optional[str]:
         if value is None:
             return None
         book_id = value.strip()
         return book_id or None
+
+    @field_validator("scope_mode", mode="before")
+    @classmethod
+    def normalize_scope_mode(cls, value: Optional[str]) -> str:
+        scope_mode = str(value or "AUTO").strip().upper()
+        if scope_mode not in {"AUTO", "BOOK_FIRST", "HIGHLIGHT_FIRST", "GLOBAL"}:
+            raise ValueError("scope_mode must be AUTO, BOOK_FIRST, HIGHLIGHT_FIRST, or GLOBAL")
+        return scope_mode
 
     @field_validator("mode", mode="before")
     @classmethod
@@ -47,6 +61,34 @@ class SearchRequest(BaseModel):
         if mode not in {"STANDARD", "EXPLORER"}:
             raise ValueError("mode must be STANDARD or EXPLORER")
         return mode
+
+    @field_validator("compare_mode", mode="before")
+    @classmethod
+    def normalize_compare_mode(cls, value: Optional[str]) -> str:
+        compare_mode = str(value or "EXPLICIT_ONLY").strip().upper()
+        if compare_mode not in {"EXPLICIT_ONLY", "AUTO"}:
+            raise ValueError("compare_mode must be EXPLICIT_ONLY or AUTO")
+        return compare_mode
+
+    @field_validator("target_book_ids", mode="before")
+    @classmethod
+    def normalize_target_book_ids(cls, value: Optional[List[str]]) -> Optional[List[str]]:
+        if value is None:
+            return None
+        normalized: List[str] = []
+        seen = set()
+        for item in value:
+            book_id = str(item or "").strip()
+            if not book_id:
+                continue
+            truncated = book_id[:_BOOK_ID_MAX]
+            if truncated in seen:
+                continue
+            seen.add(truncated)
+            normalized.append(truncated)
+            if len(normalized) >= _TARGET_BOOKS_MAX:
+                break
+        return normalized or None
 
 
 class SearchResponse(BaseModel):
@@ -244,7 +286,11 @@ class ChatRequest(BaseModel):
     firebase_uid: str = Field(..., min_length=1, max_length=_UID_MAX)
     session_id: Optional[int] = None
     book_id: Optional[str] = Field(default=None, max_length=_BOOK_ID_MAX)
+    context_book_id: Optional[str] = Field(default=None, max_length=_BOOK_ID_MAX)
     resource_type: Optional[str] = Field(default=None, max_length=64)
+    scope_mode: str = Field(default="AUTO")
+    compare_mode: str = Field(default="EXPLICIT_ONLY")
+    target_book_ids: Optional[List[str]] = None
     mode: str = Field(default="STANDARD")
     # Retrieval candidate limit for chat context (not quote count).
     # Keep this aligned with SearchRequest defaults to avoid overly narrow context.
@@ -259,6 +305,14 @@ class ChatRequest(BaseModel):
             raise ValueError("message cannot be empty or whitespace")
         return text
 
+    @field_validator("book_id", "context_book_id", mode="before")
+    @classmethod
+    def normalize_chat_book_ids(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        book_id = str(value).strip()
+        return book_id or None
+
     @field_validator("mode", mode="before")
     @classmethod
     def normalize_chat_mode(cls, value: Optional[str]) -> str:
@@ -266,6 +320,42 @@ class ChatRequest(BaseModel):
         if mode not in {"STANDARD", "EXPLORER"}:
             raise ValueError("mode must be STANDARD or EXPLORER")
         return mode
+
+    @field_validator("scope_mode", mode="before")
+    @classmethod
+    def normalize_scope_mode(cls, value: Optional[str]) -> str:
+        scope_mode = str(value or "AUTO").strip().upper()
+        if scope_mode not in {"AUTO", "BOOK_FIRST", "HIGHLIGHT_FIRST", "GLOBAL"}:
+            raise ValueError("scope_mode must be AUTO, BOOK_FIRST, HIGHLIGHT_FIRST, or GLOBAL")
+        return scope_mode
+
+    @field_validator("compare_mode", mode="before")
+    @classmethod
+    def normalize_chat_compare_mode(cls, value: Optional[str]) -> str:
+        compare_mode = str(value or "EXPLICIT_ONLY").strip().upper()
+        if compare_mode not in {"EXPLICIT_ONLY", "AUTO"}:
+            raise ValueError("compare_mode must be EXPLICIT_ONLY or AUTO")
+        return compare_mode
+
+    @field_validator("target_book_ids", mode="before")
+    @classmethod
+    def normalize_chat_target_book_ids(cls, value: Optional[List[str]]) -> Optional[List[str]]:
+        if value is None:
+            return None
+        normalized: List[str] = []
+        seen = set()
+        for item in value:
+            book_id = str(item or "").strip()
+            if not book_id:
+                continue
+            truncated = book_id[:_BOOK_ID_MAX]
+            if truncated in seen:
+                continue
+            seen.add(truncated)
+            normalized.append(truncated)
+            if len(normalized) >= _TARGET_BOOKS_MAX:
+                break
+        return normalized or None
 
 
 class ChatResponse(BaseModel):

@@ -40,12 +40,12 @@ class _SlowExpander:
 
 
 class _FastExact(ExactMatchStrategy):
-    def search(self, query, firebase_uid, limit=1000, offset=0, resource_type=None):
+    def search(self, query, firebase_uid, limit=1000, offset=0, resource_type=None, book_id=None):
         return [_orchestrator_row(1, "Exact Hit", "content_exact")]
 
 
 class _FastLemma(LemmaMatchStrategy):
-    def search(self, query, firebase_uid, limit=1000, offset=0, resource_type=None):
+    def search(self, query, firebase_uid, limit=1000, offset=0, resource_type=None, book_id=None):
         return []
 
 
@@ -53,7 +53,7 @@ class _FastSemantic(SemanticMatchStrategy):
     def __init__(self):
         pass
 
-    def search(self, query, firebase_uid, limit=100, offset=0, intent="SYNTHESIS", resource_type=None):
+    def search(self, query, firebase_uid, limit=100, offset=0, intent="SYNTHESIS", resource_type=None, book_id=None):
         return []
 
 

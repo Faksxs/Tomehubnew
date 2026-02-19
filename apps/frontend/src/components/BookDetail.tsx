@@ -21,7 +21,7 @@ interface BookDetailProps {
   onBookUpdated?: (book: LibraryItem) => void;
 }
 
-export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack, onEdit, onDelete, onUpdateHighlights, initialTab = 'info', autoEditHighlightId, onBookUpdated }) => {
+export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack, onEdit, onDelete, onUpdateHighlights, initialTab = 'info', autoEditHighlightId, onIngestSuccess, onBookUpdated }) => {
   const [activeTab, setActiveTab] = useState<'info' | 'highlights'>(initialTab);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -33,9 +33,11 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
   const [pdfStatus, setPdfStatus] = useState<IngestionStatusResponse | null>(null);
   const [pdfStatusError, setPdfStatusError] = useState<string | null>(null);
   const [pdfStatusRefresh, setPdfStatusRefresh] = useState(0);
+  const [pdfPollAttempts, setPdfPollAttempts] = useState(0);
 
   const { user } = useAuth();
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const pollTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isNote = book.type === 'PERSONAL_NOTE';
 
@@ -157,21 +159,30 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
   const pdfProcessing = pdfStatus?.status === 'PROCESSING';
   const pdfFailed = pdfStatus?.status === 'FAILED';
   const pdfDisableUpload = pdfIndexed || pdfProcessing || isIngesting;
+  const processingProgress = Math.min(95, Math.max(12, 12 + (pdfPollAttempts * 3)));
+
+  const triggerStatusRefresh = React.useCallback(() => {
+    setPdfStatusRefresh((v) => v + 1);
+  }, []);
 
   React.useEffect(() => {
     if (!user?.uid || !book?.id || isNote) {
       setPdfStatus(null);
       setPdfStatusError(null);
+      setPdfPollAttempts(0);
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current);
+        pollTimeoutRef.current = null;
+      }
       return;
     }
 
     let cancelled = false;
-    let attempts = 0;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const maxAttempts = 60;
 
     const fetchStatus = async () => {
       try {
-        const status = await getIngestionStatus(book.id, user.uid);
+        const status = await getIngestionStatus(book.id, user.uid, book.title);
         if (cancelled) return;
         setPdfStatus(status);
         setPdfStatusError(null);
@@ -181,21 +192,40 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
           await saveItemForUser(user.uid, updated);
           onBookUpdated?.(updated);
         }
-        if (status.status === 'PROCESSING' && attempts < 30) {
-          attempts += 1;
-          timeoutId = setTimeout(fetchStatus, 10000);
+        if (status.status === 'COMPLETED') {
+          onIngestSuccess?.();
+        }
+        if (status.status === 'PROCESSING') {
+          setPdfPollAttempts((prev) => {
+            const next = prev + 1;
+            if (next < maxAttempts && !cancelled) {
+              pollTimeoutRef.current = setTimeout(fetchStatus, 10000);
+            }
+            return next;
+          });
         }
       } catch (e) {
         if (cancelled) return;
         setPdfStatusError(e instanceof Error ? e.message : 'Failed to fetch ingestion status');
+        setPdfPollAttempts((prev) => {
+          const next = prev + 1;
+          if (next < maxAttempts && !cancelled) {
+            pollTimeoutRef.current = setTimeout(fetchStatus, 10000);
+          }
+          return next;
+        });
       }
     };
 
+    setPdfPollAttempts(0);
     fetchStatus();
 
     return () => {
       cancelled = true;
-      if (timeoutId) clearTimeout(timeoutId);
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current);
+        pollTimeoutRef.current = null;
+      }
     };
   }, [book.id, user?.uid, isNote, pdfStatusRefresh]);
 
@@ -411,14 +441,22 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                 </div>
 
                 {/* Status Messages */}
-                {ingestResult && (
+                {(ingestResult || pdfIndexed) && (
                   <div className="mt-2 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1 animate-in fade-in slide-in-from-top-1">
-                    <CheckCircle size={10} /> PDF Ingested!
+                    <CheckCircle size={10} />
+                    {pdfStatus?.chunk_count != null
+                      ? `PDF indexlendi (${pdfStatus.chunk_count} chunk)`
+                      : 'PDF indexlendi'}
                   </div>
                 )}
                 {ingestError && (
                   <div className="mt-2 text-[10px] text-red-600 dark:text-red-400 font-medium flex items-center gap-1 animate-in fade-in slide-in-from-top-1">
                     <AlertCircle size={10} /> {ingestError}
+                  </div>
+                )}
+                {pdfFailed && (
+                  <div className="mt-2 text-[10px] text-red-600 dark:text-red-400 font-medium flex items-center gap-1 animate-in fade-in slide-in-from-top-1">
+                    <AlertTriangle size={10} /> PDF islenemedi. Lutfen farkli bir PDF ile tekrar deneyin.
                   </div>
                 )}
               </div>
@@ -550,6 +588,23 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                             </>
                           )}
                         </span>
+                        {(pdfProcessing || isIngesting) && (
+                          <div className="mt-1 flex items-center gap-2">
+                            <div className="h-1.5 w-full rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-sky-500 transition-all duration-500"
+                                style={{ width: `${processingProgress}%` }}
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={triggerStatusRefresh}
+                              className="text-[10px] md:text-xs text-sky-600 dark:text-sky-400 underline underline-offset-2"
+                            >
+                              Yenile
+                            </button>
+                          </div>
+                        )}
                         {pdfStatusError && (
                           <span className="text-[10px] md:text-xs text-red-600 dark:text-red-400">{pdfStatusError}</span>
                         )}

@@ -54,6 +54,22 @@ _EN_STOPWORDS = {
     "were",
 }
 
+# Domain-oriented English terms that appear frequently in catalog tags.
+_EN_TAG_HINTS = {
+    "political",
+    "philosophy",
+    "social",
+    "contract",
+    "society",
+    "ethics",
+    "theory",
+    "history",
+    "economics",
+    "psychology",
+    "law",
+    "state",
+}
+
 _TR_PUBLISHER_HINTS = (
     "yayın",
     "yayin",
@@ -96,9 +112,10 @@ def detect_text_language(text: Any) -> Dict[str, Any]:
     tr_char_hits = sum(1 for ch in value if ch in _TR_CHARS)
     tr_stop_hits = sum(1 for t in tokens if t in _TR_STOPWORDS)
     en_stop_hits = sum(1 for t in tokens if t in _EN_STOPWORDS)
+    en_tag_hits = sum(1 for t in tokens if t in _EN_TAG_HINTS)
 
     tr_score = (tr_char_hits / max(1, len(value))) * 3.0 + (tr_stop_hits / token_count) * 1.3
-    en_score = (en_stop_hits / token_count) * 1.5
+    en_score = (en_stop_hits / token_count) * 1.5 + (en_tag_hits / token_count) * 1.1
 
     # Common English morphology hints
     en_score += 0.25 * sum(1 for t in tokens if t.endswith(("tion", "ment", "ness", "ship")))

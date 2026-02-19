@@ -51,3 +51,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 
 # Use entrypoint script to discover IP, generate Caddyfile, and start services
 ENTRYPOINT ["/app/entrypoint.sh"]
+

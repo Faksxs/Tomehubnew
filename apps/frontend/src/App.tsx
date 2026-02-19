@@ -283,7 +283,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
             console.log("Synced new item to AI Backend:", newItem.title);
           }
         } catch (err) {
-          console.error("Failed to sync item to AI Backend (:5000):", err);
+          console.error("Failed to sync item to AI Backend:", err);
           // Non-blocking for UI
         }
       })();

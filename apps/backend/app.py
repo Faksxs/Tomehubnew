@@ -11,6 +11,7 @@ Date: 2026-01-18
 import sys
 import os
 import json
+import re
 import uvicorn
 import asyncio
 import logging
@@ -19,7 +20,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Req
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Dict
 import traceback
 
 # Add backend dir to path
@@ -68,6 +69,7 @@ from services.analytics_service import (
     get_comparative_stats,
     get_keyword_contexts,
 )
+from services.query_plan_service import looks_explicit_compare_query
 from models.request_models import (
     EnrichBookRequest, GenerateTagsRequest, VerifyCoverRequest, AnalyzeHighlightsRequest
 )
@@ -128,6 +130,116 @@ def _validate_cors_origins(origins: list[str]) -> list[str]:
             continue
         raise ValueError(f"Invalid CORS origin: {origin}")
     return normalized
+
+
+_HIGHLIGHT_FOCUS_TERMS = (
+    "highlight", "highlights", "altini ciz", "altını çiz", "notlarim", "notlarım",
+    "notlar", "alinan not", "alıntı", "alinti", "insight"
+)
+
+
+def _is_scope_policy_enabled_for_chat(firebase_uid: str, mode: str) -> bool:
+    if not bool(getattr(settings, "SEARCH_SCOPE_POLICY_ENABLED", False)):
+        return False
+
+    enabled_modes = {
+        str(m or "").strip().upper()
+        for m in getattr(settings, "SEARCH_SCOPE_POLICY_CHAT_MODES", []) or []
+    }
+    if enabled_modes and str(mode or "STANDARD").strip().upper() not in enabled_modes:
+        return False
+
+    canary_uids = set(getattr(settings, "SEARCH_SCOPE_POLICY_CANARY_UIDS", set()) or set())
+    if canary_uids and str(firebase_uid or "").strip() not in canary_uids:
+        return False
+    return True
+
+
+def _looks_highlight_focused_query(message: str) -> bool:
+    text = str(message or "").strip().lower()
+    return any(term in text for term in _HIGHLIGHT_FOCUS_TERMS)
+
+
+def _resolve_chat_scope_policy(
+    *,
+    message: str,
+    firebase_uid: str,
+    requested_scope_mode: str,
+    explicit_book_id: Optional[str],
+    context_book_id: Optional[str],
+    compare_mode: Optional[str] = None,
+    target_book_ids: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    requested = str(requested_scope_mode or "AUTO").strip().upper() or "AUTO"
+    anchor_book_id = str(explicit_book_id or context_book_id or "").strip() or None
+    requested_targets = [str(b or "").strip() for b in (target_book_ids or []) if str(b or "").strip()]
+    compare_mode_effective = str(compare_mode or "EXPLICIT_ONLY").strip().upper() or "EXPLICIT_ONLY"
+    compare_query_explicit = looks_explicit_compare_query(message)
+
+    if requested in {"AUTO", "BOOK_FIRST"}:
+        if len(requested_targets) >= 2:
+            return {
+                "scope_mode": "GLOBAL",
+                "resolved_book_id": anchor_book_id,
+                "scope_decision": "COMPARE_GLOBAL_OVERRIDE_TARGETS",
+            }
+        if compare_query_explicit and compare_mode_effective in {"EXPLICIT_ONLY", "AUTO"}:
+            return {
+                "scope_mode": "GLOBAL",
+                "resolved_book_id": anchor_book_id,
+                "scope_decision": "COMPARE_GLOBAL_OVERRIDE_QUERY",
+            }
+
+    chosen_book_id = anchor_book_id
+    if not chosen_book_id and requested in {"AUTO", "BOOK_FIRST"}:
+        try:
+            chosen_book_id = resolve_book_id_from_question(firebase_uid, message)
+        except Exception:
+            chosen_book_id = None
+
+    if requested == "GLOBAL":
+        return {
+            "scope_mode": "GLOBAL",
+            "resolved_book_id": None,
+            "scope_decision": "GLOBAL_FORCED",
+        }
+    if requested == "HIGHLIGHT_FIRST":
+        return {
+            "scope_mode": "HIGHLIGHT_FIRST",
+            "resolved_book_id": chosen_book_id,
+            "scope_decision": "HIGHLIGHT_FIRST_FORCED",
+        }
+    if requested == "BOOK_FIRST":
+        if chosen_book_id:
+            return {
+                "scope_mode": "BOOK_FIRST",
+                "resolved_book_id": chosen_book_id,
+                "scope_decision": "BOOK_FIRST_FORCED",
+            }
+        return {
+            "scope_mode": "HIGHLIGHT_FIRST",
+            "resolved_book_id": None,
+            "scope_decision": "BOOK_FIRST_FALLBACK_NO_BOOK",
+        }
+
+    # AUTO mode
+    if chosen_book_id:
+        return {
+            "scope_mode": "BOOK_FIRST",
+            "resolved_book_id": chosen_book_id,
+            "scope_decision": "AUTO_RESOLVED_BOOK",
+        }
+    if _looks_highlight_focused_query(message):
+        return {
+            "scope_mode": "HIGHLIGHT_FIRST",
+            "resolved_book_id": None,
+            "scope_decision": "AUTO_HIGHLIGHT_FOCUS",
+        }
+    return {
+        "scope_mode": "HIGHLIGHT_FIRST",
+        "resolved_book_id": None,
+        "scope_decision": "AUTO_DEFAULT_HIGHLIGHT_FIRST",
+    }
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -428,7 +540,7 @@ async def search(
         # Analytic short-circuit (Layer-3)
         if is_analytic_word_count(search_request.question):
             term = extract_target_term(search_request.question)
-            resolved_book_id = search_request.book_id
+            resolved_book_id = search_request.book_id or search_request.context_book_id
             if not resolved_book_id:
                 resolved_book_id = resolve_book_id_from_question(firebase_uid, search_request.question)
 
@@ -499,6 +611,39 @@ async def search(
                 "metadata": metadata_dict
             }
         
+        scope_policy_active = _is_scope_policy_enabled_for_chat(firebase_uid, search_request.mode)
+        effective_book_id = search_request.book_id
+        effective_resource_type = search_request.resource_type
+        effective_scope_mode = "GLOBAL"
+        scope_decision = "LEGACY_SCOPE_POLICY_DISABLED"
+        if scope_policy_active:
+            scope_state = _resolve_chat_scope_policy(
+                message=search_request.question,
+                firebase_uid=firebase_uid,
+                requested_scope_mode=search_request.scope_mode,
+                explicit_book_id=search_request.book_id,
+                context_book_id=search_request.context_book_id,
+                compare_mode=search_request.compare_mode,
+                target_book_ids=search_request.target_book_ids,
+            )
+            effective_scope_mode = scope_state["scope_mode"]
+            scope_decision = scope_state["scope_decision"]
+            effective_book_id = scope_state.get("resolved_book_id")
+
+            if effective_scope_mode == "BOOK_FIRST":
+                effective_resource_type = "BOOK"
+            elif effective_scope_mode == "HIGHLIGHT_FIRST":
+                effective_resource_type = "ALL_NOTES"
+            else:
+                effective_resource_type = search_request.resource_type
+
+        scope_metadata = {
+            "scope_policy_active": scope_policy_active,
+            "scope_decision": scope_decision,
+            "scope_mode": effective_scope_mode,
+            "resolved_book_id": effective_book_id,
+        }
+
         # Run synchronous RAG search in thread pool
         result = await loop.run_in_executor(
             None, 
@@ -506,12 +651,17 @@ async def search(
                 generate_answer, 
                 search_request.question, 
                 firebase_uid, 
-                search_request.book_id,
+                effective_book_id,
                 None, # chat_history
                 "", # session_summary
                 search_request.limit,
                 search_request.offset,
-                None # session_id
+                None, # session_id
+                effective_resource_type,
+                effective_scope_mode,
+                scope_policy_active,
+                search_request.compare_mode,
+                search_request.target_book_ids,
             )
         )
         
@@ -531,6 +681,8 @@ async def search(
         if isinstance(metadata, dict):
             metadata.setdefault("search_variant", "search")
             metadata.setdefault("graph_capability", "enabled")
+            for key, value in scope_metadata.items():
+                metadata.setdefault(key, value)
         
         return {
             "answer": answer,
@@ -684,7 +836,6 @@ async def chat_endpoint(
                         "type": "word_count",
                         "term": term,
                         "count": count,
-                        "all_notes_count": all_notes_count,
                         "match": "lemma",
                         "scope": "book_chunks",
                         "resolved_book_id": resolved_book_id,
@@ -692,6 +843,39 @@ async def chat_endpoint(
                     },
                 },
             }
+
+        scope_policy_active = _is_scope_policy_enabled_for_chat(firebase_uid, chat_request.mode)
+        effective_book_id = chat_request.book_id
+        effective_resource_type = chat_request.resource_type
+        effective_scope_mode = "GLOBAL"
+        scope_decision = "LEGACY_SCOPE_POLICY_DISABLED"
+        if scope_policy_active:
+            scope_state = _resolve_chat_scope_policy(
+                message=chat_request.message,
+                firebase_uid=firebase_uid,
+                requested_scope_mode=chat_request.scope_mode,
+                explicit_book_id=chat_request.book_id,
+                context_book_id=chat_request.context_book_id,
+                compare_mode=chat_request.compare_mode,
+                target_book_ids=chat_request.target_book_ids,
+            )
+            effective_scope_mode = scope_state["scope_mode"]
+            scope_decision = scope_state["scope_decision"]
+            effective_book_id = scope_state.get("resolved_book_id")
+
+            if effective_scope_mode == "BOOK_FIRST":
+                effective_resource_type = "BOOK"
+            elif effective_scope_mode == "HIGHLIGHT_FIRST":
+                effective_resource_type = "ALL_NOTES"
+            else:
+                effective_resource_type = chat_request.resource_type
+
+        scope_metadata = {
+            "scope_policy_active": scope_policy_active,
+            "scope_decision": scope_decision,
+            "scope_mode": effective_scope_mode,
+            "resolved_book_id": effective_book_id,
+        }
 
         # 4. Generate Answer (Using RAG with history)
         # Route based on mode:
@@ -745,10 +929,14 @@ async def chat_endpoint(
                     get_rag_context,
                     chat_request.message, 
                     firebase_uid, 
-                    chat_request.book_id,
+                    effective_book_id,
                     chat_history=ctx_data['recent_messages'],
                     mode='EXPLORER',
-                    resource_type=chat_request.resource_type,
+                    resource_type=effective_resource_type,
+                    scope_mode=effective_scope_mode,
+                    apply_scope_policy=scope_policy_active,
+                    compare_mode=chat_request.compare_mode,
+                    target_book_ids=chat_request.target_book_ids,
                     limit=retrieval_limit,
                     offset=chat_request.offset
                 )
@@ -796,6 +984,15 @@ async def chat_endpoint(
                         "search_log_id",
                         "graph_bridge_attempted",
                         "quote_target_count",
+                        "compare_applied",
+                        "target_books_used",
+                        "target_books_truncated",
+                        "unauthorized_target_book_ids",
+                        "evidence_policy",
+                        "per_book_evidence_count",
+                        "latency_budget_hit",
+                        "compare_degrade_reason",
+                        "compare_mode",
                     ):
                         if key in rag_meta:
                             final_result['metadata'][key] = rag_meta[key]
@@ -820,12 +1017,17 @@ async def chat_endpoint(
                     generate_answer,
                     chat_request.message,
                     firebase_uid,
-                    chat_request.book_id,
+                    effective_book_id,
                     ctx_data['recent_messages'],
                     ctx_data['summary'] or "",
                     retrieval_limit,
                     chat_request.offset,
-                    session_id
+                    session_id,
+                    effective_resource_type,
+                    effective_scope_mode,
+                    scope_policy_active,
+                    chat_request.compare_mode,
+                    chat_request.target_book_ids,
                 )
             )
             
@@ -836,6 +1038,8 @@ async def chat_endpoint(
 
         if isinstance(final_metadata, dict):
             final_metadata.setdefault("effective_retrieval_limit", retrieval_limit)
+            for key, value in scope_metadata.items():
+                final_metadata.setdefault(key, value)
         
         # 5. Save Assistant Message
         await loop.run_in_executor(None, add_message, session_id, 'assistant', answer, sources)
@@ -1131,7 +1335,8 @@ async def extract_metadata_endpoint(
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
     # JWT verified, firebase_uid_from_jwt can be used if needed for logging/tracking
-    if not file.filename.lower().endswith(".pdf"):
+    filename = str(getattr(file, "filename", "") or "").strip()
+    if not filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
         
     upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
@@ -1235,6 +1440,74 @@ def fetch_ingestion_status(book_id: str, firebase_uid: str):
         return None
 
 
+def _normalize_title_candidates(raw_title: Optional[str]) -> List[str]:
+    """Build conservative title candidates for ingestion-status fallback."""
+    if not raw_title:
+        return []
+    title = str(raw_title).strip()
+    if not title:
+        return []
+
+    candidates: List[str] = []
+
+    def _add(value: str):
+        v = str(value or "").strip()
+        if len(v) < 2:
+            return
+        if v not in candidates:
+            candidates.append(v)
+
+    _add(title)
+    no_suffix = re.sub(r"\s*\((highlight|insight|note)\)\s*$", "", title, flags=re.IGNORECASE).strip()
+    _add(no_suffix)
+    if " - " in no_suffix:
+        _add(no_suffix.split(" - ", 1)[0].strip())
+    if ":" in no_suffix:
+        _add(no_suffix.split(":", 1)[0].strip())
+
+    return candidates
+
+
+def resolve_pdf_book_id_by_title(firebase_uid: str, title: Optional[str]) -> Optional[str]:
+    """
+    Resolve a likely PDF/EPUB BOOK_ID by fuzzy title match for legacy/migrated IDs.
+    Returns the candidate with the largest chunk count.
+    """
+    title_candidates = _normalize_title_candidates(title)
+    if not firebase_uid or not title_candidates:
+        return None
+
+    try:
+        with DatabaseManager.get_read_connection() as conn:
+            with conn.cursor() as cursor:
+                like_parts = []
+                params: Dict[str, Any] = {"p_uid": firebase_uid}
+                for idx, candidate in enumerate(title_candidates):
+                    key = f"p_title_{idx}"
+                    like_parts.append(f"LOWER(TITLE) LIKE LOWER(:{key})")
+                    params[key] = f"%{candidate}%"
+
+                where_like = " OR ".join(like_parts)
+                sql = f"""
+                    SELECT BOOK_ID, COUNT(*) AS chunk_count
+                    FROM TOMEHUB_CONTENT
+                    WHERE FIREBASE_UID = :p_uid
+                      AND SOURCE_TYPE IN ('PDF', 'EPUB', 'PDF_CHUNK')
+                      AND ({where_like})
+                    GROUP BY BOOK_ID
+                    ORDER BY chunk_count DESC
+                    FETCH FIRST 1 ROWS ONLY
+                """
+                cursor.execute(sql, params)
+                row = cursor.fetchone()
+                if row and row[0]:
+                    return str(row[0])
+    except Exception as e:
+        logger.error(f"Failed to resolve PDF book id by title: {e}")
+
+    return None
+
+
 def _parse_csv_tags(raw_tags: Optional[str]) -> List[str]:
     if not raw_tags:
         return []
@@ -1253,6 +1526,19 @@ def _collect_highlight_tags(highlights: List[Any]) -> List[str]:
             seen.add(normalized)
             out.append(normalized)
     return out
+
+
+def _safe_upload_filename(upload_file: UploadFile) -> str:
+    raw_name = str(getattr(upload_file, "filename", "") or "").strip()
+    if not raw_name:
+        return "upload.pdf"
+    try:
+        from werkzeug.utils import secure_filename as _secure_filename
+        safe_name = _secure_filename(raw_name)
+    except Exception:
+        safe_name = raw_name
+    safe_name = os.path.basename(str(safe_name or "").replace("\x00", "")).strip()
+    return safe_name or "upload.pdf"
 
 def run_ingestion_background(temp_path: str, title: str, author: str, firebase_uid: str, book_id: str, categories: Optional[str] = None):
     """
@@ -1345,7 +1631,7 @@ async def ingest_endpoint(
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
     # Log ingestion start
-    logger.info("Ingesting file", extra={"filename": file.filename, "title": title})
+    logger.info("Ingesting file", extra={"upload_filename": file.filename, "title": title})
     
     # Verify firebase_uid from JWT in production, fall back to form data in development
     if firebase_uid_from_jwt:
@@ -1359,15 +1645,15 @@ async def ingest_endpoint(
     
     upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
     os.makedirs(upload_dir, exist_ok=True)
-    
-    # Save file
-    import uuid
-    from werkzeug.utils import secure_filename
-    original_filename = secure_filename(file.filename)
-    unique_filename = f"{uuid.uuid4()}_{original_filename}"
-    temp_path = os.path.join(upload_dir, unique_filename)
+    temp_path = None
     
     try:
+        # Save file
+        import uuid
+        original_filename = _safe_upload_filename(file)
+        unique_filename = f"{uuid.uuid4()}_{original_filename}"
+        temp_path = os.path.join(upload_dir, unique_filename)
+
         # Upsert ingestion status as PROCESSING (if book_id provided)
         if book_id:
             upsert_ingestion_status(
@@ -1377,9 +1663,13 @@ async def ingest_endpoint(
                 file_name=original_filename
             )
 
+        # Stream file to disk to avoid Memory Spike (OOM)
         with open(temp_path, "wb") as buffer:
-            content = await file.read()
-            buffer.write(content)
+            while True:
+                chunk = await file.read(1024 * 1024 * 5) # 5MB chunks
+                if not chunk:
+                    break
+                buffer.write(chunk)
         
         # Add to background tasks
         background_tasks.add_task(
@@ -1401,7 +1691,7 @@ async def ingest_endpoint(
     except Exception as e:
         logger.error("Ingestion setup error", extra={"error": str(e), "traceback": traceback.format_exc()})
         # If we failed before adding task, cleanup immediately
-        if os.path.exists(temp_path):
+        if temp_path and os.path.exists(temp_path):
              os.remove(temp_path)
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1410,6 +1700,7 @@ async def get_ingestion_status(
     book_id: str,
     request: Request,
     firebase_uid: Optional[str] = None,
+    title: Optional[str] = None,
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
     # Determine authoritative UID
@@ -1422,8 +1713,18 @@ async def get_ingestion_status(
         if not verified_firebase_uid:
             raise HTTPException(status_code=400, detail="firebase_uid is required in development")
 
-    row = fetch_ingestion_status(book_id, verified_firebase_uid)
-    freshness = get_index_freshness_state(book_id, verified_firebase_uid)
+    effective_book_id = book_id
+    matched_by_title = False
+
+    row = fetch_ingestion_status(effective_book_id, verified_firebase_uid)
+    if not row and title:
+        resolved_book_id = resolve_pdf_book_id_by_title(verified_firebase_uid, title)
+        if resolved_book_id:
+            effective_book_id = resolved_book_id
+            matched_by_title = (resolved_book_id != book_id)
+            row = fetch_ingestion_status(effective_book_id, verified_firebase_uid)
+
+    freshness = get_index_freshness_state(effective_book_id, verified_firebase_uid)
     if row:
         status, file_name, chunk_count, embedding_count, updated_at = row
         return {
@@ -1432,6 +1733,8 @@ async def get_ingestion_status(
             "chunk_count": int(chunk_count) if chunk_count is not None else None,
             "embedding_count": int(embedding_count) if embedding_count is not None else None,
             "updated_at": updated_at.isoformat() if updated_at else None,
+            "resolved_book_id": effective_book_id,
+            "matched_by_title": matched_by_title,
             "index_freshness_state": freshness.get("index_freshness_state"),
             "index_freshness": freshness,
         }
@@ -1449,7 +1752,7 @@ async def get_ingestion_status(
                       AND FIREBASE_UID = :p_uid
                       AND SOURCE_TYPE IN ('PDF', 'EPUB', 'PDF_CHUNK')
                     """,
-                    {"p_bid": book_id, "p_uid": verified_firebase_uid}
+                    {"p_bid": effective_book_id, "p_uid": verified_firebase_uid}
                 )
                 row = cursor.fetchone()
                 chunk_count = row[0] if row else 0
@@ -1461,6 +1764,8 @@ async def get_ingestion_status(
                         "chunk_count": int(chunk_count),
                         "embedding_count": int(embedding_count),
                         "updated_at": datetime.now().isoformat(),
+                        "resolved_book_id": effective_book_id,
+                        "matched_by_title": matched_by_title,
                         "index_freshness_state": freshness.get("index_freshness_state"),
                         "index_freshness": freshness,
                     }
@@ -1473,6 +1778,8 @@ async def get_ingestion_status(
         "chunk_count": None,
         "embedding_count": None,
         "updated_at": None,
+        "resolved_book_id": effective_book_id,
+        "matched_by_title": matched_by_title,
         "index_freshness_state": freshness.get("index_freshness_state"),
         "index_freshness": freshness,
     }

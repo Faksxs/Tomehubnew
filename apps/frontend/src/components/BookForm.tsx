@@ -15,7 +15,7 @@ interface BookFormProps {
     personalFolderId?: string;
     folderPath?: string;
   };
-  onSave: (item: Omit<LibraryItem, 'id' | 'highlights'>) => void;
+  onSave: (item: Omit<LibraryItem, 'highlights'>) => void;
   onCancel: () => void;
 }
 
@@ -230,7 +230,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
     const { name, value } = e.target;
     setFormData(prev => {
       if (name === 'contentLanguageMode') {
-        return { ...prev, [name]: value, contentLanguageResolved: '' };
+        return { ...prev, [name]: value as ContentLanguageMode, contentLanguageResolved: '' };
       }
       return { ...prev, [name]: value };
     });

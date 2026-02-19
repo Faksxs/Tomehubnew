@@ -76,6 +76,71 @@ BOOK_STOP_WORDS = [
     "kez",
 ]
 
+def _book_title_variants(title: str) -> List[str]:
+    raw = str(title or "").strip()
+    if not raw:
+        return []
+
+    variants = {
+        raw,
+        raw.split(" - ")[0].strip(),
+    }
+
+    cleaned = re.sub(r"\s*[\(\[\{][^)\]}]{1,64}[\)\]\}]\s*", " ", raw).strip()
+    if cleaned:
+        variants.add(cleaned)
+        variants.add(cleaned.split(" - ")[0].strip())
+
+    normalized_variants: List[str] = []
+    seen = set()
+    for item in variants:
+        if not item:
+            continue
+        lowered = str(item).strip().lower()
+        lowered = re.sub(
+            r"\b(?:highlight|insight|comment|yorum|notes?|pdf|epub)\b",
+            " ",
+            lowered,
+        )
+        lowered = re.sub(r"\s+", " ", lowered).strip()
+        norm = normalize_text(lowered)
+        if len(norm) < 3:
+            continue
+        if norm in seen:
+            continue
+        seen.add(norm)
+        normalized_variants.append(norm)
+    return normalized_variants
+
+
+def _score_book_title_against_query(
+    *,
+    title_variants: List[str],
+    q_norm: str,
+    fuzzy_threshold: int,
+) -> int:
+    if not title_variants or not q_norm:
+        return 0
+
+    best_score = 0
+    query_tokens = set(re.findall(r"[a-z0-9]+", q_norm))
+    for variant in title_variants:
+        if variant in q_norm:
+            best_score = max(best_score, 100)
+            continue
+
+        variant_tokens = [tok for tok in re.findall(r"[a-z0-9]+", variant) if len(tok) >= 3]
+        if len(variant_tokens) >= 2 and set(variant_tokens).issubset(query_tokens):
+            best_score = max(best_score, 97)
+            continue
+
+        score = int(calculate_fuzzy_score(variant, q_norm))
+        if score >= fuzzy_threshold:
+            best_score = max(best_score, score)
+
+    return best_score
+
+
 def extract_book_phrase(question: str) -> Optional[str]:
     if not question:
         return None
@@ -111,36 +176,63 @@ def resolve_book_id_from_question(firebase_uid: str, question: str) -> Optional[
                     FROM TOMEHUB_CONTENT
                     WHERE firebase_uid = :p_uid
                       AND book_id IS NOT NULL
-                      AND (source_type = 'PDF' OR source_type = 'EPUB' OR source_type = 'PDF_CHUNK')
+                      AND (source_type = 'PDF' OR source_type = 'EPUB' OR source_type = 'PDF_CHUNK' OR source_type = 'HIGHLIGHT')
                     """,
                     {"p_uid": firebase_uid},
                 )
-                rows = cursor.fetchall()
+                rows = cursor.fetchall() or []
 
-        for title, book_id in rows:
-            if not title or not book_id:
-                continue
-            title_str = str(title)
-            title_primary = title_str.split(" - ")[0].strip()
-
-            title_norm = normalize_text(title_str)
-            primary_norm = normalize_text(title_primary)
-
-            if primary_norm and primary_norm in q_norm:
-                candidates.append((book_id, 100))
-                continue
-            if title_norm and title_norm in q_norm:
-                candidates.append((book_id, 95))
-                continue
-
-            score = calculate_fuzzy_score(primary_norm, q_norm)
-            threshold = 85 if book_phrase else 90
-            if score >= threshold:
-                candidates.append((book_id, score))
+                # Canonical title fallback from books table.
+                cursor.execute(
+                    """
+                    SELECT id, title
+                    FROM TOMEHUB_BOOKS
+                    WHERE firebase_uid = :p_uid
+                    """,
+                    {"p_uid": firebase_uid},
+                )
+                rows_books = cursor.fetchall() or []
 
     except Exception as e:
         logger.error("resolve_book_id_from_question failed: %s", e)
         return None
+
+    title_by_book: dict[str, set[str]] = {}
+    content_book_ids: set[str] = set()
+    for title, book_id in rows:
+        if not title or not book_id:
+            continue
+        bid = str(book_id).strip()
+        if not bid:
+            continue
+        content_book_ids.add(bid)
+        title_by_book.setdefault(bid, set()).add(str(title))
+
+    for book_id, title in rows_books:
+        if not book_id or not title:
+            continue
+        bid = str(book_id).strip()
+        if not bid:
+            continue
+        if content_book_ids and bid not in content_book_ids:
+            continue
+        title_by_book.setdefault(bid, set()).add(str(title))
+
+    threshold = 83 if book_phrase else 88
+    for book_id, titles in title_by_book.items():
+        best_score = 0
+        for title in titles:
+            variants = _book_title_variants(title)
+            best_score = max(
+                best_score,
+                _score_book_title_against_query(
+                    title_variants=variants,
+                    q_norm=q_norm,
+                    fuzzy_threshold=threshold,
+                ),
+            )
+        if best_score > 0:
+            candidates.append((book_id, best_score))
 
     if not candidates:
         return None
@@ -153,6 +245,100 @@ def resolve_book_id_from_question(firebase_uid: str, question: str) -> Optional[
         return None
 
     return best_id
+
+
+def resolve_multiple_book_ids_from_question(
+    firebase_uid: str,
+    question: str,
+    *,
+    min_score: int = 85,
+    max_results: int = 5,
+) -> List[str]:
+    """Return all distinct book IDs whose titles appear in the question.
+
+    Unlike `resolve_book_id_from_question` (which returns the single best),
+    this returns every qualifying match so that comparison queries that
+    reference multiple books can resolve all of them.
+    """
+    if not firebase_uid or not question:
+        return []
+
+    q_norm = normalize_text(question)
+    if not q_norm:
+        return []
+
+    try:
+        with DatabaseManager.get_read_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT DISTINCT title, book_id
+                    FROM TOMEHUB_CONTENT
+                    WHERE firebase_uid = :p_uid
+                      AND book_id IS NOT NULL
+                      AND (source_type = 'PDF' OR source_type = 'EPUB' OR source_type = 'PDF_CHUNK' OR source_type = 'HIGHLIGHT')
+                    """,
+                    {"p_uid": firebase_uid},
+                )
+                rows = cursor.fetchall() or []
+
+                # Canonical title fallback from books table.
+                cursor.execute(
+                    """
+                    SELECT id, title
+                    FROM TOMEHUB_BOOKS
+                    WHERE firebase_uid = :p_uid
+                    """,
+                    {"p_uid": firebase_uid},
+                )
+                rows_books = cursor.fetchall() or []
+    except Exception as e:
+        logger.error("resolve_multiple_book_ids_from_question DB failed: %s", e)
+        return []
+
+    title_by_book: dict[str, set[str]] = {}
+    content_book_ids: set[str] = set()
+    for title, book_id in rows:
+        if not title or not book_id:
+            continue
+        bid = str(book_id).strip()
+        if not bid:
+            continue
+        content_book_ids.add(bid)
+        title_by_book.setdefault(bid, set()).add(str(title))
+
+    for book_id, title in rows_books:
+        if not book_id or not title:
+            continue
+        bid = str(book_id).strip()
+        if not bid:
+            continue
+        if content_book_ids and bid not in content_book_ids:
+            continue
+        title_by_book.setdefault(bid, set()).add(str(title))
+
+    fuzzy_threshold = max(78, min(95, int(min_score or 85)))
+    scored: list[tuple[str, int]] = []
+    for bid, titles in title_by_book.items():
+        best_score = 0
+        for title in titles:
+            variants = _book_title_variants(title)
+            best_score = max(
+                best_score,
+                _score_book_title_against_query(
+                    title_variants=variants,
+                    q_norm=q_norm,
+                    fuzzy_threshold=fuzzy_threshold,
+                ),
+            )
+        if best_score > 0:
+            scored.append((bid, best_score))
+
+    scored.sort(key=lambda x: x[1], reverse=True)
+    exact_like = [item for item in scored if item[1] >= 97]
+    if len(exact_like) >= 2:
+        scored = exact_like
+    return [bid for bid, _score in scored[:max_results]]
 
 
 def resolve_all_book_ids(

@@ -814,7 +814,7 @@ def _append_search_log_diagnostics(search_log_id: Optional[int], diagnostics: Di
             conn.commit()
     except Exception as e:
         logger.warning("Failed to append search log diagnostics id=%s: %s", search_log_id, e)
-def get_rag_context(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, mode: str = 'STANDARD', resource_type: Optional[str] = None, limit: Optional[int] = None, offset: int = 0, session_id: Optional[int | str] = None) -> Optional[Dict[str, Any]]:
+def get_rag_context(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, mode: str = 'STANDARD', resource_type: Optional[str] = None, limit: Optional[int] = None, offset: int = 0, session_id: Optional[int | str] = None, scope_mode: str = "GLOBAL", apply_scope_policy: bool = False, compare_mode: Optional[str] = None, target_book_ids: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
     """
     Retrieves and processes context for RAG.
     Shared by Legacy Search and Dual-AI Chat.
@@ -850,13 +850,87 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         logger.debug("RAG intent=%s complexity=%s", intent, complexity)
     
     all_chunks_map = {}
+
+    # ── Compare Policy: Per-Book Fan-Out Retrieval ──────────────────
+    _compare_targets = [str(b).strip() for b in (target_book_ids or []) if str(b or "").strip()]
     
+    # Auto-resolve if empty but comparison intent might be present
+    if not _compare_targets:
+        from services.analytics_service import resolve_multiple_book_ids_from_question
+        resolved_ids = resolve_multiple_book_ids_from_question(firebase_uid, effective_query)
+        if len(resolved_ids) >= 2:
+            _compare_targets = resolved_ids
+            if settings.DEBUG_VERBOSE_PIPELINE:
+                logger.debug("Auto-resolved compare targets from query: %s", _compare_targets)
+
+    compare_applied = len(_compare_targets) >= 2
+    compare_applied = len(_compare_targets) >= 2
+    per_book_evidence_count: Dict[str, int] = {}
+    target_books_used: List[str] = []
+    target_books_truncated = False
+    compare_degrade_reason = ""
+    evidence_policy = "standard"
+
+    if compare_applied:
+        evidence_policy = "per_book_fanout"
+        # Cap to 5 books max to avoid latency explosion
+        if len(_compare_targets) > 5:
+            _compare_targets = _compare_targets[:5]
+            target_books_truncated = True
+        target_books_used = list(_compare_targets)
+        per_book_limit = max(8, (limit or 20) // len(_compare_targets))
+        search_depth = 'deep' if mode == 'EXPLORER' else 'normal'
+        min_per_book_quota = 3  # Guarantee at least 3 chunks per book
+
+        def _search_one_book(bid: str):
+            try:
+                return bid, perform_search(
+                    effective_query, firebase_uid,
+                    intent=intent, book_id=bid,
+                    search_depth=search_depth,
+                    resource_type=resource_type,
+                    limit=per_book_limit,
+                    offset=0,
+                    session_id=session_id,
+                )
+            except Exception as exc:
+                logger.error("Compare fan-out search failed for book %s: %s", bid, exc)
+                return bid, ([], {})
+
+        with ThreadPoolExecutor(max_workers=min(5, len(_compare_targets))) as cmp_exec:
+            futures = [cmp_exec.submit(_search_one_book, bid) for bid in _compare_targets]
+            for fut in futures:
+                bid, (book_results, book_meta) = fut.result()
+                count = 0
+                for c in (book_results or []):
+                    c = dict(c)
+                    c["_compare_target"] = True
+                    c["_compare_book_id"] = bid
+                    key = f"{c.get('title','')}_{str(c.get('content_chunk',''))[:20]}"
+                    if key not in all_chunks_map:
+                        all_chunks_map[key] = c
+                        count += 1
+                per_book_evidence_count[bid] = count
+                if count < min_per_book_quota:
+                    compare_degrade_reason = (
+                        compare_degrade_reason
+                        or f"low_evidence_for_{bid}_{count}_chunks"
+                    )
+
+        if settings.DEBUG_VERBOSE_PIPELINE:
+            logger.debug(
+                "Compare fan-out results: targets=%s evidence=%s",
+                _compare_targets, per_book_evidence_count,
+            )
+
     # 2. Parallel Retrieval (Vector + Graph)
     def run_vector_search():
         # Pass intent to guide filtering (Short/Long bias)
         # Returns (results, metadata)
         search_depth = 'deep' if mode == 'EXPLORER' else 'normal'
-        return perform_search(effective_query, firebase_uid, intent=intent, book_id=context_book_id, search_depth=search_depth, resource_type=resource_type, limit=limit, offset=offset, session_id=session_id)
+        # When compare fan-out already ran, do a broad (no book_id) search to fill gaps
+        effective_book_id = None if compare_applied else context_book_id
+        return perform_search(effective_query, firebase_uid, intent=intent, book_id=effective_book_id, search_depth=search_depth, resource_type=resource_type, limit=limit, offset=offset, session_id=session_id)
         
     def run_graph_search():
         try:
@@ -931,6 +1005,9 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
     if question_results:
         for c in question_results:
             key = f"{c.get('title','')}_{str(c.get('content_chunk',''))[:20]}"
+            existing = all_chunks_map.get(key)
+            if existing and existing.get("_compare_target") and not c.get("_compare_target"):
+                continue
             all_chunks_map[key] = c
 
     if graph_results:
@@ -1215,12 +1292,12 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         "chunks": final_chunks,
         "intent": intent,
         "complexity": complexity,
-        "mode": answer_mode, # Use pre-calculated mode
+        "mode": answer_mode,
         "confidence": dynamic_confidence,
         "network_status": network_info["status"],
         "network_reason": network_info["reason"],
         "keywords": keywords,
-        "search_log_id": search_log_id, # Return the log ID for feedback loop
+        "search_log_id": search_log_id,
         "graph_candidates_count": len(graph_results),
         "external_graph_candidates_count": external_graph_candidates_count,
         "vector_candidates_count": len(question_results),
@@ -1247,6 +1324,13 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         "supplementary_keyword_search_applied": supplementary_search_applied,
         "supplementary_search_skipped_reason": supplementary_search_skipped_reason,
         "expansion_skipped_reason": expansion_skipped_reason,
+        "compare_applied": compare_applied,
+        "target_books_used": target_books_used,
+        "target_books_truncated": target_books_truncated,
+        "evidence_policy": evidence_policy,
+        "per_book_evidence_count": per_book_evidence_count,
+        "compare_degrade_reason": compare_degrade_reason,
+        "compare_mode": compare_mode,
         "level_counts": {
             'A': level_a_count,
             'B': level_b_count,
@@ -1280,6 +1364,13 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
             "supplementary_keyword_search_applied": supplementary_search_applied,
             "supplementary_search_skipped_reason": supplementary_search_skipped_reason,
             "expansion_skipped_reason": expansion_skipped_reason,
+            "compare_applied": compare_applied,
+            "target_books_used": target_books_used,
+            "target_books_truncated": target_books_truncated,
+            "evidence_policy": evidence_policy,
+            "per_book_evidence_count": per_book_evidence_count,
+            "compare_degrade_reason": compare_degrade_reason,
+            "compare_mode": compare_mode,
             "level_counts": {"A": level_a_count, "B": level_b_count, "C": level_c_count},
             "selected_buckets": selected_buckets,
             "executed_strategies": executed_strategies,
@@ -1297,7 +1388,7 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
     }
 
 
-def generate_answer(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, session_summary: str = "", limit: Optional[int] = None, offset: int = 0, session_id: Optional[int | str] = None) -> Tuple[Optional[str], Optional[List[Dict]], Dict]:
+def generate_answer(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, session_summary: str = "", limit: Optional[int] = None, offset: int = 0, session_id: Optional[int | str] = None, resource_type: Optional[str] = None, scope_mode: str = "GLOBAL", apply_scope_policy: bool = False, compare_mode: Optional[str] = None, target_book_ids: Optional[List[str]] = None) -> Tuple[Optional[str], Optional[List[Dict]], Dict]:
     """
     RAG generation pipeline with Memory Layer support.
     """
@@ -1356,6 +1447,11 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
         limit=limit,
         offset=offset,
         session_id=session_id,
+        resource_type=resource_type,
+        scope_mode=scope_mode,
+        apply_scope_policy=apply_scope_policy,
+        compare_mode=compare_mode,
+        target_book_ids=target_book_ids,
     )
     retrieval_phase_sec = time.perf_counter() - retrieval_phase_start
     try:

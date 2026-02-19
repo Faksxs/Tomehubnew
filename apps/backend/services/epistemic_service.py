@@ -481,6 +481,63 @@ def determine_answer_mode(classified_chunks: List[Dict], question_intent: str = 
 
 from typing import List, Dict, Any, Optional, Tuple
 
+
+def _chunk_identity(chunk: Dict[str, Any]) -> str:
+    cid = chunk.get("id")
+    if cid is not None:
+        return f"id:{cid}"
+    title = str(chunk.get("title", "")).strip().lower()
+    book_id = str(chunk.get("book_id", "")).strip().lower()
+    snippet = str(chunk.get("content_chunk", ""))[:80].strip().lower()
+    return f"{book_id}|{title}|{snippet}"
+
+
+def _select_compare_balanced_chunks(sorted_chunks: List[Dict[str, Any]], top_k: int) -> List[Dict[str, Any]]:
+    compare_groups: Dict[str, List[Dict[str, Any]]] = {}
+    for chunk in sorted_chunks:
+        if not bool(chunk.get("_compare_target")):
+            continue
+        bid = str(chunk.get("_compare_book_id") or chunk.get("book_id") or "").strip()
+        if not bid:
+            continue
+        compare_groups.setdefault(bid, []).append(chunk)
+
+    if len(compare_groups) < 2:
+        return sorted_chunks[:top_k]
+
+    selected: List[Dict[str, Any]] = []
+    seen = set()
+    per_book_quota = max(1, min(3, int(top_k / max(1, len(compare_groups)))))
+    ordered_groups = sorted(
+        compare_groups.items(),
+        key=lambda pair: max(float(item.get("answerability_score", 0.0) or 0.0) for item in pair[1]),
+        reverse=True,
+    )
+
+    for _, group_chunks in ordered_groups:
+        added = 0
+        for chunk in group_chunks:
+            if added >= per_book_quota:
+                break
+            key = _chunk_identity(chunk)
+            if key in seen:
+                continue
+            seen.add(key)
+            selected.append(chunk)
+            added += 1
+
+    for chunk in sorted_chunks:
+        if len(selected) >= top_k:
+            break
+        key = _chunk_identity(chunk)
+        if key in seen:
+            continue
+        seen.add(key)
+        selected.append(chunk)
+
+    return selected[:top_k]
+
+
 def build_epistemic_context(chunks: List[Dict], answer_mode: str) -> Tuple[str, List[Dict]]:
     """
     Build context string with epistemic priority markers AND metadata.
@@ -504,7 +561,7 @@ def build_epistemic_context(chunks: List[Dict], answer_mode: str) -> Tuple[str, 
     sorted_chunks = sorted(chunks, key=lambda c: c.get('answerability_score', 0), reverse=True)
 
     # LIMIT CONTEXT: default top-12 (or lower when perf guard is enabled)
-    used_chunks = sorted_chunks[:top_k]
+    used_chunks = _select_compare_balanced_chunks(sorted_chunks, top_k)
     
     for i, chunk in enumerate(used_chunks, 1):
         level = chunk.get('epistemic_level', 'C')
@@ -558,7 +615,7 @@ def get_prompt_for_mode(
     else: # HYBRID
         grounding_rule = "TALİMAT: Öncelikle verilen bağlamı temel al. Ancak bağlamdaki boşlukları doldurmak, terimleri açıklamak veya akıcılığı sağlamak için genel bilgini KISITLI olarak kullanabilirsin."
 
-    intro = f"""Sen bir düşünce ortağısın (thought partner) ve kullanıcının kişisel notlarını analiz ediyorsun.
+    intro = f"""Sen bir düşünce ortağısın (thought partner) ve kullanıcının kütüphanesindeki kaynakları analiz ediyorsun.
 
 {grounding_rule}
 {style_instruction}"""
@@ -678,7 +735,7 @@ DİYALEKTİK RİTM VE FORMAT:
 2. ADIM ADIM DERİNLEŞ: Her paragrafta bir katman in.
 3. "YOL AYRIMLARI" SUN: Cevabın sonunda kullanıcıya 2-3 somut "keşif yolu" öner.
 
-BAĞLAM (Kullanıcı Notları + Önceki Durum):
+BAĞLAM (Kullanıcı Kütüphanesi Kaynakları + Önceki Durum):
 {context}
 
 KULLANICI SORUSU:

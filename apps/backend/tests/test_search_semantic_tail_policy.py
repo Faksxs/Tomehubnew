@@ -14,7 +14,7 @@ class _FakeExact(ExactMatchStrategy):
     def __init__(self, by_query):
         self.by_query = by_query
 
-    def search(self, query, firebase_uid, limit=1000, offset=0, resource_type=None):
+    def search(self, query, firebase_uid, limit=1000, offset=0, resource_type=None, book_id=None):
         return [dict(x) for x in self.by_query.get(query, [])]
 
 
@@ -22,7 +22,7 @@ class _FakeLemma(LemmaMatchStrategy):
     def __init__(self, by_query):
         self.by_query = by_query
 
-    def search(self, query, firebase_uid, limit=1000, offset=0, resource_type=None):
+    def search(self, query, firebase_uid, limit=1000, offset=0, resource_type=None, book_id=None):
         return [dict(x) for x in self.by_query.get(query, [])]
 
 
@@ -30,7 +30,7 @@ class _FakeSemantic(SemanticMatchStrategy):
     def __init__(self, by_query):
         self.by_query = by_query
 
-    def search(self, query, firebase_uid, limit=100, offset=0, intent='SYNTHESIS', resource_type=None):
+    def search(self, query, firebase_uid, limit=100, offset=0, intent='SYNTHESIS', resource_type=None, book_id=None):
         rows = [dict(x) for x in self.by_query.get(query, [])]
         return rows[:limit]
 
