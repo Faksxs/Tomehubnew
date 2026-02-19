@@ -6,7 +6,7 @@ export interface OcrResult {
 }
 
 export const extractTextFromImage = async (
-  imageSrc: string | File,
+  imageSrc: string | Blob,
   onProgress?: (progress: number) => void
 ): Promise<OcrResult> => {
   const worker = await createWorker('tur+eng', 1, {
