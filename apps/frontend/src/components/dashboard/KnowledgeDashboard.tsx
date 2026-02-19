@@ -308,7 +308,6 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                     {CATEGORIES.map(category => {
                                         const count = categoryCounts.get(category) || 0;
                                         const percentage = books.length > 0 ? (count / books.length) * 100 : 0;
-                                        if (count === 0 && books.length > 0) return null;
 
                                         return (
                                             <div

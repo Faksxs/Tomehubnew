@@ -1,9 +1,9 @@
 import React from 'react';
 
 export const CATEGORIES = [
-    "Felsefe", "Sosyoloji", "Politika", "Ekonomi", "Edebiyat",
-    "Roman", "Bilim", "Tarih", "Sanat",
-    "Psikoloji", "Hukuk", "Eğitim"
+    "Felsefe", "Sosyoloji", "Psikoloji", "Bilim ve Teknoloji",
+    "Din ve İnanç", "Tarih", "Siyaset Bilimi", "Ekonomi ve Hukuk",
+    "Türk Edebiyatı", "Dünya Edebiyatı", "Sanat ve Kültür", "Diğer"
 ];
 
 interface CategorySelectorProps {
