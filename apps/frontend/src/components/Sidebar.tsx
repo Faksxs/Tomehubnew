@@ -1,6 +1,6 @@
 import React from 'react';
 import { X, User, Moon, Sun } from 'lucide-react';
-import logo from '../assets/logo_v7.png';
+import logo from '../assets/logo_v8.png';
 import { ResourceType } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 import {
@@ -58,7 +58,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen
             alt="TomeHub Icon"
             className="h-16 lg:h-[77px] w-auto object-contain brightness-110 drop-shadow-md"
           />
-          <h1 className="text-xl lg:text-2xl font-bold text-white tracking-tighter leading-none">TomeHub</h1>
 
           <button
             onClick={onClose}

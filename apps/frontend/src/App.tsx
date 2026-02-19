@@ -14,7 +14,7 @@ import { BookDetail } from "./components/BookDetail";
 import { Sidebar } from "./components/Sidebar";
 import { ProfileView } from "./components/ProfileView";
 import SmartSearch from "./components/SmartSearch";
-import logo from './assets/logo_v7.png';
+import logo from './assets/logo_v8.png';
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import {
@@ -1077,7 +1077,6 @@ const AppContent: React.FC = () => {
               alt="TomeHub Icon"
               className="h-[156px] w-auto object-contain brightness-110 drop-shadow-xl"
             />
-            <h1 className="text-[39px] font-bold text-slate-900 dark:text-white tracking-tighter">TomeHub</h1>
           </div>
           <p className="text-sm text-slate-600 dark:text-slate-400 text-center max-w-xs">
             Sign in with your Google account to access your library across all
