@@ -253,14 +253,14 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
             </button>
           </div>
 
-          <div className="space-y-3 md:space-y-4">
+          <div className="space-y-2 md:space-y-4">
             <div>
-              <label className="block text-[10px] md:text-xs font-medium text-slate-500 dark:text-slate-400 mb-1 uppercase">
+              <label className="block text-[10px] md:text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5 uppercase">
                 {entryType === 'highlight' ? 'Highlight Text *' : 'Insight Content *'}
               </label>
               <textarea
                 autoFocus
-                rows={8}
+                rows={12}
                 className={`w-full border rounded-lg p-2 md:p-3 text-sm md:text-base text-slate-800 dark:text-white focus:ring-2 focus:ring-[#262D40]/30 dark:focus:ring-orange-500/30 focus:border-[#262D40]/30 dark:focus:border-orange-500/30 font-lora ${entryType === 'highlight' ? 'bg-[#F3F5FA] border-[#E6EAF2] dark:bg-slate-800/50 dark:border-white/10' : 'bg-[#F3F5FA] border-[#E6EAF2] dark:bg-slate-800/50 dark:border-white/10'
                   }`}
                 placeholder={entryType === 'highlight' ? "Type the text exactly as it appears..." : "Write your thoughts, summary, or key takeaway..."}
@@ -280,10 +280,10 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
             {/* Comment input only for Highlights */}
             {entryType === 'highlight' && (
               <div>
-                <label className="block text-[10px] md:text-xs font-medium text-slate-500 dark:text-slate-400 mb-1 uppercase">Comment</label>
+                <label className="block text-[10px] md:text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5 uppercase">Comment</label>
                 <input
                   type="text"
-                  className="w-full border border-[#E6EAF2] dark:border-white/10 rounded-lg p-2 text-xs md:text-sm bg-white dark:bg-slate-800/50 text-slate-800 dark:text-white focus:ring-2 focus:ring-orange-500/30"
+                  className="w-full border border-[#E6EAF2] dark:border-white/10 rounded-lg py-1.5 px-2 text-xs md:text-sm bg-white dark:bg-slate-800/50 text-slate-800 dark:text-white focus:ring-2 focus:ring-orange-500/30"
                   placeholder="Why is this quote important?"
                   value={formData.comment || ''}
                   onChange={e => setFormData(prev => ({ ...prev, comment: e.target.value }))}
@@ -291,30 +291,30 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
               </div>
             )}
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-4">
               <div>
-                <label className="block text-[10px] md:text-xs font-medium text-slate-500 dark:text-slate-400 mb-1 uppercase">Page #</label>
+                <label className="block text-[10px] md:text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5 uppercase">Page #</label>
                 <input
                   type="number"
-                  className="w-full border border-[#E6EAF2] dark:border-white/10 rounded-lg p-2 text-xs md:text-sm bg-white dark:bg-slate-800/50 text-slate-800 dark:text-white focus:ring-2 focus:ring-orange-500/30"
+                  className="w-full border border-[#E6EAF2] dark:border-white/10 rounded-lg py-1.5 px-2 text-xs md:text-sm bg-white dark:bg-slate-800/50 text-slate-800 dark:text-white focus:ring-2 focus:ring-orange-500/30"
                   value={formData.pageNumber || ''}
                   onChange={e => setFormData(prev => ({ ...prev, pageNumber: parseInt(e.target.value) || undefined }))}
                 />
               </div>
               <div>
-                <label className="block text-[10px] md:text-xs font-medium text-slate-500 dark:text-slate-400 mb-1 uppercase">Paragraph #</label>
+                <label className="block text-[10px] md:text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5 uppercase">Paragraph #</label>
                 <input
                   type="number"
-                  className="w-full border border-[#E6EAF2] dark:border-white/10 rounded-lg p-2 text-xs md:text-sm bg-white dark:bg-slate-800/50 text-slate-800 dark:text-white focus:ring-2 focus:ring-orange-500/30"
+                  className="w-full border border-[#E6EAF2] dark:border-white/10 rounded-lg py-1.5 px-2 text-xs md:text-sm bg-white dark:bg-slate-800/50 text-slate-800 dark:text-white focus:ring-2 focus:ring-orange-500/30"
                   value={formData.paragraphNumber || ''}
                   onChange={e => setFormData(prev => ({ ...prev, paragraphNumber: parseInt(e.target.value) || undefined }))}
                 />
               </div>
               <div className="col-span-2 md:col-span-1">
-                <label className="block text-[10px] md:text-xs font-medium text-slate-500 dark:text-slate-400 mb-1 uppercase">Chapter</label>
+                <label className="block text-[10px] md:text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5 uppercase">Chapter</label>
                 <input
                   type="text"
-                  className="w-full border border-[#E6EAF2] dark:border-white/10 rounded-lg p-2 text-xs md:text-sm bg-white dark:bg-slate-800/50 text-slate-800 dark:text-white focus:ring-2 focus:ring-orange-500/30"
+                  className="w-full border border-[#E6EAF2] dark:border-white/10 rounded-lg py-1.5 px-2 text-xs md:text-sm bg-white dark:bg-slate-800/50 text-slate-800 dark:text-white focus:ring-2 focus:ring-orange-500/30"
                   placeholder="Title or No."
                   value={formData.chapterTitle || ''}
                   onChange={e => setFormData(prev => ({ ...prev, chapterTitle: e.target.value }))}
@@ -332,7 +332,7 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
                   type="date"
                   value={dateInput}
                   onChange={(e) => setDateInput(e.target.value)}
-                  className="w-full border border-[#E6EAF2] dark:border-white/10 rounded-lg p-2 text-xs md:text-sm bg-white dark:bg-slate-800/50 text-slate-800 dark:text-white focus:ring-2 focus:ring-orange-500/30"
+                  className="w-full border border-[#E6EAF2] dark:border-white/10 rounded-lg py-1.5 px-2 text-xs md:text-sm bg-white dark:bg-slate-800/50 text-slate-800 dark:text-white focus:ring-2 focus:ring-orange-500/30"
                 />
               </div>
               <div className="md:col-span-2">
@@ -353,7 +353,7 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
                   value={tagsInput}
                   onChange={(e) => setTagsInput(e.target.value)}
                   placeholder="Separate with commas..."
-                  className="w-full border border-[#E6EAF2] dark:border-white/10 rounded-lg p-2 text-xs md:text-sm bg-white dark:bg-slate-800/50 text-slate-800 dark:text-white focus:ring-2 focus:ring-orange-500/30"
+                  className="w-full border border-[#E6EAF2] dark:border-white/10 rounded-lg py-1.5 px-2 text-xs md:text-sm bg-white dark:bg-slate-800/50 text-slate-800 dark:text-white focus:ring-2 focus:ring-orange-500/30"
                 />
               </div>
             </div>
