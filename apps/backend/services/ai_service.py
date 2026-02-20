@@ -20,6 +20,107 @@ from services.language_policy_service import (
     tags_match_target_language,
 )
 
+# Category anchors used as optional 5th tag for BOOK enrichment.
+# "Diger" is intentionally excluded per product rule.
+_CATEGORY_ANCHOR_KEYWORDS: Dict[str, List[str]] = {
+    "Felsefe": ["felsefe", "etik", "metafizik", "epistem", "varolus", "ontoloji"],
+    "Sosyoloji": ["sosyoloji", "toplum", "toplumsal", "kultur", "modernite"],
+    "Psikoloji": ["psikoloji", "psikanaliz", "bilinc", "travma", "davranis"],
+    "Bilim ve Teknoloji": ["bilim", "teknoloji", "bilimsel", "fizik", "biyoloji", "matematik"],
+    "Din ve İnanç": ["din", "inanc", "teoloji", "ilahiyat", "mistik", "iman"],
+    "Tarih": ["tarih", "imparatorluk", "devrim", "savas", "medeniyet", "osmanli"],
+    "Siyaset Bilimi": ["siyaset", "politika", "iktidar", "devlet", "hukuk", "demokrasi"],
+    "Ekonomi ve Hukuk": ["ekonomi", "iktisat", "piyasa", "hukuk", "anayasa", "adalet"],
+    "Türk Edebiyatı": ["turk edebiyat", "türk edebiyat", "turk roman", "türk roman"],
+    "Dünya Edebiyatı": ["edebiyat", "roman", "hikaye", "öykü", "oyku", "deneme", "klasik"],
+    "Sanat ve Kültür": ["sanat", "kultur", "estetik", "tiyatro", "sinema", "muzik"],
+}
+
+_CATEGORY_ANCHOR_CONFIDENCE_THRESHOLD = 0.62
+
+
+def _normalize_for_match(value: str) -> str:
+    return (
+        str(value or "")
+        .lower()
+        .replace("ı", "i")
+        .replace("İ", "i")
+        .replace("â", "a")
+        .replace("î", "i")
+        .replace("û", "u")
+    )
+
+
+def _infer_category_anchor(
+    first_four_tags: List[str],
+    title: Optional[str] = None,
+    summary: Optional[str] = None,
+) -> tuple[Optional[str], float]:
+    """
+    Infer best-fit category anchor from first 4 tags (+ weak title/summary signal).
+    Returns (category, confidence) where confidence in [0,1].
+    """
+    if not first_four_tags:
+        return None, 0.0
+
+    tag_text = " ".join(_normalize_for_match(t) for t in first_four_tags)
+    context_text = _normalize_for_match(f"{title or ''} {summary or ''}")
+
+    scores: Dict[str, float] = {}
+    for category, keywords in _CATEGORY_ANCHOR_KEYWORDS.items():
+        score = 0.0
+        for kw in keywords:
+            nkw = _normalize_for_match(kw)
+            if nkw in tag_text:
+                score += 1.0
+            if nkw and nkw in context_text:
+                score += 0.25
+        if score > 0:
+            scores[category] = score
+
+    if not scores:
+        return None, 0.0
+
+    ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    top_category, top_score = ranked[0]
+    second_score = ranked[1][1] if len(ranked) > 1 else 0.0
+    total = sum(scores.values()) or 1.0
+
+    dominance = top_score / total
+    margin = (top_score - second_score) / (top_score or 1.0)
+    confidence = (0.7 * dominance) + (0.3 * margin)
+    return top_category, max(0.0, min(1.0, confidence))
+
+
+def _finalize_book_tags_with_optional_category_anchor(
+    raw_tags: Any,
+    title: Optional[str] = None,
+    summary: Optional[str] = None,
+) -> List[str]:
+    """
+    Product rule:
+    - Keep first 4 AI tags as-is (after sanitation/dedup rules).
+    - Add 5th tag only if high-confidence category anchor exists.
+    - If confidence is low, keep only first 4 (no 'Diger' fallback).
+    """
+    sanitized = sanitize_generated_tags(raw_tags)
+    first_four = sanitized[:4]
+
+    # Keep current behavior for sparse outputs.
+    if len(first_four) < 4:
+        return first_four
+
+    category, confidence = _infer_category_anchor(first_four, title=title, summary=summary)
+    if not category or confidence < _CATEGORY_ANCHOR_CONFIDENCE_THRESHOLD:
+        return first_four
+
+    # Do not duplicate a tag already in first four.
+    low = {t.lower() for t in first_four}
+    if category.lower() in low:
+        return first_four
+
+    return first_four + [category]
+
 # Constants for Prompts (Replicated from geminiService.ts)
 PROMPT_ENRICH_BOOK = """
 Enrich this book data with missing details (summary, tags, publisher, publication year, page count).
@@ -200,7 +301,11 @@ async def _run_enrich_once(
     clean_text = clean_json_response(result.text)
     enriched_data = json.loads(clean_text)
     if isinstance(enriched_data.get("tags"), list):
-        enriched_data["tags"] = sanitize_generated_tags(enriched_data["tags"])
+        enriched_data["tags"] = _finalize_book_tags_with_optional_category_anchor(
+            enriched_data["tags"],
+            title=str(book_data.get("title") or ""),
+            summary=str(enriched_data.get("summary") or book_data.get("summary") or ""),
+        )
     return enriched_data
 
 
@@ -246,7 +351,11 @@ async def enrich_book_async(book_data: Dict[str, Any]) -> Dict[str, Any]:
         if not mismatch["tags_ok"]:
             original_tags = book_data.get("tags") if isinstance(book_data.get("tags"), list) else []
             if original_tags and tags_match_target_language(original_tags, target_lang):
-                enriched_data["tags"] = sanitize_generated_tags(original_tags)
+                enriched_data["tags"] = _finalize_book_tags_with_optional_category_anchor(
+                    original_tags,
+                    title=str(book_data.get("title") or ""),
+                    summary=str(enriched_data.get("summary") or book_data.get("summary") or ""),
+                )
 
         if "confidence_scores" in enriched_data:
             scores = enriched_data["confidence_scores"]

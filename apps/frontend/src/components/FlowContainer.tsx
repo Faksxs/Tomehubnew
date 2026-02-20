@@ -27,6 +27,7 @@ interface FlowContainerProps {
     anchorType: 'note' | 'book' | 'author' | 'topic';
     anchorId: string;
     anchorLabel?: string;
+    categoryOptions?: string[];
     onClose?: () => void;
 }
 
@@ -35,6 +36,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
     anchorType,
     anchorId,
     anchorLabel,
+    categoryOptions,
     onClose,
 }) => {
     // State
@@ -290,6 +292,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                         <CategorySelector
                             activeCategory={activeCategory}
                             onCategoryChange={handleCategoryChange}
+                            categories={categoryOptions}
                         />
                     )}
                 </aside>
@@ -473,6 +476,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                                         handleCategoryChange(cat);
                                         setIsCategoryDrawerOpen(false);
                                     }}
+                                    categories={categoryOptions}
                                 />
                             )}
                         </div>

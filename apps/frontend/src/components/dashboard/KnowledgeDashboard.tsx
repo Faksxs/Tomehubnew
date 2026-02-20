@@ -24,7 +24,7 @@ import {
     Menu
 } from 'lucide-react';
 import { LibraryItem } from '../../types';
-import { CATEGORIES } from '../CategorySelector';
+import { CATEGORIES, MIN_CATEGORY_BOOKS_VISIBLE } from '../CategorySelector';
 import { EpistemicDistributionRow, getEpistemicDistribution } from '../../services/backendApiService';
 import {
     KnowledgeBaseLogo,
@@ -307,6 +307,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                 <div className="grid grid-cols-2 lg:grid-cols-3 gap-y-1 md:gap-y-4 gap-x-2.5 md:gap-x-10">
                                     {CATEGORIES.map(category => {
                                         const count = categoryCounts.get(category) || 0;
+                                        if (count < MIN_CATEGORY_BOOKS_VISIBLE) return null;
                                         const percentage = books.length > 0 ? (count / books.length) * 100 : 0;
 
                                         return (

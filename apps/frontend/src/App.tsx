@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { HashRouter } from "react-router-dom";
 import {
   LibraryItem,
@@ -39,6 +39,7 @@ import { useBatchEnrichment } from "./hooks/useBatchEnrichment";
 
 import { RAGSearch } from "./components/RAGSearch";
 import { FlowContainer } from "./components/FlowContainer";
+import { CATEGORIES, MIN_CATEGORY_BOOKS_VISIBLE } from "./components/CategorySelector";
 import { prewarmFlowStartSession } from "./services/flowService";
 import { addTextItem, syncHighlights, syncPersonalNote, purgeResourceContent } from "./services/backendApiService";
 import { getPersonalNoteBackendType, getPersonalNoteCategory, isPersonalNote } from "./lib/personalNotePolicy";
@@ -79,6 +80,24 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   const [personalNoteFolders, setPersonalNoteFolders] = useState<PersonalNoteFolder[]>([]);
   const [didRunLegacyFolderMigration, setDidRunLegacyFolderMigration] = useState(false);
   const flowPrewarmStartedRef = useRef(false);
+  const flowVisibleCategories = useMemo(() => {
+    const normalizeTextKey = (value: string) => value.trim().toLocaleLowerCase('tr-TR');
+    const categoryLookup = new Map<string, string>(
+      CATEGORIES.map((category) => [normalizeTextKey(category), category])
+    );
+    const categoryCounts = new Map<string, number>();
+    books
+      .filter((item) => item.type === "BOOK")
+      .forEach((book) => {
+        (book.tags || []).forEach((tag) => {
+          const canonical = categoryLookup.get(normalizeTextKey(tag));
+          if (!canonical) return;
+          categoryCounts.set(canonical, (categoryCounts.get(canonical) || 0) + 1);
+        });
+      });
+
+    return CATEGORIES.filter((category) => (categoryCounts.get(category) || 0) >= MIN_CATEGORY_BOOKS_VISIBLE);
+  }, [books]);
 
 
   useEffect(() => {
@@ -950,6 +969,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
             firebaseUid={userId}
             anchorType="topic"
             anchorId="General Discovery" // Default anchor if user just clicks sidebar
+            categoryOptions={flowVisibleCategories}
             onClose={() => handleTabChange("DASHBOARD")}
           />
         ) : view === "list" ? (

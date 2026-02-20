@@ -1,5 +1,7 @@
 import React from 'react';
 
+export const MIN_CATEGORY_BOOKS_VISIBLE = 4;
+
 export const CATEGORIES = [
     "Felsefe", "Sosyoloji", "Psikoloji", "Bilim ve Teknoloji",
     "Din ve İnanç", "Tarih", "Siyaset Bilimi", "Ekonomi ve Hukuk",
@@ -9,9 +11,14 @@ export const CATEGORIES = [
 interface CategorySelectorProps {
     activeCategory: string | null;
     onCategoryChange: (category: string | null) => void;
+    categories?: string[];
 }
 
-export const CategorySelector: React.FC<CategorySelectorProps> = ({ activeCategory, onCategoryChange }) => {
+export const CategorySelector: React.FC<CategorySelectorProps> = ({
+    activeCategory,
+    onCategoryChange,
+    categories = CATEGORIES,
+}) => {
     return (
         <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between px-1">
@@ -27,7 +34,7 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({ activeCatego
                 >
                     Tümü
                 </button>
-                {CATEGORIES.map((cat) => (
+                {categories.map((cat) => (
                     <button
                         key={cat}
                         onClick={() => onCategoryChange(cat)}
