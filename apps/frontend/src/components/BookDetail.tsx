@@ -339,15 +339,33 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                 </div>
 
                 {/* Mobile-Only Info Column (Right of Cover) */}
-                <div className="md:hidden flex-1 flex flex-col justify-center min-w-0 py-1">
-                  <h1 className="text-lg font-bold text-slate-900 dark:text-white mb-1 leading-snug line-clamp-3">{book.title}</h1>
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-2 line-clamp-2">{book.author}</p>
-                  {book.url && book.type !== 'BOOK' && (
-                    <a href={book.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-[#262D40] dark:text-[#262D40]/82 hover:underline max-w-full">
-                      <LinkIcon size={12} />
-                      <span className="text-xs truncate">{new URL(book.url).hostname}</span>
-                    </a>
-                  )}
+                <div className="md:hidden flex-1 flex justify-between items-start min-w-0 py-1 gap-2">
+                  <div className="flex-1 min-w-0 flex flex-col justify-center">
+                    <h1 className="text-[16px] font-bold text-slate-900 dark:text-white mb-1 leading-snug line-clamp-3">{book.title}</h1>
+                    <p className="text-[13px] text-slate-600 dark:text-slate-400 mb-2 line-clamp-2">{book.author}</p>
+                    {book.url && book.type !== 'BOOK' && (
+                      <a href={book.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-[#262D40] dark:text-slate-400 hover:underline max-w-full">
+                        <LinkIcon size={12} />
+                        <span className="text-xs truncate">{new URL(book.url).hostname}</span>
+                      </a>
+                    )}
+                  </div>
+
+                  {/* COMPACT STATUS BADGES (Right-aligned in header for Mobile) */}
+                  <div className="flex flex-col gap-1.5 flex-shrink-0 pt-0.5">
+                    {readingConfig && (
+                      <div className={`px-2 py-0.5 rounded-md border text-[10px] font-bold flex items-center gap-1.5 shadow-sm whitespace-nowrap ${readingConfig.bg} ${readingConfig.border} ${readingConfig.color}`}>
+                        <readingConfig.icon size={10} />
+                        <span>{book.readingStatus}</span>
+                      </div>
+                    )}
+                    {physicalConfig && book.type === 'BOOK' && (
+                      <div className={`px-2 py-0.5 rounded-md border text-[10px] font-bold flex items-center gap-1.5 shadow-sm whitespace-nowrap ${physicalConfig.bg} ${physicalConfig.border} ${physicalConfig.color}`}>
+                        <physicalConfig.icon size={10} />
+                        <span>{book.status}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -385,11 +403,11 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                 ))}
               </div>
 
-              {/* Right Column: Status Boxes & Actions (Responsive) */}
+              {/* Right Column: Status Boxes \u0026 Actions (Responsive) */}
               <div className="w-full md:w-64 flex-shrink-0 flex flex-col gap-2 md:gap-3">
 
-                {/* Status Grid (2 cols on mobile, 1 col on desktop) */}
-                <div className="grid grid-cols-2 md:flex md:flex-col gap-2 md:gap-3">
+                {/* Status Grid (Hidden on mobile, flex on desktop) */}
+                <div className="hidden md:flex md:flex-col gap-2 md:gap-3">
                   {/* Reading Status */}
                   {readingConfig && (
                     <div className={(!physicalConfig || book.type !== 'BOOK') ? "col-span-2 md:col-span-1" : "col-span-1"}>
