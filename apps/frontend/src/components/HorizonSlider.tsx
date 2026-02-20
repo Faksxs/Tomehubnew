@@ -12,10 +12,9 @@ interface HorizonSliderProps {
 }
 
 const ZONE_LABELS = [
-    { label: '📖 Focus', description: 'Same book, nearby pages' },
-    { label: '✍️ Author', description: "Same author's other works" },
-    { label: '🔗 Syntopic', description: 'Similar ideas across authors' },
-    { label: '🌉 Bridge', description: 'Unexpected connections' },
+    { label: '🎯 Focus', description: 'Deep context & related works' },
+    { label: '🔄 Syntopic', description: 'Similar ideas across different authors' },
+    { label: '🌌 Discovery', description: 'Unexpected connections & serendipity' },
 ];
 
 export const HorizonSlider: React.FC<HorizonSliderProps> = ({
@@ -25,10 +24,9 @@ export const HorizonSlider: React.FC<HorizonSliderProps> = ({
 }) => {
     // Determine active zone based on value
     const getActiveZone = (val: number): number => {
-        if (val < 0.25) return 0;
-        if (val < 0.50) return 1;
-        if (val < 0.75) return 2;
-        return 3;
+        if (val < 0.33) return 0;
+        if (val < 0.66) return 1;
+        return 2;
     };
 
     const activeZone = getActiveZone(value);
@@ -73,7 +71,7 @@ export const HorizonSlider: React.FC<HorizonSliderProps> = ({
                         <div
                             key={index}
                             className={`horizon-slider__zone ${isActive ? 'active' : ''}`}
-                            onClick={() => onChange((index * 0.25) + 0.125)}
+                            onClick={() => onChange((index * 0.333) + 0.165)}
                         >
                             <span className="zone-emoji">{emoji}</span>
                             <span className="zone-text">{text}</span>
@@ -172,7 +170,7 @@ export const HorizonSlider: React.FC<HorizonSliderProps> = ({
 
                 .horizon-slider__zones {
                     display: grid;
-                    grid-template-columns: repeat(4, 1fr);
+                    grid-template-columns: repeat(3, 1fr);
                     gap: 2px;
                 }
 

@@ -65,14 +65,13 @@ def extract_note_content(raw_content: str) -> str:
 
 # Zone Configuration (Maps to Horizon Slider: 0.0 - 1.0)
 ZONE_CONFIG = {
-    1: {"name": "Tight Context", "horizon_min": 0.0, "horizon_max": 0.25},
-    2: {"name": "Author's Mind", "horizon_min": 0.25, "horizon_max": 0.50},
-    3: {"name": "Syntopic Debate", "horizon_min": 0.50, "horizon_max": 0.75},
-    4: {"name": "Discovery Bridge", "horizon_min": 0.75, "horizon_max": 1.0},
+    1: {"name": "Focus", "horizon_min": 0.0, "horizon_max": 0.33},
+    2: {"name": "Syntopic", "horizon_min": 0.33, "horizon_max": 0.66},
+    3: {"name": "Discovery", "horizon_min": 0.66, "horizon_max": 1.0},
 }
 
 # How many candidates to fetch per zone
-ZONE_FETCH_LIMITS = {1: 10, 2: 10, 3: 15, 4: 5}
+ZONE_FETCH_LIMITS = {1: 15, 2: 15, 3: 10}
 
 # Minimum similarity threshold for semantic matches
 SIMILARITY_THRESHOLDS = {
@@ -254,6 +253,13 @@ class FlowService:
             firebase_uid=request.firebase_uid,
             batch_size=INITIAL_BATCH_SIZE
         )
+
+        # LIGHTWEIGHT OPTIMIZATION: Periodically prune old seen records (approx. 5% of new sessions)
+        import random
+        import threading
+        if random.random() < 0.05:
+            logger.info(f"Triggering background pruning for UID: {request.firebase_uid}")
+            threading.Thread(target=self._prune_old_seen_records, args=(request.firebase_uid,), daemon=True).start()
 
         return FlowStartResponse(
             session_id=state.session_id,
@@ -615,7 +621,7 @@ class FlowService:
                         ORDER BY
                             NVL(s.seen_count, 0) ASC,
                             NVL(c.ctx_count, 0) ASC,
-                            t.id ASC
+                            DBMS_RANDOM.VALUE
                         FETCH FIRST 1 ROW ONLY
                     """
                     cursor.execute(sql, params)
@@ -708,9 +714,38 @@ class FlowService:
                             return vec, anchor_id, resolved_id
                             
                     elif anchor_type == "topic":
-                        # AUTO-BOOTSTRAP: If generic "General Discovery", start from low-engagement notes
+                        # AUTO-BOOTSTRAP: General Discovery -> Use Interest Profile (Centroid) -> Low Engagement -> Random
                         if anchor_id == "General Discovery" or not anchor_id:
-                            logger.info(f"*** DEBUG: Auto-bootstrapping (low-engagement notes) for UID: [{firebase_uid}] ***")
+                            logger.info(f"*** DEBUG: Bootstrapping 'General Discovery' for UID: [{firebase_uid}] ***")
+                            
+                            # 1. User Interest Model (Zero Gravity Profile) - Average of top 10 recent notes/highlights
+                            sql_centroid = """
+                                SELECT VEC_EMBEDDING
+                                FROM TOMEHUB_CONTENT
+                                WHERE firebase_uid = :p_uid
+                                AND source_type IN ('HIGHLIGHT', 'INSIGHT', 'PERSONAL_NOTE')
+                                AND VEC_EMBEDDING IS NOT NULL
+                                ORDER BY id DESC
+                                FETCH FIRST 10 ROWS ONLY
+                            """
+                            cursor.execute(sql_centroid, {"p_uid": firebase_uid})
+                            recent_vectors = []
+                            for row in cursor.fetchall():
+                                vec = self._to_list(row[0])
+                                if vec:
+                                    recent_vectors.append(vec)
+                                    
+                            if len(recent_vectors) >= 3:
+                                # Calculate centroid (average vector)
+                                import numpy as np
+                                centroid = np.mean(recent_vectors, axis=0)
+                                norm = np.linalg.norm(centroid)
+                                if norm > 0:
+                                    centroid = centroid / norm
+                                    logger.info(f"[FLOW] Zero Gravity Profile generated using {len(recent_vectors)} recent notes for UID {firebase_uid}")
+                                    return centroid.tolist(), "Kişisel İlgi Profiliniz", "General Discovery"
+                                    
+                            # 2. Fallback to low engagement note anchor
                             vec, label, resolved_id = self._select_low_engagement_note_anchor(
                                 firebase_uid=firebase_uid,
                                 category=category
@@ -718,8 +753,8 @@ class FlowService:
                             if vec:
                                 return vec, label, resolved_id
 
-                            # Fallback to random content if no suitable note anchor
-                            logger.info(f"Auto-bootstrapping fallback for UID: {firebase_uid}, Scope: {resource_type}")
+                            # 3. Fallback to random content if no suitable note anchor
+                            logger.info(f"Auto-bootstrapping fallback to random for UID: {firebase_uid}, Scope: {resource_type}")
                             
                             # Build dynamic bootstrap SQL
                             sql = """
@@ -936,8 +971,8 @@ class FlowService:
 
         sql += " ORDER BY DBMS_RANDOM.VALUE FETCH FIRST :p_limit ROWS ONLY "
         
-        # Serendipity = Zone 4 (Discovery / Low priority)
-        return self._execute_simple_fetch(sql, params, "🎲 Serendipity", zone=4)
+        # Discovery = Zone 3 (Discovery / Low priority)
+        return self._execute_simple_fetch(sql, params, "🎲 Serendipity", zone=3)
 
     def _execute_simple_fetch(self, sql: str, params: dict, reason_prefix: str, zone: int) -> List[FlowCard]:
          cards = []
@@ -1096,12 +1131,10 @@ class FlowService:
         """
         active = [1]  # Zone 1 always active
         
-        if horizon_value >= 0.25:
+        if horizon_value >= 0.33:
             active.append(2)
-        if horizon_value >= 0.50:
+        if horizon_value >= 0.66:
             active.append(3)
-        if horizon_value >= 0.75:
-            active.append(4)
         
         return active
     
@@ -1852,6 +1885,27 @@ class FlowService:
         except Exception:
             return False
 
+    def _prune_old_seen_records(self, firebase_uid: str, days: int = 45):
+        """
+        Lightweight cleanup to prevent TOMEHUB_FLOW_SEEN from bloating.
+        Deletes records older than given days. Defaults to 45 days.
+        """
+        try:
+            with DatabaseManager.get_write_connection() as conn:
+                with conn.cursor() as cursor:
+                    # Oracle TIMESTAMP math
+                    cursor.execute("""
+                        DELETE FROM TOMEHUB_FLOW_SEEN
+                        WHERE firebase_uid = :p_uid
+                        AND seen_at < CURRENT_TIMESTAMP - :p_days
+                    """, {"p_uid": firebase_uid, "p_days": days})
+                    deleted = cursor.rowcount
+                    conn.commit()
+                    if deleted > 0:
+                        logger.info(f"[FLOW-PRUNE] Cleaned up {deleted} old seen records for UID: {firebase_uid}")
+        except Exception as e:
+            logger.warning(f"Failed to prune old seen records: {e}")
+
     def _get_chunk_vector(self, chunk_id: str) -> Optional[List[float]]:
         """
         Retrieve the embedding vector for a chunk from the database.
@@ -1937,7 +1991,7 @@ class FlowService:
         
         import random
         
-        zone_weight = {1: 0.4, 2: 0.3, 3: 0.2, 4: 0.1}
+        zone_weight = {1: 0.45, 2: 0.35, 3: 0.20}
         # RANKING WEIGHTS CONFIG
         WEIGHT_ZONE = 1.0        # Base weight for zone priority
         WEIGHT_SIMILARITY = 0.8  # Importance of semantic match
@@ -1957,12 +2011,12 @@ class FlowService:
             return (base + sim_score) * penalty
 
         # Group by zone
-        by_zone = {1: [], 2: [], 3: [], 4: []}
+        by_zone = {1: [], 2: [], 3: []}
         for card in candidates:
             by_zone.get(card.zone, []).append(card)
 
         # Sort by similarity/penalty within each zone, keep light shuffle for variety
-        for zone in by_zone:
+        for zone in list(by_zone.keys()):
             random.shuffle(by_zone[zone])
             by_zone[zone].sort(key=score, reverse=True)
 

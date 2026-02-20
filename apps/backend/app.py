@@ -1785,6 +1785,34 @@ async def get_ingestion_status(
     }
 
 
+def _run_calculate_graph_stats_background():
+    import subprocess
+    import sys
+    try:
+        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'scripts', 'calculate_graph_stats.py')
+        logger.info(f"Triggering background graph centrality calculation: {script_path}")
+        # Run the script as a separate process so it doesn't block the API thread
+        subprocess.Popen([sys.executable, script_path])
+    except Exception as e:
+        logger.error(f"Failed to trigger graph centrality calculation: {e}", exc_info=True)
+
+
+@app.post("/api/admin/recalculate_graph")
+async def recalculate_graph_endpoint(
+    background_tasks: BackgroundTasks,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+):
+    """
+    Triggers the graph centrality recalculation script in the background.
+    Useful after bulk ingesting new books to update discovery bridges.
+    """
+    if not firebase_uid_from_jwt and not _allow_dev_unverified_auth():
+        raise HTTPException(status_code=401, detail="Authentication required")
+        
+    background_tasks.add_task(_run_calculate_graph_stats_background)
+    return {"success": True, "message": "Graph centrality calculation started in background."}
+
+
 @app.post("/api/admin/external-kb/backfill/start")
 async def start_external_kb_backfill(
     request: Request,
