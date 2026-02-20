@@ -33,6 +33,17 @@ const KnowledgeDashboard = React.lazy(() => import('./dashboard/KnowledgeDashboa
 type NoteSmartFilter = 'NONE' | 'FAVORITES' | 'RECENT';
 const normalizeTagKey = (tag: string): string => tag.trim().toLowerCase();
 const FOLDER_PAGE_SIZE = 10;
+const normalizeSearchText = (value: string): string => value
+    .toLocaleLowerCase('tr-TR')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ı/g, 'i')
+    .replace(/\s+/g, ' ')
+    .trim();
+const includesNormalized = (source: string, term: string): boolean => {
+    if (!term) return true;
+    return normalizeSearchText(source).includes(term);
+};
 
 type DraggableRenderProps = {
     setNodeRef: (element: HTMLElement | null) => void;
@@ -268,7 +279,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
     const filteredBooks = useMemo(() => {
         if (isNotesTab || isStats) return [];
 
-        const term = searchQuery.toLowerCase().trim();
+        const term = normalizeSearchText(searchQuery);
         const recentNoteIdsForFilter = (isPersonalNotes && noteSmartFilter === 'RECENT')
             ? new Set(
                 books
@@ -311,8 +322,8 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                 }
             }
             if (categoryFilter) {
-                const target = categoryFilter.toLowerCase();
-                const hasCategory = (book.tags || []).some(tag => tag.toLowerCase() === target);
+                const target = normalizeSearchText(categoryFilter);
+                const hasCategory = (book.tags || []).some(tag => normalizeSearchText(tag) === target);
                 if (!hasCategory) return false;
             }
             // 2. Status Filter (Fastest check first)
@@ -338,7 +349,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
 
             // 3. Publisher Filter
             if (publisherFilter && activeTab !== 'BOOK') {
-                if (!book.publisher?.toLowerCase().includes(publisherFilter.toLowerCase())) {
+                if (!includesNormalized(book.publisher || '', normalizeSearchText(publisherFilter))) {
                     return false;
                 }
             }
@@ -347,29 +358,31 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
             if (!term) return true;
 
             // Check indexed fields (Title, Author, ISBN) first
-            const titleMatch = book.title.toLowerCase().includes(term);
+            const titleMatch = includesNormalized(book.title || '', term);
             if (titleMatch) return true;
 
-            const authorMatch = book.author.toLowerCase().includes(term);
+            const authorMatch = includesNormalized(book.author || '', term);
             if (authorMatch) return true;
 
             // Type specific efficient checks
             if (activeTab === 'BOOK') {
-                if (book.isbn && book.isbn.includes(term)) return true;
-                if (book.code && book.code.toLowerCase().includes(term)) return true;
+                if (includesNormalized(book.isbn || '', term)) return true;
+                if (includesNormalized(book.code || '', term)) return true;
+                // Books tab should stay strict: do not match by notes/tags.
+                return false;
             }
 
             // Deep search (Notes, Tags) - only if primary fields failed
-            const tagsMatch = book.tags.some(tag => tag.toLowerCase().includes(term));
+            const tagsMatch = (book.tags || []).some(tag => includesNormalized(tag, term));
             if (tagsMatch) return true;
 
-            const notesMatch = extractPersonalNoteText(book.generalNotes || '').toLowerCase().includes(term);
+            const notesMatch = includesNormalized(extractPersonalNoteText(book.generalNotes || ''), term);
             if (notesMatch) return true;
 
             if (isPersonalNote(book)) {
-                const categoryMatch = getPersonalNoteCategory(book).toLowerCase().includes(term);
+                const categoryMatch = includesNormalized(getPersonalNoteCategory(book), term);
                 if (categoryMatch) return true;
-                const folderMatch = (getResolvedNoteFolderName(book) || '').toLowerCase().includes(term);
+                const folderMatch = includesNormalized((getResolvedNoteFolderName(book) || ''), term);
                 if (folderMatch) return true;
             }
 
@@ -499,7 +512,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
     const filteredHighlights = useMemo(() => {
         if (!isNotesTab) return [];
 
-        const term = searchQuery.toLowerCase();
+        const term = normalizeSearchText(searchQuery);
 
         return books
             .flatMap(book => book.highlights.map(h => ({ ...h, source: book })))
@@ -510,11 +523,11 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                 }
 
                 if (!term) return true;
-                return item.text.toLowerCase().includes(term) ||
-                    (item.comment && item.comment.toLowerCase().includes(term)) ||
-                    item.source.title.toLowerCase().includes(term) ||
-                    item.source.author.toLowerCase().includes(term) ||
-                    (item.tags && item.tags.some(t => t.toLowerCase().includes(term)));
+                return includesNormalized(item.text || '', term) ||
+                    includesNormalized(item.comment || '', term) ||
+                    includesNormalized(item.source.title || '', term) ||
+                    includesNormalized(item.source.author || '', term) ||
+                    !!(item.tags && item.tags.some(t => includesNormalized(t, term)));
             })
             .sort((a, b) => b.createdAt - a.createdAt);
     }, [books, isNotesTab, searchQuery, statusFilter]);

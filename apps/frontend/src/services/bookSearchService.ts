@@ -1,4 +1,4 @@
-import { ItemDraft } from "./geminiService";
+﻿import { ItemDraft } from "./geminiService";
 
 // Types
 export interface BookItem extends ItemDraft {
@@ -24,19 +24,103 @@ export interface CorrectedQuery {
 const searchCache = new Map<string, SearchResult>();
 const queryCache = new Map<string, CorrectedQuery>();
 
-// Helper: Normalize query
 function normalizeQuery(query: string): string {
-    return query.trim().toLowerCase().replace(/\s+/g, ' ');
+    return query
+        .trim()
+        .toLocaleLowerCase('tr-TR')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\u0131/g, 'i')
+        .replace(/\s+/g, ' ');
 }
 
-// Helper: Generate character variants (e.g. ç -> c)
+function tokenize(query: string): string[] {
+    return normalizeQuery(query)
+        .split(' ')
+        .map((t) => t.trim())
+        .filter((t) => t.length >= 2);
+}
+
+function toAsciiBasic(text: string): string {
+    return text
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[\u00e7\u00c7]/g, 'c')
+        .replace(/[\u011f\u011e]/g, 'g')
+        .replace(/[\u0131\u0130]/g, 'i')
+        .replace(/[\u00f6\u00d6]/g, 'o')
+        .replace(/[\u015f\u015e]/g, 's')
+        .replace(/[\u00fc\u00dc]/g, 'u');
+}
+
+function expandCrossLingualVariants(query: string): string[] {
+    const variants = new Set<string>();
+    const normalized = normalizeQuery(query);
+    const tokens = tokenize(normalized);
+    if (!tokens.length) return [];
+
+    const lexicon: Record<string, string[]> = {
+        etik: ['ethics', 'ethic'],
+        ahlak: ['ethics', 'morality'],
+        kotuluk: ['evil'],
+        kavrayisi: ['understanding'],
+        uzerine: ['on'],
+        deneme: ['essay'],
+        felsefesi: ['philosophy'],
+        felsefe: ['philosophy'],
+    };
+
+    const translated = tokens.map((t) => (lexicon[t] && lexicon[t][0]) ? lexicon[t][0] : t);
+    if (translated.join(' ') !== tokens.join(' ')) {
+        variants.add(translated.join(' '));
+    }
+
+    // Keep author signal, but rewrite known Turkish concept words to common English catalog terms.
+    if (tokens.includes('badiou') && (tokens.includes('etik') || tokens.includes('ahlak'))) {
+        variants.add('alain badiou ethics');
+        variants.add('ethics alain badiou');
+        variants.add('ethics an essay on the understanding of evil alain badiou');
+    }
+
+    return Array.from(variants);
+}
+
+function buildQueryVariants(query: string): string[] {
+    const variants = new Set<string>();
+    const normalized = normalizeQuery(query);
+    const tokens = tokenize(query);
+
+    variants.add(query);
+    variants.add(normalized);
+    variants.add(toAsciiBasic(query));
+    variants.add(toAsciiBasic(normalized));
+    expandCrossLingualVariants(query).forEach((v) => variants.add(v));
+
+    if (tokens.length >= 3) {
+        const authorGuess = `${tokens[tokens.length - 2]} ${tokens[tokens.length - 1]}`;
+        const titleGuess = tokens.slice(0, -2).join(' ');
+
+        variants.add(`${authorGuess} ${titleGuess}`);
+        variants.add(`intitle:${titleGuess} inauthor:${authorGuess}`);
+        variants.add(`inauthor:${authorGuess}`);
+    }
+
+    return Array.from(variants)
+        .map((v) => normalizeQuery(v))
+        .filter((v) => !!v);
+}
+
+// Helper: Generate character variants (real Turkish + mojibake fallback)
 function generateCharacterVariants(text: string): string[] {
     const variants = new Set<string>();
     variants.add(text);
+    variants.add(toAsciiBasic(text));
 
     const map: Record<string, string> = {
-        'ç': 'c', 'ğ': 'g', 'ı': 'i', 'ö': 'o', 'ş': 's', 'ü': 'u',
-        'Ç': 'C', 'Ğ': 'G', 'İ': 'I', 'Ö': 'O', 'Ş': 'S', 'Ü': 'U'
+        '\u00e7': 'c', '\u011f': 'g', '\u0131': 'i', '\u00f6': 'o', '\u015f': 's', '\u00fc': 'u',
+        '\u00c7': 'C', '\u011e': 'G', '\u0130': 'I', '\u00d6': 'O', '\u015e': 'S', '\u00dc': 'U',
+        'Ã§': 'c', 'ÄŸ': 'g', 'Ä±': 'i', 'Ã¶': 'o', 'ÅŸ': 's', 'Ã¼': 'u',
+        'Ã‡': 'C', 'Äž': 'G', 'Ä°': 'I', 'Ã–': 'O', 'Åž': 'S', 'Ãœ': 'U'
     };
 
     let asciiVariant = text;
@@ -48,10 +132,9 @@ function generateCharacterVariants(text: string): string[] {
         variants.add(asciiVariant);
     }
 
-    return Array.from(variants).slice(0, 5);
+    return Array.from(variants).slice(0, 8);
 }
 
-// Helper: Levenshtein distance
 function levenshteinDistance(a: string, b: string): number {
     const matrix: number[][] = [];
 
@@ -80,7 +163,6 @@ function levenshteinDistance(a: string, b: string): number {
     return matrix[b.length][a.length];
 }
 
-// Helper: Similarity score
 function similarityScore(query: string, target: string): number {
     const normalizedQuery = normalizeQuery(query);
     const normalizedTarget = normalizeQuery(target);
@@ -96,21 +178,47 @@ function similarityScore(query: string, target: string): number {
     return 1 - (distance / maxLen);
 }
 
-// Helper: Rank results
+function tokenOverlapScore(query: string, target: string): number {
+    const qTokens = tokenize(query);
+    const tTokens = tokenize(target);
+    if (!qTokens.length || !tTokens.length) return 0;
+    const tSet = new Set(tTokens);
+    const overlap = qTokens.filter((t) => tSet.has(t)).length;
+    return overlap / qTokens.length;
+}
+
 function rankResults(query: string, results: BookItem[]): BookItem[] {
-    const scored = results.map(result => {
-        const titleScore = similarityScore(query, result.title);
-        const authorScore = result.author ? similarityScore(query, result.author) : 0;
-        const combinedScore = Math.max(titleScore, authorScore * 0.7);
+    const queryNorm = normalizeQuery(query);
+    const queryTokens = tokenize(query);
+
+    const scored = results.map((result) => {
+        const title = result.title || '';
+        const author = result.author || '';
+
+        const titleScore = similarityScore(queryNorm, title);
+        const authorScore = similarityScore(queryNorm, author);
+        const titleTokenScore = tokenOverlapScore(queryNorm, title);
+        const authorTokenScore = tokenOverlapScore(queryNorm, author);
+
+        const queryHasAuthorHint = queryTokens.length >= 2 && authorTokenScore >= 0.5;
+        const combinedScore = Math.max(
+            titleScore * 0.45 + titleTokenScore * 0.45 + authorTokenScore * 0.1,
+            authorScore * 0.6 + authorTokenScore * 0.4
+        ) + (queryHasAuthorHint ? 0.1 : 0);
+
         return { result, score: combinedScore };
     });
 
-    const filtered = scored.filter(item => item.score >= 0.3);
+    const filtered = scored.filter((item) => item.score >= 0.1);
+    if (filtered.length === 0) {
+        scored.sort((a, b) => b.score - a.score);
+        return scored.slice(0, 5).map((item) => item.result);
+    }
+
     filtered.sort((a, b) => b.score - a.score);
-    return filtered.map(item => item.result);
+    return filtered.map((item) => item.result);
 }
 
-// Helper: Deduplicate
 function deduplicateResults(items: BookItem[]): BookItem[] {
     const seen = new Set<string>();
     const unique: BookItem[] = [];
@@ -125,10 +233,9 @@ function deduplicateResults(items: BookItem[]): BookItem[] {
     return unique;
 }
 
-// API: Google Books with OpenLibrary Fallback
 async function searchGoogleBooks(query: string): Promise<BookItem[]> {
     try {
-        const variants = generateCharacterVariants(query);
+        const variants = buildQueryVariants(query).flatMap(generateCharacterVariants);
         const results: BookItem[] = [];
         let googleBooksWorked = false;
 
@@ -137,11 +244,9 @@ async function searchGoogleBooks(query: string): Promise<BookItem[]> {
 
             try {
                 const response = await fetch(apiUrl);
-
-                // Check for service unavailable or other errors
                 if (!response.ok) {
-                    if (response.status === 503) {
-                        console.warn('Google Books returned 503 (Service Unavailable)');
+                    if (response.status === 503 || response.status === 429) {
+                        console.warn(`Google Books throttled/unavailable (${response.status})`);
                     }
                     continue;
                 }
@@ -166,37 +271,32 @@ async function searchGoogleBooks(query: string): Promise<BookItem[]> {
 
                 results.push(...books);
                 googleBooksWorked = true;
-                if (results.length >= 3) break;
+                if (results.length >= 10) break;
             } catch (error) {
                 console.warn(`Google Books fetch failed for variant "${variant}":`, error);
-                // Continue to next variant or fallback
             }
         }
 
-        // If Google Books worked, return results
         if (googleBooksWorked && results.length > 0) {
             return results;
         }
 
-        // Fallback to OpenLibrary if Google Books failed or returned no results
         console.warn('Google Books failed or returned no results, trying OpenLibrary fallback...');
         const openLibraryResults = await searchOpenLibrary(query);
 
         if (openLibraryResults.length > 0) {
-            console.log('✓ Successfully fetched from OpenLibrary (fallback)');
+            console.log('OpenLibrary fallback succeeded');
             return openLibraryResults;
         }
 
-        return results; // Return whatever we got, even if empty
+        return results;
     } catch (error) {
         console.error('Google Books error:', error);
 
-        // Try OpenLibrary as fallback
         try {
-            console.warn('Attempting OpenLibrary fallback after Google Books error...');
             const openLibraryResults = await searchOpenLibrary(query);
             if (openLibraryResults.length > 0) {
-                console.log('✓ Successfully fetched from OpenLibrary (fallback)');
+                console.log('OpenLibrary fallback succeeded');
                 return openLibraryResults;
             }
         } catch (fallbackError) {
@@ -207,10 +307,9 @@ async function searchGoogleBooks(query: string): Promise<BookItem[]> {
     }
 }
 
-// API: Open Library
 async function searchOpenLibrary(query: string): Promise<BookItem[]> {
     try {
-        const variants = generateCharacterVariants(query);
+        const variants = buildQueryVariants(query).flatMap(generateCharacterVariants);
         const results: BookItem[] = [];
 
         for (const variant of variants) {
@@ -237,8 +336,9 @@ async function searchOpenLibrary(query: string): Promise<BookItem[]> {
             } as BookItem));
 
             results.push(...books);
-            if (results.length >= 3) break;
+            if (results.length >= 15) break;
         }
+
         return results;
     } catch (error) {
         console.error('Open Library error:', error);
@@ -254,28 +354,24 @@ export async function searchBooks(query: string): Promise<SearchResult> {
     const cacheKey = `search:${normalized}`;
 
     if (searchCache.has(cacheKey)) {
-        console.log('✓ Cache hit for:', normalized);
         return { ...searchCache.get(cacheKey)!, cached: true };
     }
 
-    console.log('🔍 Searching for:', normalized);
-
-    // 1. Try APIs directly
     const [googleResults, openLibResults] = await Promise.all([
         searchGoogleBooks(normalized),
         searchOpenLibrary(normalized),
     ]);
 
-    let allResults = [...googleResults, ...openLibResults];
+    const allResults = [...googleResults, ...openLibResults];
     const uniqueResults = deduplicateResults(allResults);
     const rankedResults = rankResults(query, uniqueResults);
 
-    // 2. Return results
     const result: SearchResult = {
         results: rankedResults.slice(0, 10),
         source: googleResults.length > 0 ? 'google-books' : 'open-library',
         cached: false,
     };
+
     searchCache.set(cacheKey, result);
     return result;
 }
@@ -283,5 +379,4 @@ export async function searchBooks(query: string): Promise<SearchResult> {
 export function clearSearchCache(): void {
     searchCache.clear();
     queryCache.clear();
-    console.log('✓ Search cache cleared');
 }

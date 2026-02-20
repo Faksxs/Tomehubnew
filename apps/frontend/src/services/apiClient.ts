@@ -1,6 +1,6 @@
 const localhostHosts = new Set(['localhost', '127.0.0.1']);
 
-const localDefaultBase = 'http://localhost:8000';
+const localDefaultBase = 'http://localhost:5000';
 const productionDefaultBase = 'https://api.tomehub.nl';
 
 const configuredBase = (import.meta.env.VITE_API_BASE_URL || '').trim();
@@ -10,7 +10,7 @@ const fallbackBase = localhostHosts.has(window.location.hostname)
 
 export const API_BASE_URL = (configuredBase || fallbackBase).replace(/\/+$/, '');
 
-const backendStartHint = "Backend baglantisi kurulamadi. `apps/backend` klasorunde `python app.py` calistirin (port 8000).";
+const backendStartHint = "Backend baglantisi kurulamadi. `apps/backend` klasorunde `python app.py` calistirin (port 5000).";
 
 export async function getFirebaseIdToken(): Promise<string> {
     const { auth } = await import('./firebaseClient');
