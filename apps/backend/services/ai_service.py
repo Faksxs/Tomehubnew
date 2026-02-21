@@ -182,18 +182,22 @@ Return ONLY the summary text.
 """
 
 PROMPT_SEARCH_RESOURCES = """
-I need to find book or article recommendations based on this query: "{query}".
+I need to find book or article metadata based on this search query: "{query}".
 Type: {resource_type}
 
-Please return a JSON array of items. Each item should have:
-- title
-- author
-- publisher
-- isbn (if book)
-- summary (brief)
-- publishedDate (year)
-- url (if website/article)
-- pageCount (number, if book)
+INSTRUCTIONS:
+1. Search your internal knowledge for the most accurate and specific bibliographic details.
+2. If the query is in Turkish or refers to Turkish works/authors, prioritize Turkish metadata (Turkish title, publisher, translator if applicable).
+3. For rare or older editions (e.g., from publishers like Birleşik Yayıncılık, Fecr, etc.), provide the exact details if possible.
+4. Return a JSON array of items. Each item must have:
+   - title
+   - author
+   - publisher
+   - isbn (10 or 13, critical for discovery)
+   - summary (brief 1-2 sentence description)
+   - publishedDate (Format: YYYY or YYYY-MM-DD)
+   - url (if website/article)
+   - pageCount (approximate number if book)
 
 Return ONLY valid JSON. No markdown formatting.
 """

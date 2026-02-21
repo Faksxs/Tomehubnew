@@ -299,6 +299,13 @@ class FlowService:
             anchor_vector=new_vector
         )
         
+        # Persist category and resource filters so subsequent fetches use them
+        self.session_manager.update_session_filters(
+            session_id=session_id,
+            resource_type=resource_type,
+            category=category
+        )
+        
         return new_label or f"Pivoted to {anchor_id}", pivot_info
 
     def prefetch_batch(self, session_id: str, firebase_uid: str, batch_size: int = 10):

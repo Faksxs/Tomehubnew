@@ -2216,5 +2216,5 @@ async def search_resources_endpoint(
 
 
 if __name__ == "__main__":
-    logger.info("Starting FastAPI Server on port 5000 (DIRECT)...")
-    uvicorn.run("app:app", host="0.0.0.0", port=5000, reload=True)
+    logger.info("Starting FastAPI Server on port 8000 (DIRECT)...")
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)

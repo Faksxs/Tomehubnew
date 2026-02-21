@@ -1,6 +1,6 @@
 import React from 'react';
 import { X, User, Moon, Sun } from 'lucide-react';
-import logo from '../assets/logo_v8.png';
+import logo from '../assets/logo_v9.png';
 import { ResourceType } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 import {
