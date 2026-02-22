@@ -146,6 +146,20 @@ class FlowSessionManager:
             
         self.update_session(state)
 
+    def update_session_filters(self, session_id: str, resource_type: Optional[str] = None, category: Optional[str] = None):
+        """Update the resource filter and category context of a session."""
+        state = self.get_session(session_id)
+        if not state:
+            return
+            
+        # Only update if explicitly provided (allows partial updates)
+        if resource_type is not None:
+            state.resource_type = resource_type
+        if category is not None:
+            state.category = category
+            
+        self.update_session(state)
+
     def delete_session(self, session_id: str):
         """Delete a session and all its data."""
         if self.use_redis:

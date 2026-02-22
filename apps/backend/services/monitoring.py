@@ -175,3 +175,19 @@ CIRCUIT_BREAKER_STATE = Gauge(
     'Current state of the embedding API circuit breaker',
     labelnames=['service']
 )
+
+# Firestore -> Oracle sync backfill observability
+EMBEDDING_BACKFILL_TOTAL_CALLS = Counter(
+    'tomehub_embedding_backfill_total_calls',
+    'Total embedding calls performed by firestore->oracle backfill worker'
+)
+
+EMBEDDING_BACKFILL_QUEUE_DEPTH = Gauge(
+    'tomehub_embedding_backfill_queue_depth',
+    'Approximate number of pending firestore items in active backfill queue'
+)
+
+EMBEDDING_BACKFILL_COST_ESTIMATE = Gauge(
+    'tomehub_embedding_backfill_cost_estimate_usd',
+    'Estimated embedding backfill cost in USD'
+)

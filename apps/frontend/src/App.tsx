@@ -14,7 +14,7 @@ import { BookDetail } from "./components/BookDetail";
 import { Sidebar } from "./components/Sidebar";
 import { ProfileView } from "./components/ProfileView";
 import SmartSearch from "./components/SmartSearch";
-import logo from './assets/logo_v8.png';
+import logo from './assets/logo_v9.png';
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import {
@@ -41,7 +41,7 @@ import { RAGSearch } from "./components/RAGSearch";
 import { FlowContainer } from "./components/FlowContainer";
 import { CATEGORIES, MIN_CATEGORY_BOOKS_VISIBLE } from "./components/CategorySelector";
 import { prewarmFlowStartSession } from "./services/flowService";
-import { addTextItem, syncHighlights, syncPersonalNote, purgeResourceContent } from "./services/backendApiService";
+import { addTextItem, syncHighlights, syncPersonalNote, purgeResourceContent, pollRealtimeEvents } from "./services/backendApiService";
 import { getPersonalNoteBackendType, getPersonalNoteCategory, isPersonalNote } from "./lib/personalNotePolicy";
 import { extractPersonalNoteText } from "./lib/personalNoteRender";
 
@@ -80,6 +80,8 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   const [personalNoteFolders, setPersonalNoteFolders] = useState<PersonalNoteFolder[]>([]);
   const [didRunLegacyFolderMigration, setDidRunLegacyFolderMigration] = useState(false);
   const flowPrewarmStartedRef = useRef(false);
+  const realtimeCursorRef = useRef<number>(0);
+  const realtimeInFlightRef = useRef(false);
   const flowVisibleCategories = useMemo(() => {
     const normalizeTextKey = (value: string) => value.trim().toLocaleLowerCase('tr-TR');
     const categoryLookup = new Map<string, string>(
@@ -134,6 +136,83 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
 
     return () => {
       active = false;
+    };
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    let cancelled = false;
+    let timerId: number | null = null;
+
+    realtimeCursorRef.current = Date.now();
+    realtimeInFlightRef.current = false;
+
+    const scheduleNext = () => {
+      if (cancelled) return;
+      const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+      const delay = hidden ? 5000 : 2500;
+      timerId = window.setTimeout(() => {
+        void pollOnce();
+      }, delay);
+    };
+
+    const pollOnce = async () => {
+      if (cancelled || realtimeInFlightRef.current) {
+        scheduleNext();
+        return;
+      }
+      realtimeInFlightRef.current = true;
+
+      try {
+        const response = await pollRealtimeEvents(userId, realtimeCursorRef.current, 100);
+        const events = response.events || [];
+        const latestEventTs = events.reduce((maxTs, event) => {
+          const ts = Number(event.updated_at_ms || 0);
+          return ts > maxTs ? ts : maxTs;
+        }, 0);
+        realtimeCursorRef.current = Math.max(
+          realtimeCursorRef.current,
+          Number(response.server_time_ms || 0),
+          latestEventTs
+        );
+
+        if (events.length > 0) {
+          const [{ items, lastDoc: newLastDoc }, folders] = await Promise.all([
+            fetchItemsForUser(userId),
+            fetchPersonalNoteFoldersForUser(userId),
+          ]);
+          if (!cancelled) {
+            setBooks(items);
+            setPersonalNoteFolders(folders);
+            setLastDoc(newLastDoc);
+            setHasMore(!!newLastDoc);
+          }
+        }
+      } catch (err) {
+        console.warn("Realtime polling failed (non-critical):", err);
+      } finally {
+        realtimeInFlightRef.current = false;
+        scheduleNext();
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (timerId !== null) {
+        window.clearTimeout(timerId);
+      }
+      scheduleNext();
+    };
+
+    scheduleNext();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      if (timerId !== null) {
+        window.clearTimeout(timerId);
+      }
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [userId]);
 
