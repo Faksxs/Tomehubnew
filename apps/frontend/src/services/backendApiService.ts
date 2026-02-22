@@ -190,6 +190,21 @@ export interface EpistemicDistributionResponse {
     error?: string;
 }
 
+export interface RealtimeEvent {
+    event_type: 'book.updated' | 'highlight.synced' | 'note.synced' | string;
+    book_id: string;
+    title?: string;
+    source_type?: string;
+    updated_at_ms: number;
+}
+
+export interface RealtimePollResponse {
+    success: boolean;
+    server_time_ms: number;
+    events: RealtimeEvent[];
+    count: number;
+}
+
 /**
  * Check if backend API is online
  */
@@ -734,6 +749,29 @@ export async function getEpistemicDistribution(
 
     if (!response.ok) {
         throw new Error('Failed to fetch epistemic distribution');
+    }
+    return response.json();
+}
+
+export async function pollRealtimeEvents(
+    firebaseUid: string,
+    sinceMs: number = 0,
+    limit: number = 100
+): Promise<RealtimePollResponse> {
+    if (!firebaseUid) {
+        throw new Error('User must be authenticated for realtime polling');
+    }
+    const url = new URL(`${API_BASE_URL}/api/realtime/poll`);
+    url.searchParams.append('firebase_uid', firebaseUid);
+    url.searchParams.append('since_ms', String(Math.max(0, Math.floor(sinceMs || 0))));
+    url.searchParams.append('limit', String(Math.min(300, Math.max(1, Math.floor(limit || 100)))));
+
+    const response = await fetchWithAuth(url.toString(), {
+        headers: { 'Content-Type': 'application/json' }
+    });
+    if (!response.ok) {
+        const error: ApiError = await response.json();
+        throw new Error(error.details || error.error || 'Realtime polling failed');
     }
     return response.json();
 }

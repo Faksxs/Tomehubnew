@@ -48,6 +48,10 @@ from services.language_backfill_service import (
     get_language_backfill_status,
     start_language_backfill_async,
 )
+from services.firestore_sync_service import (
+    get_firestore_oracle_sync_status,
+    start_firestore_oracle_sync_async,
+)
 from services.epistemic_distribution_service import get_epistemic_distribution
 from services.feedback_service import submit_feedback
 from services.pdf_service import get_pdf_metadata
@@ -112,6 +116,34 @@ def _allow_dev_unverified_auth() -> bool:
         and not bool(getattr(settings, "FIREBASE_READY", False))
         and bool(getattr(settings, "DEV_UNSAFE_AUTH_BYPASS", False))
     )
+
+
+def get_verified_uid(request: Request, uid_from_jwt: Optional[str]) -> str:
+    """
+    Authoritative UID resolver for TomeHub.
+    Prioritizes verified JWT, falls back to raw UID in development mode.
+    """
+    if uid_from_jwt:
+        return uid_from_jwt
+
+    # Local development fallbacks
+    if settings.ENVIRONMENT == "development":
+        # 1. Query Param
+        uid = request.query_params.get("firebase_uid")
+        # 2. X-Firebase-UID Header
+        if not uid:
+            uid = request.headers.get("X-Firebase-UID")
+        # 3. Authorization Header (raw UID)
+        if not uid:
+            auth_header = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+            if auth_header and len(auth_header) < 128:
+                uid = auth_header
+        
+        if uid:
+            return uid
+
+    raise HTTPException(status_code=401, detail="Authentication required")
+
 
 
 def _validate_cors_origins(origins: list[str]) -> list[str]:
@@ -484,6 +516,46 @@ async def health_memory():
             "error": str(e)
         }
 
+
+@app.get("/api/health/memory-layer")
+async def health_memory_layer():
+    """
+    Oracle-backed chat memory health:
+    - sessions/messages totals
+    - stale sessions older than retention target
+    """
+    try:
+        with DatabaseManager.get_read_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT COUNT(*) FROM TOMEHUB_CHAT_SESSIONS")
+                sessions_total = int((cursor.fetchone() or [0])[0] or 0)
+
+                cursor.execute("SELECT COUNT(*) FROM TOMEHUB_CHAT_MESSAGES")
+                messages_total = int((cursor.fetchone() or [0])[0] or 0)
+
+                cursor.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM TOMEHUB_CHAT_SESSIONS
+                    WHERE UPDATED_AT < (SYSTIMESTAMP - NUMTODSINTERVAL(:p_days, 'DAY'))
+                    """,
+                    {"p_days": int(settings.CHAT_RETENTION_DAYS)},
+                )
+                stale_sessions = int((cursor.fetchone() or [0])[0] or 0)
+
+        return {
+            "status": "ok",
+            "memory_layer": {
+                "sessions_total": sessions_total,
+                "messages_total": messages_total,
+                "stale_sessions_over_retention": stale_sessions,
+                "retention_days": int(settings.CHAT_RETENTION_DAYS),
+            },
+        }
+    except Exception as e:
+        logger.error(f"Error getting memory-layer health: {e}")
+        return {"status": "error", "error": str(e)}
+
 @app.get("/api/health/restart")
 async def health_restart():
     """Get auto-restart status and memory pressure state (Task A2)."""
@@ -499,6 +571,101 @@ async def health_restart():
             "status": "error",
             "error": str(e)
         }
+
+
+@app.get("/api/realtime/poll")
+async def realtime_poll(
+    request: Request,
+    since_ms: int = 0,
+    limit: int = 100,
+    firebase_uid: Optional[str] = None,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+):
+    """
+    Fast polling endpoint for multi-device UX consistency.
+    Returns coarse-grained change events since client timestamp.
+    """
+    if firebase_uid_from_jwt:
+        verified_uid = firebase_uid_from_jwt
+    else:
+        if settings.ENVIRONMENT == "production":
+            raise HTTPException(status_code=401, detail="Authentication required")
+        verified_uid = firebase_uid or request.query_params.get("firebase_uid")
+        if not verified_uid:
+            raise HTTPException(status_code=400, detail="firebase_uid is required in development")
+
+    safe_limit = max(1, min(int(limit), 300))
+    events: list[dict[str, Any]] = []
+    cutoff_ms = max(int(since_ms or 0), 0)
+
+    try:
+        with DatabaseManager.get_read_connection() as conn:
+            with conn.cursor() as cursor:
+                # BOOK-level updates
+                cursor.execute(
+                    """
+                    SELECT ID, TITLE, COALESCE(LAST_UPDATED, CREATED_AT)
+                    FROM TOMEHUB_BOOKS
+                    WHERE FIREBASE_UID = :p_uid
+                    ORDER BY COALESCE(LAST_UPDATED, CREATED_AT) DESC
+                    FETCH FIRST :p_limit ROWS ONLY
+                    """,
+                    {"p_uid": verified_uid, "p_limit": safe_limit},
+                )
+                for row in cursor.fetchall():
+                    ts = row[2]
+                    ts_ms = int(ts.timestamp() * 1000) if ts else int(datetime.now().timestamp() * 1000)
+                    if ts_ms <= cutoff_ms:
+                        continue
+                    events.append(
+                        {
+                            "event_type": "book.updated",
+                            "book_id": str(row[0]),
+                            "title": str(row[1] or ""),
+                            "updated_at_ms": ts_ms,
+                        }
+                    )
+
+                # Highlight/personal-note sync signals from content rows
+                cursor.execute(
+                    """
+                    SELECT BOOK_ID, SOURCE_TYPE, MAX(CREATED_AT)
+                    FROM TOMEHUB_CONTENT
+                    WHERE FIREBASE_UID = :p_uid
+                      AND SOURCE_TYPE IN ('HIGHLIGHT', 'INSIGHT', 'PERSONAL_NOTE')
+                    GROUP BY BOOK_ID, SOURCE_TYPE
+                    FETCH FIRST :p_limit ROWS ONLY
+                    """,
+                    {"p_uid": verified_uid, "p_limit": safe_limit},
+                )
+                for row in cursor.fetchall():
+                    source_type = str(row[1] or "").upper()
+                    ts = row[2]
+                    ts_ms = int(ts.timestamp() * 1000) if ts else int(datetime.now().timestamp() * 1000)
+                    if ts_ms <= cutoff_ms:
+                        continue
+                    event_type = "highlight.synced" if source_type in {"HIGHLIGHT", "INSIGHT"} else "note.synced"
+                    events.append(
+                        {
+                            "event_type": event_type,
+                            "book_id": str(row[0] or ""),
+                            "source_type": source_type,
+                            "updated_at_ms": ts_ms,
+                        }
+                    )
+    except Exception as e:
+        logger.error(f"Realtime polling query failed: {e}")
+        raise HTTPException(status_code=500, detail="Realtime polling failed")
+
+    events.sort(key=lambda e: int(e.get("updated_at_ms") or 0), reverse=True)
+    if len(events) > safe_limit:
+        events = events[:safe_limit]
+    return {
+        "success": True,
+        "server_time_ms": int(datetime.now().timestamp() * 1000),
+        "events": events,
+        "count": len(events),
+    }
 
 # ============================================================================
 # SEARCH ENDPOINTS
@@ -1896,6 +2063,52 @@ async def language_backfill_status(
     if not firebase_uid_from_jwt and settings.ENVIRONMENT != "production":
         _ = firebase_uid or request.query_params.get("firebase_uid")
     return {"success": True, "status": get_language_backfill_status()}
+
+
+@app.post("/api/admin/firestore-sync/start")
+async def start_firestore_oracle_sync(
+    request: Request,
+    dry_run: bool = True,
+    max_items: int = 0,
+    embedding_rpm_cap: int = 30,
+    embedding_unit_cost_usd: float = 0.00002,
+    firebase_uid: Optional[str] = None,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+):
+    """
+    Start Firestore -> Oracle reconciliation for one user.
+    Safety defaults to dry-run.
+    """
+    if firebase_uid_from_jwt:
+        verified_uid = firebase_uid_from_jwt
+    else:
+        if settings.ENVIRONMENT == "production":
+            raise HTTPException(status_code=401, detail="Authentication required")
+        verified_uid = firebase_uid or request.query_params.get("firebase_uid")
+        if not verified_uid:
+            raise HTTPException(status_code=400, detail="firebase_uid is required in development")
+
+    status = start_firestore_oracle_sync_async(
+        scope_uid=str(verified_uid).strip(),
+        dry_run=bool(dry_run),
+        max_items=int(max_items),
+        embedding_rpm_cap=int(embedding_rpm_cap),
+        embedding_unit_cost_usd=float(embedding_unit_cost_usd),
+    )
+    return {"success": True, "status": status}
+
+
+@app.get("/api/admin/firestore-sync/status")
+async def firestore_oracle_sync_status(
+    request: Request,
+    firebase_uid: Optional[str] = None,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+):
+    if not firebase_uid_from_jwt and settings.ENVIRONMENT == "production":
+        raise HTTPException(status_code=401, detail="Authentication required")
+    if not firebase_uid_from_jwt and settings.ENVIRONMENT != "production":
+        _ = firebase_uid or request.query_params.get("firebase_uid")
+    return {"success": True, "status": get_firestore_oracle_sync_status()}
 
 
 @app.post("/api/add-item")
