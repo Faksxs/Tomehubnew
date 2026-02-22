@@ -196,10 +196,6 @@ def _sync_uid_worker(
             idempotency_seen.add(idem_key)
             _set_status(idempotency_keys=len(idempotency_seen))
 
-            if item.type == "PERSONAL_NOTE" and item.personalNoteCategory != "IDEAS":
-                _set_status(skipped_non_ideas_notes=int(_sync_status["skipped_non_ideas_notes"]) + 1)
-                continue
-
             try:
                 if dry_run:
                     continue
@@ -269,8 +265,7 @@ def _sync_uid_worker(
         for item_id, raw in firestore_items.items():
             try:
                 item = normalize_and_validate_item(item_id, raw)
-                if item.type != "PERSONAL_NOTE" or item.personalNoteCategory == "IDEAS":
-                    expected_present_ids.add(item_id)
+                expected_present_ids.add(item_id)
             except Exception:
                 continue
         still_missing = len(expected_present_ids - remaining_ids)

@@ -841,9 +841,10 @@ def sync_personal_note_for_item(
     delete_only: bool = False,
 ) -> dict:
     """
-    Keep Personal Note representation in AI store consistent with category policy.
+    Keep Personal Note representation in Oracle AI store in sync with Firestore.
     - Always deletes existing PERSONAL_NOTE/INSIGHT rows for this note id
-    - Re-inserts only when category == IDEAS and delete_only is False
+    - Re-inserts for all categories when delete_only is False
+    - Keeps IDEAS as INSIGHT for backward-compatible retrieval; others use PERSONAL_NOTE
     """
     deleted = 0
     inserted = 0
@@ -866,7 +867,7 @@ def sync_personal_note_for_item(
                 deleted = cursor.rowcount or 0
 
                 normalized_category = str(category or "PRIVATE").strip().upper()
-                if delete_only or normalized_category != "IDEAS":
+                if delete_only:
                     connection.commit()
                     _invalidate_search_cache(firebase_uid=firebase_uid, book_id=book_id)
                     maybe_trigger_epistemic_distribution_refresh_async(book_id=book_id, firebase_uid=firebase_uid, reason="sync_personal_note_delete")
@@ -887,6 +888,9 @@ def sync_personal_note_for_item(
                 prepared_tags = prepare_labels(tags_json) if tags_json else []
                 out_id = cursor.var(oracledb.NUMBER)
 
+                db_source_type = "INSIGHT" if normalized_category == "IDEAS" else "PERSONAL_NOTE"
+                chunk_type = f"personal_note_{normalized_category.lower()}"
+
                 cursor.execute(
                     """
                     INSERT INTO TOMEHUB_CONTENT
@@ -896,10 +900,10 @@ def sync_personal_note_for_item(
                     """,
                     {
                         "p_uid": firebase_uid,
-                        "p_type": "INSIGHT",
+                        "p_type": db_source_type,
                         "p_title": f"{title} - {author}",
                         "p_content": text,
-                        "p_chunk_type": "personal_note",
+                        "p_chunk_type": chunk_type,
                         "p_page": 1,
                         "p_chunk_idx": 0,
                         "p_vec": embedding,

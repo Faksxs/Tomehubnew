@@ -11,7 +11,10 @@ def test():
     try:
         if not firebase_admin._apps:
             cred_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
-            if cred_path:
+            if cred_path and not os.path.exists(cred_path):
+                # Try apps/backend
+                cred_path = os.path.join("apps", "backend", cred_path.lstrip("./"))
+            if cred_path and os.path.exists(cred_path):
                 cred = credentials.Certificate(cred_path)
                 firebase_admin.initialize_app(cred)
             else:
@@ -21,30 +24,24 @@ def test():
         return
 
     db = firestore.client()
-    uid = "vpq1p0UzcCSLAh1d18WgZZWPBE63"
-    
-    books_ref = db.collection("users").document(uid).collection("books")
-    docs = books_ref.stream()
-    
+    users_ref = db.collection("users").stream()
     total_bilhassa_highlights = 0
-    print(f"Fetching books for UID {uid} from Firestore...\n")
+    print("Scanning all users in Firestore...\n")
     
-    for doc in docs:
-        data = doc.to_dict()
-        title = data.get("title", "Unknown")
-        highlights = data.get("highlights", [])
-        
-        bilhassa_count = 0
-        for h in highlights:
-            text = h.get("text", "").lower()
-            if "bilhassa" in text:
-                bilhassa_count += 1
-                total_bilhassa_highlights += 1
-                print(f"- [FS HIGHLIGHT] Book: {title} | Text: {text[:50]}...")
-                
-        if bilhassa_count > 0:
-            print(f"Found {bilhassa_count} bilhassa highlights in '{title}'\n")
-
+    for user_doc in users_ref:
+        uid = user_doc.id
+        books_ref = db.collection("users").document(uid).collection("books").stream()
+        for doc in books_ref:
+            data = doc.to_dict()
+            title = data.get("title", "Unknown")
+            highlights = data.get("highlights", [])
+            
+            for h in highlights:
+                text = h.get("text", "").lower()
+                if "bilhassa" in text:
+                    total_bilhassa_highlights += 1
+                    print(f"- [UID: {uid}] Book: {title} | Text: {text[:50]}...")
+                    
     print(f"\nTotal 'bilhassa' highlights found in Firestore: {total_bilhassa_highlights}")
 
 if __name__ == "__main__":
