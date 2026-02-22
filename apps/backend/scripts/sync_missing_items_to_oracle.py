@@ -1,145 +1,62 @@
 """
 Sync active Firestore items that are missing in Oracle for one user.
 
-This script is safe by default:
-- It only targets Firestore item IDs that are NOT present in Oracle (TOMEHUB_CONTENT.book_id)
-- It does not delete existing Oracle rows
+Safety defaults:
+- dry-run is default
+- execute mode requires explicit --execute
+- strict schema validation + quarantine logging are always active
 
 Usage:
   python scripts/sync_missing_items_to_oracle.py --firebase-uid <UID>
+  python scripts/sync_missing_items_to_oracle.py --firebase-uid <UID> --execute
 """
 
 from __future__ import annotations
 
 import argparse
 import os
-import re
 import sys
-from collections import Counter
-from typing import Any, Dict, List, Set
+import time
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from config import settings  # noqa: E402
-from infrastructure.db_manager import DatabaseManager  # noqa: E402
-from services.ingestion_service import (  # noqa: E402
-    ingest_text_item,
-    sync_highlights_for_item,
-    sync_personal_note_for_item,
+from services.firestore_sync_service import (  # noqa: E402
+    get_firestore_oracle_sync_status,
+    start_firestore_oracle_sync_async,
 )
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Sync missing Firestore items to Oracle")
     parser.add_argument("--firebase-uid", required=True, help="Target Firebase UID")
+    parser.add_argument("--execute", action="store_true", help="Run actual write operations (default: dry-run)")
     parser.add_argument(
-        "--show-limit",
+        "--max-items",
+        type=int,
+        default=0,
+        help="Optional cap for missing item processing (0 means all missing)",
+    )
+    parser.add_argument(
+        "--embedding-rpm-cap",
         type=int,
         default=30,
-        help="Max sample missing items printed before sync",
+        help="Embedding rate cap (requests per minute) for backfill",
+    )
+    parser.add_argument(
+        "--embedding-unit-cost-usd",
+        type=float,
+        default=0.00002,
+        help="Estimated cost per embedding call for cost projection",
+    )
+    parser.add_argument(
+        "--poll-interval",
+        type=float,
+        default=1.0,
+        help="Status polling interval in seconds",
     )
     return parser.parse_args()
-
-
-def _strip_html(text: str) -> str:
-    if not text:
-        return ""
-    s = str(text)
-    s = re.sub(r"<[^>]+>", " ", s)
-    s = re.sub(r"\s+", " ", s)
-    return s.strip()
-
-
-def _safe_console(text: Any) -> str:
-    return str(text).encode("ascii", errors="replace").decode("ascii")
-
-
-def _load_firestore_items(firebase_uid: str) -> Dict[str, Dict[str, Any]]:
-    if not bool(getattr(settings, "FIREBASE_READY", False)):
-        raise RuntimeError("FIREBASE_READY is false; configure Firebase Admin first.")
-
-    from firebase_admin import firestore
-
-    db = firestore.client()
-    docs = (
-        db.collection("users")
-        .document(firebase_uid)
-        .collection("items")
-        .stream()
-    )
-    out: Dict[str, Dict[str, Any]] = {}
-    for doc in docs:
-        data = doc.to_dict() or {}
-        out[str(doc.id)] = data
-    return out
-
-
-def _load_oracle_book_ids(firebase_uid: str) -> Set[str]:
-    out: Set[str] = set()
-    with DatabaseManager.get_read_connection() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT DISTINCT book_id
-                FROM TOMEHUB_CONTENT
-                WHERE firebase_uid = :p_uid
-                  AND book_id IS NOT NULL
-                """,
-                {"p_uid": firebase_uid},
-            )
-            for row in cursor.fetchall():
-                bid = str(row[0] or "").strip()
-                if bid:
-                    out.add(bid)
-    return out
-
-
-def _build_text(item: Dict[str, Any]) -> str:
-    parts: List[str] = []
-    title = str(item.get("title") or "").strip()
-    author = str(item.get("author") or "").strip()
-    if title:
-        parts.append(f"Title: {title}")
-    if author:
-        parts.append(f"Author: {author}")
-    publisher = str(item.get("publisher") or "").strip()
-    if publisher:
-        parts.append(f"Publisher: {publisher}")
-    tags = item.get("tags") or []
-    if isinstance(tags, list) and tags:
-        clean_tags = [str(t).strip() for t in tags if str(t).strip()]
-        if clean_tags:
-            parts.append(f"Tags: {', '.join(clean_tags)}")
-    notes = _strip_html(str(item.get("generalNotes") or ""))
-    if notes:
-        parts.append(f"Content/Notes: {notes}")
-    return "\n".join(parts).strip()
-
-
-def _normalize_highlights(raw: Any) -> List[Dict[str, Any]]:
-    if not isinstance(raw, list):
-        return []
-    out: List[Dict[str, Any]] = []
-    for h in raw:
-        if not isinstance(h, dict):
-            continue
-        text = str(h.get("text") or "").strip()
-        if not text:
-            continue
-        out.append(
-            {
-                "id": h.get("id"),
-                "text": text,
-                "type": h.get("type", "highlight"),
-                "comment": h.get("comment"),
-                "pageNumber": h.get("pageNumber"),
-                "tags": h.get("tags") or [],
-                "createdAt": h.get("createdAt"),
-            }
-        )
-    return out
 
 
 def main() -> int:
@@ -149,116 +66,40 @@ def main() -> int:
         print("[ERROR] firebase uid required")
         return 2
 
-    firestore_items = _load_firestore_items(uid)
-    fs_ids = set(firestore_items.keys())
+    dry_run = not bool(args.execute)
+    status = start_firestore_oracle_sync_async(
+        scope_uid=uid,
+        dry_run=dry_run,
+        max_items=int(args.max_items),
+        embedding_rpm_cap=int(args.embedding_rpm_cap),
+        embedding_unit_cost_usd=float(args.embedding_unit_cost_usd),
+    )
+    print(f"[INFO] job_id={status.get('job_id')} uid={uid} dry_run={dry_run}")
 
-    DatabaseManager.init_pool()
-    try:
-        oracle_ids = _load_oracle_book_ids(uid)
-        missing_ids = sorted(fs_ids - oracle_ids)
-
-        print(f"[INFO] uid={uid}")
-        print(f"[INFO] Firestore active items: {len(fs_ids)}")
-        print(f"[INFO] Oracle represented items: {len(oracle_ids)}")
-        print(f"[INFO] Missing items to sync: {len(missing_ids)}")
-
-        type_counter = Counter(
-            str((firestore_items.get(item_id) or {}).get("type") or "UNKNOWN").upper()
-            for item_id in missing_ids
-        )
-        if type_counter:
-            print(f"[INFO] Missing-by-type: {dict(type_counter)}")
-
-        for item_id in missing_ids[: max(0, int(args.show_limit))]:
-            item = firestore_items[item_id]
-            print(
-                f"  - id={_safe_console(item_id)} | type={_safe_console(item.get('type') or '')} | title={_safe_console(item.get('title') or '')}"
-            )
-
-        synced = 0
-        failed = 0
-        highlight_synced = 0
-        skipped_non_ideas_notes = 0
-
-        expected_present_ids: Set[str] = set()
-        for item_id, item in firestore_items.items():
-            item_type = str(item.get("type") or "").strip().upper()
-            if item_type != "PERSONAL_NOTE":
-                expected_present_ids.add(item_id)
-                continue
-            category = str(item.get("personalNoteCategory") or "PRIVATE").strip().upper() or "PRIVATE"
-            if category == "IDEAS":
-                expected_present_ids.add(item_id)
-
-        for item_id in missing_ids:
-            item = firestore_items[item_id]
-            item_type = str(item.get("type") or "").strip().upper()
-            title = str(item.get("title") or "Untitled").strip() or "Untitled"
-            author = str(item.get("author") or "Unknown").strip() or "Unknown"
-            tags = item.get("tags") if isinstance(item.get("tags"), list) else []
-
-            try:
-                if item_type == "PERSONAL_NOTE":
-                    category = str(item.get("personalNoteCategory") or "PRIVATE").strip().upper() or "PRIVATE"
-                    if category != "IDEAS":
-                        skipped_non_ideas_notes += 1
-                        continue
-                    content = _strip_html(str(item.get("generalNotes") or ""))
-                    result = sync_personal_note_for_item(
-                        firebase_uid=uid,
-                        book_id=item_id,
-                        title=title,
-                        author=author,
-                        content=content,
-                        tags=tags,
-                        category=category,
-                        delete_only=False,
-                    )
-                    if not result.get("success"):
-                        raise RuntimeError(result.get("error", "sync_personal_note_failed"))
-                else:
-                    text = _build_text(item)
-                    if len(text) < 12:
-                        text = f"Title: {title}\nAuthor: {author}"
-                    ok = ingest_text_item(
-                        text=text,
-                        title=title,
-                        author=author,
-                        source_type=item_type or "BOOK",
-                        firebase_uid=uid,
-                        book_id=item_id,
-                        tags=tags,
-                    )
-                    if not ok:
-                        raise RuntimeError("ingest_text_item_failed")
-
-                highlights = _normalize_highlights(item.get("highlights"))
-                if highlights:
-                    h_result = sync_highlights_for_item(
-                        firebase_uid=uid,
-                        book_id=item_id,
-                        title=title,
-                        author=author,
-                        highlights=highlights,
-                    )
-                    if h_result.get("success"):
-                        highlight_synced += 1
-
-                synced += 1
-            except Exception as e:
-                failed += 1
-                print(f"[WARN] sync failed id={_safe_console(item_id)} title={_safe_console(title)}: {_safe_console(e)}")
-
-        remaining_ids = _load_oracle_book_ids(uid)
-        still_missing = len(expected_present_ids - remaining_ids)
+    while True:
+        current = get_firestore_oracle_sync_status()
         print(
-            f"[DONE] Synced: {synced}, Failed: {failed}, Highlight-synced: {highlight_synced}, "
-            f"Skipped non-IDEAS personal notes: {skipped_non_ideas_notes}"
+            "[STATUS]",
+            f"running={current.get('running')}",
+            f"processed={current.get('processed')}",
+            f"synced={current.get('synced')}",
+            f"failed={current.get('failed')}",
+            f"quarantined={current.get('quarantined')}",
+            f"remaining_missing={current.get('remaining_missing')}",
+            f"embed_calls={current.get('embedding_calls_total')}",
+            f"embed_cost_usd={current.get('embedding_cost_estimate')}",
         )
-        print(f"[VERIFY] Remaining missing items (policy-aware): {still_missing}")
-        return 0 if still_missing == 0 else 1
-    finally:
-        DatabaseManager.close_pool()
+        if not current.get("running"):
+            if dry_run:
+                print("[DONE] Dry-run completed.")
+                return 0
+            remaining = current.get("remaining_missing")
+            if isinstance(remaining, int) and remaining == 0 and int(current.get("failed") or 0) == 0:
+                print("[DONE] Execute sync completed with zero remaining missing items.")
+                return 0
+            print("[DONE] Execute sync completed with warnings/errors. Check status/errors.")
+            return 1
+        time.sleep(max(float(args.poll_interval), 0.2))
 
 
 if __name__ == "__main__":
