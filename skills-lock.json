@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "skills": {
+    "airflow": {
+      "source": "astronomer/agents",
+      "sourceType": "github",
+      "computedHash": "189953c5ed710c435eda42ace5eb133d24377c04f84434e0a8ead258fb3d846c"
+    },
+    "airflow-hitl": {
+      "source": "astronomer/agents",
+      "sourceType": "github",
+      "computedHash": "14f563130f70eeddffdc7f6fd6dfca57f9a4e5dfec1b202936c5567340010d0a"
+    },
+    "analyzing-data": {
+      "source": "astronomer/agents",
+      "sourceType": "github",
+      "computedHash": "c40e927699d0d303158d4e1800882dac8f8f68ca1ee31207c0c135bddb46ee6e"
+    },
+    "annotating-task-lineage": {
+      "source": "astronomer/agents",
+      "sourceType": "github",
+      "computedHash": "57e13e4b2d84c8590f100e04402971bdb79171d0345b3dbbf33acaa5d8a374b1"
+    },
+    "authoring-dags": {
+      "source": "astronomer/agents",
+      "sourceType": "github",
+      "computedHash": "e1acc751aa422edc1d4ff694d321d578e17ed5c625b9ac788a391a2dc26a761c"
+    },
+    "checking-freshness": {
+      "source": "astronomer/agents",
+      "sourceType": "github",
+      "computedHash": "a2dad589a1cf01b83ebdadc8217742058e104b442a7894142fb8eb7890a90760"
+    },
+    "cosmos-dbt-core": {
+      "source": "astronomer/agents",
+      "sourceType": "github",
+      "computedHash": "d1ad185ba3e37df51facf7dab8fcde628b85d65a9ca4657a53da7b5f4a3b8c2e"
+    },
+    "cosmos-dbt-fusion": {
+      "source": "astronomer/agents",
+      "sourceType": "github",
+      "computedHash": "8a7420eed14a060ee91ceab05354d7b454c11d3575393b6de08b0da7ea02868a"
+    },
+    "creating-openlineage-extractors": {
+      "source": "astronomer/agents",
+      "sourceType": "github",
+      "computedHash": "142d2e445ace253f02ba332d8d75c5a653d20c07ebb80eed61729683f2215967"
+    },
+    "debugging-dags": {
+      "source": "astronomer/agents",
+      "sourceType": "github",
+      "computedHash": "e6b5df62fdbcec521a8651b29b020ad46cb41cf17ff0a3c4c02e944171acf64d"
+    },
+    "managing-astro-deployments": {
+      "source": "astronomer/agents",
+      "sourceType": "github",
+      "computedHash": "4307a74de267dda4637460a39737225fb6363d52de6a001d4e617b56e57d2eec"
+    },
+    "managing-astro-local-env": {
+      "source": "astronomer/agents",
+      "sourceType": "github",
+      "computedHash": "613280fa9ede316bd27a717b8f420f86aba516aa48d8f28b22ab0512137ef912"
+    },
+    "migrating-airflow-2-to-3": {
+      "source": "astronomer/agents",
+      "sourceType": "github",
+      "computedHash": "bd144f4e5e982905f01bd1b9cb8d14ba6b7d3692b5270ccba5fb9b27ad431910"
+    },
+    "profiling-tables": {
+      "source": "astronomer/agents",
+      "sourceType": "github",
+      "computedHash": "a999e9c1c5d16267372ffe216229839ae9ebaef3cae37ce673a8c0a8af796ea3"
+    },
+    "setting-up-astro-project": {
+      "source": "astronomer/agents",
+      "sourceType": "github",
+      "computedHash": "2b455b53e68e5288fb8e831253420651593c7f2d0d814d144e50a015f02653e7"
+    },
+    "testing-dags": {
+      "source": "astronomer/agents",
+      "sourceType": "github",
+      "computedHash": "5576143da415baae2a195c64ee847c984c8a80ac314dc46a711d34c73066f20c"
+    },
+    "tracing-downstream-lineage": {
+      "source": "astronomer/agents",
+      "sourceType": "github",
+      "computedHash": "11493c71e938e19b5c603103c2650e0155e008eb7f6f7d61242f60e97a8b0eec"
+    },
+    "tracing-upstream-lineage": {
+      "source": "astronomer/agents",
+      "sourceType": "github",
+      "computedHash": "e0c099ff1b9cdaf5418c1720ff7649c6094b3911deb157d756ad3c0c449f7dfe"
+    },
+    "troubleshooting-astro-deployments": {
+      "source": "astronomer/agents",
+      "sourceType": "github",
+      "computedHash": "b5b14dbdc6dabcddab5dd497cda33b07d2864f83cd733270f633176d9452a4ef"
+    },
+    "warehouse-init": {
+      "source": "astronomer/agents",
+      "sourceType": "github",
+      "computedHash": "ad743d363e0e0ad65793347ae92485b740229c61cf1bfae0efb709a14394e891"
+    }
+  }
+}

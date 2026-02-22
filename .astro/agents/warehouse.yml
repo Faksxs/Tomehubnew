@@ -1,0 +1,49 @@
+# TomeHub Data Warehouse Configuration
+# Generated: 2026-02-22
+
+tomehub:
+  type: oracle
+  host: ${ORACLE_HOST}
+  port: 1521
+  service_name: FCE4GECR
+  user: ${ORACLE_USER}
+  password: ${ORACLE_PASSWORD}
+  wallet_location: apps/backend/wallet
+  
+  # Databases for discovery
+  databases:
+    - FCE4GECR
+  
+  # Key tables for analytics
+  key_tables:
+    - TOMEHUB_CONTENT
+    - TOMEHUB_SEARCH_LOGS
+    - TOMEHUB_CONCEPTS
+    - TOMEHUB_BOOKS
+    - TOMEHUB_RELATIONS
+    - TOMEHUB_CHAT_SESSIONS
+  
+  # Column mappings for common patterns
+  concepts:
+    search_queries:
+      table: TOMEHUB_SEARCH_LOGS
+      date_column: CREATED_AT
+      user_column: FIREBASE_UID
+      
+    content_chunks:
+      table: TOMEHUB_CONTENT
+      date_column: CREATED_AT
+      user_column: FIREBASE_UID
+      
+    concepts:
+      table: TOMEHUB_CONCEPTS
+      description: Knowledge graph entities
+      
+    books:
+      table: TOMEHUB_BOOKS
+      user_column: FIREBASE_UID
+  
+  # Environment
+  environment: production
+  character_set: AL32UTF8
+  timezone: UTC

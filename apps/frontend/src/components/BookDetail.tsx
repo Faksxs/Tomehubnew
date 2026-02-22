@@ -155,7 +155,13 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
 
   const readingConfig = !isNote ? getReadingStatusConfig(book.readingStatus) : null;
   const physicalConfig = !isNote ? getPhysicalStatusConfig(book.status) : null;
-  const pdfIndexed = pdfStatus?.status === 'COMPLETED';
+  const pdfMatchedDifferentBook = Boolean(
+    pdfStatus?.status === 'COMPLETED' &&
+    pdfStatus?.matched_by_title &&
+    pdfStatus?.resolved_book_id &&
+    String(pdfStatus.resolved_book_id) !== String(book.id)
+  );
+  const pdfIndexed = pdfStatus?.status === 'COMPLETED' && !pdfMatchedDifferentBook;
   const pdfProcessing = pdfStatus?.status === 'PROCESSING';
   const pdfFailed = pdfStatus?.status === 'FAILED';
   const pdfDisableUpload = pdfIndexed || pdfProcessing || isIngesting;
@@ -186,13 +192,19 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
         if (cancelled) return;
         setPdfStatus(status);
         setPdfStatusError(null);
-        const shouldBeIngested = status.status === 'COMPLETED';
+        const matchedDifferentBook = Boolean(
+          status.status === 'COMPLETED' &&
+          status.matched_by_title &&
+          status.resolved_book_id &&
+          String(status.resolved_book_id) !== String(book.id)
+        );
+        const shouldBeIngested = status.status === 'COMPLETED' && !matchedDifferentBook;
         if (book.isIngested !== shouldBeIngested) {
           const updated = { ...book, isIngested: shouldBeIngested };
           await saveItemForUser(user.uid, updated);
           onBookUpdated?.(updated);
         }
-        if (status.status === 'COMPLETED') {
+        if (status.status === 'COMPLETED' && !matchedDifferentBook) {
           onIngestSuccess?.();
         }
         if (status.status === 'PROCESSING') {
@@ -467,6 +479,11 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                       : 'PDF indexlendi'}
                   </div>
                 )}
+                {pdfMatchedDifferentBook && (
+                  <div className="mt-2 text-[10px] text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1 animate-in fade-in slide-in-from-top-1">
+                    <AlertTriangle size={10} /> Ayni baslikta baska bir kaydin PDF'i bulundu; bu kayit icin indexli sayilmadi.
+                  </div>
+                )}
                 {ingestError && (
                   <div className="mt-2 text-[10px] text-red-600 dark:text-red-400 font-medium flex items-center gap-1 animate-in fade-in slide-in-from-top-1">
                     <AlertCircle size={10} /> {ingestError}
@@ -587,7 +604,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                       </div>
                     )}
 
-                    {pdfStatus && pdfStatus.status !== 'NOT_FOUND' && (
+                    {pdfStatus && pdfStatus.status !== 'NOT_FOUND' && !pdfMatchedDifferentBook && (
                       <div className="flex flex-col gap-0.5 md:gap-1">
                         <span className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400">PDF</span>
                         <span className="text-sm font-medium text-slate-800 dark:text-slate-200">

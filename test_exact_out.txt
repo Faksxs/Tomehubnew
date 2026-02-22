@@ -1,0 +1,14 @@
+Found UID: vpq1p0UzcCSLAh1d18WgZZWPBE63
+
+--- ExactMatchStrategy ---
+ExactMatchStrategy returned 3 results.
+Title: İslam Felsefesi Üzerine - Ahmet Arslan, Match Type: exact_deaccented, ID: 8887
+Title: Kırk Ambar 2 - Cemil Meriç, Match Type: exact_deaccented, ID: 4813
+Title: Hayatın Anlamı - Terry Eagleton, Match Type: exact_deaccented, ID: 4336
+
+--- Orchestrator (ALL_NOTES) ---
+Orch exact count: 0
+Orch semantic count: 0
+1. Title: İslam Felsefesi Üzerine - Ahmet Arslan, Match: exact_deaccented, ID: 8887
+2. Title: Kırk Ambar 2 - Cemil Meriç, Match: exact_deaccented, ID: 4813
+3. Title: Hayatın Anlamı - Terry Eagleton, Match: exact_deaccented, ID: 4336
