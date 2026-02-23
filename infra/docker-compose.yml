@@ -14,7 +14,7 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "5000:5000"
+      # Port 5000 intentionally NOT exposed — only accessible via Caddy (80/443)
     env_file:
       - ../apps/backend/.env
     environment:
