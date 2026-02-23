@@ -10,6 +10,19 @@ from services.epistemic_service import classify_question_intent
 
 logger = logging.getLogger(__name__)
 
+# Overall timeout budgets per answer mode (seconds)
+TIMEOUT_BUDGET = {
+    "SYNTHESIS": 5.0,       # Fast synthesis
+    "QUOTE": 3.0,           # Shortest
+    "DIRECT": 3.0,          # Direct lookup
+    "CITATION_SEEKING": 2.5,  # Quick reference finding
+    "FOLLOW_UP": 4.0,       # Follow-up (with context)
+    "COMPARATIVE": 7.0,     # Comparison needs analysis
+    "EXPLORER": 25.0,       # Exploratory (max time)
+    "NARRATIVE": 6.0,       # Narrative building
+    "SOCIETAL": 8.0,        # Complex societal analysis
+}
+
 async def generate_evaluated_answer(
     question: str,
     chunks: List[Dict],
@@ -22,9 +35,16 @@ async def generate_evaluated_answer(
 ) -> Dict[str, Any]:
     """
     Generate and evaluate an answer with automatic quality-based retry.
+    
+    NOTE: Critical timeout gates prevent hanging queries:
+    - Single answer generation: answer_mode-specific timeout
+    - Overall orchestration: budget-based timeout
     """
     start_time = time.time()
     history = []
+    
+    # Get timeout budget for this answer mode
+    overall_timeout_s = TIMEOUT_BUDGET.get(answer_mode or "SYNTHESIS", 5.0)
     
     # Pre-detect intent for consistency across Work/Judge (with caching)
     try:
@@ -95,18 +115,22 @@ async def generate_evaluated_answer(
     if not should_audit:
         logger.info(f"[DualAI] Fast Track Activated ({reason}) - Skipping Judge AI")
         
-        # Fast Track Execution (Single Pass)
+        # Fast Track Execution (Single Pass) with timeout
         try:
-            work_result = await generate_work_ai_answer(
-                question=question,
-                chunks=chunks,
-                answer_mode=answer_mode,
-                confidence_score=confidence_score,
-                feedback_hints=None,
-                network_status=network_status,
-                conversation_state=conversation_state,
-                allow_pro_fallback=False,
-                fallback_state=fallback_state,
+            # Apply timeout gate to prevent hanging
+            work_result = await asyncio.wait_for(
+                generate_work_ai_answer(
+                    question=question,
+                    chunks=chunks,
+                    answer_mode=answer_mode,
+                    confidence_score=confidence_score,
+                    feedback_hints=None,
+                    network_status=network_status,
+                    conversation_state=conversation_state,
+                    allow_pro_fallback=False,
+                    fallback_state=fallback_state,
+                ),
+                timeout=overall_timeout_s
             )
             
             # Construct a "SKIPPED_GOOD" verification result
@@ -158,18 +182,34 @@ async def generate_evaluated_answer(
             # 1. Work AI Generation
             logger.info(f"[DualAI] Starting Work AI Generation (Attempt {attempt})")
             try:
-                work_result = await generate_work_ai_answer(
-                    question=question,
-                    chunks=chunks,
-                    answer_mode=answer_mode,
-                    confidence_score=confidence_score,
-                    feedback_hints=current_hints,
-                    network_status=network_status,
-                    conversation_state=conversation_state,
-                    allow_pro_fallback=(attempt == effective_max_attempts and bool(current_hints)),
-                    fallback_state=fallback_state,
+                # Apply timeout gate with remaining budget
+                elapsed = time.time() - start_time
+                remaining_timeout = max(1.0, overall_timeout_s - elapsed)
+                
+                work_result = await asyncio.wait_for(
+                    generate_work_ai_answer(
+                        question=question,
+                        chunks=chunks,
+                        answer_mode=answer_mode,
+                        confidence_score=confidence_score,
+                        feedback_hints=current_hints,
+                        network_status=network_status,
+                        conversation_state=conversation_state,
+                        allow_pro_fallback=(attempt == effective_max_attempts and bool(current_hints)),
+                        fallback_state=fallback_state,
+                    ),
+                    timeout=remaining_timeout
                 )
                 answer_text = work_result["answer"]
+            except asyncio.TimeoutError:
+                logger.error(f"[DualAI] Work AI timeout after {time.time() - start_time:.2f}s (Attempt {attempt})")
+                if attempt < effective_max_attempts:
+                    continue  # Retry with timeout-aware fallback
+                return _create_error_response(
+                    TimeoutError(f"LLM generation timeout exceeded ({overall_timeout_s}s budget)"),
+                    max_attempts_configured=max_attempts,
+                    max_attempts_effective=effective_max_attempts
+                )
             except Exception as e:
                 logger.error(f"[DualAI] Work AI failed: {e}")
                 if attempt < effective_max_attempts:

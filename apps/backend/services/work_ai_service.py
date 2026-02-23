@@ -198,10 +198,17 @@ async def generate_work_ai_answer(
         # Explorer tuning: Allow comprehensive dialectical analysis
         # Standard uses 2800, Explorer needs more room for multi-stage reasoning
         max_output_tokens = 2048
-        llm_timeout_s = None
+        # CRITICAL: Default timeout for all modes to prevent hangs
+        # Baseline: 3s for SYNTHESIS (most common), 16s for EXPLORER
+        llm_timeout_s = 3.0  # Timeout for SYNTHESIS, QUOTE, CITATION_SEEKING, etc.
+        
         if answer_mode == 'EXPLORER':
             max_output_tokens = 3000  # Allow full dialectical response structure
-            llm_timeout_s = 16.0  # Proportional timeout increase
+            llm_timeout_s = 16.0  # Proportional timeout increase for EXPLORER
+        elif answer_mode == 'CITATION_SEEKING':
+            llm_timeout_s = 2.5  # CITATION_SEEKING is usually quick
+        elif answer_mode == 'COMPARATIVE':
+            llm_timeout_s = 5.0  # COMPARATIVE needs more time for analysis
 
         result = await asyncio.to_thread(
             generate_text,

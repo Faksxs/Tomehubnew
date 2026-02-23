@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Diagnostic: Find all highlights containing 'kader' in Oracle DB."""
+"""Find orphaned highlights (no matching TOMEHUB_BOOKS entry)."""
 import sys
 sys.path.insert(0, '/app')
 from infrastructure.db_manager import DatabaseManager
@@ -8,53 +8,51 @@ DatabaseManager.init_pool()
 conn = DatabaseManager.get_read_connection()
 cursor = conn.cursor()
 
-# Search ALL content types for 'kader'
+# Find highlights with 'kader' that DON'T join to TOMEHUB_BOOKS
 cursor.execute("""
-    SELECT b.TITLE, c.SOURCE_TYPE, c.BOOK_ID,
-           DBMS_LOB.SUBSTR(c.CONTENT, 120, 1) AS snippet
+    SELECT c.TITLE, c.SOURCE_TYPE, c.BOOK_ID,
+           SUBSTR(c.CONTENT_CHUNK, 1, 100) AS snippet
     FROM TOMEHUB_CONTENT c
-    JOIN TOMEHUB_BOOKS b ON c.BOOK_ID = b.ID AND c.FIREBASE_UID = b.FIREBASE_UID
-    WHERE LOWER(DBMS_LOB.SUBSTR(c.CONTENT, 4000, 1)) LIKE '%kader%'
-    ORDER BY c.SOURCE_TYPE, b.TITLE
-""")
-rows = cursor.fetchall()
-
-print(f"\n=== ALL content with 'kader': {len(rows)} rows ===")
-by_type = {}
-for r in rows:
-    t = r[1]
-    by_type.setdefault(t, []).append(r)
-
-for source_type, items in sorted(by_type.items()):
-    print(f"\n--- {source_type} ({len(items)}) ---")
-    for r in items:
-        print(f"  [{r[2][:8]}] {r[0]}: {str(r[3])[:100]}")
-
-# Now check specifically HIGHLIGHT and INSIGHT
-cursor.execute("""
-    SELECT COUNT(*) FROM TOMEHUB_CONTENT
-    WHERE SOURCE_TYPE IN ('HIGHLIGHT', 'INSIGHT')
-    AND LOWER(DBMS_LOB.SUBSTR(CONTENT, 4000, 1)) LIKE '%kader%'
-""")
-hl_count = cursor.fetchone()[0]
-print(f"\n=== HIGHLIGHT+INSIGHT with 'kader': {hl_count} ===")
-
-# Check total highlights per book
-cursor.execute("""
-    SELECT b.TITLE, COUNT(*) as cnt
-    FROM TOMEHUB_CONTENT c
-    JOIN TOMEHUB_BOOKS b ON c.BOOK_ID = b.ID AND c.FIREBASE_UID = b.FIREBASE_UID
     WHERE c.SOURCE_TYPE IN ('HIGHLIGHT', 'INSIGHT')
-    GROUP BY b.TITLE
+    AND LOWER(c.CONTENT_CHUNK) LIKE '%kader%'
+    AND c.BOOK_ID NOT IN (SELECT ID FROM TOMEHUB_BOOKS)
+    ORDER BY c.TITLE
+""")
+orphans = cursor.fetchall()
+print(f"\n=== ORPHANED highlights with 'kader' (no TOMEHUB_BOOKS entry): {len(orphans)} ===")
+for r in orphans:
+    print(f"  [{r[1]}] title={r[0]} book_id={r[2]}")
+    print(f"    snippet: {str(r[3])[:100]}")
+
+# Also check: how many total orphaned highlights exist?
+cursor.execute("""
+    SELECT COUNT(*) FROM TOMEHUB_CONTENT c
+    WHERE c.SOURCE_TYPE IN ('HIGHLIGHT', 'INSIGHT')
+    AND c.BOOK_ID NOT IN (SELECT ID FROM TOMEHUB_BOOKS)
+""")
+total_orphans = cursor.fetchone()[0]
+print(f"\n=== TOTAL orphaned highlights (all books): {total_orphans} ===")
+
+# List all unique book_ids that are orphaned
+cursor.execute("""
+    SELECT c.BOOK_ID, c.TITLE, COUNT(*) as cnt
+    FROM TOMEHUB_CONTENT c
+    WHERE c.SOURCE_TYPE IN ('HIGHLIGHT', 'INSIGHT')
+    AND c.BOOK_ID NOT IN (SELECT ID FROM TOMEHUB_BOOKS)
+    GROUP BY c.BOOK_ID, c.TITLE
     ORDER BY cnt DESC
 """)
-rows2 = cursor.fetchall()
-print(f"\n=== Total highlights per book ===")
-total = 0
-for r in rows2:
-    print(f"  {r[0]}: {r[1]}")
-    total += r[1]
-print(f"  GRAND TOTAL: {total}")
+orphan_books = cursor.fetchall()
+print(f"\n=== Orphaned book_ids ({len(orphan_books)} unique) ===")
+for r in orphan_books:
+    print(f"  book_id={r[0]} title={r[1]} highlights={r[2]}")
+
+# Also check Layer 2 search path — what does the search API actually query?
+cursor.execute("""
+    SELECT COUNT(*) FROM TOMEHUB_BOOKS
+""")
+book_count = cursor.fetchone()[0]
+print(f"\n=== TOMEHUB_BOOKS total: {book_count} ===")
 
 cursor.close()
 conn.close()
