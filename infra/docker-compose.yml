@@ -5,6 +5,7 @@ version: '3.8'
 
 services:
   backend:
+    image: ams.ocir.io/axrluoxw8q8k/tomehub/backend:latest
     build:
       context: ../apps/backend
       dockerfile: Dockerfile
