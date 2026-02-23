@@ -186,6 +186,9 @@ def perform_search(
     session_id=None,
     result_mix_policy=None,
     semantic_tail_cap=None,
+    visibility_scope: str = "default",
+    content_type=None,
+    ingestion_type=None,
 ):
     """
     Search - Layer 2
@@ -213,6 +216,9 @@ def perform_search(
             session_id=session_id,
             result_mix_policy=result_mix_policy,
             semantic_tail_cap=semantic_tail_cap,
+            visibility_scope=visibility_scope,
+            content_type=content_type,
+            ingestion_type=ingestion_type,
         )
         
         if result is None:

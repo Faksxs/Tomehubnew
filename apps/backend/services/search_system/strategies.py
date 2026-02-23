@@ -79,6 +79,23 @@ def _contains_inner_substring_only(haystack_text: str, query_text: str) -> bool:
         return False
     return not _contains_lemma_stem_boundary(haystack_text, query_text)
 
+
+def _escape_like_literal(value: str, escape_char: str = "\\") -> str:
+    """
+    Escape Oracle LIKE wildcard characters so user query is treated as literal text.
+    """
+    raw = str(value or "")
+    esc = str(escape_char or "\\")
+    # Order matters: escape the escape char first.
+    raw = raw.replace(esc, esc + esc)
+    raw = raw.replace("%", esc + "%")
+    raw = raw.replace("_", esc + "_")
+    return raw
+
+
+def _contains_like_pattern(value: str, escape_char: str = "\\") -> str:
+    return f"%{_escape_like_literal(value, escape_char=escape_char)}%"
+
 class SearchStrategy:
     def search(self, query: str, firebase_uid: str, limit: int = 100, offset: int = 0, **kwargs) -> List[Dict[str, Any]]:
         raise NotImplementedError
@@ -120,6 +137,40 @@ def _apply_book_id_filter(sql: str, params: Dict[str, Any], book_id: Optional[st
     return (sql, params)
 
 
+def _normalize_visibility_scope(visibility_scope: Optional[str]) -> str:
+    scope = str(visibility_scope or "default").strip().lower()
+    if scope not in {"default", "all"}:
+        return "default"
+    return scope
+
+
+def _apply_visibility_filter(sql: str, params: Dict[str, Any], visibility_scope: Optional[str]) -> tuple:
+    scope = _normalize_visibility_scope(visibility_scope)
+    if scope == "all":
+        sql += " AND NVL(search_visibility, 'DEFAULT') <> 'NEVER_RETRIEVE' "
+        return (sql, params)
+    sql += " AND NVL(search_visibility, 'DEFAULT') = 'DEFAULT' "
+    return (sql, params)
+
+
+def _apply_content_type_filter(sql: str, params: Dict[str, Any], content_type: Optional[str]) -> tuple:
+    ct = str(content_type or "").strip().upper()
+    if not ct:
+        return (sql, params)
+    sql += " AND CONTENT_TYPE = :p_content_type "
+    params["p_content_type"] = ct
+    return (sql, params)
+
+
+def _apply_ingestion_type_filter(sql: str, params: Dict[str, Any], ingestion_type: Optional[str]) -> tuple:
+    it = str(ingestion_type or "").strip().upper()
+    if not it:
+        return (sql, params)
+    sql += " AND INGESTION_TYPE = :p_ingestion_type "
+    params["p_ingestion_type"] = it
+    return (sql, params)
+
+
 def _should_exclude_pdf_in_first_pass(resource_type: Optional[str], book_id: Optional[str]) -> bool:
     # Scoped retrieval should never hide PDF chunks in first pass.
     if str(book_id or "").strip():
@@ -146,6 +197,9 @@ class ExactMatchStrategy(SearchStrategy):
         offset: int = 0,
         resource_type: Optional[str] = None,
         book_id: Optional[str] = None,
+        visibility_scope: Optional[str] = None,
+        content_type: Optional[str] = None,
+        ingestion_type: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         try:
             with DatabaseManager.get_read_connection() as conn:
@@ -161,23 +215,24 @@ class ExactMatchStrategy(SearchStrategy):
                         WHERE firebase_uid = :p_uid
                     """
                     
-                    # Manual interpolation to bypass ORA-01745 persistent bind error
-                    safe_term = q_deaccented.replace("'", "''")
-                    
                     params = {
                         "p_uid": firebase_uid, 
                         "p_candidate_limit": candidate_limit,
+                        "p_exact_like": _contains_like_pattern(q_deaccented),
                     }
                     
                     sql, params = _apply_resource_type_filter(sql, params, resource_type)
                     sql, params = _apply_book_id_filter(sql, params, book_id)
+                    sql, params = _apply_visibility_filter(sql, params, visibility_scope)
+                    sql, params = _apply_content_type_filter(sql, params, content_type)
+                    sql, params = _apply_ingestion_type_filter(sql, params, ingestion_type)
                     
                     # 1. TRY FIRST: Search without PDF (exclude raw PDF content)
                     if _should_exclude_pdf_in_first_pass(resource_type, book_id):
                         sql += " AND source_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK') "
                     
-                    # 2. SEARCH CONDITION (Inlined values)
-                    sql += f" AND text_deaccented LIKE '%{safe_term}%' "
+                    # 2. SEARCH CONDITION (bind-safe; escape LIKE wildcards)
+                    sql += " AND text_deaccented LIKE :p_exact_like ESCAPE '\\' "
 
                     # 3. Simple Sort (Priority handled in Orchestrator)
                     sql += """
@@ -198,7 +253,10 @@ class ExactMatchStrategy(SearchStrategy):
                             FROM TOMEHUB_CONTENT
                             WHERE firebase_uid = :p_uid
                         """
-                        sql_with_pdf += f" AND text_deaccented LIKE '%{safe_term}%' "
+                        sql_with_pdf += " AND text_deaccented LIKE :p_exact_like ESCAPE '\\' "
+                        sql_with_pdf, params = _apply_visibility_filter(sql_with_pdf, params, visibility_scope)
+                        sql_with_pdf, params = _apply_content_type_filter(sql_with_pdf, params, content_type)
+                        sql_with_pdf, params = _apply_ingestion_type_filter(sql_with_pdf, params, ingestion_type)
                         sql_with_pdf += """
                             ORDER BY id DESC
                             FETCH FIRST :p_candidate_limit ROWS ONLY
@@ -249,6 +307,9 @@ class LemmaMatchStrategy(SearchStrategy):
         offset: int = 0,
         resource_type: Optional[str] = None,
         book_id: Optional[str] = None,
+        visibility_scope: Optional[str] = None,
+        content_type: Optional[str] = None,
+        ingestion_type: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         lemmas = _filter_query_lemmas(get_lemmas(query))
         if not lemmas:
@@ -271,6 +332,9 @@ class LemmaMatchStrategy(SearchStrategy):
                     
                     sql, params = _apply_resource_type_filter(sql, params, resource_type)
                     sql, params = _apply_book_id_filter(sql, params, book_id)
+                    sql, params = _apply_visibility_filter(sql, params, visibility_scope)
+                    sql, params = _apply_content_type_filter(sql, params, content_type)
+                    sql, params = _apply_ingestion_type_filter(sql, params, ingestion_type)
 
                     # 1. TRY FIRST: Search without PDF (exclude raw PDF content)
                     if _should_exclude_pdf_in_first_pass(resource_type, book_id):
@@ -310,6 +374,9 @@ class LemmaMatchStrategy(SearchStrategy):
                         
                         if lemma_conditions_fb:
                             sql_with_pdf += " AND (" + " OR ".join(lemma_conditions_fb) + ")"
+                        sql_with_pdf, params = _apply_visibility_filter(sql_with_pdf, params, visibility_scope)
+                        sql_with_pdf, params = _apply_content_type_filter(sql_with_pdf, params, content_type)
+                        sql_with_pdf, params = _apply_ingestion_type_filter(sql_with_pdf, params, ingestion_type)
                         
                         sql_with_pdf += """
                              ORDER BY id DESC
@@ -377,6 +444,9 @@ class SemanticMatchStrategy(SearchStrategy):
         intent: str = 'SYNTHESIS',
         resource_type: Optional[str] = None,
         book_id: Optional[str] = None,
+        visibility_scope: Optional[str] = None,
+        content_type: Optional[str] = None,
+        ingestion_type: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         emb = self.get_embedding(query)
         if not emb:
@@ -400,6 +470,9 @@ class SemanticMatchStrategy(SearchStrategy):
                         
                         sql, params = _apply_resource_type_filter(sql, params, resource_type)
                         sql, params = _apply_book_id_filter(sql, params, book_id)
+                        sql, params = _apply_visibility_filter(sql, params, visibility_scope)
+                        sql, params = _apply_content_type_filter(sql, params, content_type)
+                        sql, params = _apply_ingestion_type_filter(sql, params, ingestion_type)
 
                         # Apply PDF exclusion filter if requested and no resource_type
                         if exclude_pdf and _should_exclude_pdf_in_first_pass(resource_type, book_id):

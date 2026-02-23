@@ -90,6 +90,9 @@ class SearchOrchestrator:
         session_id: Optional[int | str] = None,
         result_mix_policy: Optional[str] = None,
         semantic_tail_cap: Optional[int] = None,
+        visibility_scope: str = "default",
+        content_type: Optional[str] = None,
+        ingestion_type: Optional[str] = None,
     ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         start_time = time.time()
         query_original = query or ""
@@ -166,6 +169,9 @@ class SearchOrchestrator:
             cache_key += f"_typo:{int(getattr(settings, 'SEARCH_TYPO_RESCUE_ENABLED', True))}"
             cache_key += f"_lemseed:{int(getattr(settings, 'SEARCH_LEMMA_SEED_FALLBACK_ENABLED', True))}"
             cache_key += f"_dyntail:{int(getattr(settings, 'SEARCH_DYNAMIC_SINGLE_TOKEN_SEMANTIC_CAP_ENABLED', True))}"
+            cache_key += f"_vis:{(visibility_scope or 'default')}"
+            cache_key += f"_ct:{(content_type or 'none')}"
+            cache_key += f"_it:{(ingestion_type or 'none')}"
             
             cached_payload = self.cache.get(cache_key)
             if cached_payload:
@@ -183,6 +189,8 @@ class SearchOrchestrator:
                     cached_meta = {}
                 meta = {
                     "cached": True,
+                    "CACHE_HIT": True,
+                    "CACHE_LAYER": "L1_OR_L2",
                     "search_log_id": None,
                     "total_count": total_count,
                     "retrieval_fusion_mode": settings.RETRIEVAL_FUSION_MODE,
@@ -209,10 +217,12 @@ class SearchOrchestrator:
         exact_strat = next((s for s in self.strategies if isinstance(s, ExactMatchStrategy)), None)
         lemma_strat = next((s for s in self.strategies if isinstance(s, LemmaMatchStrategy)), None)
         semantic_strat = next((s for s in self.strategies if isinstance(s, SemanticMatchStrategy)), None)
+        strategy_timing_ms: Dict[str, int] = {}
         
         executor = ThreadPoolExecutor(max_workers=6)
         try:
             future_map = {}
+            future_started_at: Dict[Any, float] = {}
             
             # A. Start Expansion
             expansion_variation_limit = int(
@@ -242,30 +252,36 @@ class SearchOrchestrator:
 
                 executed_strategies.append(label)
                 if isinstance(strat, SemanticMatchStrategy):
-                    future_map[
-                        executor.submit(
-                            strat.search,
-                            query,
-                            firebase_uid,
-                            semantic_fetch_limit,
-                            0,
-                            intent=intent,
-                            resource_type=resource_type,
-                            book_id=book_id,
-                        )
-                    ] = strat
+                    fut = executor.submit(
+                        strat.search,
+                        query,
+                        firebase_uid,
+                        semantic_fetch_limit,
+                        0,
+                        intent=intent,
+                        resource_type=resource_type,
+                        book_id=book_id,
+                        visibility_scope=visibility_scope,
+                        content_type=content_type,
+                        ingestion_type=ingestion_type,
+                    )
+                    future_map[fut] = strat
+                    future_started_at[fut] = time.perf_counter()
                 else:
-                    future_map[
-                        executor.submit(
-                            strat.search,
-                            query,
-                            firebase_uid,
-                            internal_pool_limit,
-                            0,
-                            resource_type=resource_type,
-                            book_id=book_id,
-                        )
-                    ] = strat
+                    fut = executor.submit(
+                        strat.search,
+                        query,
+                        firebase_uid,
+                        internal_pool_limit,
+                        0,
+                        resource_type=resource_type,
+                        book_id=book_id,
+                        visibility_scope=visibility_scope,
+                        content_type=content_type,
+                        ingestion_type=ingestion_type,
+                    )
+                    future_map[fut] = strat
+                    future_started_at[fut] = time.perf_counter()
             
             # C. Collect Results & Bucket
             for future in list(future_map.keys()):
@@ -273,6 +289,9 @@ class SearchOrchestrator:
                 label = strat.__class__.__name__
                 try:
                     res = future.result()
+                    started = future_started_at.get(future)
+                    if started is not None:
+                        strategy_timing_ms[label] = int((time.perf_counter() - started) * 1000)
                     if res:
                         if isinstance(strat, ExactMatchStrategy):
                             bucket_exact.extend(res)
@@ -314,22 +333,30 @@ class SearchOrchestrator:
                 variation_fetch_limit = max(12, semantic_fetch_limit // 2)
                 for i, var_query in enumerate(variations):
                     label = "SemanticMatchStrategy_Var"
-                    variation_futures[
-                        executor.submit(
-                            semantic_strat.search,
-                            var_query,
-                            firebase_uid,
-                            variation_fetch_limit,
-                            0,
-                            intent=intent,
-                            resource_type=resource_type,
-                            book_id=book_id,
-                        )
-                    ] = label
+                    fut = executor.submit(
+                        semantic_strat.search,
+                        var_query,
+                        firebase_uid,
+                        variation_fetch_limit,
+                        0,
+                        intent=intent,
+                        resource_type=resource_type,
+                        book_id=book_id,
+                        visibility_scope=visibility_scope,
+                        content_type=content_type,
+                        ingestion_type=ingestion_type,
+                    )
+                    variation_futures[fut] = label
+                    future_started_at[fut] = time.perf_counter()
                 
                 for future in variation_futures:
                     try:
                         res = future.result()
+                        started = future_started_at.get(future)
+                        if started is not None:
+                            strategy_timing_ms["SemanticMatchStrategy_Var"] = strategy_timing_ms.get(
+                                "SemanticMatchStrategy_Var", 0
+                            ) + int((time.perf_counter() - started) * 1000)
                         if res:
                             bucket_semantic.extend(res)
                             semantic_variation_hits += len(res)
@@ -370,6 +397,9 @@ class SearchOrchestrator:
                         0,
                         resource_type=resource_type,
                         book_id=book_id,
+                        visibility_scope=visibility_scope,
+                        content_type=content_type,
+                        ingestion_type=ingestion_type,
                     )
                     if rescue_exact:
                         bucket_exact.extend(rescue_exact)
@@ -383,6 +413,9 @@ class SearchOrchestrator:
                         0,
                         resource_type=resource_type,
                         book_id=book_id,
+                        visibility_scope=visibility_scope,
+                        content_type=content_type,
+                        ingestion_type=ingestion_type,
                     )
                     if rescue_lemma:
                         bucket_lemma.extend(rescue_lemma)
@@ -422,6 +455,9 @@ class SearchOrchestrator:
                             0,
                             resource_type=resource_type,
                             book_id=book_id,
+                            visibility_scope=visibility_scope,
+                            content_type=content_type,
+                            ingestion_type=ingestion_type,
                         )
                         for item in seed_hits:
                             patched = dict(item)
@@ -448,6 +484,9 @@ class SearchOrchestrator:
                     intent=intent,
                     resource_type=resource_type,
                     book_id=book_id,
+                    visibility_scope=visibility_scope,
+                    content_type=content_type,
+                    ingestion_type=ingestion_type,
                 )
                 if fallback_semantic:
                     bucket_semantic.extend(fallback_semantic)
@@ -725,10 +764,20 @@ class SearchOrchestrator:
             "query_correction_applied": query_correction_applied,
             "typo_rescue_applied": typo_rescue_applied,
             "lemma_seed_fallback_applied": lemma_seed_fallback_applied,
+            "visibility_scope": visibility_scope,
+            "content_type_filter": content_type,
+            "ingestion_type_filter": ingestion_type,
             "latency_budget_applied": latency_budget_applied,
             "graph_timeout_triggered": graph_timeout_triggered,
             "noise_guard_applied": noise_guard_applied,
             "expansion_skipped_reason": expansion_skipped_reason,
+            "strategy_timing_ms": strategy_timing_ms,
+            "VECTOR_TIME_MS": strategy_timing_ms.get("SemanticMatchStrategy"),
+            "GRAPH_TIME_MS": None,
+            "RERANK_TIME_MS": None,
+            "LLM_TIME_MS": None,
+            "CACHE_HIT": False,
+            "CACHE_LAYER": "MISS",
             "total_count": total_found,
             "duration_ms": int(duration * 1000),
         }
@@ -775,10 +824,20 @@ class SearchOrchestrator:
                             "query_correction_applied": query_correction_applied,
                             "typo_rescue_applied": typo_rescue_applied,
                             "lemma_seed_fallback_applied": lemma_seed_fallback_applied,
+                            "visibility_scope": visibility_scope,
+                            "content_type_filter": content_type,
+                            "ingestion_type_filter": ingestion_type,
                             "latency_budget_applied": latency_budget_applied,
                             "graph_timeout_triggered": graph_timeout_triggered,
                             "noise_guard_applied": noise_guard_applied,
                             "expansion_skipped_reason": expansion_skipped_reason,
+                            "strategy_timing_ms": strategy_timing_ms,
+                            "VECTOR_TIME_MS": strategy_timing_ms.get("SemanticMatchStrategy"),
+                            "GRAPH_TIME_MS": None,
+                            "RERANK_TIME_MS": None,
+                            "LLM_TIME_MS": None,
+                            "CACHE_HIT": False,
+                            "CACHE_LAYER": "MISS",
                         },
                     },
                     ttl=settings.CACHE_L1_TTL
@@ -811,10 +870,20 @@ class SearchOrchestrator:
             "query_correction_applied": query_correction_applied,
             "typo_rescue_applied": typo_rescue_applied,
             "lemma_seed_fallback_applied": lemma_seed_fallback_applied,
+            "visibility_scope": visibility_scope,
+            "content_type_filter": content_type,
+            "ingestion_type_filter": ingestion_type,
             "latency_budget_applied": latency_budget_applied,
             "graph_timeout_triggered": graph_timeout_triggered,
             "noise_guard_applied": noise_guard_applied,
             "expansion_skipped_reason": expansion_skipped_reason,
+            "strategy_timing_ms": strategy_timing_ms,
+            "VECTOR_TIME_MS": strategy_timing_ms.get("SemanticMatchStrategy"),
+            "GRAPH_TIME_MS": None,
+            "RERANK_TIME_MS": None,
+            "LLM_TIME_MS": None,
+            "CACHE_HIT": False,
+            "CACHE_LAYER": "MISS",
         }
 
         return top_candidates, metadata

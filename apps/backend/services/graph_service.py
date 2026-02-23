@@ -352,21 +352,39 @@ def get_graph_candidates(query_text: str, firebase_uid: str, limit: int = 15, of
                 # SQL to get both neighbors and their chunks
                 # This joins: ENTRY_IDS -> RELATIONS -> NEIGHBOR_CONCEPTS -> CHUNK_LINKS -> CHUNKS
                 
+                # ORA-22848 fix:
+                # `ct.content_chunk` is a CLOB and cannot participate in DISTINCT comparison.
+                # Deduplicate first on non-CLOB keys (including content_id), then fetch CLOB in outer select.
                 sql = """
-                    SELECT DISTINCT 
-                        ct.content_chunk, ct.page_number, ct.title, ct.source_type,
-                        c_neighbor.name as related_concept,
-                        r.rel_type,
-                        r.weight,
-                        cc.strength
-                    FROM TOMEHUB_RELATIONS r
-                    JOIN TOMEHUB_CONCEPTS c_neighbor ON (r.dst_id = c_neighbor.id OR r.src_id = c_neighbor.id)
-                    JOIN TOMEHUB_CONCEPT_CHUNKS cc ON c_neighbor.id = cc.concept_id
-                    JOIN TOMEHUB_CONTENT ct ON cc.content_id = ct.id
-                    WHERE (r.src_id IN ({SEQ}) OR r.dst_id IN ({SEQ}))
-                    AND ct.firebase_uid = :p_uid
-                    AND c_neighbor.id NOT IN ({SEQ}) 
-                    AND (cc.strength IS NULL OR cc.strength >= :p_strength)
+                    SELECT
+                        ct.content_chunk,
+                        gh.page_number,
+                        gh.title,
+                        gh.source_type,
+                        gh.related_concept,
+                        gh.rel_type,
+                        gh.weight,
+                        gh.strength
+                    FROM (
+                        SELECT DISTINCT
+                            ct.id AS content_id,
+                            ct.page_number,
+                            ct.title,
+                            ct.source_type,
+                            c_neighbor.name as related_concept,
+                            r.rel_type,
+                            r.weight,
+                            cc.strength
+                        FROM TOMEHUB_RELATIONS r
+                        JOIN TOMEHUB_CONCEPTS c_neighbor ON (r.dst_id = c_neighbor.id OR r.src_id = c_neighbor.id)
+                        JOIN TOMEHUB_CONCEPT_CHUNKS cc ON c_neighbor.id = cc.concept_id
+                        JOIN TOMEHUB_CONTENT ct ON cc.content_id = ct.id
+                        WHERE (r.src_id IN ({SEQ}) OR r.dst_id IN ({SEQ}))
+                        AND ct.firebase_uid = :p_uid
+                        AND c_neighbor.id NOT IN ({SEQ})
+                        AND (cc.strength IS NULL OR cc.strength >= :p_strength)
+                    ) gh
+                    JOIN TOMEHUB_CONTENT ct ON ct.id = gh.content_id
                     OFFSET :p_offset ROWS FETCH FIRST :p_limit ROWS ONLY
                 """
                 

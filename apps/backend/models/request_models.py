@@ -19,6 +19,10 @@ class SearchRequest(BaseModel):
     compare_mode: str = Field(default="EXPLICIT_ONLY")
     target_book_ids: Optional[List[str]] = None
     mode: str = Field(default="STANDARD")  # STANDARD or EXPLORER
+    include_private_notes: bool = False
+    visibility_scope: str = Field(default="default", max_length=32)
+    content_type: Optional[str] = Field(default=None, max_length=64)
+    ingestion_type: Optional[str] = Field(default=None, max_length=64)
     limit: int = Field(default=20, ge=1, le=100)
     offset: int = Field(default=0, ge=0, le=10000)
 
@@ -89,6 +93,22 @@ class SearchRequest(BaseModel):
             if len(normalized) >= _TARGET_BOOKS_MAX:
                 break
         return normalized or None
+
+    @field_validator("visibility_scope", mode="before")
+    @classmethod
+    def normalize_visibility_scope(cls, value: Optional[str]) -> str:
+        scope = str(value or "default").strip().lower()
+        if scope not in {"default", "all"}:
+            raise ValueError("visibility_scope must be 'default' or 'all'")
+        return scope
+
+    @field_validator("content_type", "ingestion_type", mode="before")
+    @classmethod
+    def normalize_optional_upper_enum(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        text = str(value).strip().upper()
+        return text or None
 
 
 class SearchResponse(BaseModel):

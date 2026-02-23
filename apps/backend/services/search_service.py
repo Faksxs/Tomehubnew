@@ -767,6 +767,73 @@ def _compute_quote_target_count(confidence_score: float, chunk_count: int) -> in
     return max(min_quotes, min(max_quotes, desired))
 
 
+def _read_search_log_strategy_details_json(cursor, search_log_id: int) -> Dict[str, Any]:
+    """Read STRATEGY_DETAILS safely, with fallback that avoids direct CLOB fetch edge cases."""
+    try:
+        cursor.execute(
+            """
+            SELECT STRATEGY_DETAILS
+            FROM TOMEHUB_SEARCH_LOGS
+            WHERE ID = :p_id
+            """,
+            {"p_id": search_log_id},
+        )
+        row = cursor.fetchone()
+        if not row or row[0] is None:
+            return {}
+        raw = safe_read_clob(row[0]) or "{}"
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception as err:
+        err_text = str(err)
+        # Oracle may reject certain direct CLOB access paths in some environments/drivers.
+        # Fallback to chunked DBMS_LOB.SUBSTR reads to avoid CLOB object handling.
+        if "ORA-22848" not in err_text:
+            raise
+
+        cursor.execute(
+            """
+            SELECT DBMS_LOB.GETLENGTH(STRATEGY_DETAILS)
+            FROM TOMEHUB_SEARCH_LOGS
+            WHERE ID = :p_id
+            """,
+            {"p_id": search_log_id},
+        )
+        len_row = cursor.fetchone()
+        total_len = int(len_row[0] or 0) if len_row else 0
+        if total_len <= 0:
+            return {}
+
+        chunks: List[str] = []
+        step = 32767
+        offset = 1
+        while offset <= total_len:
+            cursor.execute(
+                """
+                SELECT DBMS_LOB.SUBSTR(STRATEGY_DETAILS, :p_len, :p_off)
+                FROM TOMEHUB_SEARCH_LOGS
+                WHERE ID = :p_id
+                """,
+                {"p_len": step, "p_off": offset, "p_id": search_log_id},
+            )
+            part_row = cursor.fetchone()
+            if not part_row or part_row[0] is None:
+                break
+            part = part_row[0]
+            chunks.append(part if isinstance(part, str) else safe_read_clob(part))
+            offset += step
+
+        try:
+            parsed = json.loads("".join(chunks) or "{}")
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            logger.warning(
+                "Failed to parse STRATEGY_DETAILS via CLOB fallback id=%s (ORA-22848 path)",
+                search_log_id,
+            )
+            return {}
+
+
 def _append_search_log_diagnostics(search_log_id: Optional[int], diagnostics: Dict[str, Any]) -> None:
     if not search_log_id:
         return
@@ -775,29 +842,13 @@ def _append_search_log_diagnostics(search_log_id: Optional[int], diagnostics: Di
     try:
         with DatabaseManager.get_write_connection() as conn:
             with conn.cursor() as cursor:
+                payload: Dict[str, Any] = {}
                 try:
-                    cursor.execute(
-                        """
-                        SELECT STRATEGY_DETAILS
-                        FROM TOMEHUB_SEARCH_LOGS
-                        WHERE ID = :p_id
-                        """,
-                        {"p_id": search_log_id},
-                    )
-                    row = cursor.fetchone()
+                    payload = _read_search_log_strategy_details_json(cursor, int(search_log_id))
                 except Exception as col_err:
                     if "ORA-00904" in str(col_err):
                         return
-                    raise
-
-                payload: Dict[str, Any] = {}
-                if row and row[0] is not None:
-                    try:
-                        payload = json.loads(safe_read_clob(row[0]) or "{}")
-                        if not isinstance(payload, dict):
-                            payload = {}
-                    except Exception:
-                        payload = {}
+                    payload = {}
                 payload.update(diagnostics or {})
 
                 cursor.execute(
@@ -814,7 +865,7 @@ def _append_search_log_diagnostics(search_log_id: Optional[int], diagnostics: Di
             conn.commit()
     except Exception as e:
         logger.warning("Failed to append search log diagnostics id=%s: %s", search_log_id, e)
-def get_rag_context(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, mode: str = 'STANDARD', resource_type: Optional[str] = None, limit: Optional[int] = None, offset: int = 0, session_id: Optional[int | str] = None, scope_mode: str = "GLOBAL", apply_scope_policy: bool = False, compare_mode: Optional[str] = None, target_book_ids: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
+def get_rag_context(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, mode: str = 'STANDARD', resource_type: Optional[str] = None, limit: Optional[int] = None, offset: int = 0, session_id: Optional[int | str] = None, scope_mode: str = "GLOBAL", apply_scope_policy: bool = False, compare_mode: Optional[str] = None, target_book_ids: Optional[List[str]] = None, visibility_scope: str = "default", content_type: Optional[str] = None, ingestion_type: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
     Retrieves and processes context for RAG.
     Shared by Legacy Search and Dual-AI Chat.
@@ -889,6 +940,9 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
                     intent=intent, book_id=bid,
                     search_depth=search_depth,
                     resource_type=resource_type,
+                    visibility_scope=visibility_scope,
+                    content_type=content_type,
+                    ingestion_type=ingestion_type,
                     limit=per_book_limit,
                     offset=0,
                     session_id=session_id,
@@ -930,7 +984,20 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         search_depth = 'deep' if mode == 'EXPLORER' else 'normal'
         # When compare fan-out already ran, do a broad (no book_id) search to fill gaps
         effective_book_id = None if compare_applied else context_book_id
-        return perform_search(effective_query, firebase_uid, intent=intent, book_id=effective_book_id, search_depth=search_depth, resource_type=resource_type, limit=limit, offset=offset, session_id=session_id)
+        return perform_search(
+            effective_query,
+            firebase_uid,
+            intent=intent,
+            book_id=effective_book_id,
+            search_depth=search_depth,
+            resource_type=resource_type,
+            limit=limit,
+            offset=offset,
+            session_id=session_id,
+            visibility_scope=visibility_scope,
+            content_type=content_type,
+            ingestion_type=ingestion_type,
+        )
         
     def run_graph_search():
         try:
@@ -1138,6 +1205,9 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
                 firebase_uid,
                 intent=intent,
                 resource_type=resource_type,
+                visibility_scope=visibility_scope,
+                content_type=content_type,
+                ingestion_type=ingestion_type,
                 limit=kw_limit,
                 offset=0,
                 session_id=session_id,
@@ -1388,7 +1458,7 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
     }
 
 
-def generate_answer(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, session_summary: str = "", limit: Optional[int] = None, offset: int = 0, session_id: Optional[int | str] = None, resource_type: Optional[str] = None, scope_mode: str = "GLOBAL", apply_scope_policy: bool = False, compare_mode: Optional[str] = None, target_book_ids: Optional[List[str]] = None) -> Tuple[Optional[str], Optional[List[Dict]], Dict]:
+def generate_answer(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, session_summary: str = "", limit: Optional[int] = None, offset: int = 0, session_id: Optional[int | str] = None, resource_type: Optional[str] = None, scope_mode: str = "GLOBAL", apply_scope_policy: bool = False, compare_mode: Optional[str] = None, target_book_ids: Optional[List[str]] = None, visibility_scope: str = "default", content_type: Optional[str] = None, ingestion_type: Optional[str] = None) -> Tuple[Optional[str], Optional[List[Dict]], Dict]:
     """
     RAG generation pipeline with Memory Layer support.
     """
@@ -1452,6 +1522,9 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
         apply_scope_policy=apply_scope_policy,
         compare_mode=compare_mode,
         target_book_ids=target_book_ids,
+        visibility_scope=visibility_scope,
+        content_type=content_type,
+        ingestion_type=ingestion_type,
     )
     retrieval_phase_sec = time.perf_counter() - retrieval_phase_start
     try:

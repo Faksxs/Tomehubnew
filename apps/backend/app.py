@@ -598,6 +598,29 @@ async def realtime_poll(
     events: list[dict[str, Any]] = []
     cutoff_ms = max(int(since_ms or 0), 0)
 
+    # Phase 4: Prefer outbox-backed changes when available.
+    try:
+        from services.change_event_service import fetch_change_events_since
+        changes, last_event_id = fetch_change_events_since(
+            firebase_uid=verified_uid,
+            since_ms=cutoff_ms,
+            limit=safe_limit,
+        )
+        if changes:
+            server_time_ms = int(datetime.now().timestamp() * 1000)
+            return {
+                "success": True,
+                "server_time_ms": server_time_ms,
+                "server_time": datetime.now().isoformat(),
+                "last_event_id": last_event_id,
+                "changes": changes,
+                "events": changes,  # backward-compatible alias
+                "count": len(changes),
+                "source": "outbox",
+            }
+    except Exception as e:
+        logger.warning(f"Realtime polling outbox read failed (fallback to legacy query): {e}")
+
     try:
         with DatabaseManager.get_read_connection() as conn:
             with conn.cursor() as cursor:
@@ -660,11 +683,16 @@ async def realtime_poll(
     events.sort(key=lambda e: int(e.get("updated_at_ms") or 0), reverse=True)
     if len(events) > safe_limit:
         events = events[:safe_limit]
+    server_time_ms = int(datetime.now().timestamp() * 1000)
     return {
         "success": True,
-        "server_time_ms": int(datetime.now().timestamp() * 1000),
+        "server_time_ms": server_time_ms,
+        "server_time": datetime.now().isoformat(),
+        "last_event_id": None,
+        "changes": events,
         "events": events,
         "count": len(events),
+        "source": "legacy_aggregate",
     }
 
 # ============================================================================
@@ -701,6 +729,7 @@ async def search(
     try:
         import asyncio
         from functools import partial
+        visibility_scope = "all" if search_request.include_private_notes else search_request.visibility_scope
         
         loop = asyncio.get_running_loop()
 
@@ -829,6 +858,9 @@ async def search(
                 scope_policy_active,
                 search_request.compare_mode,
                 search_request.target_book_ids,
+                visibility_scope,
+                search_request.content_type,
+                search_request.ingestion_type,
             )
         )
         
@@ -850,6 +882,9 @@ async def search(
             metadata.setdefault("graph_capability", "enabled")
             for key, value in scope_metadata.items():
                 metadata.setdefault(key, value)
+            metadata.setdefault("visibility_scope", visibility_scope)
+            metadata.setdefault("content_type_filter", search_request.content_type)
+            metadata.setdefault("ingestion_type_filter", search_request.ingestion_type)
         
         return {
             "answer": answer,
@@ -1433,6 +1468,7 @@ async def perform_search(
     try:
         from services.smart_search_service import perform_search
         from functools import partial
+        visibility_scope = "all" if request.include_private_notes else request.visibility_scope
 
         loop = asyncio.get_running_loop()
         results, metadata = await loop.run_in_executor(
@@ -1445,12 +1481,18 @@ async def perform_search(
                 offset=request.offset,
                 result_mix_policy="lexical_then_semantic_tail",
                 semantic_tail_cap=settings.SEARCH_SMART_SEMANTIC_TAIL_CAP,
+                visibility_scope=visibility_scope,
+                content_type=request.content_type,
+                ingestion_type=request.ingestion_type,
             )
         )
 
         if isinstance(metadata, dict):
             metadata.setdefault("search_variant", "smart_search")
             metadata.setdefault("graph_capability", "disabled")
+            metadata.setdefault("visibility_scope", visibility_scope)
+            metadata.setdefault("content_type_filter", request.content_type)
+            metadata.setdefault("ingestion_type_filter", request.ingestion_type)
         
         return {
             "results": results,
@@ -1585,6 +1627,23 @@ def upsert_ingestion_status(
                     "p_embed_count": embedding_count
                 })
                 conn.commit()
+        try:
+            from services.change_event_service import emit_change_event
+            emit_change_event(
+                firebase_uid=firebase_uid,
+                item_id=book_id,
+                entity_type="INGESTION_STATUS",
+                event_type="ingestion.status_changed",
+                payload={
+                    "status": status,
+                    "file_name": file_name,
+                    "chunk_count": chunk_count,
+                    "embedding_count": embedding_count,
+                },
+                source_service="app.upsert_ingestion_status",
+            )
+        except Exception:
+            pass
     except Exception as e:
         logger.error(f"Failed to upsert ingestion status: {e}")
 
@@ -1593,6 +1652,56 @@ def fetch_ingestion_status(book_id: str, firebase_uid: str):
     try:
         with DatabaseManager.get_read_connection() as conn:
             with conn.cursor() as cursor:
+                # Phase 4: Compatibility view-first (includes index state summary).
+                try:
+                    cursor.execute(
+                        """
+                        SELECT
+                            INGESTION_STATUS,
+                            SOURCE_FILE_NAME,
+                            CHUNK_COUNT,
+                            EMBEDDING_COUNT,
+                            INGESTION_UPDATED_AT,
+                            INDEX_FRESHNESS_STATE,
+                            TOTAL_CHUNKS,
+                            EMBEDDED_CHUNKS,
+                            GRAPH_LINKED_CHUNKS,
+                            VECTOR_READY,
+                            GRAPH_READY,
+                            FULLY_READY,
+                            VECTOR_COVERAGE_RATIO,
+                            GRAPH_COVERAGE_RATIO,
+                            LAST_CHECKED_AT
+                        FROM VW_TOMEHUB_INGESTION_STATUS_BY_ITEM
+                        WHERE ITEM_ID = :p_bid AND FIREBASE_UID = :p_uid
+                        """,
+                        {"p_bid": book_id, "p_uid": firebase_uid}
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        return {
+                            "status": row[0],
+                            "file_name": row[1],
+                            "chunk_count": row[2],
+                            "embedding_count": row[3],
+                            "updated_at": row[4],
+                            "item_index_state": {
+                                "index_freshness_state": row[5],
+                                "total_chunks": row[6],
+                                "embedded_chunks": row[7],
+                                "graph_linked_chunks": row[8],
+                                "vector_ready": row[9],
+                                "graph_ready": row[10],
+                                "fully_ready": row[11],
+                                "vector_coverage_ratio": row[12],
+                                "graph_coverage_ratio": row[13],
+                                "last_checked_at": row[14].isoformat() if row[14] else None,
+                            },
+                        }
+                except Exception:
+                    # View may be unavailable in older envs; fallback to base table.
+                    pass
+
                 cursor.execute(
                     """
                     SELECT STATUS, SOURCE_FILE_NAME, CHUNK_COUNT, EMBEDDING_COUNT, UPDATED_AT
@@ -1601,7 +1710,17 @@ def fetch_ingestion_status(book_id: str, firebase_uid: str):
                     """,
                     {"p_bid": book_id, "p_uid": firebase_uid}
                 )
-                return cursor.fetchone()
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                return {
+                    "status": row[0],
+                    "file_name": row[1],
+                    "chunk_count": row[2],
+                    "embedding_count": row[3],
+                    "updated_at": row[4],
+                    "item_index_state": None,
+                }
     except Exception as e:
         logger.error(f"Failed to fetch ingestion status: {e}")
         return None
@@ -1882,6 +2001,8 @@ async def get_ingestion_status(
 
     effective_book_id = book_id
     matched_by_title = False
+    match_source = "exact_book_id"
+    match_confidence = 1.0
 
     row = fetch_ingestion_status(effective_book_id, verified_firebase_uid)
     if not row and title:
@@ -1889,19 +2010,24 @@ async def get_ingestion_status(
         if resolved_book_id:
             effective_book_id = resolved_book_id
             matched_by_title = (resolved_book_id != book_id)
+            match_source = "title_fallback"
+            match_confidence = 0.6 if matched_by_title else 0.95
             row = fetch_ingestion_status(effective_book_id, verified_firebase_uid)
 
     freshness = get_index_freshness_state(effective_book_id, verified_firebase_uid)
     if row:
-        status, file_name, chunk_count, embedding_count, updated_at = row
+        item_index_state = row.get("item_index_state") or {}
         return {
-            "status": status,
-            "file_name": file_name,
-            "chunk_count": int(chunk_count) if chunk_count is not None else None,
-            "embedding_count": int(embedding_count) if embedding_count is not None else None,
-            "updated_at": updated_at.isoformat() if updated_at else None,
+            "status": row.get("status"),
+            "file_name": row.get("file_name"),
+            "chunk_count": int(row["chunk_count"]) if row.get("chunk_count") is not None else None,
+            "embedding_count": int(row["embedding_count"]) if row.get("embedding_count") is not None else None,
+            "updated_at": row["updated_at"].isoformat() if row.get("updated_at") else None,
             "resolved_book_id": effective_book_id,
             "matched_by_title": matched_by_title,
+            "match_source": match_source,
+            "match_confidence": match_confidence,
+            "item_index_state": item_index_state,
             "index_freshness_state": freshness.get("index_freshness_state"),
             "index_freshness": freshness,
         }
@@ -1933,6 +2059,9 @@ async def get_ingestion_status(
                         "updated_at": datetime.now().isoformat(),
                         "resolved_book_id": effective_book_id,
                         "matched_by_title": matched_by_title,
+                        "match_source": "content_fallback",
+                        "match_confidence": 0.5,
+                        "item_index_state": None,
                         "index_freshness_state": freshness.get("index_freshness_state"),
                         "index_freshness": freshness,
                     }
@@ -1947,6 +2076,9 @@ async def get_ingestion_status(
         "updated_at": None,
         "resolved_book_id": effective_book_id,
         "matched_by_title": matched_by_title,
+        "match_source": match_source,
+        "match_confidence": match_confidence if row else (0.0 if effective_book_id == book_id else 0.3),
+        "item_index_state": None,
         "index_freshness_state": freshness.get("index_freshness_state"),
         "index_freshness": freshness,
     }

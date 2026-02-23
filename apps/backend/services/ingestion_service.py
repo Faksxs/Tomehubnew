@@ -138,6 +138,87 @@ def normalize_source_type(source_type: Optional[str]) -> str:
     return "PERSONAL_NOTE"
 
 
+def _mirror_book_registry_rows(
+    cursor,
+    *,
+    book_id: str,
+    title: str,
+    author: str,
+    firebase_uid: str,
+) -> None:
+    """
+    Best-effort registry mirroring for Phase 1C routing prep.
+
+    Writes to the new canonical table (TOMEHUB_LIBRARY_ITEMS) additively while
+    preserving legacy mirror behavior in TOMEHUB_BOOKS.
+    Any failure is logged as non-critical to avoid breaking ingestion.
+    """
+    if not book_id or not firebase_uid:
+        return
+
+    # 1) New canonical master (additive; Phase 1A may not exist in all envs yet)
+    try:
+        cursor.execute(
+            """
+            MERGE INTO TOMEHUB_LIBRARY_ITEMS li
+            USING (
+                SELECT
+                    :p_item_id AS item_id,
+                    :p_uid AS firebase_uid,
+                    :p_title AS title,
+                    :p_author AS author
+                FROM DUAL
+            ) src
+            ON (li.ITEM_ID = src.item_id AND li.FIREBASE_UID = src.firebase_uid)
+            WHEN NOT MATCHED THEN
+                INSERT (
+                    ITEM_ID, FIREBASE_UID, ITEM_TYPE, TITLE, AUTHOR, CREATED_AT, UPDATED_AT
+                )
+                VALUES (
+                    src.item_id, src.firebase_uid, 'BOOK', src.title, src.author, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                )
+            WHEN MATCHED THEN
+                UPDATE SET
+                    TITLE = COALESCE(src.title, li.TITLE),
+                    AUTHOR = COALESCE(src.author, li.AUTHOR),
+                    UPDATED_AT = CURRENT_TIMESTAMP
+            """,
+            {
+                "p_item_id": book_id,
+                "p_uid": firebase_uid,
+                "p_title": title,
+                "p_author": author,
+            },
+        )
+        logger.info(f"Mirrored book '{title}' to TOMEHUB_LIBRARY_ITEMS")
+    except Exception as e:
+        logger.warning(f"Mirroring to TOMEHUB_LIBRARY_ITEMS failed (Non-critical): {e}")
+
+    # 2) Legacy mirror (existing behavior preserved)
+    try:
+        cursor.execute(
+            """
+            MERGE INTO TOMEHUB_BOOKS b
+            USING (SELECT :p_id as id, :p_title as title, :p_author as author, :p_uid as uid FROM DUAL) src
+            ON (b.ID = src.id)
+            WHEN NOT MATCHED THEN
+                INSERT (ID, TITLE, AUTHOR, FIREBASE_UID, CREATED_AT)
+                VALUES (src.id, src.title, src.author, src.uid, CURRENT_TIMESTAMP)
+            WHEN MATCHED THEN
+                UPDATE SET LAST_UPDATED = CURRENT_TIMESTAMP
+            """,
+            {
+                "p_id": book_id,
+                "p_title": title,
+                "p_author": author,
+                "p_uid": firebase_uid,
+            },
+        )
+        logger.info(f"Mirrored book '{title}' to TOMEHUB_BOOKS")
+    except Exception as e:
+        logger.warning(f"Mirroring to TOMEHUB_BOOKS failed (Non-critical): {e}")
+
+
 def normalize_highlight_type(highlight_type: Optional[str]) -> str:
     """
     Normalize highlight type to canonical DB values.
@@ -173,6 +254,31 @@ def _invalidate_search_cache(firebase_uid: str, book_id: Optional[str] = None) -
             logger.info(f"Cache invalidated for book {book_id} (pattern: {book_pattern})")
     except Exception as e:
         logger.warning(f"Cache invalidation failed (non-critical): {e}")
+
+
+def _emit_change_event_best_effort(
+    *,
+    firebase_uid: str,
+    item_id: Optional[str],
+    entity_type: str,
+    event_type: str,
+    payload: Optional[dict] = None,
+) -> None:
+    if not firebase_uid:
+        return
+    try:
+        from services.change_event_service import emit_change_event
+
+        emit_change_event(
+            firebase_uid=firebase_uid,
+            item_id=item_id,
+            entity_type=entity_type,
+            event_type=event_type,
+            payload=payload or {},
+            source_service="ingestion_service",
+        )
+    except Exception as e:
+        logger.debug(f"[DEBUG] change event emit skipped: {e}")
 
 
 def check_book_exists(title: str, author: str, firebase_uid: str, conn=None) -> bool:
@@ -345,6 +451,13 @@ def purge_item_content(firebase_uid: str, book_id: str) -> dict:
 
         _invalidate_search_cache(firebase_uid=firebase_uid, book_id=book_id)
         delete_epistemic_distribution(book_id=book_id, firebase_uid=firebase_uid)
+        _emit_change_event_best_effort(
+            firebase_uid=firebase_uid,
+            item_id=book_id,
+            entity_type="CONTENT",
+            event_type="item.purged",
+            payload={"deleted": deleted, "aux_deleted": aux_deleted},
+        )
         return {"success": True, "deleted": deleted, "aux_deleted": aux_deleted}
     except Exception as e:
         logger.error(f"[ERROR] purge_item_content failed: {e}")
@@ -411,28 +524,15 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
     try:
         with DatabaseManager.get_write_connection() as connection:
             with connection.cursor() as cursor:
-                # Mirroring Logic: Ensure Book Exists in TOMEHUB_BOOKS
-                try:
-                   cursor.execute("""
-                       MERGE INTO TOMEHUB_BOOKS b
-                       USING (SELECT :p_id as id, :p_title as title, :p_author as author, :p_uid as uid FROM DUAL) src
-                       ON (b.ID = src.id)
-                       WHEN NOT MATCHED THEN
-                           INSERT (ID, TITLE, AUTHOR, FIREBASE_UID, CREATED_AT)
-                           VALUES (src.id, src.title, src.author, src.uid, CURRENT_TIMESTAMP)
-                       WHEN MATCHED THEN
-                           UPDATE SET LAST_UPDATED = CURRENT_TIMESTAMP
-                   """, {
-                       "p_id": book_id,
-                       "p_title": title,
-                       "p_author": author,
-                       "p_uid": firebase_uid
-                   })
-                   # Note: We commit this via standard flow later, or implicit if successful
-                   logger.info(f"Mirrored book '{title}' to TOMEHUB_BOOKS")
-                except Exception as e:
-                   # Mirroring is secondary, don't break ingestion if this fails but log strictly assuming constraints disabled
-                   logger.warning(f"Mirroring to TOMEHUB_BOOKS failed (Non-critical): {e}")
+                # Phase 1C routing prep: mirror to new canonical registry additively while
+                # preserving legacy TOMEHUB_BOOKS behavior.
+                _mirror_book_registry_rows(
+                    cursor,
+                    book_id=book_id,
+                    title=title,
+                    author=author,
+                    firebase_uid=firebase_uid,
+                )
 
                 # A. ACQUIRE LOCK (The critical section starts here)
                 # Task 6.1: Deterministic Lock Name
@@ -642,6 +742,13 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
     INGESTION_LATENCY.labels(status="success", source_type=source_type).observe(time.time() - start_time)
     _invalidate_search_cache(firebase_uid=firebase_uid, book_id=book_id)
     maybe_trigger_epistemic_distribution_refresh_async(book_id=book_id, firebase_uid=firebase_uid, reason="ingest_book")
+    _emit_change_event_best_effort(
+        firebase_uid=firebase_uid,
+        item_id=book_id,
+        entity_type="BOOK",
+        event_type="book.ingested",
+        payload={"title": title, "author": author, "source_type": source_type, "chunks_inserted": successful_inserts},
+    )
 
     return True
 def ingest_text_item(
@@ -719,6 +826,13 @@ def ingest_text_item(
                     connection.commit()
                     _invalidate_search_cache(firebase_uid=firebase_uid, book_id=book_id)
                     maybe_trigger_epistemic_distribution_refresh_async(book_id=book_id, firebase_uid=firebase_uid, reason="ingest_text_item")
+                    _emit_change_event_best_effort(
+                        firebase_uid=firebase_uid,
+                        item_id=book_id,
+                        entity_type=db_source_type,
+                        event_type="item.updated",
+                        payload={"source_type": db_source_type, "title": title},
+                    )
                     _runtime_log(f"[SUCCESS] Text Item Ingested: {title} (Type: {db_source_type})")
                     return True
                 
@@ -764,6 +878,13 @@ def sync_highlights_for_item(
                     connection.commit()
                     _invalidate_search_cache(firebase_uid=firebase_uid, book_id=book_id)
                     maybe_trigger_epistemic_distribution_refresh_async(book_id=book_id, firebase_uid=firebase_uid, reason="sync_highlights_empty")
+                    _emit_change_event_best_effort(
+                        firebase_uid=firebase_uid,
+                        item_id=book_id,
+                        entity_type="HIGHLIGHT",
+                        event_type="highlight.synced",
+                        payload={"deleted": deleted, "inserted": 0},
+                    )
                     return {"success": True, "deleted": deleted, "inserted": 0}
 
                 texts = [h.get("text", "") for h in highlights]
@@ -824,6 +945,13 @@ def sync_highlights_for_item(
                 connection.commit()
                 _invalidate_search_cache(firebase_uid=firebase_uid, book_id=book_id)
                 maybe_trigger_epistemic_distribution_refresh_async(book_id=book_id, firebase_uid=firebase_uid, reason="sync_highlights")
+                _emit_change_event_best_effort(
+                    firebase_uid=firebase_uid,
+                    item_id=book_id,
+                    entity_type="HIGHLIGHT",
+                    event_type="highlight.synced",
+                    payload={"deleted": deleted, "inserted": inserted},
+                )
                 return {"success": True, "deleted": deleted, "inserted": inserted}
     except Exception as e:
         logger.error(f"[ERROR] sync_highlights_for_item failed: {e}")
@@ -871,6 +999,13 @@ def sync_personal_note_for_item(
                     connection.commit()
                     _invalidate_search_cache(firebase_uid=firebase_uid, book_id=book_id)
                     maybe_trigger_epistemic_distribution_refresh_async(book_id=book_id, firebase_uid=firebase_uid, reason="sync_personal_note_delete")
+                    _emit_change_event_best_effort(
+                        firebase_uid=firebase_uid,
+                        item_id=book_id,
+                        entity_type="PERSONAL_NOTE",
+                        event_type="note.synced",
+                        payload={"deleted": deleted, "inserted": 0, "delete_only": True, "category": normalized_category},
+                    )
                     return {"success": True, "deleted": deleted, "inserted": 0}
 
                 text = (content or "").strip()
@@ -878,6 +1013,13 @@ def sync_personal_note_for_item(
                     connection.commit()
                     _invalidate_search_cache(firebase_uid=firebase_uid, book_id=book_id)
                     maybe_trigger_epistemic_distribution_refresh_async(book_id=book_id, firebase_uid=firebase_uid, reason="sync_personal_note_invalid")
+                    _emit_change_event_best_effort(
+                        firebase_uid=firebase_uid,
+                        item_id=book_id,
+                        entity_type="PERSONAL_NOTE",
+                        event_type="note.synced",
+                        payload={"deleted": deleted, "inserted": 0, "invalid_content": True, "category": normalized_category},
+                    )
                     return {"success": True, "deleted": deleted, "inserted": 0}
 
                 embedding = get_embedding(text)
@@ -925,6 +1067,13 @@ def sync_personal_note_for_item(
                 connection.commit()
                 _invalidate_search_cache(firebase_uid=firebase_uid, book_id=book_id)
                 maybe_trigger_epistemic_distribution_refresh_async(book_id=book_id, firebase_uid=firebase_uid, reason="sync_personal_note")
+                _emit_change_event_best_effort(
+                    firebase_uid=firebase_uid,
+                    item_id=book_id,
+                    entity_type="PERSONAL_NOTE",
+                    event_type="note.synced",
+                    payload={"deleted": deleted, "inserted": inserted, "category": normalized_category},
+                )
                 return {"success": True, "deleted": deleted, "inserted": inserted}
     except Exception as e:
         logger.error(f"[ERROR] sync_personal_note_for_item failed: {e}")
