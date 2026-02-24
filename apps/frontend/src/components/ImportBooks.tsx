@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Upload, Check, AlertCircle, FileJson } from 'lucide-react';
-import { saveItemForUser } from '../services/firestoreService';
+import { saveItemForUser } from '../services/oracleLibraryService';
 import { addTextItem } from '../services/backendApiService';
 import { LibraryItem } from '../types';
 import { useAuth } from '../contexts/AuthContext';

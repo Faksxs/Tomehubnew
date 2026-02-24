@@ -33,19 +33,19 @@ async def sync_user_data(target_uid: str):
         # 1. Fetch Books
         logger.info("Fetching books from Oracle...")
         cursor.execute(
-            "SELECT ID, TITLE, AUTHOR, CREATED_AT FROM TOMEHUB_BOOKS WHERE FIREBASE_UID = :p_uid",
+            "SELECT ITEM_ID, TITLE, AUTHOR, CREATED_AT FROM TOMEHUB_LIBRARY_ITEMS WHERE FIREBASE_UID = :p_uid",
             {"p_uid": target_uid}
         )
         books_rows = cursor.fetchall()
-        logger.info(f"Found {len(books_rows)} books in Oracle.")
+        logger.info(f"Found {len(books_rows)} items in Oracle.")
 
         for b_id, b_title, b_author, b_created_at in books_rows:
-            logger.info(f"Processing book: {b_title} ({b_id})")
+            logger.info(f"Processing item: {b_title} ({b_id})")
             
-            # 2. Fetch Highlights/Insights for this book
+            # 2. Fetch Highlights/Insights for this item
             cursor.execute(
-                "SELECT ID, SOURCE_TYPE, CONTENT_CHUNK, PAGE_NUMBER, CREATED_AT FROM TOMEHUB_CONTENT "
-                "WHERE FIREBASE_UID = :p_uid AND BOOK_ID = :p_bid AND SOURCE_TYPE IN ('HIGHLIGHT', 'INSIGHT')",
+                "SELECT ID, CONTENT_TYPE, CONTENT_CHUNK, PAGE_NUMBER, CREATED_AT FROM TOMEHUB_CONTENT_V2 "
+                "WHERE FIREBASE_UID = :p_uid AND ITEM_ID = :p_bid AND CONTENT_TYPE IN ('HIGHLIGHT', 'INSIGHT')",
                 {"p_uid": target_uid, "p_bid": b_id}
             )
             content_rows = cursor.fetchall()

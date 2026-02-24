@@ -215,7 +215,10 @@ def test_search_orchestrator_caching():
         )
         
         test_query = "test query"
-        test_uid = "test_user_001"
+        if len(sys.argv) < 2:
+            print("Usage: python test_caching.py <uid>")
+            sys.exit(1)
+        test_uid = sys.argv[1]
         
         print(f"Running first search (should compute and cache)...")
         start_time = time.time()

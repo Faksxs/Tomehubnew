@@ -422,8 +422,9 @@ class FlowService:
                         SELECT DISTINCT c.id, c.name, ct.id as content_id, ct.title
                         FROM TOMEHUB_CONCEPTS c
                         JOIN TOMEHUB_CONCEPT_CHUNKS cc ON c.id = cc.concept_id
-                        JOIN TOMEHUB_CONTENT ct ON cc.content_id = ct.id
+                        JOIN TOMEHUB_CONTENT_V2 ct ON cc.content_id = ct.id
                         WHERE ct.firebase_uid = :p_uid
+                        AND ct.ai_eligible = 1
                         AND ct.id NOT IN (
                             SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE TO_CHAR(session_id) = :p_sid
                         )
@@ -443,7 +444,7 @@ class FlowService:
                     row = cursor.fetchone()
                     if row:
                         concept_id, concept_name, content_id, title = row
-                        cursor.execute("SELECT VEC_EMBEDDING FROM TOMEHUB_CONTENT WHERE id = :p_id", {"p_id": content_id})
+                        cursor.execute("SELECT VEC_EMBEDDING FROM TOMEHUB_CONTENT_V2 WHERE id = :p_id", {"p_id": content_id})
                         vec_row = cursor.fetchone()
                         if vec_row:
                             return (
@@ -458,10 +459,11 @@ class FlowService:
                     params = {"p_uid": state.firebase_uid}
                     sql = """
                         SELECT id, title, VEC_EMBEDDING
-                        FROM TOMEHUB_CONTENT
+                        FROM TOMEHUB_CONTENT_V2
                         WHERE firebase_uid = :p_uid
+                        AND ai_eligible = 1
                         AND title NOT IN (
-                            SELECT title FROM TOMEHUB_CONTENT 
+                            SELECT title FROM TOMEHUB_CONTENT_V2 
                             WHERE id IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE firebase_uid = :p_uid)
                         )
                     """
@@ -541,13 +543,13 @@ class FlowService:
         - ARTICLE/WEBSITE: strict source_type match
         """
         if resource_type == 'PERSONAL_NOTE':
-            sql += " AND source_type = 'PERSONAL_NOTE' "
+            sql += " AND content_type = 'PERSONAL_NOTE' "
         elif resource_type == 'ALL_NOTES':
-            sql += " AND source_type IN ('HIGHLIGHT', 'INSIGHT', 'NOTES') "
+            sql += " AND content_type IN ('HIGHLIGHT', 'INSIGHT', 'NOTES') "
         elif resource_type == 'BOOK':
-            sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'BOOK', 'HIGHLIGHT', 'INSIGHT', 'NOTES') "
+            sql += " AND content_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'BOOK', 'HIGHLIGHT', 'INSIGHT', 'NOTES') "
         elif resource_type in ('ARTICLE', 'WEBSITE'):
-            sql += " AND source_type = :p_type "
+            sql += " AND content_type = :p_type "
             params["p_type"] = resource_type
         return sql, params
 
@@ -566,7 +568,7 @@ class FlowService:
                 return sql, params
 
             # Resolve content table alias (ct, c, t) or fallback to table name
-            alias = "TOMEHUB_CONTENT"
+            alias = "TOMEHUB_CONTENT_V2"
             if re.search(r"\bTOMEHUB_CONTENT\s+ct\b", sql, re.IGNORECASE):
                 alias = "ct"
             elif re.search(r"\bTOMEHUB_CONTENT\s+c\b", sql, re.IGNORECASE):
@@ -607,7 +609,7 @@ class FlowService:
                             t.vec_embedding,
                             NVL(s.seen_count, 0) AS seen_count,
                             NVL(c.ctx_count, 0) AS ctx_count
-                        FROM TOMEHUB_CONTENT t
+                        FROM TOMEHUB_CONTENT_V2 t
                         LEFT JOIN (
                             SELECT chunk_id, COUNT(*) AS seen_count
                             FROM TOMEHUB_FLOW_SEEN
@@ -620,7 +622,8 @@ class FlowService:
                             GROUP BY content_id
                         ) c ON c.content_id = t.id
                         WHERE LOWER(TRIM(t.firebase_uid)) = LOWER(TRIM(:p_uid))
-                        AND t.source_type IN ('HIGHLIGHT', 'INSIGHT', 'NOTES')
+                        AND t.ai_eligible = 1
+                        AND t.content_type IN ('HIGHLIGHT', 'INSIGHT', 'NOTES')
                         AND DBMS_LOB.GETLENGTH(t.content_chunk) > 12
                     """
                     sql, params = self._apply_category_filter(sql, params, category)
@@ -685,7 +688,7 @@ class FlowService:
                         
                         cursor.execute("""
                             SELECT content_chunk, title, VEC_EMBEDDING, id
-                            FROM TOMEHUB_CONTENT
+                            FROM TOMEHUB_CONTENT_V2
                             WHERE id = :p_id AND firebase_uid = :p_uid
                         """, {"p_id": int(anchor_id), "p_uid": firebase_uid})
                         row = cursor.fetchone()
@@ -705,9 +708,9 @@ class FlowService:
                         # Get representative chunk from book
                         cursor.execute("""
                             SELECT content_chunk, title, VEC_EMBEDDING, id
-                            FROM TOMEHUB_CONTENT
+                            FROM TOMEHUB_CONTENT_V2
                             WHERE title = :p_title AND firebase_uid = :p_uid
-                            AND (source_type = 'PDF' OR source_type = 'PDF_CHUNK' OR source_type = 'EPUB')
+                            AND (content_type = 'PDF' OR content_type = 'PDF_CHUNK' OR content_type = 'EPUB')
                             ORDER BY page_number
                             FETCH FIRST 1 ROW ONLY
                         """, {"p_title": anchor_id, "p_uid": firebase_uid})
@@ -728,9 +731,10 @@ class FlowService:
                             # 1. User Interest Model (Zero Gravity Profile) - Average of top 10 recent notes/highlights
                             sql_centroid = """
                                 SELECT VEC_EMBEDDING
-                                FROM TOMEHUB_CONTENT
+                                FROM TOMEHUB_CONTENT_V2
                                 WHERE firebase_uid = :p_uid
-                                AND source_type IN ('HIGHLIGHT', 'INSIGHT', 'PERSONAL_NOTE')
+                                AND ai_eligible = 1
+                                AND content_type IN ('HIGHLIGHT', 'INSIGHT', 'PERSONAL_NOTE')
                                 AND VEC_EMBEDDING IS NOT NULL
                                 ORDER BY id DESC
                                 FETCH FIRST 10 ROWS ONLY
@@ -766,8 +770,9 @@ class FlowService:
                             # Build dynamic bootstrap SQL
                             sql = """
                                 SELECT id, title, VEC_EMBEDDING
-                                FROM TOMEHUB_CONTENT
+                                FROM TOMEHUB_CONTENT_V2
                                 WHERE LOWER(TRIM(firebase_uid)) = LOWER(TRIM(:p_uid))
+                                AND ai_eligible = 1
                                 AND VEC_EMBEDDING IS NOT NULL
                             """
                             params = {"p_uid": firebase_uid}
@@ -866,9 +871,9 @@ class FlowService:
         params = {"p_uid": uid, "p_vec": vec_array, "p_sid": sid, "p_limit": limit}
         
         sql = """
-            SELECT id, content_chunk, title, source_type, page_number,
+            SELECT id, content_chunk, title, content_type AS source_type, page_number,
                    VECTOR_DISTANCE(VEC_EMBEDDING, :p_vec, COSINE) as distance
-            FROM TOMEHUB_CONTENT
+            FROM TOMEHUB_CONTENT_V2
             WHERE firebase_uid = :p_uid
             AND VEC_EMBEDDING IS NOT NULL
             AND DBMS_LOB.GETLENGTH(content_chunk) > 12
@@ -876,14 +881,14 @@ class FlowService:
         """
         if r_type == 'BOOK':
              # Books = PDFs + Highlights
-             sql += " AND source_type IN ('PDF','EPUB','PDF_CHUNK','BOOK','HIGHLIGHT','INSIGHT','NOTES') "
+             sql += " AND content_type IN ('PDF','EPUB','PDF_CHUNK','BOOK','HIGHLIGHT','INSIGHT','NOTES') "
         elif r_type == 'PERSONAL_NOTE':
-             sql += " AND source_type = 'PERSONAL_NOTE' "
+             sql += " AND content_type = 'PERSONAL_NOTE' "
         elif r_type in (None, 'ALL_NOTES', 'ALL'):
              # All Notes = Highlights/Insights ONLY
-             sql += " AND source_type IN ('HIGHLIGHT','INSIGHT','NOTES') "
+             sql += " AND content_type IN ('HIGHLIGHT','INSIGHT','NOTES') "
         else:
-             sql += " AND source_type = :p_type "
+             sql += " AND content_type = :p_type "
              params["p_type"] = r_type
              
         # Apply Category Filter
@@ -922,8 +927,8 @@ class FlowService:
     def _fetch_seed_recency(self, uid: str, sid: str, r_type: Optional[str], category: Optional[str], limit: int) -> List[FlowCard]:
         """Fetch recently added content (Highlights/Notes)."""
         sql = """
-            SELECT id, content_chunk, title, source_type, page_number
-            FROM TOMEHUB_CONTENT
+            SELECT id, content_chunk, title, content_type AS source_type, page_number
+            FROM TOMEHUB_CONTENT_V2
             WHERE firebase_uid = :p_uid
             AND DBMS_LOB.GETLENGTH(content_chunk) > 12
             AND id NOT IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE TO_CHAR(session_id) = :p_sid)
@@ -932,14 +937,14 @@ class FlowService:
         
         if r_type == 'BOOK':
              # Books = Highlights + PDFs
-             sql += " AND source_type IN ('PDF','EPUB','PDF_CHUNK','BOOK','HIGHLIGHT','INSIGHT','NOTES') "
+             sql += " AND content_type IN ('PDF','EPUB','PDF_CHUNK','BOOK','HIGHLIGHT','INSIGHT','NOTES') "
         elif r_type == 'PERSONAL_NOTE':
-             sql += " AND source_type = 'PERSONAL_NOTE' "
+             sql += " AND content_type = 'PERSONAL_NOTE' "
         elif r_type in (None, 'ALL_NOTES', 'ALL'):
              # All Notes = Highlights/Insights ONLY
-             sql += " AND source_type IN ('HIGHLIGHT','INSIGHT','NOTES') "
+             sql += " AND content_type IN ('HIGHLIGHT','INSIGHT','NOTES') "
         elif r_type:
-             sql += " AND source_type = :p_type "
+             sql += " AND content_type = :p_type "
              params["p_type"] = r_type
 
         # Apply Category Filter
@@ -953,8 +958,8 @@ class FlowService:
     def _fetch_seed_serendipity(self, uid: str, sid: str, r_type: Optional[str], category: Optional[str], limit: int) -> List[FlowCard]:
         """Fetch random high-quality chunks."""
         sql = """
-            SELECT id, content_chunk, title, source_type, page_number
-            FROM TOMEHUB_CONTENT
+            SELECT id, content_chunk, title, content_type AS source_type, page_number
+            FROM TOMEHUB_CONTENT_V2
             WHERE firebase_uid = :p_uid
             AND DBMS_LOB.GETLENGTH(content_chunk) > 12
             AND id NOT IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE TO_CHAR(session_id) = :p_sid)
@@ -963,14 +968,14 @@ class FlowService:
 
         if r_type == 'BOOK':
              # Books = Highlights + PDFs
-             sql += " AND source_type IN ('PDF','EPUB','PDF_CHUNK','BOOK','HIGHLIGHT','INSIGHT','NOTES') "
+             sql += " AND content_type IN ('PDF','EPUB','PDF_CHUNK','BOOK','HIGHLIGHT','INSIGHT','NOTES') "
         elif r_type == 'PERSONAL_NOTE':
-             sql += " AND source_type = 'PERSONAL_NOTE' "
+             sql += " AND content_type = 'PERSONAL_NOTE' "
         elif r_type in (None, 'ALL_NOTES', 'ALL'):
              # All Notes = Highlights/Insights ONLY
-             sql += " AND source_type IN ('HIGHLIGHT','INSIGHT','NOTES') "
+             sql += " AND content_type IN ('HIGHLIGHT','INSIGHT','NOTES') "
         elif r_type:
-             sql += " AND source_type = :p_type "
+             sql += " AND content_type = :p_type "
              params["p_type"] = r_type
 
         # Apply Category Filter
@@ -1055,7 +1060,7 @@ class FlowService:
         # Source Distribution Analysis
         source_dist = {"highlights": 0, "pdf_chunks": 0}
         for c in all_candidates:
-            if c.source_type == 'personal':
+            if c.content_type == 'personal':
                 source_dist["highlights"] += 1
             else:
                 source_dist["pdf_chunks"] += 1
@@ -1212,7 +1217,7 @@ class FlowService:
                 with conn.cursor() as cursor:
                     sql = """
                         SELECT id, content_chunk, title, page_number, source_type
-                        FROM TOMEHUB_CONTENT
+                        FROM TOMEHUB_CONTENT_V2
                         WHERE firebase_uid = :p_uid
                     """
                     
@@ -1224,14 +1229,14 @@ class FlowService:
 
                     # Category specific filters
                     if resource_type == 'PERSONAL_NOTE':
-                         sql += " AND source_type = 'PERSONAL_NOTE' "
+                         sql += " AND content_type = 'PERSONAL_NOTE' "
                     elif resource_type == 'WEBSITE':
-                         sql += " AND source_type = 'WEBSITE' "
+                         sql += " AND content_type = 'WEBSITE' "
                     elif resource_type == 'ARTICLE':
-                         sql += " AND source_type = 'ARTICLE' "
+                         sql += " AND content_type = 'ARTICLE' "
                     elif resource_type:
                          # Generic fallback
-                         sql += " AND source_type = :p_type "
+                         sql += " AND content_type = :p_type "
                          params["p_type"] = resource_type
 
                     # Apply Category Filter
@@ -1287,7 +1292,7 @@ class FlowService:
         if is_numeric_id:
             try:
                 cursor.execute("""
-                    SELECT title, page_number FROM TOMEHUB_CONTENT
+                    SELECT title, page_number FROM TOMEHUB_CONTENT_V2
                     WHERE id = :p_id AND firebase_uid = :p_uid
                 """, {"p_id": int(state.global_anchor_id), "p_uid": firebase_uid})
                 anchor_row = cursor.fetchone()
@@ -1306,9 +1311,9 @@ class FlowService:
                     "p_sid": state.session_id
                 }
                 sql = """
-                    SELECT id, content_chunk, title, source_type, page_number,
+                    SELECT id, content_chunk, title, content_type AS source_type, page_number,
                            VECTOR_DISTANCE(VEC_EMBEDDING, :p_vec, COSINE) as distance
-                    FROM TOMEHUB_CONTENT
+                    FROM TOMEHUB_CONTENT_V2
                     WHERE firebase_uid = :p_uid
                     AND VEC_EMBEDDING IS NOT NULL
                     AND id NOT IN (
@@ -1357,8 +1362,8 @@ class FlowService:
             "p_sid": state.session_id
         }
         sql = """
-            SELECT id, content_chunk, title, source_type, page_number
-            FROM TOMEHUB_CONTENT
+            SELECT id, content_chunk, title, content_type AS source_type, page_number
+            FROM TOMEHUB_CONTENT_V2
             WHERE firebase_uid = :p_uid
             AND title = :p_book_title
             AND ABS(NVL(page_number, 1) - :p_page) <= 10
@@ -1410,7 +1415,7 @@ class FlowService:
         if is_numeric_id:
             try:
                 cursor.execute("""
-                    SELECT title FROM TOMEHUB_CONTENT
+                    SELECT title FROM TOMEHUB_CONTENT_V2
                     WHERE id = :p_id AND firebase_uid = :p_uid
                 """, {"p_id": int(state.global_anchor_id), "p_uid": firebase_uid})
             except (ValueError, oracledb.DatabaseError) as e:
@@ -1433,8 +1438,8 @@ class FlowService:
                 "p_sid": state.session_id
             }
             sql = """
-                SELECT id, content_chunk, title, source_type, page_number
-                FROM TOMEHUB_CONTENT
+                SELECT id, content_chunk, title, content_type AS source_type, page_number
+                FROM TOMEHUB_CONTENT_V2
                 WHERE firebase_uid = :p_uid
                 AND title LIKE :p_author_pattern
             """
@@ -1482,9 +1487,9 @@ class FlowService:
                 "p_offset": offset
             }
             sql = """
-                SELECT id, content_chunk, title, source_type, page_number,
+                SELECT id, content_chunk, title, content_type AS source_type, page_number,
                        VECTOR_DISTANCE(VEC_EMBEDDING, :p_vec, COSINE) as distance
-                FROM TOMEHUB_CONTENT
+                FROM TOMEHUB_CONTENT_V2
                 WHERE firebase_uid = :p_uid
                 AND VEC_EMBEDDING IS NOT NULL
                 AND id NOT IN (
@@ -1537,9 +1542,9 @@ class FlowService:
             "p_sid": session_id
         }
         sql = """
-            SELECT id, content_chunk, title, source_type, page_number,
+            SELECT id, content_chunk, title, content_type AS source_type, page_number,
                    VECTOR_DISTANCE(VEC_EMBEDDING, :p_vec, COSINE) as distance
-            FROM TOMEHUB_CONTENT
+            FROM TOMEHUB_CONTENT_V2
             WHERE firebase_uid = :p_uid
             AND VEC_EMBEDDING IS NOT NULL
             AND id NOT IN (
@@ -1596,23 +1601,24 @@ class FlowService:
             
             sql = """
                 SELECT DISTINCT
-                    ct.id, ct.content_chunk, ct.title, ct.source_type, ct.page_number,
+                    ct.id, ct.content_chunk, ct.title, ct.content_type as content_type AS source_type, ct.page_number,
                     c.name as concept_name, c.centrality_score
                 FROM TOMEHUB_CONCEPTS c
                 JOIN TOMEHUB_CONCEPT_CHUNKS cc ON c.id = cc.concept_id
-                JOIN TOMEHUB_CONTENT ct ON cc.content_id = ct.id
+                JOIN TOMEHUB_CONTENT_V2 ct ON cc.content_id = ct.id
                 WHERE ct.firebase_uid = :p_uid
+                AND ct.ai_eligible = 1
                 AND c.centrality_score > 0.01
             """
             
             if resource_type == 'PERSONAL_NOTE':
-                sql += " AND ct.source_type = 'PERSONAL_NOTE' "
+                sql += " AND ct.content_type = 'PERSONAL_NOTE' "
             elif resource_type == 'ALL_NOTES':
-                sql += " AND ct.source_type IN ('HIGHLIGHT', 'INSIGHT', 'NOTES') "
+                sql += " AND ct.content_type IN ('HIGHLIGHT', 'INSIGHT', 'NOTES') "
             elif resource_type == 'BOOK':
-                sql += " AND ct.source_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'BOOK', 'HIGHLIGHT', 'INSIGHT', 'NOTES') "
+                sql += " AND ct.content_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'BOOK', 'HIGHLIGHT', 'INSIGHT', 'NOTES') "
             elif resource_type in ('ARTICLE', 'WEBSITE'):
-                sql += " AND ct.source_type = :p_type "
+                sql += " AND ct.content_type = :p_type "
                 params["p_type"] = resource_type
             
             sql, params = self._apply_category_filter(sql, params, category)
@@ -1654,9 +1660,9 @@ class FlowService:
                 "p_offset": offset
             }
             sql = """
-                SELECT id, content_chunk, title, source_type, page_number,
+                SELECT id, content_chunk, title, content_type AS source_type, page_number,
                        VECTOR_DISTANCE(VEC_EMBEDDING, :p_vec, COSINE) as distance
-                FROM TOMEHUB_CONTENT
+                FROM TOMEHUB_CONTENT_V2
                 WHERE firebase_uid = :p_uid
                 AND VEC_EMBEDDING IS NOT NULL
                 AND id NOT IN (
@@ -1807,7 +1813,7 @@ class FlowService:
                     sql = f"""
                         SELECT c.id, c.VEC_EMBEDDING,
                                CASE WHEN s.chunk_id IS NOT NULL THEN 1 ELSE 0 END as is_seen
-                        FROM TOMEHUB_CONTENT c
+                        FROM TOMEHUB_CONTENT_V2 c
                         LEFT JOIN TOMEHUB_FLOW_SEEN s 
                                ON c.id = s.chunk_id 
                                AND s.firebase_uid = :p_uid 
@@ -1924,7 +1930,7 @@ class FlowService:
             with DatabaseManager.get_read_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
-                        SELECT VEC_EMBEDDING FROM TOMEHUB_CONTENT WHERE id = :p_id
+                        SELECT VEC_EMBEDDING FROM TOMEHUB_CONTENT_V2 WHERE id = :p_id
                     """, {"p_id": coerced_id})
                     
                     row = cursor.fetchone()

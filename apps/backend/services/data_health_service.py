@@ -41,16 +41,16 @@ class DataHealthService:
         with DatabaseManager.get_read_connection() as conn:
             with conn.cursor() as cursor:
                 # 1. Counts
-                cursor.execute("SELECT source_type, COUNT(*) FROM TOMEHUB_CONTENT GROUP BY source_type")
+                cursor.execute("SELECT content_type, COUNT(*) FROM TOMEHUB_CONTENT_V2 GROUP BY content_type")
                 for row in cursor.fetchall():
                     report["counts_by_type"][row[0]] = row[1]
                 
                 # 2. Ghost Items (Too short)
-                cursor.execute(f"SELECT COUNT(*) FROM TOMEHUB_CONTENT WHERE DBMS_LOB.GETLENGTH(content_chunk) < {self.MIN_CONTENT_LENGTH} OR content_chunk IS NULL")
+                cursor.execute(f"SELECT COUNT(*) FROM TOMEHUB_CONTENT_V2 WHERE DBMS_LOB.GETLENGTH(content_chunk) < {self.MIN_CONTENT_LENGTH} OR content_chunk IS NULL")
                 report["ghost_items"] = cursor.fetchone()[0]
                 
                 # 3. Mislabelled Personal Notes
-                cursor.execute("SELECT COUNT(*) FROM TOMEHUB_CONTENT WHERE title LIKE '% - Self' AND source_type != 'PERSONAL_NOTE'")
+                cursor.execute("SELECT COUNT(*) FROM TOMEHUB_CONTENT_V2 WHERE title LIKE '% - Self' AND content_type != 'PERSONAL_NOTE'")
                 report["mislabelled_items"] = cursor.fetchone()[0]
 
         if report["ghost_items"] > 0 or report["mislabelled_items"] > 0:
@@ -68,11 +68,11 @@ class DataHealthService:
         with DatabaseManager.get_write_connection() as conn:
             with conn.cursor() as cursor:
                 # 1. Delete Ghosts
-                cursor.execute(f"DELETE FROM TOMEHUB_CONTENT WHERE DBMS_LOB.GETLENGTH(content_chunk) < {self.MIN_CONTENT_LENGTH} OR content_chunk IS NULL")
+                cursor.execute(f"DELETE FROM TOMEHUB_CONTENT_V2 WHERE DBMS_LOB.GETLENGTH(content_chunk) < {self.MIN_CONTENT_LENGTH} OR content_chunk IS NULL")
                 results["deleted_ghosts"] = cursor.rowcount
                 
                 # 2. Fix Personal Note Labels
-                cursor.execute("UPDATE TOMEHUB_CONTENT SET source_type = 'PERSONAL_NOTE' WHERE title LIKE '% - Self' AND source_type != 'PERSONAL_NOTE'")
+                cursor.execute("UPDATE TOMEHUB_CONTENT_V2 SET content_type = 'PERSONAL_NOTE' WHERE title LIKE '% - Self' AND content_type != 'PERSONAL_NOTE'")
                 results["fixed_labels"] = cursor.rowcount
                 
                 conn.commit()

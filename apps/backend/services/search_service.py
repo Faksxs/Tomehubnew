@@ -263,11 +263,12 @@ def get_book_context(book_id: str, query_text: str, firebase_uid: str) -> List[D
                 # - Keyword match (Turkish Fuzzy)
                 
                 sql = """
-                    SELECT content_chunk, page_number, chunk_index, title,
-                           VECTOR_DISTANCE(vec_embedding, :bv_vec, COSINE) as dist
-                    FROM TOMEHUB_CONTENT
-                    WHERE book_id = :bv_book_id 
-                      AND firebase_uid = :bv_uid
+                    SELECT c.content_chunk, c.page_number, c.chunk_index, c.title,
+                           (VECTOR_DISTANCE(c.vec_embedding, :bv_vec, COSINE) / NULLIF(c.rag_weight, 0.0001)) as dist
+                    FROM TOMEHUB_CONTENT_V2 c
+                    WHERE c.item_id = :bv_book_id 
+                      AND c.firebase_uid = :bv_uid
+                      AND c.AI_ELIGIBLE = 1
                     ORDER BY dist ASC
                     FETCH FIRST 15 ROWS ONLY
                 """
@@ -344,10 +345,11 @@ def search_similar_content(query_text: str, firebase_uid: str, top_k: int = 5) -
                     # A. Vector Retrieval
                     if q_emb:
                         vector_sql = """
-                        SELECT content_chunk, page_number, title, source_type,
-                               VECTOR_DISTANCE(vec_embedding, :p_vec, COSINE) as dist
-                        FROM TOMEHUB_CONTENT
-                        WHERE firebase_uid = :p_uid
+                        SELECT c.content_chunk, c.page_number, c.title, c.content_type,
+                               (VECTOR_DISTANCE(c.vec_embedding, :p_vec, COSINE) / NULLIF(c.rag_weight, 0.0001)) as dist
+                        FROM TOMEHUB_CONTENT_V2 c
+                        WHERE c.firebase_uid = :p_uid
+                          AND c.AI_ELIGIBLE = 1
                         ORDER BY dist
                         FETCH FIRST 20 ROWS ONLY
                         """
@@ -388,13 +390,14 @@ def search_similar_content(query_text: str, firebase_uid: str, top_k: int = 5) -
                             conditions = []
                             params = {"p_uid": firebase_uid}
                             for i, kw in enumerate(keywords):
-                                conditions.append(f"LOWER(content_chunk) LIKE :kw{i}")
+                                conditions.append(f"LOWER(c.content_chunk) LIKE :kw{i}")
                                 params[f"kw{i}"] = f"%{kw.lower()}%"
                             
                             keyword_sql = f"""
-                            SELECT content_chunk, page_number, title, source_type
-                            FROM TOMEHUB_CONTENT
-                            WHERE firebase_uid = :p_uid
+                            SELECT c.content_chunk, c.page_number, c.title, c.content_type
+                            FROM TOMEHUB_CONTENT_V2 c
+                            WHERE c.firebase_uid = :p_uid
+                              AND c.AI_ELIGIBLE = 1
                             AND ({" OR ".join(conditions)})
                             FETCH FIRST 25 ROWS ONLY
                             """
@@ -1813,9 +1816,10 @@ if __name__ == "__main__":
         exit(1)
         
     # Get user ID
-    firebase_uid = input("\nEnter Firebase UID (press Enter for test_user_001): ").strip()
+    firebase_uid = input("\nEnter Firebase UID: ").strip()
     if not firebase_uid:
-        firebase_uid = "test_user_001"
+        print("[ERROR] Firebase UID required.")
+        exit(1)
     
     print(f"\n[INFO] Using user ID: {firebase_uid}")
     

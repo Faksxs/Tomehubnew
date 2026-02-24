@@ -74,7 +74,10 @@ def main():
     print("="*60)
     
     test_query = "vicdanın doğası"
-    test_uid = "test_user_001"
+    if len(sys.argv) < 2:
+        print("Usage: python test_performance.py <uid>")
+        sys.exit(1)
+    test_uid = sys.argv[1]
     
     # First run: without cache (warm-up)
     print("\n⚠ Warming up (first search may be slower)...")

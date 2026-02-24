@@ -113,17 +113,17 @@ def _apply_resource_type_filter(sql: str, params: Dict[str, Any], resource_type:
         return (sql, params)
 
     if rt == "BOOK":
-        sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'BOOK', 'HIGHLIGHT', 'INSIGHT', 'NOTES') "
+        sql += " AND c.content_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'BOOK', 'HIGHLIGHT', 'INSIGHT', 'NOTES') "
     elif rt == "ALL_NOTES":
-        sql += " AND source_type IN ('HIGHLIGHT', 'INSIGHT', 'NOTES') "
+        sql += " AND c.content_type IN ('HIGHLIGHT', 'INSIGHT', 'NOTES') "
     elif rt == "PERSONAL_NOTE":
-        sql += " AND source_type = 'PERSONAL_NOTE' "
+        sql += " AND c.content_type = 'PERSONAL_NOTE' "
     elif rt in {"ARTICLE", "WEBSITE"}:
-        sql += " AND source_type = :p_res_type "
+        sql += " AND c.content_type = :p_res_type "
         params["p_res_type"] = rt
     else:
         # Backward-compatible strict mode for custom/legacy values.
-        sql += " AND source_type = :p_res_type "
+        sql += " AND c.content_type = :p_res_type "
         params["p_res_type"] = rt
 
     return (sql, params)
@@ -132,7 +132,7 @@ def _apply_resource_type_filter(sql: str, params: Dict[str, Any], resource_type:
 def _apply_book_id_filter(sql: str, params: Dict[str, Any], book_id: Optional[str]) -> tuple:
     bid = str(book_id or "").strip()
     if bid:
-        sql += " AND book_id = :p_book_id "
+        sql += " AND c.item_id = :p_book_id "
         params["p_book_id"] = bid
     return (sql, params)
 
@@ -147,9 +147,9 @@ def _normalize_visibility_scope(visibility_scope: Optional[str]) -> str:
 def _apply_visibility_filter(sql: str, params: Dict[str, Any], visibility_scope: Optional[str]) -> tuple:
     scope = _normalize_visibility_scope(visibility_scope)
     if scope == "all":
-        sql += " AND NVL(search_visibility, 'DEFAULT') <> 'NEVER_RETRIEVE' "
+        sql += " AND NVL(l.search_visibility, 'DEFAULT') <> 'NEVER_RETRIEVE' "
         return (sql, params)
-    sql += " AND NVL(search_visibility, 'DEFAULT') = 'DEFAULT' "
+    sql += " AND NVL(l.search_visibility, 'DEFAULT') = 'DEFAULT' "
     return (sql, params)
 
 
@@ -157,7 +157,7 @@ def _apply_content_type_filter(sql: str, params: Dict[str, Any], content_type: O
     ct = str(content_type or "").strip().upper()
     if not ct:
         return (sql, params)
-    sql += " AND CONTENT_TYPE = :p_content_type "
+    sql += " AND c.content_type = :p_content_type "
     params["p_content_type"] = ct
     return (sql, params)
 
@@ -208,11 +208,13 @@ class ExactMatchStrategy(SearchStrategy):
                     candidate_limit = min(max(limit * 4, limit + 40), 2500)
                     
                     sql = """
-                        SELECT id, content_chunk, title, source_type, page_number, 
-                               tags, summary, "COMMENT",
-                               book_id, normalized_content
-                        FROM TOMEHUB_CONTENT
-                        WHERE firebase_uid = :p_uid
+                        SELECT c.id, c.content_chunk, c.title, c.content_type as source_type, c.page_number, 
+                               c.tags_json as tags, l.summary_text as summary, c.comment_text as "COMMENT",
+                               c.item_id as book_id, c.normalized_content
+                        FROM TOMEHUB_CONTENT_V2 c
+                        LEFT JOIN TOMEHUB_LIBRARY_ITEMS l ON c.item_id = l.item_id AND c.firebase_uid = l.firebase_uid
+                        WHERE c.firebase_uid = :p_uid
+                          AND c.AI_ELIGIBLE = 1
                     """
                     
                     params = {
@@ -229,7 +231,7 @@ class ExactMatchStrategy(SearchStrategy):
                     
                     # 1. TRY FIRST: Search without PDF (exclude raw PDF content)
                     if _should_exclude_pdf_in_first_pass(resource_type, book_id):
-                        sql += " AND source_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK') "
+                        sql += " AND c.content_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK') "
                     
                     # 2. SEARCH CONDITION (bind-safe; escape LIKE wildcards)
                     sql += " AND text_deaccented LIKE :p_exact_like ESCAPE '\\' "
@@ -247,11 +249,13 @@ class ExactMatchStrategy(SearchStrategy):
                     if not rows and not resource_type and not book_id:
                         logger.info(f"ExactMatchStrategy: No results without PDF content, trying with PDF fallback")
                         sql_with_pdf = """
-                            SELECT id, content_chunk, title, source_type, page_number, 
-                                   tags, summary, "COMMENT",
-                                   book_id, normalized_content
-                            FROM TOMEHUB_CONTENT
-                            WHERE firebase_uid = :p_uid
+                            SELECT c.id, c.content_chunk, c.title, c.content_type as source_type, c.page_number, 
+                                   c.tags_json as tags, l.summary_text as summary, c.comment_text as "COMMENT",
+                                   c.item_id as book_id, c.normalized_content
+                            FROM TOMEHUB_CONTENT_V2 c
+                            LEFT JOIN TOMEHUB_LIBRARY_ITEMS l ON c.item_id = l.item_id AND c.firebase_uid = l.firebase_uid
+                            WHERE c.firebase_uid = :p_uid
+                              AND c.AI_ELIGIBLE = 1
                         """
                         sql_with_pdf += " AND text_deaccented LIKE :p_exact_like ESCAPE '\\' "
                         sql_with_pdf, params = _apply_visibility_filter(sql_with_pdf, params, visibility_scope)
@@ -322,10 +326,13 @@ class LemmaMatchStrategy(SearchStrategy):
                     results = []
                     
                     sql = """
-                        SELECT id, content_chunk, title, source_type, page_number,
-                               tags, summary, "COMMENT", book_id, normalized_content
-                        FROM TOMEHUB_CONTENT
-                        WHERE firebase_uid = :p_uid
+                        SELECT c.id, c.content_chunk, c.title, c.content_type as source_type, c.page_number, 
+                               c.tags_json as tags, l.summary_text as summary, c.comment_text as "COMMENT",
+                               c.item_id as book_id, c.normalized_content
+                        FROM TOMEHUB_CONTENT_V2 c
+                        LEFT JOIN TOMEHUB_LIBRARY_ITEMS l ON c.item_id = l.item_id AND c.firebase_uid = l.firebase_uid
+                        WHERE c.firebase_uid = :p_uid
+                          AND c.AI_ELIGIBLE = 1
                     """
                     candidate_limit = min(max(limit * 4, limit + 40), 2500)
                     params = {"p_uid": firebase_uid, "p_candidate_limit": candidate_limit}
@@ -338,7 +345,7 @@ class LemmaMatchStrategy(SearchStrategy):
 
                     # 1. TRY FIRST: Search without PDF (exclude raw PDF content)
                     if _should_exclude_pdf_in_first_pass(resource_type, book_id):
-                        sql += " AND source_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK') "
+                        sql += " AND c.content_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK') "
                     
                     lemma_conditions = []
                     for i, lemma in enumerate(lemma_candidates):
@@ -362,10 +369,13 @@ class LemmaMatchStrategy(SearchStrategy):
                     if not rows and not resource_type and not book_id:
                         logger.info(f"LemmaMatchStrategy: No results without PDF content, trying with PDF fallback")
                         sql_with_pdf = """
-                            SELECT id, content_chunk, title, source_type, page_number,
-                                   tags, summary, "COMMENT", book_id, normalized_content
-                            FROM TOMEHUB_CONTENT
-                            WHERE firebase_uid = :p_uid
+                            SELECT c.id, c.content_chunk, c.title, c.content_type as source_type, c.page_number, 
+                                   c.tags_json as tags, l.summary_text as summary, c.comment_text as "COMMENT",
+                                   c.item_id as book_id, c.normalized_content
+                            FROM TOMEHUB_CONTENT_V2 c
+                            LEFT JOIN TOMEHUB_LIBRARY_ITEMS l ON c.item_id = l.item_id AND c.firebase_uid = l.firebase_uid
+                            WHERE c.firebase_uid = :p_uid
+                              AND c.AI_ELIGIBLE = 1
                         """
                         lemma_conditions_fb = []
                         for i, lemma in enumerate(lemma_candidates):
@@ -459,11 +469,13 @@ class SemanticMatchStrategy(SearchStrategy):
                     
                     def run_query(custom_limit, length_filter=None, exclude_pdf=True):
                         sql = """
-                            SELECT id, content_chunk, title, source_type, page_number,
-                                   tags, summary, "COMMENT", book_id,
-                                   VECTOR_DISTANCE(vec_embedding, :vec, COSINE) as dist
-                            FROM TOMEHUB_CONTENT
-                            WHERE firebase_uid = :p_uid
+                            SELECT c.id, c.content_chunk, c.title, c.content_type as source_type, c.page_number,
+                                   c.tags_json as tags, l.summary_text as summary, c.comment_text as "COMMENT", c.item_id as book_id,
+                                   (VECTOR_DISTANCE(c.vec_embedding, :vec, COSINE) / NULLIF(c.rag_weight, 0.0001)) as dist
+                            FROM TOMEHUB_CONTENT_V2 c
+                            LEFT JOIN TOMEHUB_LIBRARY_ITEMS l ON c.item_id = l.item_id AND c.firebase_uid = l.firebase_uid
+                            WHERE c.firebase_uid = :p_uid
+                              AND c.AI_ELIGIBLE = 1
                         """
                         
                         params = {"p_uid": firebase_uid, "vec": emb, "p_limit": custom_limit}
@@ -476,13 +488,13 @@ class SemanticMatchStrategy(SearchStrategy):
 
                         # Apply PDF exclusion filter if requested and no resource_type
                         if exclude_pdf and _should_exclude_pdf_in_first_pass(resource_type, book_id):
-                            sql += " AND source_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK') "
+                            sql += " AND c.content_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK') "
 
                         if length_filter:
                             if length_filter == 'SHORT':
-                                sql += " AND LENGTH(content_chunk) < 600 "
+                                sql += " AND DBMS_LOB.GETLENGTH(c.content_chunk) < 600 "
                             elif length_filter == 'LONG':
-                                sql += " AND LENGTH(content_chunk) > 600 "
+                                sql += " AND DBMS_LOB.GETLENGTH(c.content_chunk) > 600 "
                                 
                         sql += """
                             ORDER BY dist ASC

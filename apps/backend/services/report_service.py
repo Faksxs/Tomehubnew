@@ -37,7 +37,7 @@ def get_book_chunks(book_id: str, firebase_uid: str) -> List[Dict]:
             with conn.cursor() as cursor:
                 query = """
                     SELECT CONTENT_CHUNK, PAGE_NUMBER, CHUNK_INDEX
-                    FROM TOMEHUB_CONTENT
+                    FROM TOMEHUB_CONTENT_V2
                     WHERE BOOK_ID = :p_bid AND FIREBASE_UID = :p_uid
                     ORDER BY PAGE_NUMBER ASC, CHUNK_INDEX ASC
                 """

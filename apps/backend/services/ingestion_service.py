@@ -302,7 +302,7 @@ def check_book_exists(title: str, author: str, firebase_uid: str, conn=None) -> 
             
             query = """
             SELECT COUNT(*) 
-            FROM TOMEHUB_CONTENT 
+            FROM TOMEHUB_CONTENT_V2 
             WHERE firebase_uid = :p_uid 
                 AND title = :p_title
             """
@@ -336,7 +336,7 @@ def delete_book_content(title: str, author: str, firebase_uid: str, conn=None) -
             db_title = f"{title} - {author}"
             
             query = """
-            DELETE FROM TOMEHUB_CONTENT 
+            DELETE FROM TOMEHUB_CONTENT_V2 
             WHERE firebase_uid = :p_uid 
                 AND title = :p_title
             """
@@ -372,6 +372,38 @@ def _is_missing_table_error(error: Exception) -> bool:
         return False
 
 
+def _is_invalid_identifier_error(error: Exception) -> bool:
+    if not isinstance(error, oracledb.DatabaseError):
+        return False
+    try:
+        return getattr(error.args[0], "code", None) == 904
+    except Exception:
+        return False
+
+
+def _table_columns(cursor, table_name: str) -> set[str]:
+    cursor.execute(
+        """
+        SELECT COLUMN_NAME
+        FROM USER_TAB_COLUMNS
+        WHERE TABLE_NAME = :p_table
+        """,
+        {"p_table": str(table_name or "").upper()},
+    )
+    return {str(r[0]).upper() for r in cursor.fetchall()}
+
+
+def _chunked(seq, size: int):
+    chunk = []
+    for item in seq:
+        chunk.append(item)
+        if len(chunk) >= size:
+            yield chunk
+            chunk = []
+    if chunk:
+        yield chunk
+
+
 def purge_item_content(firebase_uid: str, book_id: str) -> dict:
     """
     Hard-delete all DB rows linked to a specific user item id.
@@ -382,6 +414,9 @@ def purge_item_content(firebase_uid: str, book_id: str) -> dict:
         "file_reports": 0,
         "external_meta": 0,
         "external_edges": 0,
+        "library_items": 0,
+        "index_state": 0,
+        "book_epistemic_metrics": 0,
     }
 
     if not firebase_uid:
@@ -394,17 +429,100 @@ def purge_item_content(firebase_uid: str, book_id: str) -> dict:
     try:
         with DatabaseManager.get_write_connection() as connection:
             with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    DELETE FROM TOMEHUB_CONTENT
-                    WHERE firebase_uid = :p_uid
-                      AND book_id = :p_book
-                    """,
-                    binds,
-                )
-                deleted = cursor.rowcount or 0
+                # Schema-aware content table resolution (V2 vs legacy, book_id vs item_id drift).
+                content_table = None
+                content_cols = set()
+                for candidate in ("TOMEHUB_CONTENT_V2", "TOMEHUB_CONTENT"):
+                    cols = _table_columns(cursor, candidate)
+                    if cols:
+                        content_table = candidate
+                        content_cols = cols
+                        break
+
+                content_item_col = None
+                content_id_col = "ID" if "ID" in content_cols else None
+                for c in ("ITEM_ID", "BOOK_ID"):
+                    if c in content_cols:
+                        content_item_col = c
+                        break
+
+                content_ids: list[int] = []
+                if content_table and content_item_col:
+                    try:
+                        if content_id_col:
+                            cursor.execute(
+                                f"""
+                                SELECT {content_id_col}
+                                FROM {content_table}
+                                WHERE FIREBASE_UID = :p_uid
+                                  AND {content_item_col} = :p_book
+                                """,
+                                binds,
+                            )
+                            for row in cursor.fetchall():
+                                try:
+                                    if row and row[0] is not None:
+                                        content_ids.append(int(row[0]))
+                                except Exception:
+                                    continue
+                    except Exception as q_err:
+                        if not (_is_missing_table_error(q_err) or _is_invalid_identifier_error(q_err)):
+                            raise
+
+                    # Child-first delete for content-linked tables (best-effort, schema-aware).
+                    if content_ids:
+                        child_specs = [
+                            ("TOMEHUB_CONTENT_TAGS", ("CONTENT_ID", "CHUNK_ID")),
+                            ("TOMEHUB_CONTENT_CATEGORIES", ("CONTENT_ID", "CHUNK_ID")),
+                            ("TOMEHUB_FLOW_SEEN", ("CHUNK_ID", "CONTENT_ID")),
+                            ("TOMEHUB_CONCEPT_CHUNKS", ("CONTENT_ID", "CHUNK_ID")),
+                        ]
+                        for child_table, col_candidates in child_specs:
+                            try:
+                                child_cols = _table_columns(cursor, child_table)
+                                if not child_cols:
+                                    continue
+                                child_col = next((c for c in col_candidates if c in child_cols), None)
+                                if not child_col:
+                                    continue
+                                for batch in _chunked(content_ids, 500):
+                                    local_binds = {}
+                                    phs = []
+                                    for i, cid in enumerate(batch):
+                                        k = f"p_c{i}"
+                                        phs.append(f":{k}")
+                                        local_binds[k] = cid
+                                    cursor.execute(
+                                        f"DELETE FROM {child_table} WHERE {child_col} IN ({', '.join(phs)})",
+                                        local_binds,
+                                    )
+                            except Exception as child_err:
+                                if _is_missing_table_error(child_err) or _is_invalid_identifier_error(child_err):
+                                    logger.debug(f"[DEBUG] purge_item_content skipped child cleanup for {child_table}: {child_err}")
+                                    continue
+                                raise
+
+                    cursor.execute(
+                        f"""
+                        DELETE FROM {content_table}
+                        WHERE FIREBASE_UID = :p_uid
+                          AND {content_item_col} = :p_book
+                        """,
+                        binds,
+                    )
+                    deleted = cursor.rowcount or 0
+                else:
+                    logger.warning("[WARN] purge_item_content could not resolve active content table/item key column")
 
                 for key, query in (
+                    (
+                        "index_state",
+                        """
+                        DELETE FROM TOMEHUB_ITEM_INDEX_STATE
+                        WHERE FIREBASE_UID = :p_uid
+                          AND ITEM_ID = :p_book
+                        """,
+                    ),
                     (
                         "ingested_files",
                         """
@@ -437,6 +555,22 @@ def purge_item_content(firebase_uid: str, book_id: str) -> dict:
                           AND BOOK_ID = :p_book
                         """,
                     ),
+                    (
+                        "book_epistemic_metrics",
+                        """
+                        DELETE FROM TOMEHUB_BOOK_EPISTEMIC_METRICS
+                        WHERE FIREBASE_UID = :p_uid
+                          AND BOOK_ID = :p_book
+                        """,
+                    ),
+                    (
+                        "library_items",
+                        """
+                        DELETE FROM TOMEHUB_LIBRARY_ITEMS
+                        WHERE FIREBASE_UID = :p_uid
+                          AND ITEM_ID = :p_book
+                        """,
+                    ),
                 ):
                     try:
                         cursor.execute(query, binds)
@@ -464,7 +598,7 @@ def purge_item_content(firebase_uid: str, book_id: str) -> dict:
         return {"success": False, "deleted": deleted, "aux_deleted": aux_deleted, "error": str(e)}
 
 
-def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "test_user_001", book_id: str = None, categories: Optional[str] = None) -> bool:
+def ingest_book(file_path: str, title: str, author: str, firebase_uid: str, book_id: str = None, categories: Optional[str] = None) -> bool:
     # Normalize categories: remove newlines and extra spaces
     if categories:
         categories = ",".join([c.strip() for c in categories.replace("\n", ",").split(",") if c.strip()])
@@ -563,8 +697,8 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str = "te
                 _runtime_log(f"{'='*70}")
                 
                 insert_sql = """
-                INSERT INTO TOMEHUB_CONTENT 
-                (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, book_id, normalized_content, text_deaccented, lemma_tokens, token_freq, categories)
+                INSERT INTO TOMEHUB_CONTENT_V2 
+                (firebase_uid, content_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, item_id, normalized_content, text_deaccented, lemma_tokens, token_freq, categories)
                 VALUES (:p_uid, :p_type, :p_title, :p_content, :p_chunk_type, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm_content, :p_deaccent, :p_lemmas, :p_token_freq, :p_cats)
                 RETURNING id INTO :p_out_id
                 """
@@ -755,8 +889,8 @@ def ingest_text_item(
     text: str,
     title: str,
     author: str,
+    firebase_uid: str,
     source_type: str = "PERSONAL_NOTE",
-    firebase_uid: str = "test_user_001",
     categories: Optional[str] = None,
     book_id: Optional[str] = None,
     page_number: Optional[int] = None,
@@ -795,8 +929,8 @@ def ingest_text_item(
 
                     out_id = cursor.var(oracledb.NUMBER)
                     cursor.execute("""
-                        INSERT INTO TOMEHUB_CONTENT 
-                        (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, book_id, normalized_content, text_deaccented, lemma_tokens, categories, "COMMENT", tags)
+                        INSERT INTO TOMEHUB_CONTENT_V2 
+                        (firebase_uid, content_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, item_id, normalized_content, text_deaccented, lemma_tokens, categories, "COMMENT", tags)
                         VALUES (:p_uid, :p_type, :p_title, :p_content, :p_chunk_type, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_deaccent, :p_lemmas, :p_cats, :p_comment, :p_tags)
                         RETURNING id INTO :p_out_id
                     """, {
@@ -865,7 +999,7 @@ def sync_highlights_for_item(
                 # Delete existing highlight/insight rows for this book/user
                 cursor.execute(
                     """
-                    DELETE FROM TOMEHUB_CONTENT
+                    DELETE FROM TOMEHUB_CONTENT_V2
                     WHERE firebase_uid = :p_uid
                       AND book_id = :p_book
                       AND source_type IN ('HIGHLIGHT', 'INSIGHT', 'NOTES')
@@ -891,7 +1025,7 @@ def sync_highlights_for_item(
                 embeddings = batch_get_embeddings(texts)
 
                 insert_sql = """
-                    INSERT INTO TOMEHUB_CONTENT
+                    INSERT INTO TOMEHUB_CONTENT_V2
                     (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, book_id, normalized_content, text_deaccented, lemma_tokens, "COMMENT", tags)
                     VALUES (:p_uid, :p_type, :p_title, :p_content, :p_chunk_type, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_deaccent, :p_lemmas, :p_comment, :p_tags)
                     RETURNING id INTO :p_out_id
@@ -985,7 +1119,7 @@ def sync_personal_note_for_item(
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    DELETE FROM TOMEHUB_CONTENT
+                    DELETE FROM TOMEHUB_CONTENT_V2
                     WHERE firebase_uid = :p_uid
                       AND book_id = :p_book
                       AND source_type IN ('PERSONAL_NOTE', 'INSIGHT')
@@ -1035,7 +1169,7 @@ def sync_personal_note_for_item(
 
                 cursor.execute(
                     """
-                    INSERT INTO TOMEHUB_CONTENT
+                    INSERT INTO TOMEHUB_CONTENT_V2
                     (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, book_id, normalized_content, text_deaccented, lemma_tokens, "COMMENT", tags)
                     VALUES (:p_uid, :p_type, :p_title, :p_content, :p_chunk_type, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_deaccent, :p_lemmas, :p_comment, :p_tags)
                     RETURNING id INTO :p_out_id
@@ -1116,8 +1250,8 @@ def process_bulk_items_logic(items: list, firebase_uid: str) -> dict:
                         out_id = cursor.var(oracledb.NUMBER)
                         db_source_type = normalize_source_type(item.get('type', 'PERSONAL_NOTE'))
                         cursor.execute("""
-                            INSERT INTO TOMEHUB_CONTENT 
-                            (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, book_id, normalized_content, text_deaccented, lemma_tokens, categories, "COMMENT", tags)
+                            INSERT INTO TOMEHUB_CONTENT_V2 
+                            (firebase_uid, content_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, item_id, normalized_content, text_deaccented, lemma_tokens, categories, "COMMENT", tags)
                             VALUES (:p_uid, :p_type, :p_title, :p_content, :p_chunk_type, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_deaccent, :p_lemmas, :p_cats, :p_comment, :p_tags)
                             RETURNING id INTO :p_out_id
                         """, {
@@ -1157,12 +1291,13 @@ def process_bulk_items_logic(items: list, firebase_uid: str) -> dict:
 
 if __name__ == "__main__":
     DatabaseManager.init_pool()
-    if len(sys.argv) >= 5:
-        # python ingest_book.py <path> <title> <author> [uid] [book_id]
-        path = sys.argv[1]
-        title = sys.argv[2]
-        author = sys.argv[3]
-        uid = sys.argv[4] if len(sys.argv) > 4 else "test_user_001"
-        book_id = sys.argv[5] if len(sys.argv) > 5 else None
-        
-        ingest_book(path, title, author, uid, book_id)
+    if len(sys.argv) < 5:
+        print("Usage: python ingestion_service.py <path> <title> <author> <uid> [book_id]")
+        sys.exit(1)
+    path = sys.argv[1]
+    title = sys.argv[2]
+    author = sys.argv[3]
+    uid = sys.argv[4]
+    book_id = sys.argv[5] if len(sys.argv) > 5 else None
+    
+    ingest_book(path, title, author, uid, book_id)

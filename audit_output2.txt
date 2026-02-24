@@ -1,0 +1,295 @@
+============================================================
+[1] FIRESTORE COLLECTION DISCOVERY
+============================================================
+
+Root collections:
+  - metadata
+      doc_id=systemCategories, fields=['list']
+  - rateLimits
+      doc_id=vpq1p0UzcCSLAh1d18WgZZWPBE63, fields=['windowStart', 'count']
+  - users
+
+============================================================
+[2] FIXING REMAINING ORPHAN CONTENT ROWS
+============================================================
+
+Found 129 orphan groups:
+  [BOOK] book_id=176394720805654..., title=Kırmızı Pazartesi - Gabriel García Márqu, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947192611jh..., title=Dilin Kökeni Üzerine - Ernest Renan, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947200992y4..., title=Mülksüzler - Daniel Bensaid, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947208152hm..., title=Dünya Ağrısı - Ayfer Tunç, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=17639471903613u..., title=Faydacılık - John Stuart Mill, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=176394721172220..., title=Siyasetin Temel Kavramları - Andrew Heyw, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=17639471911307s..., title=Aydınlanma Rüyası: Modern Felsefenin Yük, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=17639471953244q..., title=Macbeth - Venedik Taciri - William Shake, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947200155lp..., title=Gazap Üzümleri - John Steinbeck, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947197946hm..., title=Çavdar Tarlasında Çocuklar - J. D. Salin, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947192702zb..., title=Çanta - Marcial Lafuente Estefanía, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947204973vt..., title=Swastika Geceleri - Katharine Burdekin, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947199414ek..., title=Görmek - José Saramago, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947190736qc..., title=Toplumu Savunmak Gerekir - Michel Foucau, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947193813d4..., title=Orta Malı - Selahattin Enis, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947191401rz..., title=Dolayımsız Erotik veya Müzikal Erotik Ev, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947196240sw..., title=Kuyucaklı Yusuf - Sabahattin Ali, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947210799ds..., title=İslam'ın Hukuk İlmine Katkıları - Muhamm, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947208979kn..., title=Kamus-ı Türki - Semseddin Sami, uid=vpq1p0UzcCSLAh1, count=1
+  [PERSONAL_NOTE] book_id=1771549297595..., title=film yonetmeni - Self, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947206946sv..., title=Yeraltından Notlar - Dostoyevski, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947194267bh..., title=Theodor Adorno: Kültür Endüstrisinin Kıs, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=17639472050957j..., title=Çevre Politikası - Aykut Çoban, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947203869ro..., title=Hasretinden Prangalar Eskittim - Ahmed A, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947193248r1..., title=Yıllık Yazıhane - Kaan Kural, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947200282uq..., title=İki Şehrin Hikayesi (Kısaltılmış Metin) , uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947209161m5..., title=Mutlu Ölüm - Nora Roberts, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947207959d5..., title=Aşk Olmayan - Bejan Matur, uid=vpq1p0UzcCSLAh1, count=1
+  [WEBSITE] book_id=1771292257959..., title=film dizi spor site bulma - Unknown, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947199657rt..., title=Doğunun Limanları - Amin Maalouf, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=17639472082445f..., title=Notes from the Underground - Dostoyevski, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947210526ra..., title=İlahi Komedya - Araf - Dante Alighieri, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947193629gw..., title=Burma Günleri - George Orwell, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947191682b4..., title=Pal Sokağı Çocukları - French Molnar, uid=vpq1p0UzcCSLAh1, count=1
+  [WEBSITE] book_id=1771116913166..., title=chatgpt - Unknown, uid=vpq1p0UzcCSLAh1, count=1
+  [PERSONAL_NOTE] book_id=1770600628544..., title=Quick Note - Self, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947193536f6..., title=Yüzbaşının Kızı - Aleksandr Puskin, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947197199sf..., title=İnsanın Anlam Arayışı - Viktor E. Frankl, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947190449ue..., title=Acımak Yok - Alfred Döblin, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947190268v9..., title=Dublinliler - James Joyce, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947210981vc..., title=Rızanın İmalatı - Edward S. Herman, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=176394719481394..., title=Momo - Michael Ende, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947206486l1..., title=Puslu Kıtalar Atlası - Ihsan Oktay Anar, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947191312uq..., title=İlm-i Tedbir-i Mülk : Devlet Yönetme Bil, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=17639471900804b..., title=Dorian Gray'in Portresi - Oscar Wilde, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947189886hb..., title=Gölgelerin Peşinde: 50 Portre - Taha Kil, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947204360bp..., title=Eşitlik - Oncel Sencerman, Alex Callinic, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947209706u8..., title=Suçluyorum - Émile Zola, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947203329gw..., title=Amok Koşucusu - Stefan Zweig, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947201827iw..., title=Sorgulayan Denemeler - Bertrand Russell, uid=vpq1p0UzcCSLAh1, count=1
+  [WEBSITE] book_id=1770687888925..., title=leidse - , uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947193066tx..., title=Ulusların Düşüşü - Daron Acemoglu, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947212177du..., title=Bülbülü Öldürmek - Mazhar Bagli, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947194177ne..., title=Yaşam Sanatı - Zygmunt Bauman, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=176394720842687..., title=Cennetin Dibi - Gunduz Vassaf, uid=vpq1p0UzcCSLAh1, count=1
+  [PERSONAL_NOTE] book_id=1769812419786..., title=Dogum gunu - Self, uid=vpq1p0UzcCSLAh1, count=1
+  [ARTICLE] book_id=1763685990826..., title=Reflections on the scholarly contributio, uid=vpq1p0UzcCSLAh1, count=1
+  [ARTICLE] book_id=1763686040471..., title=Mathematical Theory of Communication - U, uid=vpq1p0UzcCSLAh1, count=1
+  [PERSONAL_NOTE] book_id=1769812517705..., title=ktlma2 - Self, uid=vpq1p0UzcCSLAh1, count=1
+  [PERSONAL_NOTE] book_id=1770655776870..., title=Ev Park Giris Bilgileri - Self, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947191021ry..., title=Balıkçılar - Dmitri Vasilyeviç Grigorovi, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947191774zs..., title=Goriot Baba (Ciltli, İplik Dikişli) - Ho, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947207322xz..., title=İnsanı Tanıma Sanatı - Alfred Adler, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=17639471909246j..., title=Prokrastineyşın - Timothy A. Pychyl, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=17639472000336r..., title=Aylak Adam - Yusuf Atilgan, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=17639472107084d..., title=Sisifos Söyleni - Albert Camus, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=176394719372281..., title=Boğulmamak İçin - George Orwell, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947208518pw..., title=Anadolu'da İslamiyet - Mehmet Fuat Köprü, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=176394720129621..., title=Kuşlar Yasına Gider - Hasan Ali Toptas, uid=vpq1p0UzcCSLAh1, count=1
+  [PERSONAL_NOTE] book_id=1769812527427..., title=ku8tlam 2 - Self, uid=vpq1p0UzcCSLAh1, count=1
+  [PERSONAL_NOTE] book_id=1771516099254..., title=Dua - Self, uid=vpq1p0UzcCSLAh1, count=1
+  [PERSONAL_NOTE] book_id=1771633508105..., title=Islam sosyolojisi kaynak tarama - Self, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947211813om..., title=Uğultulu Tepeler - Emily Brontë, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947210162h6..., title=Liberalizm/Muhafazakarlık Kıskacında Kad, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947192520fu..., title=Müzik Seni Çağırıyor - Erdal Atatbek, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947208791n6..., title=Sırça Köşk - Sabahattin Ali, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=17639471954764d..., title=Masumiyet Müzesi - Orhan Pamuk, Rafael C, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947190827hh..., title=Çiçek Açmış Genç Kızların Gölgesinde /Ka, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947192337m7..., title=Sen U Ben - Muhsin Kızılkaya, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947193339z0..., title=Asiye Kabahat’ten Şarkılar Dinlediniz - , uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947209070bs..., title=Behçet Necatigil/ Şiirler Bütün Yapıtlar, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947211995i1..., title=Anahtar Sözcükler - Raymond Williams, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=176394719063954..., title=Neoliberal Finansallaşmanın Politik Köke, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947191221qn..., title=İbn Tufeyl: Aklın Yaşamı - Taneli Kukkon, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947207504c2..., title=İsyan Ahlakı - NURETTIN TOPCU, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947192975ld..., title=Paradan Haber Ver! - Esteve Calzada, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947211904tu..., title=Osmanlıca-Türkçe Ansiklopedik Lugat - Fe, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947207595zs..., title=Çürümenin Kitabı - E. M. Cioran, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=17639472088884p..., title=Toza Sor - John Fante, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947208700v4..., title=Yabani Manolyalar - Ahmet Altan, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947194359mt..., title=Dünya Edebiyatının Ekolojisi: İlkçağlard, uid=vpq1p0UzcCSLAh1, count=1
+  [PERSONAL_NOTE] book_id=1771211343671..., title=Gelistirme mobil uzerinde - Self, uid=vpq1p0UzcCSLAh1, count=1
+  [PERSONAL_NOTE] book_id=1769812496591..., title=klutlama - Self, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947191865fa..., title=İçimizdeki Şeytan (Ciltli, İplik Dikişli, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=17639472005315s..., title=İtiraflarım - Tolstoy, Leo, graf, 1828-1, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947207683j4..., title=Kireç - Ömer Erdem, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947190177xi..., title=Uygarlıkların Grameri - Fernand Braudel, uid=vpq1p0UzcCSLAh1, count=1
+  [PERSONAL_NOTE] book_id=1770688295341..., title=urgent - Self, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947208335bz..., title=Huzursuzluk - Zülfü Livaneli, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947194450ly..., title=Aydınlanma Nedir? - John White, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947198561br..., title=Semerkant - Amin Maalouf, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947199536ng..., title=Uzak - Oruc Aruoba, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947196647zr..., title=Altıncı Koğuş - Anton Çehov, uid=vpq1p0UzcCSLAh1, count=1
+  [PERSONAL_NOTE] book_id=1770597309718..., title=Quick Note - Self, uid=vpq1p0UzcCSLAh1, count=1
+  [PERSONAL_NOTE] book_id=1771590386066..., title=Arastirma - Self, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947199171v7..., title=Milena'ya Mektuplar - Franz Kafka, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947203735vj..., title=İslam - Karen Armstrong, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=17639472067948q..., title=1984 - Michael Dean, George Orwell, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=17639472093438o..., title=Cehennemdeki Üniversiteliler - A. M. Cel, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947190548c0..., title=İslamla Damgalanmış Varoluş - İsmet Özel, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947212086df..., title=İnsan Denen Meçhul - Alexis Carrel, uid=vpq1p0UzcCSLAh1, count=1
+  [PERSONAL_NOTE] book_id=1769812366617..., title=Kutlama - Self, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=17639471915906b..., title=Otorite ile Yorum Arasında Hukukun Doğas, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947209980rg..., title=Cehenneme Övgü - Gündelik Hayatta Totali, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947210071p0..., title=Hürriyet Üstüne - John Stuart Mill, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947204118j7..., title=Siyasi İdeolojiler - Andrew Heywood, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=176394720170885..., title=Başkaldıran İnsan - Albert Camus, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947192429bt..., title=Orhan Gencebay Filmlerini Anlatıyor - Va, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=17639471940868w..., title=Kültür Yorumları - Terry Eagleton, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947199293rh..., title=Kırmızı Saçlı Kadın - Orhan Pamuk, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=176394719315783..., title=Snowden Dosyası - Luke Harding, uid=vpq1p0UzcCSLAh1, count=1
+  [PERSONAL_NOTE] book_id=1769812506516..., title=dogum 2 - Self, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947209798hf..., title=Ulus Nedir? - Ernest Renan, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947199900fe..., title=Özgürlükten Kaçış - Erich Fromm, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947192047ag..., title=Üç Kağıtçı - Orhan Kemal, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947203996pi..., title=Karanlık Çökerken Umutsuzluğa Karşı İyim, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=17639471897760n..., title=Kayıp Coğrafyanın İzinde: Doğu Türkistan, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947191956t2..., title=Görme Biçimleri - John Berger, uid=vpq1p0UzcCSLAh1, count=1
+  [BOOK] book_id=1763947197029o8..., title=Vitrinde Yaşamak - Nurdan Gürbilek, uid=vpq1p0UzcCSLAh1, count=1
+
+Inserting 129 missing book entries...
+  [OK] Kırmızı Pazartesi by Gabriel García Márquez
+  [OK] Dilin Kökeni Üzerine by Ernest Renan
+  [OK] Mülksüzler by Daniel Bensaid
+  [OK] Dünya Ağrısı by Ayfer Tunç
+  [OK] Faydacılık by John Stuart Mill
+  [OK] Siyasetin Temel Kavramları by Andrew Heywood
+  [OK] Aydınlanma Rüyası: Modern Felsefenin Yükselişi by Anthony Kenny
+  [OK] Macbeth - Venedik Taciri by William Shakespeare
+  [OK] Gazap Üzümleri by John Steinbeck
+  [OK] Çavdar Tarlasında Çocuklar by J. D. Salinger
+  [OK] Çanta by Marcial Lafuente Estefanía
+  [OK] Swastika Geceleri by Katharine Burdekin
+  [OK] Görmek by José Saramago
+  [OK] Toplumu Savunmak Gerekir by Michel Foucault
+  [OK] Orta Malı by Selahattin Enis
+  [OK] Dolayımsız Erotik veya Müzikal Erotik Evreler by Søren Kierkegaard
+  [OK] Kuyucaklı Yusuf by Sabahattin Ali
+  [OK] İslam'ın Hukuk İlmine Katkıları by Muhammed Hamidullah
+  [OK] Kamus-ı Türki by Semseddin Sami
+  [OK] film yonetmeni by Self
+  [OK] Yeraltından Notlar by Dostoyevski
+  [OK] Theodor Adorno: Kültür Endüstrisinin Kıskacında Kültür by Onder Kulak
+  [OK] Çevre Politikası by Aykut Çoban
+  [OK] Hasretinden Prangalar Eskittim by Ahmed Arif
+  [OK] Yıllık Yazıhane by Kaan Kural
+  [OK] İki Şehrin Hikayesi (Kısaltılmış Metin) by Charles Dickens
+  [OK] Mutlu Ölüm by Nora Roberts
+  [OK] Aşk Olmayan by Bejan Matur
+  [OK] film dizi spor site bulma by Unknown
+  [OK] Doğunun Limanları by Amin Maalouf
+  [OK] Notes from the Underground by Dostoyevski
+  [OK] İlahi Komedya - Araf by Dante Alighieri
+  [OK] Burma Günleri by George Orwell
+  [OK] Pal Sokağı Çocukları by French Molnar
+  [OK] chatgpt by Unknown
+  [OK] Quick Note by Self
+  [OK] Yüzbaşının Kızı by Aleksandr Puskin
+  [OK] İnsanın Anlam Arayışı by Viktor E. Frankl
+  [OK] Acımak Yok by Alfred Döblin
+  [OK] Dublinliler by James Joyce
+  [OK] Rızanın İmalatı by Edward S. Herman
+  [OK] Momo by Michael Ende
+  [OK] Puslu Kıtalar Atlası by Ihsan Oktay Anar
+  [OK] İlm-i Tedbir-i Mülk : Devlet Yönetme Bilimi by Charles Wells
+  [OK] Dorian Gray'in Portresi by Oscar Wilde
+  [OK] Gölgelerin Peşinde: 50 Portre by Taha Kilinc
+  [OK] Eşitlik by Oncel Sencerman, Alex Callinicos
+  [OK] Suçluyorum by Émile Zola
+  [OK] Amok Koşucusu by Stefan Zweig
+  [OK] Sorgulayan Denemeler by Bertrand Russell
+  [OK] leidse - by Unknown
+  [OK] Ulusların Düşüşü by Daron Acemoglu
+  [OK] Bülbülü Öldürmek by Mazhar Bagli
+  [OK] Yaşam Sanatı by Zygmunt Bauman
+  [OK] Cennetin Dibi by Gunduz Vassaf
+  [OK] Dogum gunu by Self
+  [OK] Reflections on the scholarly contributions of Professor David H. Jonassen by Thomas C. Reeves
+  [OK] Mathematical Theory of Communication by Unknown
+  [OK] ktlma2 by Self
+  [OK] Ev Park Giris Bilgileri by Self
+  [OK] Balıkçılar by Dmitri Vasilyeviç Grigoroviç
+  [OK] Goriot Baba (Ciltli, İplik Dikişli) by Honore de Balzac
+  [OK] İnsanı Tanıma Sanatı by Alfred Adler
+  [OK] Prokrastineyşın by Timothy A. Pychyl
+  [OK] Aylak Adam by Yusuf Atilgan
+  [OK] Sisifos Söyleni by Albert Camus
+  [OK] Boğulmamak İçin by George Orwell
+  [OK] Anadolu'da İslamiyet by Mehmet Fuat Köprülü
+  [OK] Kuşlar Yasına Gider by Hasan Ali Toptas
+  [OK] ku8tlam 2 by Self
+  [OK] Dua by Self
+  [OK] Islam sosyolojisi kaynak tarama by Self
+  [OK] Uğultulu Tepeler by Emily Brontë
+  [OK] Liberalizm/Muhafazakarlık Kıskacında Kadın by Sibel Özbudun, Cahide Sarı, Temel Demirer
+  [OK] Müzik Seni Çağırıyor by Erdal Atatbek
+  [OK] Sırça Köşk by Sabahattin Ali
+  [OK] Masumiyet Müzesi by Orhan Pamuk, Rafael Carpintero;
+  [OK] Çiçek Açmış Genç Kızların Gölgesinde /Kayıp Zamanın İzinde by Marcel Proust
+  [OK] Sen U Ben by Muhsin Kızılkaya
+  [OK] Asiye Kabahat’ten Şarkılar Dinlediniz by Karin Karakasli
+  [OK] Behçet Necatigil/ Şiirler Bütün Yapıtları by Nurullah Çetin
+  [OK] Anahtar Sözcükler by Raymond Williams
+  [OK] Neoliberal Finansallaşmanın Politik Kökenleri by Greta R. Krippner
+  [OK] İbn Tufeyl: Aklın Yaşamı by Taneli Kukkonen
+  [OK] İsyan Ahlakı by NURETTIN TOPCU
+  [OK] Paradan Haber Ver! by Esteve Calzada
+  [OK] Osmanlıca-Türkçe Ansiklopedik Lugat by Ferit Devellioğlu
+  [OK] Çürümenin Kitabı by E. M. Cioran
+  [OK] Toza Sor by John Fante
+  [OK] Yabani Manolyalar by Ahmet Altan
+  [OK] Dünya Edebiyatının Ekolojisi: İlkçağlardan Günümüze by Alexander Beecroft
+  [OK] Gelistirme mobil uzerinde by Self
+  [OK] klutlama by Self
+  [OK] İçimizdeki Şeytan (Ciltli, İplik Dikişli) by C. Terry Cline
+  [OK] İtiraflarım by Tolstoy, Leo, graf, 1828-1910
+  [OK] Kireç by Ömer Erdem
+  [OK] Uygarlıkların Grameri by Fernand Braudel
+  [OK] urgent by Self
+  [OK] Huzursuzluk by Zülfü Livaneli
+  [OK] Aydınlanma Nedir? by John White
+  [OK] Semerkant by Amin Maalouf
+  [OK] Uzak by Oruc Aruoba
+  [OK] Altıncı Koğuş by Anton Çehov
+  [OK] Quick Note by Self
+  [OK] Arastirma by Self
+  [OK] Milena'ya Mektuplar by Franz Kafka
+  [OK] İslam by Karen Armstrong
+  [OK] 1984 by Michael Dean, George Orwell
+  [OK] Cehennemdeki Üniversiteliler by A. M. Celâl Sengör
+  [OK] İslamla Damgalanmış Varoluş by İsmet Özel
+  [OK] İnsan Denen Meçhul by Alexis Carrel
+  [OK] Kutlama by Self
+  [OK] Otorite ile Yorum Arasında Hukukun Doğası by Joseph Raz
+  [OK] Cehenneme Övgü - Gündelik Hayatta Totalitarizm by Gündüz Vassaf, Zehra Gencosman, Ömer Madra
+  [OK] Hürriyet Üstüne by John Stuart Mill
+  [OK] Siyasi İdeolojiler by Andrew Heywood
+  [OK] Başkaldıran İnsan by Albert Camus
+  [OK] Orhan Gencebay Filmlerini Anlatıyor by Vadullah Taş
+  [OK] Kültür Yorumları by Terry Eagleton
+  [OK] Kırmızı Saçlı Kadın by Orhan Pamuk
+  [OK] Snowden Dosyası by Luke Harding
+  [OK] dogum 2 by Self
+  [OK] Ulus Nedir? by Ernest Renan
+  [OK] Özgürlükten Kaçış by Erich Fromm
+  [OK] Üç Kağıtçı by Orhan Kemal
+  [OK] Karanlık Çökerken Umutsuzluğa Karşı İyimserlik by Noam Chomsky
+  [OK] Kayıp Coğrafyanın İzinde: Doğu Türkistan Seyahatnamesi by Taha Kilinc
+  [OK] Görme Biçimleri by John Berger
+  [OK] Vitrinde Yaşamak by Nurdan Gürbilek
+
+Inserted: 129, Errors: 0
+
+============================================================
+[3] FINAL VERIFICATION
+============================================================
+
+  TOMEHUB_BOOKS:     268
+  TOMEHUB_CONTENT:   4540
+  Remaining orphans: 0
+
+  Content breakdown:
+    PDF: 3039
+    HIGHLIGHT: 1273
+    BOOK: 146
+    ARTICLE: 45
+    PERSONAL_NOTE: 21
+    INSIGHT: 12
+    WEBSITE: 4

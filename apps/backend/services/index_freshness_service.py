@@ -56,8 +56,8 @@ def get_index_freshness_state(book_id: Optional[str], firebase_uid: Optional[str
                     SELECT
                         COUNT(*) as total_chunks,
                         SUM(CASE WHEN VEC_EMBEDDING IS NOT NULL THEN 1 ELSE 0 END) as embedded_chunks
-                    FROM TOMEHUB_CONTENT
-                    WHERE BOOK_ID = :p_bid
+                    FROM TOMEHUB_CONTENT_V2
+                    WHERE ITEM_ID = :p_bid
                       AND FIREBASE_UID = :p_uid
                     """,
                     {"p_bid": book_id, "p_uid": firebase_uid},
@@ -71,8 +71,8 @@ def get_index_freshness_state(book_id: Optional[str], firebase_uid: Optional[str
                     """
                     SELECT COUNT(DISTINCT cc.CONTENT_ID)
                     FROM TOMEHUB_CONCEPT_CHUNKS cc
-                    JOIN TOMEHUB_CONTENT c ON c.ID = cc.CONTENT_ID
-                    WHERE c.BOOK_ID = :p_bid
+                    JOIN TOMEHUB_CONTENT_V2 c ON c.ID = cc.CONTENT_ID
+                    WHERE c.ITEM_ID = :p_bid
                       AND c.FIREBASE_UID = :p_uid
                     """,
                     {"p_bid": book_id, "p_uid": firebase_uid},
@@ -180,8 +180,8 @@ def enrich_graph_for_book(
                 cursor.execute(
                     """
                     SELECT c.ID, c.CONTENT_CHUNK
-                    FROM TOMEHUB_CONTENT c
-                    WHERE c.BOOK_ID = :p_bid
+                    FROM TOMEHUB_CONTENT_V2 c
+                    WHERE c.ITEM_ID = :p_bid
                       AND c.FIREBASE_UID = :p_uid
                       AND c.CONTENT_CHUNK IS NOT NULL
                       AND NOT EXISTS (

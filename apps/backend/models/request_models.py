@@ -301,6 +301,67 @@ class PurgeResourceRequest(BaseModel):
         return uid
 
 
+class LibraryItemUpsertRequest(BaseModel):
+    id: Optional[str] = Field(default=None, max_length=_BOOK_ID_MAX)
+    type: str = Field(default="BOOK", max_length=64)
+    title: str = Field(..., min_length=1, max_length=256)
+    author: str = Field(..., min_length=1, max_length=256)
+    translator: Optional[str] = Field(default=None, max_length=256)
+    publisher: Optional[str] = Field(default=None, max_length=256)
+    publicationYear: Optional[str] = Field(default=None, max_length=16)
+    isbn: Optional[str] = Field(default=None, max_length=256)
+    url: Optional[str] = Field(default=None, max_length=2000)
+    status: Optional[str] = Field(default=None, max_length=128)
+    readingStatus: Optional[str] = Field(default=None, max_length=64)
+    tags: Optional[List[str]] = None
+    generalNotes: Optional[str] = Field(default=None, max_length=_NOTE_MAX)
+    contentLanguageMode: Optional[str] = Field(default=None, max_length=50)
+    contentLanguageResolved: Optional[str] = Field(default=None, max_length=50)
+    sourceLanguageHint: Optional[str] = Field(default=None, max_length=50)
+    languageDecisionReason: Optional[str] = Field(default=None, max_length=255)
+    languageDecisionConfidence: Optional[float] = None
+    personalNoteCategory: Optional[str] = Field(default=None, max_length=32)
+    personalFolderId: Optional[str] = Field(default=None, max_length=255)
+    folderPath: Optional[str] = Field(default=None, max_length=2000)
+    coverUrl: Optional[str] = Field(default=None, max_length=2000)
+    pageCount: Optional[int] = Field(default=None, ge=0, le=100000)
+    isFavorite: Optional[bool] = False
+    addedAt: Optional[int] = None
+    highlights: Optional[list[dict]] = None
+
+    model_config = {"extra": "allow"}
+
+
+class LibraryItemPatchRequest(BaseModel):
+    patch: dict = Field(default_factory=dict)
+
+    model_config = {"extra": "ignore"}
+
+
+class LibraryBulkDeleteRequest(BaseModel):
+    item_ids: List[str] = Field(default_factory=list, min_length=1, max_length=500)
+
+
+class PersonalNoteFolderUpsertRequest(BaseModel):
+    id: Optional[str] = Field(default=None, max_length=255)
+    category: Optional[str] = Field(default="PRIVATE", max_length=32)
+    name: str = Field(..., min_length=1, max_length=255)
+    order: Optional[int] = Field(default=0)
+    createdAt: Optional[int] = None
+    updatedAt: Optional[int] = None
+
+    model_config = {"extra": "allow"}
+
+
+class PersonalNoteFolderPatchRequest(BaseModel):
+    name: Optional[str] = Field(default=None, max_length=255)
+    category: Optional[str] = Field(default=None, max_length=32)
+    order: Optional[int] = None
+    updatedAt: Optional[int] = None
+
+    model_config = {"extra": "ignore"}
+
+
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=_TEXT_MAX)
     firebase_uid: str = Field(..., min_length=1, max_length=_UID_MAX)

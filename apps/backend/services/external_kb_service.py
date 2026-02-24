@@ -464,8 +464,8 @@ def _load_book_context(book_id: str, firebase_uid: str) -> Dict[str, Any]:
                 else:
                     cursor.execute(
                         """
-                        SELECT TITLE FROM TOMEHUB_CONTENT
-                        WHERE BOOK_ID=:p_book AND FIREBASE_UID=:p_uid
+                        SELECT TITLE FROM TOMEHUB_CONTENT_V2
+                        WHERE ITEM_ID=:p_book AND FIREBASE_UID=:p_uid
                         ORDER BY ID DESC FETCH FIRST 1 ROWS ONLY
                         """,
                         {"p_book": book_id, "p_uid": firebase_uid},
@@ -480,8 +480,8 @@ def _load_book_context(book_id: str, firebase_uid: str) -> Dict[str, Any]:
                     """
                     SELECT DISTINCT t.TAG
                     FROM TOMEHUB_CONTENT_TAGS t
-                    JOIN TOMEHUB_CONTENT c ON c.ID=t.CONTENT_ID
-                    WHERE c.BOOK_ID=:p_book AND c.FIREBASE_UID=:p_uid
+                    JOIN TOMEHUB_CONTENT_V2 c ON c.ID=t.CONTENT_ID
+                    WHERE c.ITEM_ID=:p_book AND c.FIREBASE_UID=:p_uid
                     FETCH FIRST 50 ROWS ONLY
                     """,
                     {"p_book": book_id, "p_uid": firebase_uid},

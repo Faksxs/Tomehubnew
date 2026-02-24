@@ -1,0 +1,59 @@
+{
+  "summary": {
+    "uid": "vpq1p0UzcCSLAh1d18WgZZWPBE63",
+    "candidate_ids": 103,
+    "started_at": "2026-02-23T23:42:01.075377+00:00",
+    "deleted_rows": {
+      "TOMEHUB_FLOW_SEEN": 0,
+      "TOMEHUB_CONCEPT_CHUNKS": 0,
+      "TOMEHUB_CONTENT_TAGS": 0,
+      "TOMEHUB_CONTENT_CATEGORIES": 0,
+      "TOMEHUB_ITEM_INDEX_STATE": 103,
+      "TOMEHUB_INGESTED_FILES": 0,
+      "TOMEHUB_FILE_REPORTS": 0,
+      "TOMEHUB_EXTERNAL_EDGES": 5,
+      "TOMEHUB_EXTERNAL_BOOK_META": 1,
+      "TOMEHUB_BOOK_EPISTEMIC_METRICS": 0,
+      "TOMEHUB_CHANGE_EVENTS": 0,
+      "TOMEHUB_CONTENT_V2": 103,
+      "TOMEHUB_LIBRARY_ITEMS": 103
+    },
+    "skipped": {
+      "TOMEHUB_BOOKS": "missing column ID"
+    },
+    "errors": [],
+    "content_ids_targeted": 103,
+    "finished_at": "2026-02-23T23:42:03.525391+00:00"
+  },
+  "postcheck": {
+    "remaining_candidate_rows_by_table": {
+      "TOMEHUB_LIBRARY_ITEMS": 0,
+      "TOMEHUB_CONTENT_V2": 0,
+      "TOMEHUB_ITEM_INDEX_STATE": 0,
+      "TOMEHUB_INGESTED_FILES": 0,
+      "TOMEHUB_FILE_REPORTS": 0,
+      "TOMEHUB_EXTERNAL_BOOK_META": 0,
+      "TOMEHUB_EXTERNAL_EDGES": 0,
+      "TOMEHUB_BOOKS": null,
+      "TOMEHUB_CHANGE_EVENTS": 0
+    },
+    "library_items_by_type_after": [
+      [
+        "ARTICLE",
+        2
+      ],
+      [
+        "BOOK",
+        102
+      ],
+      [
+        "PERSONAL_NOTE",
+        15
+      ],
+      [
+        "WEBSITE",
+        4
+      ]
+    ]
+  }
+}

@@ -173,10 +173,10 @@ def resolve_book_id_from_question(firebase_uid: str, question: str) -> Optional[
                 cursor.execute(
                     """
                     SELECT DISTINCT title, book_id
-                    FROM TOMEHUB_CONTENT
+                    FROM TOMEHUB_CONTENT_V2
                     WHERE firebase_uid = :p_uid
                       AND book_id IS NOT NULL
-                      AND (source_type = 'PDF' OR source_type = 'EPUB' OR source_type = 'PDF_CHUNK' OR source_type = 'HIGHLIGHT')
+                      AND (content_type = 'PDF' OR content_type = 'EPUB' OR content_type = 'PDF_CHUNK' OR content_type = 'HIGHLIGHT')
                     """,
                     {"p_uid": firebase_uid},
                 )
@@ -273,10 +273,10 @@ def resolve_multiple_book_ids_from_question(
                 cursor.execute(
                     """
                     SELECT DISTINCT title, book_id
-                    FROM TOMEHUB_CONTENT
+                    FROM TOMEHUB_CONTENT_V2
                     WHERE firebase_uid = :p_uid
                       AND book_id IS NOT NULL
-                      AND (source_type = 'PDF' OR source_type = 'EPUB' OR source_type = 'PDF_CHUNK' OR source_type = 'HIGHLIGHT')
+                      AND (content_type = 'PDF' OR content_type = 'EPUB' OR content_type = 'PDF_CHUNK' OR content_type = 'HIGHLIGHT')
                     """,
                     {"p_uid": firebase_uid},
                 )
@@ -360,10 +360,10 @@ def resolve_all_book_ids(
 
                 sql = f"""
                     SELECT DISTINCT book_id
-                    FROM TOMEHUB_CONTENT
+                    FROM TOMEHUB_CONTENT_V2
                     WHERE firebase_uid = :p_uid
                       AND book_id IS NOT NULL
-                      AND source_type IN ({bind_clause})
+                      AND content_type IN ({bind_clause})
                 """
                 cursor.execute(sql, params)
                 return [str(row[0]) for row in cursor.fetchall()]
@@ -410,7 +410,7 @@ def resolve_ingested_book_ids(
     except Exception as e:
         logger.warning("resolve_ingested_book_ids (table check) failed: %s", e)
 
-    # 2. Check TOMEHUB_CONTENT as fallback/addition (looks for actual data)
+    # 2. Check TOMEHUB_CONTENT_V2 as fallback/addition (looks for actual data)
     try:
         content_ids = resolve_all_book_ids(firebase_uid, ("PDF", "PDF_CHUNK"))
         for bid in content_ids:
@@ -539,10 +539,10 @@ def count_lemma_occurrences(
                     
                     sql = f"""
                         SELECT SUM(REGEXP_COUNT(LOWER(content_chunk), :p_term))
-                        FROM TOMEHUB_CONTENT
+                        FROM TOMEHUB_CONTENT_V2
                         WHERE firebase_uid = :p_uid
                           AND book_id = :p_bid
-                          AND source_type IN ({bind_clause})
+                          AND content_type IN ({bind_clause})
                     """
                     cursor.execute(sql, params)
                     row = cursor.fetchone()
@@ -606,10 +606,10 @@ def get_keyword_contexts(
                 # We fetch content_chunk for extraction, but filter by normalized_content
                 sql = f"""
                     SELECT id, content_chunk, page_number, normalized_content
-                    FROM TOMEHUB_CONTENT
+                    FROM TOMEHUB_CONTENT_V2
                     WHERE firebase_uid = :p_uid
                       AND book_id = :p_bid
-                      AND source_type IN ({bind_clause})
+                      AND content_type IN ({bind_clause})
                       AND (
                 """
                 
@@ -730,10 +730,10 @@ def get_keyword_distribution(
                 # Fetch only page_number and normalized_content for speed
                 sql = f"""
                     SELECT page_number, normalized_content
-                    FROM TOMEHUB_CONTENT
+                    FROM TOMEHUB_CONTENT_V2
                     WHERE firebase_uid = :p_uid
                       AND book_id = :p_bid
-                      AND source_type IN ({bind_clause})
+                      AND content_type IN ({bind_clause})
                       AND (
                 """
                 
@@ -813,7 +813,7 @@ def count_all_notes_occurrences(firebase_uid: str, term: str) -> int:
         
         with DatabaseManager.get_read_connection() as conn:
             with conn.cursor() as cursor:
-                sql = "SELECT COUNT(*) FROM TOMEHUB_CONTENT WHERE firebase_uid = :p_uid"
+                sql = "SELECT COUNT(*) FROM TOMEHUB_CONTENT_V2 WHERE firebase_uid = :p_uid"
                 params = {"p_uid": firebase_uid}
                 cursor.execute(sql, params)
                 row = cursor.fetchone()

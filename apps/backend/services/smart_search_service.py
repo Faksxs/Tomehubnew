@@ -212,7 +212,7 @@ def perform_search(
             offset=offset,
             book_id=book_id,
             intent=intent,
-            resource_type=resource_type,
+            resource_type=recontent_type,
             session_id=session_id,
             result_mix_policy=result_mix_policy,
             semantic_tail_cap=semantic_tail_cap,
@@ -235,7 +235,7 @@ def perform_search(
 
 def parse_metadata_from_row(row):
     # Helper to clean content
-    # row = (content_chunk, title, source_type, page_number, normalized_content, personal_comment)
+    # row = (content_chunk, title, content_type, page_number, normalized_content, personal_comment)
     content_clob = row[0]
     content = content_clob if isinstance(content_clob, str) else (content_clob.read() if content_clob else "")
     
@@ -243,12 +243,12 @@ def parse_metadata_from_row(row):
     clean_text, summary, tags, p_comment = parse_and_clean_content(content)
     # If personal_comment column exists and is not null, prefer it?
     # The SQL selects personal_comment from DB (if it exists separate).
-    # Wait, TOMEHUB_CONTENT doesn't have personal_comment column?
+    # Wait, TOMEHUB_CONTENT_V2 doesn't have personal_comment column?
     # Script debug earlier: "SELECT ... normalized_content" - no personal_comment.
     # I added personal_comment to SELECT in Stage 1/2. Does it exist?
     # Backfill script didn't add it.
     # Check debug_smart_search.py script output: 
-    # "SELECT id, title, source_type, normalized_content, content_chunk"
+    # "SELECT id, title, content_type, normalized_content, content_chunk"
     # It does NOT have personal_comment column explicitly. It's inside content_chunk.
     # Removing `personal_comment` from SQL to avoid error.
     return clean_text, summary, tags, p_comment

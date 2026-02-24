@@ -7,7 +7,7 @@ import {
   PersonalNoteCategory,
   PersonalNoteFolder,
 } from "./types";
-import { QueryDocumentSnapshot, DocumentData } from "firebase/firestore";
+import type { QueryDocumentSnapshot, DocumentData } from "firebase/firestore";
 import { BookList } from "./components/BookList";
 import { BookForm } from "./components/BookForm";
 import { BookDetail } from "./components/BookDetail";
@@ -27,8 +27,7 @@ import {
   updatePersonalNoteFolderForUser,
   deletePersonalNoteFolderForUser,
   movePersonalNoteForUser,
-} from "./services/firestoreService";
-
+} from "./services/oracleLibraryService";
 import {
   ItemDraft,
   enrichBookWithAI,

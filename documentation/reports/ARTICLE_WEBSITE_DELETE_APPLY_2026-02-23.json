@@ -1,0 +1,95 @@
+{
+  "summary": {
+    "uid": "vpq1p0UzcCSLAh1d18WgZZWPBE63",
+    "started_at": "2026-02-23T23:44:57.957036+00:00",
+    "target_count": 6,
+    "target_by_type": {
+      "ARTICLE": 2,
+      "WEBSITE": 4
+    },
+    "firestore_deleted_ok": 6,
+    "firestore_delete_errors": 0,
+    "oracle_deleted_rows": {
+      "TOMEHUB_FLOW_SEEN": 0,
+      "TOMEHUB_CONCEPT_CHUNKS": 0,
+      "TOMEHUB_CONTENT_TAGS": 0,
+      "TOMEHUB_CONTENT_CATEGORIES": 0,
+      "TOMEHUB_ITEM_INDEX_STATE": 6,
+      "TOMEHUB_INGESTED_FILES": 0,
+      "TOMEHUB_FILE_REPORTS": 0,
+      "TOMEHUB_EXTERNAL_EDGES": 0,
+      "TOMEHUB_EXTERNAL_BOOK_META": 0,
+      "TOMEHUB_BOOK_EPISTEMIC_METRICS": 2,
+      "TOMEHUB_CHANGE_EVENTS": 0,
+      "TOMEHUB_CONTENT_V2": 7,
+      "TOMEHUB_LIBRARY_ITEMS": 6
+    },
+    "oracle_errors": [],
+    "targets": [
+      {
+        "item_id": "1763685990826",
+        "type": "ARTICLE",
+        "title": "Reflections on the scholarly contributions of Professor David H. Jonassen",
+        "author": "Thomas C. Reeves"
+      },
+      {
+        "item_id": "1763686040471",
+        "type": "ARTICLE",
+        "title": "Mathematical Theory of Communication",
+        "author": "Unknown"
+      },
+      {
+        "item_id": "1770687774840",
+        "type": "WEBSITE",
+        "title": "open library",
+        "author": "Unknown"
+      },
+      {
+        "item_id": "1770687888925",
+        "type": "WEBSITE",
+        "title": "leidse",
+        "author": "Unknown"
+      },
+      {
+        "item_id": "1771116913166",
+        "type": "WEBSITE",
+        "title": "chatgpt",
+        "author": "Unknown"
+      },
+      {
+        "item_id": "1771292257959",
+        "type": "WEBSITE",
+        "title": "film dizi spor site bulma",
+        "author": "Unknown"
+      }
+    ],
+    "target_content_ids": 7,
+    "finished_at": "2026-02-23T23:45:00.388895+00:00"
+  },
+  "postcheck": {
+    "remaining_in_firestore": {
+      "count": 0,
+      "ids": []
+    },
+    "remaining_candidate_rows_oracle": {
+      "TOMEHUB_LIBRARY_ITEMS": 0,
+      "TOMEHUB_CONTENT_V2": 0,
+      "TOMEHUB_ITEM_INDEX_STATE": 0,
+      "TOMEHUB_INGESTED_FILES": 0,
+      "TOMEHUB_FILE_REPORTS": 0,
+      "TOMEHUB_EXTERNAL_BOOK_META": 0,
+      "TOMEHUB_EXTERNAL_EDGES": 0,
+      "TOMEHUB_CHANGE_EVENTS": 0
+    },
+    "library_items_by_type_after": [
+      [
+        "BOOK",
+        102
+      ],
+      [
+        "PERSONAL_NOTE",
+        15
+      ]
+    ]
+  }
+}

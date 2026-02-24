@@ -1,0 +1,120 @@
+
+=== Found 51 orphaned book entries to backfill ===
+
+--- Inserting missing TOMEHUB_BOOKS entries ---
+  [ERR] İslam Felsefesi Üzerine: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] İslam Sosyolojisi: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Ahlak Felsefesinin Sorunları: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Hayatın Anlamı: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Medeniyet Tarihi 2: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Leviathan: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Ahlak Felsefesi: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Din Uzerine: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Felsefi Izlenimler: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Hayatın Anlamı Üzerine: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Her Yönüyle Klasik Mitoloji: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Esir Şehrin İnsanları (Esir Şehir Üçlemesi 1.Kitap): ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Medeniyet Tarihi I: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Kadın antropolojisi: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Devrim Uzerine: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Tanrı'nın Ölümü ve Kültür: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Karilar Kogusu: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Düşüş: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Aska Övgü: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Felsefenin tesellisi: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Kral Lear: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Başka bir estetik: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Bilim ve Bilgelik: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Fakir Sanat: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Komünist Manifesto: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Hamlet: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Kadin ve Bedeni - Altan Kar: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Daha Dun: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Siddet Uzerine Secme Eserler 6: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Hayata Bakışım: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Macbeth: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Aşkın Metafiziği: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Cekilme Sulari: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Gercek Mutlulugun Metafizigi: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Kırk Ambar 2: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Havva'nın Üç Kızı: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Çivisi Çıkmış Dünya: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Felsefi inanç: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Demian: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Kaygi Kavrami - Hasan Ali Yücel Klasikleri: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Kırmızı ve Siyah: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Bir Havva Kizi - Hasan Ali Yücel Klasikleri: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Ham Toprak: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Binboğalar Efsanesi: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Bilginin Toplumsal Tarihi: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Caligula and Three Other Plays: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Belki yine gelirim: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Altin Gözlü Kiz: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Antonius ve Kleopatra: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] Akıl Çağı: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+  [ERR] open library -: ORA-00923: FROM keyword not found where expected
+Help: https://docs.oracle.com/error-help/db/ora-00923/
+
+=== Backfill Complete ===
+  Inserted: 0
+  Skipped: 0
+  Errors: 51
+
+--- Verification ---
+  TOMEHUB_BOOKS total: 88
+  Remaining orphans: 800
+  'kader' highlights now joinable: 4
+    [HIGHLIGHT] Her Yönüyle Klasik Mitoloji (Highlight): Zeus kader tanrıçaları olarak adlandırılan bu üç moira nın da babasıyd
+    [HIGHLIGHT] Her Yönüyle Klasik Mitoloji (Highlight): Kanunları ilgilendiren hallerde zeus son derece bilgece davranabiliyor
+    [HIGHLIGHT] Klasik Sosyoloji: Nietzsche, Weber’in sorumluluk etiğine dair oldukça rasyonalist çözüml
+    [HIGHLIGHT] Klasik Sosyoloji: Gerçekte Durkheim’m Suicide’daki argümanı burada öne sürdüğümden çok d

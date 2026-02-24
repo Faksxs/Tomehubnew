@@ -19,7 +19,10 @@ def verify_lock_logic():
                 # Simulate the key generation used in ingest_book
                 title = "Test Book"
                 author = "Test Author"
-                uid = "test_user_001"
+                if len(sys.argv) < 2:
+                    print("Usage: python test_lock_mechanics.py <uid>")
+                    sys.exit(1)
+                uid = sys.argv[1]
                 safe_key = hashlib.md5(f"{title}_{author}".encode('utf-8')).hexdigest()
                 lock_name = f"ingest_{uid}_{safe_key}"
                 

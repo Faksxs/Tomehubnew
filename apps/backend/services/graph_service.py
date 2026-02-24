@@ -159,7 +159,7 @@ def save_to_graph(content_id: int, concepts: list, relations: list) -> bool:
                         try:
                             cursor.execute("""
                                 SELECT VEC_EMBEDDING, CONTENT_CHUNK
-                                FROM TOMEHUB_CONTENT
+                                FROM TOMEHUB_CONTENT_V2
                                 WHERE ID = :p_id
                             """, {"p_id": content_id})
                             c_row = cursor.fetchone()
@@ -360,7 +360,7 @@ def get_graph_candidates(query_text: str, firebase_uid: str, limit: int = 15, of
                         ct.content_chunk,
                         gh.page_number,
                         gh.title,
-                        gh.source_type,
+                        gh.content_type as source_type,
                         gh.related_concept,
                         gh.rel_type,
                         gh.weight,
@@ -370,7 +370,7 @@ def get_graph_candidates(query_text: str, firebase_uid: str, limit: int = 15, of
                             ct.id AS content_id,
                             ct.page_number,
                             ct.title,
-                            ct.source_type,
+                            ct.content_type,
                             c_neighbor.name as related_concept,
                             r.rel_type,
                             r.weight,
@@ -378,13 +378,14 @@ def get_graph_candidates(query_text: str, firebase_uid: str, limit: int = 15, of
                         FROM TOMEHUB_RELATIONS r
                         JOIN TOMEHUB_CONCEPTS c_neighbor ON (r.dst_id = c_neighbor.id OR r.src_id = c_neighbor.id)
                         JOIN TOMEHUB_CONCEPT_CHUNKS cc ON c_neighbor.id = cc.concept_id
-                        JOIN TOMEHUB_CONTENT ct ON cc.content_id = ct.id
+                        JOIN TOMEHUB_CONTENT_V2 ct ON cc.content_id = ct.id
                         WHERE (r.src_id IN ({SEQ}) OR r.dst_id IN ({SEQ}))
                         AND ct.firebase_uid = :p_uid
+                        AND ct.ai_eligible = 1
                         AND c_neighbor.id NOT IN ({SEQ})
                         AND (cc.strength IS NULL OR cc.strength >= :p_strength)
                     ) gh
-                    JOIN TOMEHUB_CONTENT ct ON ct.id = gh.content_id
+                    JOIN TOMEHUB_CONTENT_V2 ct ON ct.id = gh.content_id
                     OFFSET :p_offset ROWS FETCH FIRST :p_limit ROWS ONLY
                 """
                 

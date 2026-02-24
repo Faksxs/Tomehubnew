@@ -87,6 +87,7 @@ def _build_patch(original: Dict[str, Any], enriched: Dict[str, Any]) -> Dict[str
 
     summary = str(enriched.get("summary") or "").strip()
     if summary:
+        patch["summary"] = summary
         patch["generalNotes"] = summary
 
     tags = enriched.get("tags")
@@ -185,13 +186,14 @@ async def _run(
         return 2
 
     from firebase_admin import firestore
+    from google.cloud.firestore_v1.base_query import FieldFilter
 
     db = firestore.client()
     query = (
         db.collection("users")
         .document(firebase_uid)
         .collection("items")
-        .where("type", "==", "BOOK")
+        .where(filter=FieldFilter("type", "==", "BOOK"))
     )
     docs = list(query.stream())
     docs.sort(key=lambda d: int((d.to_dict() or {}).get("addedAt") or 0))

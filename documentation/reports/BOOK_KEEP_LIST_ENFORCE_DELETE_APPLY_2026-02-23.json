@@ -1,0 +1,66 @@
+{
+  "summary": {
+    "uid": "vpq1p0UzcCSLAh1d18WgZZWPBE63",
+    "started_at": "2026-02-24T00:03:50.995202+00:00",
+    "keep_list_count": 51,
+    "precheck": {
+      "firestore_books_total": 51,
+      "firestore_books_keep_match": 51,
+      "firestore_books_delete_targets": 0,
+      "oracle_books_total": 102,
+      "oracle_books_keep_match": 51,
+      "oracle_books_delete_targets": 51
+    },
+    "firestore": {
+      "delete_targets": 0,
+      "deleted_ok": 0,
+      "errors": []
+    },
+    "oracle": {
+      "delete_targets": 51,
+      "deleted_rows": {
+        "TOMEHUB_FLOW_SEEN": 0,
+        "TOMEHUB_CONCEPT_CHUNKS": 0,
+        "TOMEHUB_CONTENT_TAGS": 0,
+        "TOMEHUB_CONTENT_CATEGORIES": 0,
+        "TOMEHUB_ITEM_INDEX_STATE": 51,
+        "TOMEHUB_INGESTED_FILES": 1,
+        "TOMEHUB_FILE_REPORTS": 0,
+        "TOMEHUB_EXTERNAL_EDGES": 0,
+        "TOMEHUB_EXTERNAL_BOOK_META": 9,
+        "TOMEHUB_BOOK_EPISTEMIC_METRICS": 43,
+        "TOMEHUB_CHANGE_EVENTS": 0,
+        "TOMEHUB_CONTENT_V2": 242,
+        "TOMEHUB_LIBRARY_ITEMS": 51
+      },
+      "skipped": {},
+      "errors": [],
+      "target_content_ids": 242
+    },
+    "finished_at": "2026-02-24T00:03:52.898576+00:00"
+  },
+  "postcheck": {
+    "firestore": {
+      "books_total_after": 51,
+      "books_not_in_keep_after": 0,
+      "books_not_in_keep_ids_after": [],
+      "missing_keep_ids_in_firestore_after": 0
+    },
+    "oracle": {
+      "books_total_after": 51,
+      "books_not_in_keep_after": 0,
+      "books_not_in_keep_ids_after": [],
+      "missing_keep_ids_in_oracle_after": 0,
+      "library_items_by_type_after": [
+        [
+          "BOOK",
+          51
+        ],
+        [
+          "PERSONAL_NOTE",
+          15
+        ]
+      ]
+    }
+  }
+}

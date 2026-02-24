@@ -19,18 +19,18 @@ def sync_book():
             with conn.cursor() as cursor:
                 # Check if already exists
                 cursor.execute(
-                    "SELECT count(*) FROM TOMEHUB_BOOKS WHERE id = :p_id",
-                    {"p_id": BOOK_ID}
+                    "SELECT count(*) FROM TOMEHUB_LIBRARY_ITEMS WHERE item_id = :p_id AND firebase_uid = :p_uid",
+                    {"p_id": BOOK_ID, "p_uid": CORRECT_UID}
                 )
                 exists = cursor.fetchone()[0] > 0
 
                 if exists:
-                    print(f"Book already exists in TOMEHUB_BOOKS: {BOOK_ID}")
+                    print(f"Book already exists in TOMEHUB_LIBRARY_ITEMS: {BOOK_ID}")
                     return
 
                 cursor.execute("""
-                    INSERT INTO TOMEHUB_BOOKS (ID, TITLE, AUTHOR, FIREBASE_UID, CREATED_AT)
-                    VALUES (:p_id, :p_title, :p_author, :p_uid, CURRENT_TIMESTAMP)
+                    INSERT INTO TOMEHUB_LIBRARY_ITEMS (ITEM_ID, TITLE, AUTHOR, FIREBASE_UID, CREATED_AT, ITEM_TYPE)
+                    VALUES (:p_id, :p_title, :p_author, :p_uid, CURRENT_TIMESTAMP, 'BOOK')
                 """, {
                     "p_id": BOOK_ID,
                     "p_title": TITLE,
@@ -38,7 +38,7 @@ def sync_book():
                     "p_uid": CORRECT_UID
                 })
                 conn.commit()
-                print(f"OK: Inserted '{TITLE}' by {AUTHOR} (ID: {BOOK_ID}) into TOMEHUB_BOOKS.")
+                print(f"OK: Inserted '{TITLE}' by {AUTHOR} (ID: {BOOK_ID}) into TOMEHUB_LIBRARY_ITEMS.")
     except Exception as e:
         print(f"ERROR: {e}")
     finally:

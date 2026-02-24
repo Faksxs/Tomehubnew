@@ -1,0 +1,30 @@
+{
+  "summary": {
+    "uid": "vpq1p0UzcCSLAh1d18WgZZWPBE63",
+    "firestore_total_docs": 217,
+    "firestore_book_docs": 154,
+    "failed_normalization_docs": 0,
+    "kept_books": 154,
+    "delete_candidate_books": 0,
+    "criteria_counts": {
+      "favorite_books_union_fs_or_oracle": 51,
+      "books_with_highlight_or_insight_text_union_fs_or_oracle": 51,
+      "books_with_ingested_or_pdfchunk": 154,
+      "books_with_fs_favorite_only": 51,
+      "books_with_fs_highlight_or_insight_text_only": 51,
+      "books_with_ingested_completed_only": 14,
+      "books_with_pdf_chunk_content": 154
+    },
+    "oracle_impact_if_delete_all_candidates": {
+      "library_items_rows": 0,
+      "content_v2_rows": 0,
+      "item_index_state_rows": 0,
+      "ingested_files_rows": 0,
+      "file_reports_rows": 0,
+      "external_meta_rows": 0,
+      "external_edges_rows": 0
+    }
+  },
+  "delete_candidates": [],
+  "kept": []
+}

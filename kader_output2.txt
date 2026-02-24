@@ -1,0 +1,67 @@
+
+=== ORPHANED highlights with 'kader' (no TOMEHUB_BOOKS entry): 4 ===
+  [HIGHLIGHT] title=Ahlak Felsefesinin Sorunları - Theodor W. Adorno book_id=1763947192793bksc6vmrv
+    snippet: Suikastin başarılı olma şansının asgari düzeyde olduğunu siz de gayet iyi biliyordunuz, ayrıca yakal
+  [HIGHLIGHT] title=Gercek Mutlulugun Metafizigi - Alain Badiou book_id=1771595871922
+    snippet: Gerçek adeta bir kaderdir (fatum) ve insanın kadir olduğu en yüksek mutluluk da kaçınılmaz olanın di
+  [HIGHLIGHT] title=Her Yönüyle Klasik Mitoloji - Nancy Conner book_id=1764938291659
+    snippet: Kanunları ilgilendiren hallerde zeus son derece bilgece davranabiliyordu. Ancak onun da zayflıkları 
+  [HIGHLIGHT] title=Her Yönüyle Klasik Mitoloji - Nancy Conner book_id=1764938291659
+    snippet: Zeus kader tanrıçaları olarak adlandırılan bu üç moira nın da babasıydı. Atropos, klotho ve lakhesis
+
+=== TOTAL orphaned highlights (all books): 800 ===
+
+=== Orphaned book_ids (51 unique) ===
+  book_id=1763947192884s1obi7m9k title=İslam Felsefesi Üzerine - Ahmet Arslan highlights=67
+  book_id=1771601298924 title=İslam Sosyolojisi - Ali Şeriati highlights=58
+  book_id=1763947192793bksc6vmrv title=Ahlak Felsefesinin Sorunları - Theodor W. Adorno highlights=55
+  book_id=1763847685234 title=Hayatın Anlamı - Terry Eagleton highlights=41
+  book_id=1764983072479 title=Medeniyet Tarihi 2 - Ali Seriati highlights=36
+  book_id=1763947189977x5jlej12u title=Leviathan - Thomas Hobbes highlights=30
+  book_id=1763848979019 title=Ahlak Felsefesi - Alexis Bertrand highlights=29
+  book_id=1771628448295 title=Din Uzerine - Schopenhauer highlights=24
+  book_id=1764936870901 title=Felsefi Izlenimler - Taner Timur highlights=22
+  book_id=1771629445701 title=Hayatın Anlamı Üzerine - Arthur Schopenhauer highlights=22
+  book_id=1764938291659 title=Her Yönüyle Klasik Mitoloji - Nancy Conner highlights=21
+  book_id=1763947192247bessrszyi title=Esir Şehrin İnsanları (Esir Şehir Üçlemesi 1.Kitap) - Kemal Tahir highlights=21
+  book_id=1764982446009 title=Medeniyet Tarihi I - Ali Seriati highlights=20
+  book_id=1764938831636 title=Kadın antropolojisi - Rayna R.. Reiter highlights=20
+  book_id=1764933865893 title=Devrim Uzerine - Hannah Arendt highlights=19
+  book_id=1763848417259 title=Tanrı'nın Ölümü ve Kültür - TERRY EAGLETON highlights=19
+  book_id=1764939813639 title=Karilar Kogusu - Kemal Tahir highlights=15
+  book_id=1764934710979 title=Düşüş - Albert Camus highlights=13
+  book_id=1771596640271 title=Aska Övgü - Alain Badiou highlights=13
+  book_id=1764936374421 title=Felsefenin tesellisi - Alain De Botton highlights=13
+  book_id=1764941183071 title=Kral Lear - William Shakespeare highlights=13
+  book_id=1771597871665 title=Başka bir estetik - Alain Badiou highlights=12
+  book_id=1771621208556 title=Bilim ve Bilgelik - Arthur Schopenhauer highlights=12
+  book_id=1771538039683 title=Fakir Sanat - Leo Bersani highlights=12
+  book_id=1764940927073 title=Komünist Manifesto - Karl Marx highlights=12
+  book_id=1764937643938 title=Hamlet - William Shakespeare highlights=12
+  book_id=1764939394415 title=Kadin ve Bedeni - Altan Kar - Yasemin Inceoglu highlights=11
+  book_id=1764933097881 title=Daha Dun - Selim Ileri highlights=11
+  book_id=1763848724751 title=Siddet Uzerine Secme Eserler 6 - Hannah Arendt highlights=10
+  book_id=1771630657388 title=Hayata Bakışım - Bertrand Russell highlights=10
+  book_id=1764981785856 title=Macbeth - William Shakespeare highlights=10
+  book_id=1763947191494976ba8x95 title=Aşkın Metafiziği - Arthur Schopenhauer highlights=9
+  book_id=1764898485516 title=Cekilme Sulari - Sükrü Erbas highlights=9
+  book_id=1771595871922 title=Gercek Mutlulugun Metafizigi - Alain Badiou highlights=8
+  book_id=1764940361803 title=Kırk Ambar 2 - Cemil Meriç highlights=8
+  book_id=1763947211261crxbi5q37 title=Havva'nın Üç Kızı - Elif Safak highlights=7
+  book_id=1764932815009 title=Çivisi Çıkmış Dünya - Amin Maalouf highlights=7
+  book_id=1764936732583 title=Felsefi inanç - Karl Jaspers highlights=7
+  book_id=1764933648171 title=Demian - Hermann Hesse highlights=7
+  book_id=1764940146226 title=Kaygi Kavrami - Hasan Ali Yücel Klasikleri - Søren Kierkegaard highlights=6
+  book_id=1764940711769 title=Kırmızı ve Siyah - Stendhal (Henri Beyle ) highlights=6
+  book_id=1764898272317 title=Bir Havva Kizi - Hasan Ali Yücel Klasikleri - Honoré de Balzac highlights=6
+  book_id=1764937290669 title=Ham Toprak - Ivan Sergeevich Turgenev highlights=6
+  book_id=1764897746630 title=Binboğalar Efsanesi - Yaşar Kemal highlights=5
+  book_id=1771795251587 title=Bilginin Toplumsal Tarihi - Peter Burke highlights=5
+  book_id=1764898065728 title=Caligula and Three Other Plays - Albert Camus highlights=5
+  book_id=1764897576314 title=Belki yine gelirim - Ahmet Telli highlights=4
+  book_id=1764897076936 title=Altin Gözlü Kiz - Honore de Balzac ( de Balzac) highlights=4
+  book_id=1764897385788 title=Antonius ve Kleopatra - William Shakespeare highlights=4
+  book_id=1764896763489 title=Akıl Çağı - Thomas Paine highlights=3
+  book_id=1770687774840 title=open library -  highlights=1
+
+=== TOMEHUB_BOOKS total: 88 ===

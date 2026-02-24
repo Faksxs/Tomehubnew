@@ -1,0 +1,2532 @@
+{
+  "summary": {
+    "uid": "vpq1p0UzcCSLAh1d18WgZZWPBE63",
+    "started_at": "2026-02-23T23:40:14.215304Z",
+    "candidate_rows": 103,
+    "candidate_unique_ids": 103,
+    "processed": 103,
+    "ok_all": 0,
+    "firestore_deleted_ok": 103,
+    "firestore_delete_errors": 0,
+    "oracle_purge_ok": 0,
+    "oracle_purge_errors": 103,
+    "oracle_deleted_content_rows": 0,
+    "oracle_aux_deleted_totals": {},
+    "finished_at": "2026-02-23T23:40:26.210733Z"
+  },
+  "postcheck": {
+    "remaining_candidate_docs_in_firestore": 0,
+    "remaining_candidate_doc_ids_firestore_sample": [],
+    "remaining_candidate_rows_oracle": {
+      "library_items": 103,
+      "content_v2": 103,
+      "item_index_state": 103
+    },
+    "user_library_items_by_type_after": [
+      [
+        "ARTICLE",
+        2
+      ],
+      [
+        "BOOK",
+        205
+      ],
+      [
+        "PERSONAL_NOTE",
+        15
+      ],
+      [
+        "WEBSITE",
+        4
+      ]
+    ]
+  },
+  "errors": [
+    {
+      "item_id": "1763947190449ue0if41zi",
+      "index": 1,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947196647zrkra26e8",
+      "index": 2,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947203329gwqo370se",
+      "index": 3,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947208518pwwl4jhi3",
+      "index": 4,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947211995i1hcxm9to",
+      "index": 5,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947193339z0ivhpwri",
+      "index": 6,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947194450lyd8fs6a2",
+      "index": 7,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "17639471911307sx5v17fv",
+      "index": 8,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "17639472000336rgbv16vq",
+      "index": 9,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947207959d5f71pe0r",
+      "index": 10,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947191021ryoq3elgu",
+      "index": 11,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "176394720170885bmpf3i2",
+      "index": 12,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947209070bsq8h2pkm",
+      "index": 13,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "176394719372281o3rbans",
+      "index": 14,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947193629gwyjdwo0z",
+      "index": 15,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947212177duwqq9wmq",
+      "index": 16,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "17639472093438obmjzbv0",
+      "index": 17,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947209980rg8q2qwru",
+      "index": 18,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "176394720842687iue60mp",
+      "index": 19,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947192611jhtlph1sy",
+      "index": 20,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947191401rzqfpo6zp",
+      "index": 21,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "17639471900804bdo9kf0s",
+      "index": 22,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947199657rteqtktgp",
+      "index": 23,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947190268v9mrgusew",
+      "index": 24,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947208152hmnsp1lku",
+      "index": 25,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947194359mtnxc3nf3",
+      "index": 26,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "17639471903613ugs97s79",
+      "index": 27,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947200155lp1qu5v5k",
+      "index": 28,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947191774zs3s835k9",
+      "index": 29,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947189886hb6zy47ki",
+      "index": 30,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947191956t2h9e0kyj",
+      "index": 31,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947199414ek925k9ao",
+      "index": 32,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947203869ro91y2kqh",
+      "index": 33,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947208335bzyw2ckfb",
+      "index": 34,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947210071p0w7a7e1h",
+      "index": 35,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947191221qnuj2r5sp",
+      "index": 36,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947200282uqxgvqwam",
+      "index": 37,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947210526ranssmxwn",
+      "index": 38,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947191312uq7qds915",
+      "index": 39,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947212086dfpr7x1yu",
+      "index": 40,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947207322xz4a9aqba",
+      "index": 41,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947197199sfy8hlnoe",
+      "index": 42,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947203735vjlowam4i",
+      "index": 43,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947210799dslntmllx",
+      "index": 44,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947190548c0xawm1bf",
+      "index": 45,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947207504c2x04e1x8",
+      "index": 46,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "17639472005315sc0cvl20",
+      "index": 47,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947191865faqfj3jcs",
+      "index": 48,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947208979kn3x1kntb",
+      "index": 49,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947203996pih3xngil",
+      "index": 50,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "17639471897760n0iulb1h",
+      "index": 51,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947207683j4uosmy36",
+      "index": 52,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947196240swbefh9dy",
+      "index": 53,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "176394720129621yvwj3qk",
+      "index": 54,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "17639471940868wh88l81r",
+      "index": 55,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "176394720805654yj41xqd",
+      "index": 56,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947210162h6vn3lx85",
+      "index": 57,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "17639471953244qbxxx7xq",
+      "index": 58,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "17639471954764d6t5fozm",
+      "index": 59,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947199171v7z2lqkxm",
+      "index": 60,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "176394719481394e7t4zbu",
+      "index": 61,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947209161m5h5n2wln",
+      "index": 62,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947200992y4uxo87q2",
+      "index": 63,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947192520fu3eeyjgf",
+      "index": 64,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "176394719063954z9fbwe3",
+      "index": 65,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "17639472082445ff397grj",
+      "index": 66,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947192429btdfvljli",
+      "index": 67,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947193813d4mvzulno",
+      "index": 68,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947211904tu7a3rnnd",
+      "index": 69,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "17639471915906b5jw04ew",
+      "index": 70,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947191682b421d49a1",
+      "index": 71,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947192975ldn2aulae",
+      "index": 72,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "17639471909246jb9wf6ej",
+      "index": 73,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947206486l10ykfxuc",
+      "index": 74,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947210981vcff01uw2",
+      "index": 75,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947192337m77xes97s",
+      "index": 76,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "17639472107084dy4muuvy",
+      "index": 77,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "176394721172220uhazp8g",
+      "index": 78,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947204118j7itq42w7",
+      "index": 79,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "17639471931578333lhllu",
+      "index": 80,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947201827iwjzzsxse",
+      "index": 81,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947209706u8zzqzppu",
+      "index": 82,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947204973vt18seztl",
+      "index": 83,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947208791n683bpz3b",
+      "index": 84,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947194267bhdfj7frh",
+      "index": 85,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947190736qcujlf4m1",
+      "index": 86,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "17639472088884p3btta9f",
+      "index": 87,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947209798hfaaf3i5h",
+      "index": 88,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947193066txxw3lyc7",
+      "index": 89,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947190177xi55jhxnp",
+      "index": 90,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947211813om4ypaah0",
+      "index": 91,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947197029o85gkexiq",
+      "index": 92,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947208700v4qftm00h",
+      "index": 93,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947194177nekk3vrp9",
+      "index": 94,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947206946svrtqj1da",
+      "index": 95,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947193536f6wj8ptm9",
+      "index": 96,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947193248r1dft0m1j",
+      "index": 97,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947197946hmay7t5gi",
+      "index": 98,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "17639472050957jqurltdi",
+      "index": 99,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947190827hh0v2s1ww",
+      "index": 100,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947207595zs7rcz8hn",
+      "index": 101,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947199900fenrzwx43",
+      "index": 102,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947192047agku4nqqe",
+      "index": 103,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    }
+  ],
+  "sample_results": [
+    {
+      "item_id": "1763947190449ue0if41zi",
+      "index": 1,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947196647zrkra26e8",
+      "index": 2,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947203329gwqo370se",
+      "index": 3,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947208518pwwl4jhi3",
+      "index": 4,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    },
+    {
+      "item_id": "1763947211995i1hcxm9to",
+      "index": 5,
+      "firestore": {
+        "exists_before": true,
+        "deleted": true,
+        "error": null,
+        "exists_after": false
+      },
+      "oracle": {
+        "success": false,
+        "deleted": 0,
+        "aux_deleted": {
+          "ingested_files": 0,
+          "file_reports": 0,
+          "external_meta": 0,
+          "external_edges": 0,
+          "library_items": 0,
+          "index_state": 0
+        },
+        "error": "ORA-00904: \"BOOK_ID\": invalid identifier\nHelp: https://docs.oracle.com/error-help/db/ora-00904/"
+      }
+    }
+  ]
+}

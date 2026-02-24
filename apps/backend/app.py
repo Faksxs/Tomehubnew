@@ -30,7 +30,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from models.request_models import (
     SearchRequest, SearchResponse, IngestRequest, 
     FeedbackRequest, AddItemRequest, BatchMigrateRequest,
-    ChatRequest, ChatResponse, HighlightSyncRequest, ComparisonRequest, PersonalNoteSyncRequest, PurgeResourceRequest
+    ChatRequest, ChatResponse, HighlightSyncRequest, ComparisonRequest, PersonalNoteSyncRequest, PurgeResourceRequest,
+    LibraryItemUpsertRequest, LibraryItemPatchRequest, LibraryBulkDeleteRequest,
+    PersonalNoteFolderUpsertRequest, PersonalNoteFolderPatchRequest,
 )
 from middleware.auth_middleware import verify_firebase_token
 
@@ -38,6 +40,17 @@ from middleware.auth_middleware import verify_firebase_token
 from services.search_service import generate_answer, get_rag_context
 from services.dual_ai_orchestrator import generate_evaluated_answer
 from services.ingestion_service import ingest_book, ingest_text_item, process_bulk_items_logic, sync_highlights_for_item, sync_personal_note_for_item, purge_item_content
+from services.library_service import (
+    list_library_items,
+    upsert_library_item,
+    patch_library_item,
+    delete_library_item,
+    bulk_delete_library_items,
+    list_personal_note_folders,
+    upsert_personal_note_folder,
+    patch_personal_note_folder,
+    delete_personal_note_folder,
+)
 from services.index_freshness_service import get_index_freshness_state, maybe_trigger_graph_enrichment_async
 from services.external_kb_service import (
     get_external_kb_backfill_status,
@@ -2241,6 +2254,175 @@ async def firestore_oracle_sync_status(
     if not firebase_uid_from_jwt and settings.ENVIRONMENT != "production":
         _ = firebase_uid or request.query_params.get("firebase_uid")
     return {"success": True, "status": get_firestore_oracle_sync_status()}
+
+
+@app.get("/api/library/items")
+async def list_library_items_endpoint(
+    request: Request,
+    limit: int = 1000,
+    cursor: Optional[str] = None,
+    types: Optional[str] = None,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+):
+    try:
+        verified_uid = get_verified_uid(request, firebase_uid_from_jwt)
+        parsed_types = [t.strip() for t in str(types or "").split(",") if t.strip()] if types else None
+        result = list_library_items(
+            verified_uid,
+            limit=limit,
+            cursor=cursor,
+            types=parsed_types,
+        )
+        return {"success": True, **result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"library list failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/library/items/{item_id}")
+async def upsert_library_item_endpoint(
+    item_id: str,
+    payload: LibraryItemUpsertRequest,
+    request: Request,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+):
+    try:
+        verified_uid = get_verified_uid(request, firebase_uid_from_jwt)
+        result = upsert_library_item(verified_uid, item_id, payload.model_dump())
+        return {"success": True, **result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"library upsert failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.patch("/api/library/items/{item_id}")
+async def patch_library_item_endpoint(
+    item_id: str,
+    payload: LibraryItemPatchRequest,
+    request: Request,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+):
+    try:
+        verified_uid = get_verified_uid(request, firebase_uid_from_jwt)
+        result = patch_library_item(verified_uid, item_id, payload.patch or {})
+        return {"success": True, **result}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"library patch failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/library/items/{item_id}")
+async def delete_library_item_endpoint(
+    item_id: str,
+    request: Request,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+):
+    try:
+        verified_uid = get_verified_uid(request, firebase_uid_from_jwt)
+        result = delete_library_item(verified_uid, item_id)
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error", "Delete failed"))
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"library delete failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/library/items/bulk-delete")
+async def bulk_delete_library_items_endpoint(
+    payload: LibraryBulkDeleteRequest,
+    request: Request,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+):
+    try:
+        verified_uid = get_verified_uid(request, firebase_uid_from_jwt)
+        result = bulk_delete_library_items(verified_uid, payload.item_ids)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"library bulk delete failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/library/personal-note-folders")
+async def list_personal_note_folders_endpoint(
+    request: Request,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+):
+    try:
+        verified_uid = get_verified_uid(request, firebase_uid_from_jwt)
+        folders = list_personal_note_folders(verified_uid)
+        return {"success": True, "folders": folders}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"folder list failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/library/personal-note-folders/{folder_id}")
+async def upsert_personal_note_folder_endpoint(
+    folder_id: str,
+    payload: PersonalNoteFolderUpsertRequest,
+    request: Request,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+):
+    try:
+        verified_uid = get_verified_uid(request, firebase_uid_from_jwt)
+        folder = upsert_personal_note_folder(verified_uid, folder_id, payload.model_dump())
+        return {"success": True, "folder": folder}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"folder upsert failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.patch("/api/library/personal-note-folders/{folder_id}")
+async def patch_personal_note_folder_endpoint(
+    folder_id: str,
+    payload: PersonalNoteFolderPatchRequest,
+    request: Request,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+):
+    try:
+        verified_uid = get_verified_uid(request, firebase_uid_from_jwt)
+        folder = patch_personal_note_folder(verified_uid, folder_id, payload.model_dump(exclude_none=True))
+        return {"success": True, "folder": folder}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"folder patch failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/library/personal-note-folders/{folder_id}")
+async def delete_personal_note_folder_endpoint(
+    folder_id: str,
+    request: Request,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+):
+    try:
+        verified_uid = get_verified_uid(request, firebase_uid_from_jwt)
+        return delete_personal_note_folder(verified_uid, folder_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"folder delete failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/add-item")

@@ -28,7 +28,10 @@ def test_cache_invalidation():
         redis_url=settings.REDIS_URL
     )
     
-    test_uid = "test_user_001"
+    if len(sys.argv) < 2:
+        print("Usage: python test_cache_integration.py <uid>")
+        sys.exit(1)
+    test_uid = sys.argv[1]
     test_query = "test query for invalidation"
     
     # Create orchestrator

@@ -13,20 +13,24 @@ from infrastructure.db_manager import DatabaseManager
 def debugingest():
     # File found in uploads dir
     filename = "aae81e2c-5062-40b4-8911-111bd4e962de_Theodor_W._Adorno_-_Ahlak_Felsefesinin_Sorunlar.pdf"
-    file_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads", filename)
+    # filename = "aae81e2c-5062-40b4-8911-111bd4e962de_Theodor_W._Adorno_-_Ahlak_Felsefesinin_Sorunlar.pdf"
+    # file_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads", filename)
     
-    print(f"🚀 Starting Manual Ingest Debug for: {filename}")
+    if len(sys.argv) < 5:
+        print("Usage: python manual_ingest_debug.py <path> <title> <author> <uid>")
+        sys.exit(1)
+        
+    target_path = sys.argv[1]
+    target_title = sys.argv[2]
+    target_author = sys.argv[3]
+    target_uid = sys.argv[4]
+
+    print(f"🚀 Starting Manual Ingest Debug for: {target_path}")
     
-    if not os.path.exists(file_path):
-        print(f"❌ File not found at: {file_path}")
+    if not os.path.exists(target_path):
+        print(f"❌ File not found at: {target_path}")
         return
 
-    # Use a dummy UID for testing since we can't easily map the exact one without more info
-    # The previous script successfully checked DB with 'test_user_001' or similar context?
-    # Actually, let's use a known UID if possible. 
-    # I'll use "test_user_001" as a safe fallback or just "debug_user"
-    target_uid = "test_user_001"
-    
     try:
         DatabaseManager.init_pool()
         

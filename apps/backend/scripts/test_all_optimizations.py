@@ -104,7 +104,10 @@ def test_parallel_expansion():
         )
         
         test_query = "vicdanın doğası"
-        test_uid = "test_user_001"
+        if len(sys.argv) < 2:
+            print("Usage: python test_all_optimizations.py <uid>")
+            sys.exit(1)
+        test_uid = sys.argv[1]
         
         print(f"Running search with query: '{test_query}'")
         print("Monitoring timing...")
@@ -145,7 +148,10 @@ def test_cache_hit_performance():
         )
         
         test_query = "test query for cache performance"
-        test_uid = "test_user_001"
+        if len(sys.argv) < 2:
+            print("Usage: python test_all_optimizations.py <uid>")
+            sys.exit(1)
+        test_uid = sys.argv[1]
         
         # First search (cache miss - will compute)
         print("First search (cache miss - computing)...")
@@ -205,7 +211,10 @@ def test_smart_reranking_skip():
         from services.search_service import search_similar_content
         
         test_query = "vicdan nedir"
-        test_uid = "test_user_001"
+        if len(sys.argv) < 2:
+            print("Usage: python test_all_optimizations.py <uid>")
+            sys.exit(1)
+        test_uid = sys.argv[1]
         
         print(f"Running search: '{test_query}'")
         print("Checking if reranking skip logic is active...")
@@ -325,7 +334,10 @@ def benchmark_overall_performance():
             "ahlak nedir",
             "etik kavramı"
         ]
-        test_uid = "test_user_001"
+        if len(sys.argv) < 2:
+            print("Usage: python test_all_optimizations.py <uid>")
+            sys.exit(1)
+        test_uid = sys.argv[1]
         
         print("Running benchmark with 3 different queries...")
         print("(First run computes, subsequent runs should hit cache)\n")

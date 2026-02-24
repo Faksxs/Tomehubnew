@@ -66,7 +66,10 @@ def main():
         "ahlak nedir",
         "etik kavramı nedir"
     ]
-    test_uid = "test_user_001"
+    if len(sys.argv) < 2:
+        print("Usage: python performance_comparison.py <uid>")
+        sys.exit(1)
+    test_uid = sys.argv[1]
     
     print("\n" + "-"*70)
     print("SCENARIO 1: Without Cache (Baseline)")

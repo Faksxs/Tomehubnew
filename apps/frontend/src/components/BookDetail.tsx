@@ -5,7 +5,7 @@ import { HighlightSection } from './HighlightSection';
 import { analyzeHighlightsAI, enrichBookWithAI, libraryItemToDraft, mergeEnrichedDraftIntoItem } from '../services/geminiService';
 import { useAuth } from '../contexts/AuthContext';
 import { getIngestionStatus, ingestDocument, IngestResponse, IngestionStatusResponse } from '../services/backendApiService';
-import { saveItemForUser } from '../services/firestoreService';
+import { saveItemForUser } from '../services/oracleLibraryService';
 import { getPersonalNoteCategory } from '../lib/personalNotePolicy';
 import { toPersonalNotePreviewHtml } from '../lib/personalNoteRender';
 

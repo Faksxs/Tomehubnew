@@ -1,0 +1,59 @@
+======================================================================
+TOMEHUB DATA INTEGRITY AUDIT: Firestore vs Oracle DB
+======================================================================
+
+[1] Discovering Firestore users...
+    Found 0 Firestore users
+
+[2] Loading Firestore data...
+    Firestore: 0 books, 0 highlights
+
+[3] Loading Oracle DB data...
+    Oracle: 139 books, 1285 highlights
+    Content breakdown:
+      PDF: 3039
+      HIGHLIGHT: 1273
+      BOOK: 146
+      ARTICLE: 45
+      PERSONAL_NOTE: 21
+      INSIGHT: 12
+      WEBSITE: 4
+
+======================================================================
+[4] COMPARISON RESULTS
+======================================================================
+
+--- Books in Firestore but MISSING from Oracle TOMEHUB_BOOKS ---
+  NONE — All Firestore books exist in Oracle ✅
+
+--- Books in Oracle but NOT in Firestore ---
+  FOUND 139 EXTRA IN ORACLE (not in Firestore):
+    [177179525158] Bilginin Toplumsal Tarihi by Peter Burke
+    [176394721126] Havva'nın Üç Kızı by Elif Safak
+    [176489774663] Binboğalar Efsanesi by Yaşar Kemal
+    [177153803968] Fakir Sanat by Leo Bersani
+    [176489738578] Antonius ve Kleopatra by William Shakespeare
+    [176494118307] Kral Lear by William Shakespeare
+    [177159664027] Aska Övgü by Alain Badiou
+    [0014fc6b-d9a] Demian (Highlight) by None
+    [1135ef97-257] ku8tlam 2 - Self by None
+    [176369696735] Advancing Racial Justice Research In Architecture, Urban Planning, and Allied Fields - Massachusetts Institute of Technology by None
+    ... and 129 more
+
+--- Highlight Count Mismatches (Firestore vs Oracle) ---
+  NONE — All counts match ✅
+
+--- Orphan Content Check ---
+  Content rows without TOMEHUB_BOOKS entry: 129
+
+======================================================================
+SUMMARY
+======================================================================
+  Firestore books:           0
+  Oracle TOMEHUB_BOOKS:      139
+  Firestore highlights:      0
+  Oracle highlights:         1285
+  Missing from Oracle:       0
+  Extra in Oracle:           139
+  Highlight mismatches:      0
+  Orphan content rows:       129

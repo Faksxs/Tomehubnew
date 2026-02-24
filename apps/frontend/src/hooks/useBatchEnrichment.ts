@@ -5,7 +5,7 @@ import {
     libraryItemToDraft,
     mergeEnrichedDraftIntoItem
 } from '../services/geminiService';
-import { saveItemForUser } from '../services/firestoreService';
+import { saveItemForUser } from '../services/oracleLibraryService';
 
 interface BatchEnrichmentStats {
     total: number;
