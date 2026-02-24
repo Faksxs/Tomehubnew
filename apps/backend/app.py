@@ -57,14 +57,6 @@ from services.external_kb_service import (
     maybe_trigger_external_enrichment_async,
     start_external_kb_backfill_async,
 )
-from services.language_backfill_service import (
-    get_language_backfill_status,
-    start_language_backfill_async,
-)
-from services.firestore_sync_service import (
-    get_firestore_oracle_sync_status,
-    start_firestore_oracle_sync_async,
-)
 from services.epistemic_distribution_service import get_epistemic_distribution
 from services.feedback_service import submit_feedback
 from services.pdf_service import get_pdf_metadata
@@ -640,10 +632,10 @@ async def realtime_poll(
                 # BOOK-level updates
                 cursor.execute(
                     """
-                    SELECT ID, TITLE, COALESCE(LAST_UPDATED, CREATED_AT)
-                    FROM TOMEHUB_BOOKS
+                    SELECT ITEM_ID, TITLE, COALESCE(UPDATED_AT, CREATED_AT)
+                    FROM TOMEHUB_LIBRARY_ITEMS
                     WHERE FIREBASE_UID = :p_uid
-                    ORDER BY COALESCE(LAST_UPDATED, CREATED_AT) DESC
+                    ORDER BY COALESCE(UPDATED_AT, CREATED_AT) DESC
                     FETCH FIRST :p_limit ROWS ONLY
                     """,
                     {"p_uid": verified_uid, "p_limit": safe_limit},
@@ -665,11 +657,11 @@ async def realtime_poll(
                 # Highlight/personal-note sync signals from content rows
                 cursor.execute(
                     """
-                    SELECT BOOK_ID, SOURCE_TYPE, MAX(CREATED_AT)
-                    FROM TOMEHUB_CONTENT
+                    SELECT ITEM_ID, CONTENT_TYPE, MAX(CREATED_AT)
+                    FROM TOMEHUB_CONTENT_V2
                     WHERE FIREBASE_UID = :p_uid
-                      AND SOURCE_TYPE IN ('HIGHLIGHT', 'INSIGHT', 'PERSONAL_NOTE')
-                    GROUP BY BOOK_ID, SOURCE_TYPE
+                      AND CONTENT_TYPE IN ('HIGHLIGHT', 'INSIGHT', 'PERSONAL_NOTE')
+                    GROUP BY ITEM_ID, CONTENT_TYPE
                     FETCH FIRST :p_limit ROWS ONLY
                     """,
                     {"p_uid": verified_uid, "p_limit": safe_limit},
@@ -1767,6 +1759,37 @@ def _normalize_title_candidates(raw_title: Optional[str]) -> List[str]:
     return candidates
 
 
+
+def _normalize_title_candidates(raw_title: Optional[str]) -> List[str]:
+    """Build conservative title candidates for ingestion-status fallback."""
+    if not raw_title:
+        return []
+    title = str(raw_title).strip()
+    if not title:
+        return []
+
+    candidates: List[str] = []
+
+    def _add(value: str):
+        v = str(value or "").strip()
+        if len(v) < 2:
+            return
+        if v not in candidates:
+            candidates.append(v)
+
+    _add(title)
+    no_suffix = re.sub(r"\s*\((highlight|insight|note)\)\s*$", "", title, flags=re.IGNORECASE).strip()
+    _add(no_suffix)
+    if " - " in no_suffix:
+        _add(no_suffix.split(" - ", 1)[0].strip())
+    if ":" in no_suffix:
+        _add(no_suffix.split(":", 1)[0].strip())
+
+    return candidates
+
+
+
+
 def resolve_pdf_book_id_by_title(firebase_uid: str, title: Optional[str]) -> Optional[str]:
     """
     Resolve a likely PDF/EPUB BOOK_ID by fuzzy title match for legacy/migrated IDs.
@@ -1788,12 +1811,12 @@ def resolve_pdf_book_id_by_title(firebase_uid: str, title: Optional[str]) -> Opt
 
                 where_like = " OR ".join(like_parts)
                 sql = f"""
-                    SELECT BOOK_ID, COUNT(*) AS chunk_count
-                    FROM TOMEHUB_CONTENT
+                    SELECT ITEM_ID, COUNT(*) AS chunk_count
+                    FROM TOMEHUB_CONTENT_V2
                     WHERE FIREBASE_UID = :p_uid
-                      AND SOURCE_TYPE IN ('PDF', 'EPUB', 'PDF_CHUNK')
+                      AND CONTENT_TYPE IN ('PDF', 'EPUB', 'PDF_CHUNK')
                       AND ({where_like})
-                    GROUP BY BOOK_ID
+                    GROUP BY ITEM_ID
                     ORDER BY chunk_count DESC
                     FETCH FIRST 1 ROWS ONLY
                 """
@@ -1858,8 +1881,8 @@ def run_ingestion_background(temp_path: str, title: str, author: str, firebase_u
                                 """
                                 SELECT COUNT(*) as chunk_count,
                                        SUM(CASE WHEN VEC_EMBEDDING IS NOT NULL THEN 1 ELSE 0 END) as embedding_count
-                                FROM TOMEHUB_CONTENT
-                                WHERE BOOK_ID = :p_bid AND FIREBASE_UID = :p_uid
+                                FROM TOMEHUB_CONTENT_V2
+                                WHERE ITEM_ID = :p_bid AND FIREBASE_UID = :p_uid
                                 """,
                                 {"p_bid": book_id, "p_uid": firebase_uid}
                             )
@@ -2053,10 +2076,10 @@ async def get_ingestion_status(
                     """
                     SELECT COUNT(*) as chunk_count,
                            SUM(CASE WHEN VEC_EMBEDDING IS NOT NULL THEN 1 ELSE 0 END) as embedding_count
-                    FROM TOMEHUB_CONTENT
-                    WHERE BOOK_ID = :p_bid
+                    FROM TOMEHUB_CONTENT_V2
+                    WHERE ITEM_ID = :p_bid
                       AND FIREBASE_UID = :p_uid
-                      AND SOURCE_TYPE IN ('PDF', 'EPUB', 'PDF_CHUNK')
+                      AND CONTENT_TYPE IN ('PDF', 'EPUB', 'PDF_CHUNK')
                     """,
                     {"p_bid": effective_book_id, "p_uid": verified_firebase_uid}
                 )
@@ -2160,100 +2183,6 @@ async def external_kb_backfill_status(
     if not firebase_uid_from_jwt and settings.ENVIRONMENT != "production":
         _ = firebase_uid or request.query_params.get("firebase_uid")
     return {"success": True, "status": get_external_kb_backfill_status()}
-
-
-@app.post("/api/admin/ai/language-backfill/start")
-async def start_language_backfill(
-    request: Request,
-    all_users: bool = False,
-    dry_run: bool = False,
-    batch_size: int = 25,
-    max_items: int = 250,
-    firebase_uid: Optional[str] = None,
-    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
-):
-    if firebase_uid_from_jwt:
-        verified_uid = firebase_uid_from_jwt
-    else:
-        if settings.ENVIRONMENT == "production":
-            raise HTTPException(status_code=401, detail="Authentication required")
-        if all_users:
-            verified_uid = None
-        else:
-            verified_uid = firebase_uid or request.query_params.get("firebase_uid")
-            if not verified_uid:
-                raise HTTPException(status_code=400, detail="firebase_uid is required in development")
-
-    if all_users and settings.ENVIRONMENT == "production":
-        raise HTTPException(status_code=403, detail="all_users backfill is disabled in production")
-
-    scope_uid = None if all_users else verified_uid
-    status = start_language_backfill_async(
-        scope_uid=scope_uid,
-        dry_run=bool(dry_run),
-        batch_size=int(batch_size),
-        max_items=int(max_items),
-    )
-    return {"success": True, "status": status}
-
-
-@app.get("/api/admin/ai/language-backfill/status")
-async def language_backfill_status(
-    request: Request,
-    firebase_uid: Optional[str] = None,
-    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
-):
-    if not firebase_uid_from_jwt and settings.ENVIRONMENT == "production":
-        raise HTTPException(status_code=401, detail="Authentication required")
-    if not firebase_uid_from_jwt and settings.ENVIRONMENT != "production":
-        _ = firebase_uid or request.query_params.get("firebase_uid")
-    return {"success": True, "status": get_language_backfill_status()}
-
-
-@app.post("/api/admin/firestore-sync/start")
-async def start_firestore_oracle_sync(
-    request: Request,
-    dry_run: bool = True,
-    max_items: int = 0,
-    embedding_rpm_cap: int = 30,
-    embedding_unit_cost_usd: float = 0.00002,
-    firebase_uid: Optional[str] = None,
-    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
-):
-    """
-    Start Firestore -> Oracle reconciliation for one user.
-    Safety defaults to dry-run.
-    """
-    if firebase_uid_from_jwt:
-        verified_uid = firebase_uid_from_jwt
-    else:
-        if settings.ENVIRONMENT == "production":
-            raise HTTPException(status_code=401, detail="Authentication required")
-        verified_uid = firebase_uid or request.query_params.get("firebase_uid")
-        if not verified_uid:
-            raise HTTPException(status_code=400, detail="firebase_uid is required in development")
-
-    status = start_firestore_oracle_sync_async(
-        scope_uid=str(verified_uid).strip(),
-        dry_run=bool(dry_run),
-        max_items=int(max_items),
-        embedding_rpm_cap=int(embedding_rpm_cap),
-        embedding_unit_cost_usd=float(embedding_unit_cost_usd),
-    )
-    return {"success": True, "status": status}
-
-
-@app.get("/api/admin/firestore-sync/status")
-async def firestore_oracle_sync_status(
-    request: Request,
-    firebase_uid: Optional[str] = None,
-    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
-):
-    if not firebase_uid_from_jwt and settings.ENVIRONMENT == "production":
-        raise HTTPException(status_code=401, detail="Authentication required")
-    if not firebase_uid_from_jwt and settings.ENVIRONMENT != "production":
-        _ = firebase_uid or request.query_params.get("firebase_uid")
-    return {"success": True, "status": get_firestore_oracle_sync_status()}
 
 
 @app.get("/api/library/items")

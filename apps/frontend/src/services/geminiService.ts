@@ -57,7 +57,7 @@ export const libraryItemToDraft = (item: LibraryItem): ItemDraft => {
     translator: item.translator,
     tags: item.tags,
     // Özet için: önce generalNotes, yoksa summary, yoksa boş string
-    summary: item.generalNotes || (item as any).summary || "",
+    summary: item.summaryText || item.generalNotes || (item as any).summary || "",
     publishedDate: item.publicationYear
       ? String(item.publicationYear)
       : (item as any).publishedDate || "",
@@ -84,10 +84,10 @@ export const mergeEnrichedDraftIntoItem = (
   return {
     ...item,
     // AI’den gelen summary’i generalNotes’a yaz
-    generalNotes:
+    summaryText:
       draft.summary && draft.summary.trim().length > 0
         ? draft.summary
-        : item.generalNotes,
+        : item.summaryText,
     // Etiketler: AI’den gelen varsa onu kullan
     tags: draft.tags && draft.tags.length > 0 ? draft.tags : item.tags,
     // Diğer alanlar da zenginleşmişse güncelle

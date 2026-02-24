@@ -9,6 +9,10 @@ import oracledb
 
 from infrastructure.db_manager import DatabaseManager, safe_read_clob
 from services.ingestion_service import purge_item_content
+from services.category_taxonomy_service import (
+    extract_book_categories_from_tags,
+    replace_legacy_category_tag,
+)
 from utils.logger import get_logger
 
 logger = get_logger("library_service")
@@ -126,6 +130,26 @@ def _safe_json_list(value: Any) -> list[str]:
     except Exception:
         pass
     return []
+
+
+def _normalize_item_tags(raw_tags: Any) -> list[str]:
+    if isinstance(raw_tags, list):
+        source = raw_tags
+    else:
+        source = []
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in source:
+        text = str(item or "").strip()
+        if not text:
+            continue
+        text = replace_legacy_category_tag(text)
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(text)
+    return out
 
 
 def _to_int_or_none(value: Any) -> Optional[int]:
@@ -259,7 +283,7 @@ def list_library_items(
             {_lib_select_expr('INVENTORY_STATUS')},
             {_lib_select_expr('READING_STATUS')},
             {_lib_select_expr('TAGS_JSON')},
-            {_lib_select_expr('GENERAL_NOTES')},
+            {_lib_select_expr('SUMMARY_TEXT')},
             {_lib_select_expr('CONTENT_LANGUAGE_MODE')},
             {_lib_select_expr('CONTENT_LANGUAGE_RESOLVED')},
             {_lib_select_expr('SOURCE_LANGUAGE_HINT')},
@@ -304,7 +328,9 @@ def list_library_items(
                     "status": str(r[9] or "On Shelf"),
                     "readingStatus": str(r[10] or "To Read"),
                     "tags": _safe_json_list(r[11]),
-                    "generalNotes": safe_read_clob(r[12]) if r[12] is not None else "",
+                    # Personal note body now comes from content table (PERSONAL_NOTE rows).
+                    "generalNotes": "",
+                    "summaryText": safe_read_clob(r[12]) if r[12] is not None else "",
                     "contentLanguageMode": str(r[13] or "AUTO"),
                     "contentLanguageResolved": str(r[14]).lower() if r[14] else None,
                     "sourceLanguageHint": str(r[15]).lower() if r[15] else None,
@@ -381,21 +407,25 @@ def list_library_items(
                         FROM {content_table}
                         WHERE FIREBASE_UID = :p_uid
                           AND {item_col} IN ({', '.join(phs)})
-                          AND UPPER({type_col}) IN ('HIGHLIGHT','INSIGHT','NOTES')
+                          AND UPPER({type_col}) IN ('HIGHLIGHT','INSIGHT','PERSONAL_NOTE')
                         ORDER BY {item_col}, {page_expr if shape['page_col'] else '1'}, {idx_expr if shape['chunk_idx_col'] else '1'}
                     """
                     try:
                         cur.execute(sql_h, b3)
                         agg: dict[str, list[dict[str, Any]]] = {}
+                        personal_note_body: dict[str, str] = {}
                         for hr in cur.fetchall():
                             iid = str(hr[0] or "").strip()
                             if not iid:
                                 continue
                             src_type = str(hr[2] or "").upper()
-                            h_type = "insight" if src_type in {"INSIGHT", "NOTES"} else "highlight"
                             text = safe_read_clob(hr[3]) if hr[3] is not None else ""
                             if not text:
                                 continue
+                            if src_type == "PERSONAL_NOTE":
+                                personal_note_body[iid] = text
+                                continue
+                            h_type = "insight" if src_type == "INSIGHT" else "highlight"
                             agg.setdefault(iid, []).append(
                                 {
                                     "id": str(hr[1]) if hr[1] is not None else f"{iid}-{len(agg.get(iid, []))}",
@@ -410,6 +440,8 @@ def list_library_items(
                             )
                         for item in rows:
                             item["highlights"] = agg.get(item["id"], [])
+                            if item.get("type") == "PERSONAL_NOTE":
+                                item["generalNotes"] = personal_note_body.get(item["id"], "")
                     except Exception as e:
                         logger.warning(f"list_library_items highlight query failed: {e}")
 
@@ -602,6 +634,13 @@ def upsert_library_item(firebase_uid: str, item_id: str, payload: dict[str, Any]
     title = str(payload.get("title") or "Untitled").strip() or "Untitled"
     author = str(payload.get("author") or "Unknown Author").strip() or "Unknown Author"
 
+    summary_value = payload.get("summaryText")
+    if item_type != "PERSONAL_NOTE" and (summary_value is None or str(summary_value) == ""):
+        summary_value = payload.get("generalNotes")
+
+    normalized_tags = _normalize_item_tags(payload.get("tags") or [])
+    category_json_value = json.dumps(extract_book_categories_from_tags(normalized_tags), ensure_ascii=False)
+
     field_map: list[tuple[str, Any, str]] = [
         ("ITEM_TYPE", item_type, "scalar"),
         ("TITLE", title, "scalar"),
@@ -616,7 +655,7 @@ def upsert_library_item(firebase_uid: str, item_id: str, payload: dict[str, Any]
         ("INVENTORY_STATUS", payload.get("status"), "scalar"),
         ("READING_STATUS", payload.get("readingStatus"), "scalar"),
         ("IS_FAVORITE", 1 if bool(payload.get("isFavorite")) else 0, "scalar"),
-        ("GENERAL_NOTES", payload.get("generalNotes"), "clob"),
+        ("SUMMARY_TEXT", summary_value, "clob"),
         ("PERSONAL_NOTE_CATEGORY", payload.get("personalNoteCategory"), "scalar"),
         ("PERSONAL_FOLDER_ID", payload.get("personalFolderId"), "scalar"),
         ("FOLDER_PATH", payload.get("folderPath"), "clob"),
@@ -625,7 +664,8 @@ def upsert_library_item(firebase_uid: str, item_id: str, payload: dict[str, Any]
         ("SOURCE_LANGUAGE_HINT", payload.get("sourceLanguageHint"), "scalar"),
         ("LANGUAGE_DECISION_REASON", payload.get("languageDecisionReason"), "scalar"),
         ("LANGUAGE_DECISION_CONFIDENCE", payload.get("languageDecisionConfidence"), "scalar"),
-        ("TAGS_JSON", json.dumps(payload.get("tags") or [], ensure_ascii=False), "clob"),
+        ("TAGS_JSON", json.dumps(normalized_tags, ensure_ascii=False), "clob"),
+        ("CATEGORY_JSON", category_json_value, "clob"),
     ]
 
     binds: dict[str, Any] = {"p_id": item_id, "p_uid": firebase_uid}
@@ -698,7 +738,7 @@ def patch_library_item(firebase_uid: str, item_id: str, patch: dict[str, Any]) -
         "status": ("INVENTORY_STATUS", "str"),
         "readingStatus": ("READING_STATUS", "str"),
         "isFavorite": ("IS_FAVORITE", "bool"),
-        "generalNotes": ("GENERAL_NOTES", "clob"),
+        "summaryText": ("SUMMARY_TEXT", "clob"),
         "contentLanguageMode": ("CONTENT_LANGUAGE_MODE", "str"),
         "contentLanguageResolved": ("CONTENT_LANGUAGE_RESOLVED", "str"),
         "sourceLanguageHint": ("SOURCE_LANGUAGE_HINT", "str"),
@@ -734,7 +774,11 @@ def patch_library_item(firebase_uid: str, item_id: str, patch: dict[str, Any]) -
             binds[bind_name] = float(value) if value is not None else None
             sets.append(f"{col} = :{bind_name}")
         elif kind == "json":
-            binds[bind_name] = json.dumps(value or [], ensure_ascii=False)
+            if key == "tags":
+                norm_tags = _normalize_item_tags(value or [])
+                binds[bind_name] = json.dumps(norm_tags, ensure_ascii=False)
+            else:
+                binds[bind_name] = json.dumps(value or [], ensure_ascii=False)
             sets.append(f"{col} = TO_CLOB(:{bind_name})")
         elif kind == "clob":
             binds[bind_name] = None if value is None else str(value)
@@ -745,6 +789,14 @@ def patch_library_item(firebase_uid: str, item_id: str, patch: dict[str, Any]) -
 
     if not sets or (len(sets) == 1 and sets[0] == "UPDATED_AT = CURRENT_TIMESTAMP"):
         return {"success": True, "item_id": item_id, "updated": False}
+
+    if "tags" in (patch or {}) and "CATEGORY_JSON" in lib_cols:
+        normalized_tags = _normalize_item_tags((patch or {}).get("tags") or [])
+        binds["p_category_json_from_tags"] = json.dumps(
+            extract_book_categories_from_tags(normalized_tags),
+            ensure_ascii=False,
+        )
+        sets.append("CATEGORY_JSON = TO_CLOB(:p_category_json_from_tags)")
 
     with DatabaseManager.get_write_connection() as conn:
         with conn.cursor() as cur:

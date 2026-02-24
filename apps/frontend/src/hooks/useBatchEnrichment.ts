@@ -31,10 +31,10 @@ export const useBatchEnrichment = (
 
     const startEnrichment = useCallback(async (books: LibraryItem[]) => {
         // 1. Filter books that need enrichment
-        // Criteria: No general notes AND (no tags OR empty tags)
+        // Criteria: No AI summary (summaryText fallback to legacy generalNotes) AND no tags
         const candidates = books.filter(b =>
             b.type === 'BOOK' &&
-            (!b.generalNotes || b.generalNotes.length < 10) &&
+            (!(b.summaryText || b.generalNotes) || (b.summaryText || b.generalNotes || '').length < 10) &&
             (!b.tags || b.tags.length === 0)
         );
 

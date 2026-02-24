@@ -1,10 +1,10 @@
-import type { QueryDocumentSnapshot, DocumentData } from "firebase/firestore";
 import { Highlight, LibraryItem, PersonalNoteCategory, PersonalNoteFolder } from "../types";
 import { normalizeHighlightType } from "../lib/highlightType";
 import { normalizeFolderPath, normalizePersonalFolderId, normalizePersonalNoteCategory } from "../lib/personalNotePolicy";
 import { API_BASE_URL, fetchWithAuth, parseApiErrorMessage } from "./apiClient";
 
-type OracleCursorDoc = QueryDocumentSnapshot<DocumentData> & { __oracleCursor?: string };
+export type OracleListCursor = { __oracleCursor?: string };
+type OracleCursorDoc = OracleListCursor;
 
 const normalizeTimestamp = (value: unknown, fallback: number): number => {
     if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -66,6 +66,7 @@ const normalizeItemShape = (item: LibraryItem): LibraryItem => ({
     readingStatus: (item.readingStatus || "To Read") as LibraryItem["readingStatus"],
     author: (item.author || "Unknown Author").trim() || "Unknown Author",
     title: (item.title || "Untitled").trim() || "Untitled",
+    summaryText: typeof item.summaryText === "string" ? item.summaryText : undefined,
 });
 
 const normalizeFolderShape = (folder: PersonalNoteFolder): PersonalNoteFolder => ({
@@ -82,7 +83,7 @@ function asOracleCursorDoc(cursor?: string | null): OracleCursorDoc | null {
     return { __oracleCursor: cursor } as OracleCursorDoc;
 }
 
-function getCursorToken(lastDoc?: QueryDocumentSnapshot<DocumentData> | null): string | undefined {
+function getCursorToken(lastDoc?: OracleListCursor | null): string | undefined {
     if (!lastDoc) return undefined;
     const maybe = lastDoc as OracleCursorDoc;
     return maybe.__oracleCursor;
@@ -91,8 +92,8 @@ function getCursorToken(lastDoc?: QueryDocumentSnapshot<DocumentData> | null): s
 export const fetchItemsForUser = async (
     userId: string,
     limitCount: number = 2000,
-    lastDoc?: QueryDocumentSnapshot<DocumentData> | null
-): Promise<{ items: LibraryItem[]; lastDoc: QueryDocumentSnapshot<DocumentData> | null }> => {
+    lastDoc?: OracleListCursor | null
+): Promise<{ items: LibraryItem[]; lastDoc: OracleListCursor | null }> => {
     const url = new URL(`${API_BASE_URL}/api/library/items`);
     url.searchParams.set("limit", String(limitCount));
     const cursor = getCursorToken(lastDoc);
@@ -107,7 +108,7 @@ export const fetchItemsForUser = async (
     const rawItems = Array.isArray(payload?.items) ? payload.items : [];
     const items = rawItems.map((raw: any) => normalizeItemShape(raw as LibraryItem));
     const nextLastDoc = asOracleCursorDoc(typeof payload?.next_cursor === "string" ? payload.next_cursor : null);
-    return { items, lastDoc: nextLastDoc as QueryDocumentSnapshot<DocumentData> | null };
+    return { items, lastDoc: nextLastDoc as OracleListCursor | null };
 };
 
 export const saveItemForUser = async (
@@ -123,6 +124,22 @@ export const saveItemForUser = async (
     });
     if (!response.ok) {
         throw new Error(await parseApiErrorMessage(response, "Failed to save library item to Oracle"));
+    }
+};
+
+export const patchItemForUser = async (
+    userId: string,
+    itemId: string,
+    patch: Partial<LibraryItem>
+): Promise<void> => {
+    void userId;
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/library/items/${encodeURIComponent(itemId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ patch }),
+    });
+    if (!response.ok) {
+        throw new Error(await parseApiErrorMessage(response, "Failed to patch library item in Oracle"));
     }
 };
 
@@ -240,4 +257,3 @@ export const movePersonalNoteForUser = async (
         throw new Error(await parseApiErrorMessage(response, "Failed to move personal note in Oracle"));
     }
 };
-

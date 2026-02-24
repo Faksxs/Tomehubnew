@@ -29,7 +29,7 @@ _CATEGORY_ANCHOR_KEYWORDS: Dict[str, List[str]] = {
     "Bilim ve Teknoloji": ["bilim", "teknoloji", "bilimsel", "fizik", "biyoloji", "matematik"],
     "Din ve İnanç": ["din", "inanc", "teoloji", "ilahiyat", "mistik", "iman"],
     "Tarih": ["tarih", "imparatorluk", "devrim", "savas", "medeniyet", "osmanli"],
-    "Siyaset Bilimi": ["siyaset", "politika", "iktidar", "devlet", "hukuk", "demokrasi"],
+    "İnceleme ve Araştırma": ["inceleme", "arastirma", "araştırma", "analiz", "derleme", "metodoloji", "monografi"],
     "Ekonomi ve Hukuk": ["ekonomi", "iktisat", "piyasa", "hukuk", "anayasa", "adalet"],
     "Türk Edebiyatı": ["turk edebiyat", "türk edebiyat", "turk roman", "türk roman"],
     "Dünya Edebiyatı": ["edebiyat", "roman", "hikaye", "öykü", "oyku", "deneme", "klasik"],

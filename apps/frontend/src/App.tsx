@@ -7,7 +7,6 @@ import {
   PersonalNoteCategory,
   PersonalNoteFolder,
 } from "./types";
-import type { QueryDocumentSnapshot, DocumentData } from "firebase/firestore";
 import { BookList } from "./components/BookList";
 import { BookForm } from "./components/BookForm";
 import { BookDetail } from "./components/BookDetail";
@@ -20,6 +19,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import {
   fetchItemsForUser,
   saveItemForUser,
+  patchItemForUser,
   deleteItemForUser,
   deleteMultipleItemsForUser,
   fetchPersonalNoteFoldersForUser,
@@ -27,6 +27,7 @@ import {
   updatePersonalNoteFolderForUser,
   deletePersonalNoteFolderForUser,
   movePersonalNoteForUser,
+  type OracleListCursor,
 } from "./services/oracleLibraryService";
 import {
   ItemDraft,
@@ -55,6 +56,7 @@ interface LayoutProps {
 
 const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   const [books, setBooks] = useState<LibraryItem[]>([]);
+  const booksRef = useRef<LibraryItem[]>([]);
   const [view, setView] = useState<"list" | "detail">("list");
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -67,7 +69,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   >("DASHBOARD");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [itemsLoading, setItemsLoading] = useState(true);
-  const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [lastDoc, setLastDoc] = useState<OracleListCursor | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -98,6 +100,10 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
       });
 
     return CATEGORIES.filter((category) => (categoryCounts.get(category) || 0) >= MIN_CATEGORY_BOOKS_VISIBLE);
+  }, [books]);
+
+  useEffect(() => {
+    booksRef.current = books;
   }, [books]);
 
 
@@ -360,7 +366,10 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
           }
           if (newItem.publisher) textParts.push(`Publisher: ${newItem.publisher}`);
           if (newItem.tags && newItem.tags.length > 0) textParts.push(`Tags: ${newItem.tags.join(', ')}`);
-          if (newItem.generalNotes) textParts.push(`\nContent/Notes:\n${newItem.generalNotes}`);
+          const itemBodyText = isPersonalNote(newItem)
+            ? newItem.generalNotes
+            : (newItem.summaryText || newItem.generalNotes);
+          if (itemBodyText) textParts.push(`\nContent/Notes:\n${itemBodyText}`);
 
           const fullText = textParts.join('\n');
 
@@ -402,27 +411,58 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
               enrichedDraft
             );
 
-            // Eğer hiçbir anlamlı değişiklik yoksa boşuna state güncellemeyelim
-            const hasChanged =
-              enrichedItem.generalNotes !== newItem.generalNotes ||
-              JSON.stringify(enrichedItem.tags) !==
-              JSON.stringify(newItem.tags);
+            const latestItem = booksRef.current.find((b) => b.id === newItem.id);
+            if (!latestItem) return; // Item may have been deleted by user.
 
-            if (!hasChanged) return;
+            const arraysEqual = (a?: string[], b?: string[]) =>
+              JSON.stringify(Array.isArray(a) ? a : []) === JSON.stringify(Array.isArray(b) ? b : []);
 
-            // 5) State'i güncelle (listedeki item'i enriched sürümle değiştir)
+            // Apply AI fields only if the user has not modified that field since the initial create.
+            const aiPatch: Partial<LibraryItem> = {};
+            const maybePatchScalar = <K extends keyof LibraryItem>(key: K) => {
+              const baseVal = newItem[key];
+              const latestVal = latestItem[key];
+              const enrichedVal = enrichedItem[key];
+              if (enrichedVal === undefined) return;
+              if (enrichedVal === baseVal) return;
+              if (latestVal !== baseVal) return; // user changed it after create
+              aiPatch[key] = enrichedVal;
+            };
+            const maybePatchTags = () => {
+              const baseTags = newItem.tags || [];
+              const latestTags = latestItem.tags || [];
+              const enrichedTags = enrichedItem.tags || [];
+              if (arraysEqual(enrichedTags, baseTags)) return;
+              if (!arraysEqual(latestTags, baseTags)) return; // user changed tags
+              aiPatch.tags = enrichedTags;
+            };
+
+            maybePatchTags();
+            maybePatchScalar("summaryText");
+            maybePatchScalar("publisher");
+            maybePatchScalar("translator");
+            maybePatchScalar("publicationYear");
+            maybePatchScalar("isbn");
+            maybePatchScalar("coverUrl");
+            maybePatchScalar("pageCount");
+            maybePatchScalar("contentLanguageMode");
+            maybePatchScalar("contentLanguageResolved");
+            maybePatchScalar("sourceLanguageHint");
+            maybePatchScalar("languageDecisionReason");
+            maybePatchScalar("languageDecisionConfidence");
+
+            if (Object.keys(aiPatch).length === 0) return;
+
+            // 5) State'i güncelle (yalnızca güvenli AI alanlarını patch et)
             setBooks((prev) =>
-              prev.map((b) => (b.id === newItem.id ? enrichedItem : b))
+              prev.map((b) => (b.id === newItem.id ? { ...b, ...aiPatch } : b))
             );
 
-            // 6) Firestore'u da enriched sürümle güncelle
+            // 6) Oracle canonical kayda da güvenli patch uygula (stale full PUT yok)
             try {
-              await saveItemForUser(userId, enrichedItem);
+              await patchItemForUser(userId, newItem.id, aiPatch);
             } catch (err) {
-              console.error(
-                "Failed to save enriched item to Firestore:",
-                err
-              );
+              console.error("Failed to patch enriched item in Oracle:", err);
             }
           } catch (err) {
             console.error("Background enrichment failed:", err);
@@ -430,7 +470,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
         })();
       }
     },
-    [syncPersonalNoteToBackend, userId]
+    [patchItemForUser, syncPersonalNoteToBackend, userId]
   );
 
   const handleOpenPersonalNoteForm = useCallback((defaults?: { category?: PersonalNoteCategory; folderId?: string; folderPath?: string }) => {

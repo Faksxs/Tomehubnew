@@ -315,6 +315,7 @@ class LibraryItemUpsertRequest(BaseModel):
     readingStatus: Optional[str] = Field(default=None, max_length=64)
     tags: Optional[List[str]] = None
     generalNotes: Optional[str] = Field(default=None, max_length=_NOTE_MAX)
+    summaryText: Optional[str] = Field(default=None, max_length=_NOTE_MAX)
     contentLanguageMode: Optional[str] = Field(default=None, max_length=50)
     contentLanguageResolved: Optional[str] = Field(default=None, max_length=50)
     sourceLanguageHint: Optional[str] = Field(default=None, max_length=50)

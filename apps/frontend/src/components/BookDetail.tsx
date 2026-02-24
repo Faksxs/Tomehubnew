@@ -5,7 +5,7 @@ import { HighlightSection } from './HighlightSection';
 import { analyzeHighlightsAI, enrichBookWithAI, libraryItemToDraft, mergeEnrichedDraftIntoItem } from '../services/geminiService';
 import { useAuth } from '../contexts/AuthContext';
 import { getIngestionStatus, ingestDocument, IngestResponse, IngestionStatusResponse } from '../services/backendApiService';
-import { saveItemForUser } from '../services/oracleLibraryService';
+import { patchItemForUser } from '../services/oracleLibraryService';
 import { getPersonalNoteCategory } from '../lib/personalNotePolicy';
 import { toPersonalNotePreviewHtml } from '../lib/personalNoteRender';
 
@@ -142,9 +142,26 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
       const enriched = await enrichBookWithAI(draft, { forceRegenerate: true });
       const mergedItem = mergeEnrichedDraftIntoItem(book, enriched);
 
-      await saveItemForUser(user.uid, mergedItem);
-      onBookUpdated?.(mergedItem);
-      if (mergedItem.generalNotes) setAiSummary(mergedItem.generalNotes);
+      const aiPatch: Partial<LibraryItem> = {};
+      if (mergedItem.summaryText !== book.summaryText) aiPatch.summaryText = mergedItem.summaryText;
+      if (JSON.stringify(mergedItem.tags || []) !== JSON.stringify(book.tags || [])) aiPatch.tags = mergedItem.tags;
+      if (mergedItem.publisher !== book.publisher) aiPatch.publisher = mergedItem.publisher;
+      if (mergedItem.translator !== book.translator) aiPatch.translator = mergedItem.translator;
+      if (mergedItem.publicationYear !== book.publicationYear) aiPatch.publicationYear = mergedItem.publicationYear;
+      if (mergedItem.isbn !== book.isbn) aiPatch.isbn = mergedItem.isbn;
+      if (mergedItem.coverUrl !== book.coverUrl) aiPatch.coverUrl = mergedItem.coverUrl;
+      if (mergedItem.pageCount !== book.pageCount) aiPatch.pageCount = mergedItem.pageCount;
+      if (mergedItem.contentLanguageMode !== book.contentLanguageMode) aiPatch.contentLanguageMode = mergedItem.contentLanguageMode;
+      if (mergedItem.contentLanguageResolved !== book.contentLanguageResolved) aiPatch.contentLanguageResolved = mergedItem.contentLanguageResolved;
+      if (mergedItem.sourceLanguageHint !== book.sourceLanguageHint) aiPatch.sourceLanguageHint = mergedItem.sourceLanguageHint;
+      if (mergedItem.languageDecisionReason !== book.languageDecisionReason) aiPatch.languageDecisionReason = mergedItem.languageDecisionReason;
+      if (mergedItem.languageDecisionConfidence !== book.languageDecisionConfidence) aiPatch.languageDecisionConfidence = mergedItem.languageDecisionConfidence;
+
+      if (Object.keys(aiPatch).length > 0) {
+        await patchItemForUser(user.uid, book.id, aiPatch);
+      }
+      onBookUpdated?.({ ...book, ...aiPatch });
+      if (mergedItem.summaryText || mergedItem.generalNotes) setAiSummary(mergedItem.summaryText || mergedItem.generalNotes || null);
     } catch (e) {
       console.error("Enrich failed", e);
       setEnrichError(e instanceof Error ? e.message : 'Failed to generate with AI');
@@ -201,7 +218,6 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
         const shouldBeIngested = status.status === 'COMPLETED' && !matchedDifferentBook;
         if (book.isIngested !== shouldBeIngested) {
           const updated = { ...book, isIngested: shouldBeIngested };
-          await saveItemForUser(user.uid, updated);
           onBookUpdated?.(updated);
         }
         if (status.status === 'COMPLETED' && !matchedDifferentBook) {
@@ -543,14 +559,14 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                       </button>
                     </div>
                   )}
-                  {book.generalNotes ? (
+                  {(isNote ? book.generalNotes : (book.summaryText || book.generalNotes)) ? (
                     isNote ? (
                       <div
                         className="personal-note-render text-slate-700 dark:text-slate-300 leading-relaxed text-sm md:text-base max-w-none"
                         dangerouslySetInnerHTML={{ __html: toPersonalNotePreviewHtml(book.generalNotes) }}
                       />
                     ) : (
-                      <p className="text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed text-sm md:text-lg">{book.generalNotes}</p>
+                      <p className="text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed text-sm md:text-lg">{book.summaryText || book.generalNotes}</p>
                     )
                   ) : (
                     <p className="text-slate-400 dark:text-slate-500 italic text-sm">No content added.</p>

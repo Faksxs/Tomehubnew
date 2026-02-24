@@ -89,7 +89,7 @@ from services.analytics_service import (
 
 NOISE_SOURCE_ALLOWLIST = {
     "PDF", "EPUB", "PDF_CHUNK", "BOOK",
-    "HIGHLIGHT", "INSIGHT", "NOTES", "PERSONAL_NOTE",
+    "HIGHLIGHT", "INSIGHT", "PERSONAL_NOTE",
     "ARTICLE", "WEBSITE", "GRAPH_RELATION", 
     "UNKNOWN", "OTHER" 
 }

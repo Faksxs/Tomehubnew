@@ -81,8 +81,8 @@ SIMILARITY_THRESHOLDS = {
 }
 
 # Resource type helper constants
-BOOK_SOURCE_TYPES = ("PDF", "EPUB", "PDF_CHUNK", "BOOK", "HIGHLIGHT", "INSIGHT", "NOTES")
-ALL_NOTES_SOURCE_TYPES = ("HIGHLIGHT", "INSIGHT", "NOTES")
+BOOK_SOURCE_TYPES = ("PDF", "EPUB", "PDF_CHUNK", "BOOK", "HIGHLIGHT", "INSIGHT")
+ALL_NOTES_SOURCE_TYPES = ("HIGHLIGHT", "INSIGHT")
 DEFAULT_ANCHOR_ID = "General Discovery"
 DEFAULT_TOPIC_LABEL = "Flux"
 INITIAL_BATCH_SIZE = 5
@@ -112,8 +112,8 @@ def _build_seen_exclusion_sql(session_id: str, params: dict, column_name: str = 
         # UUID session_id - can't query NUMBER column, skip exclusion
         return "", params
     
-    # Numeric session_id - safe to add exclusion
-    sql_clause = f" AND {column_name} NOT IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE session_id = :p_sid) "
+    # Numeric session_id - safe to add exclusion (NOT EXISTS is faster than NOT IN on Oracle)
+    sql_clause = f" AND NOT EXISTS (SELECT 1 FROM TOMEHUB_FLOW_SEEN fs WHERE fs.chunk_id = {column_name} AND fs.session_id = :p_sid) "
     new_params = {**params, "p_sid": int(session_id)}
     return sql_clause, new_params
 
@@ -121,6 +121,7 @@ def _build_seen_exclusion_sql(session_id: str, params: dict, column_name: str = 
 def _normalize_flow_text(text: str) -> str:
     """Normalize whitespace for card-safe display text."""
     return re.sub(r"\s+", " ", str(text or "")).strip()
+
 
 
 def _limit_flow_content(text: str, limit: int = FLOW_CONTENT_CHAR_LIMIT) -> str:
@@ -425,12 +426,12 @@ class FlowService:
                         JOIN TOMEHUB_CONTENT_V2 ct ON cc.content_id = ct.id
                         WHERE ct.firebase_uid = :p_uid
                         AND ct.ai_eligible = 1
-                        AND ct.id NOT IN (
-                            SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE TO_CHAR(session_id) = :p_sid
+                        AND NOT EXISTS (
+                            SELECT 1 FROM TOMEHUB_FLOW_SEEN fs WHERE fs.chunk_id = ct.id AND TO_CHAR(fs.session_id) = :p_sid
                         )
                         AND c.id NOT IN (
                             SELECT concept_id FROM TOMEHUB_CONCEPT_CHUNKS 
-                            WHERE content_id IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE firebase_uid = :p_uid)
+                            WHERE content_id IN (SELECT fs.chunk_id FROM TOMEHUB_FLOW_SEEN fs WHERE fs.firebase_uid = :p_uid)
                         )
                         AND (cc.strength IS NULL OR cc.strength >= :p_strength)
                     """
@@ -464,7 +465,7 @@ class FlowService:
                         AND ai_eligible = 1
                         AND title NOT IN (
                             SELECT title FROM TOMEHUB_CONTENT_V2 
-                            WHERE id IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE firebase_uid = :p_uid)
+                            WHERE id IN (SELECT fs.chunk_id FROM TOMEHUB_FLOW_SEEN fs WHERE fs.firebase_uid = :p_uid)
                         )
                     """
                     sql, params = self._apply_resource_filter(sql, params, state.resource_type)
@@ -537,17 +538,17 @@ class FlowService:
         """
         Append resource-type filters to a SQL query.
 
-        - BOOK: PDF/EPUB/PDF_CHUNK + BOOK + HIGHLIGHT/INSIGHT (+ legacy NOTES)
-        - ALL_NOTES: HIGHLIGHT/INSIGHT (+ legacy NOTES)
+        - BOOK: PDF/EPUB/PDF_CHUNK + BOOK + HIGHLIGHT/INSIGHT
+        - ALL_NOTES: HIGHLIGHT/INSIGHT
         - PERSONAL_NOTE: PERSONAL_NOTE only
         - ARTICLE/WEBSITE: strict source_type match
         """
         if resource_type == 'PERSONAL_NOTE':
             sql += " AND content_type = 'PERSONAL_NOTE' "
         elif resource_type == 'ALL_NOTES':
-            sql += " AND content_type IN ('HIGHLIGHT', 'INSIGHT', 'NOTES') "
+            sql += " AND content_type IN ('HIGHLIGHT', 'INSIGHT') "
         elif resource_type == 'BOOK':
-            sql += " AND content_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'BOOK', 'HIGHLIGHT', 'INSIGHT', 'NOTES') "
+            sql += " AND content_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'BOOK', 'HIGHLIGHT', 'INSIGHT') "
         elif resource_type in ('ARTICLE', 'WEBSITE'):
             sql += " AND content_type = :p_type "
             params["p_type"] = resource_type
@@ -623,7 +624,7 @@ class FlowService:
                         ) c ON c.content_id = t.id
                         WHERE LOWER(TRIM(t.firebase_uid)) = LOWER(TRIM(:p_uid))
                         AND t.ai_eligible = 1
-                        AND t.content_type IN ('HIGHLIGHT', 'INSIGHT', 'NOTES')
+                        AND t.content_type IN ('HIGHLIGHT', 'INSIGHT')
                         AND DBMS_LOB.GETLENGTH(t.content_chunk) > 12
                     """
                     sql, params = self._apply_category_filter(sql, params, category)
@@ -877,16 +878,16 @@ class FlowService:
             WHERE firebase_uid = :p_uid
             AND VEC_EMBEDDING IS NOT NULL
             AND DBMS_LOB.GETLENGTH(content_chunk) > 12
-            AND id NOT IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE TO_CHAR(session_id) = :p_sid)
+            AND NOT EXISTS (SELECT 1 FROM TOMEHUB_FLOW_SEEN fs WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND TO_CHAR(fs.session_id) = :p_sid)
         """
         if r_type == 'BOOK':
              # Books = PDFs + Highlights
-             sql += " AND content_type IN ('PDF','EPUB','PDF_CHUNK','BOOK','HIGHLIGHT','INSIGHT','NOTES') "
+             sql += " AND content_type IN ('PDF','EPUB','PDF_CHUNK','BOOK','HIGHLIGHT','INSIGHT') "
         elif r_type == 'PERSONAL_NOTE':
              sql += " AND content_type = 'PERSONAL_NOTE' "
         elif r_type in (None, 'ALL_NOTES', 'ALL'):
              # All Notes = Highlights/Insights ONLY
-             sql += " AND content_type IN ('HIGHLIGHT','INSIGHT','NOTES') "
+             sql += " AND content_type IN ('HIGHLIGHT','INSIGHT') "
         else:
              sql += " AND content_type = :p_type "
              params["p_type"] = r_type
@@ -931,18 +932,18 @@ class FlowService:
             FROM TOMEHUB_CONTENT_V2
             WHERE firebase_uid = :p_uid
             AND DBMS_LOB.GETLENGTH(content_chunk) > 12
-            AND id NOT IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE TO_CHAR(session_id) = :p_sid)
+            AND NOT EXISTS (SELECT 1 FROM TOMEHUB_FLOW_SEEN fs WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND TO_CHAR(fs.session_id) = :p_sid)
         """
         params = {"p_uid": uid, "p_sid": sid, "p_limit": limit}
         
         if r_type == 'BOOK':
              # Books = Highlights + PDFs
-             sql += " AND content_type IN ('PDF','EPUB','PDF_CHUNK','BOOK','HIGHLIGHT','INSIGHT','NOTES') "
+             sql += " AND content_type IN ('PDF','EPUB','PDF_CHUNK','BOOK','HIGHLIGHT','INSIGHT') "
         elif r_type == 'PERSONAL_NOTE':
              sql += " AND content_type = 'PERSONAL_NOTE' "
         elif r_type in (None, 'ALL_NOTES', 'ALL'):
              # All Notes = Highlights/Insights ONLY
-             sql += " AND content_type IN ('HIGHLIGHT','INSIGHT','NOTES') "
+             sql += " AND content_type IN ('HIGHLIGHT','INSIGHT') "
         elif r_type:
              sql += " AND content_type = :p_type "
              params["p_type"] = r_type
@@ -962,18 +963,18 @@ class FlowService:
             FROM TOMEHUB_CONTENT_V2
             WHERE firebase_uid = :p_uid
             AND DBMS_LOB.GETLENGTH(content_chunk) > 12
-            AND id NOT IN (SELECT chunk_id FROM TOMEHUB_FLOW_SEEN WHERE TO_CHAR(session_id) = :p_sid)
+            AND NOT EXISTS (SELECT 1 FROM TOMEHUB_FLOW_SEEN fs WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND TO_CHAR(fs.session_id) = :p_sid)
         """
         params = {"p_uid": uid, "p_sid": sid, "p_limit": limit}
 
         if r_type == 'BOOK':
              # Books = Highlights + PDFs
-             sql += " AND content_type IN ('PDF','EPUB','PDF_CHUNK','BOOK','HIGHLIGHT','INSIGHT','NOTES') "
+             sql += " AND content_type IN ('PDF','EPUB','PDF_CHUNK','BOOK','HIGHLIGHT','INSIGHT') "
         elif r_type == 'PERSONAL_NOTE':
              sql += " AND content_type = 'PERSONAL_NOTE' "
         elif r_type in (None, 'ALL_NOTES', 'ALL'):
              # All Notes = Highlights/Insights ONLY
-             sql += " AND content_type IN ('HIGHLIGHT','INSIGHT','NOTES') "
+             sql += " AND content_type IN ('HIGHLIGHT','INSIGHT') "
         elif r_type:
              sql += " AND content_type = :p_type "
              params["p_type"] = r_type
@@ -1060,7 +1061,7 @@ class FlowService:
         # Source Distribution Analysis
         source_dist = {"highlights": 0, "pdf_chunks": 0}
         for c in all_candidates:
-            if c.content_type == 'personal':
+            if c.source_type == 'personal':
                 source_dist["highlights"] += 1
             else:
                 source_dist["pdf_chunks"] += 1
@@ -1242,9 +1243,9 @@ class FlowService:
                     # Apply Category Filter
                     sql, params = self._apply_category_filter(sql, params, category)
                     sql += """
-                        AND id NOT IN (
-                            SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
-                            WHERE TO_CHAR(session_id) = :p_sid
+                        AND NOT EXISTS (
+                            SELECT 1 FROM TOMEHUB_FLOW_SEEN fs 
+                            WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND TO_CHAR(fs.session_id) = :p_sid
                         )
                         ORDER BY DBMS_RANDOM.VALUE
                         FETCH FIRST :p_limit ROWS ONLY
@@ -1316,9 +1317,9 @@ class FlowService:
                     FROM TOMEHUB_CONTENT_V2
                     WHERE firebase_uid = :p_uid
                     AND VEC_EMBEDDING IS NOT NULL
-                    AND id NOT IN (
-                        SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
-                        WHERE TO_CHAR(session_id) = :p_sid
+                    AND NOT EXISTS (
+                        SELECT 1 FROM TOMEHUB_FLOW_SEEN fs 
+                        WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND TO_CHAR(fs.session_id) = :p_sid
                     )
                 """
                 # Apply filters
@@ -1339,7 +1340,7 @@ class FlowService:
                             content=content,
                             title=row[2] or "Untitled",
                             page_number=row[4],
-                            source_type="personal" if row[3] in ('HIGHLIGHT','INSIGHT','PERSONAL_NOTE','NOTES') else "pdf_chunk",
+                            source_type="personal" if row[3] in ('HIGHLIGHT','INSIGHT','PERSONAL_NOTE') else "pdf_chunk",
                             zone=1,
                             epistemic_level="B", # Contextual
                             reason=f"🎯 Konu Odaklı ({similarity:.0%})"
@@ -1373,9 +1374,9 @@ class FlowService:
             sql += " AND id != :p_anchor_id "
         
         sql += """
-            AND id NOT IN (
-                SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
-                WHERE TO_CHAR(session_id) = :p_sid
+            AND NOT EXISTS (
+                SELECT 1 FROM TOMEHUB_FLOW_SEEN fs 
+                WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND TO_CHAR(fs.session_id) = :p_sid
             )
         """
         sql, params = self._apply_resource_filter(sql, params, resource_type)
@@ -1448,9 +1449,9 @@ class FlowService:
                 sql += " AND id != :p_anchor_id "
             
             sql += """
-                AND id NOT IN (
-                    SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
-                    WHERE TO_CHAR(session_id) = :p_sid
+                AND NOT EXISTS (
+                    SELECT 1 FROM TOMEHUB_FLOW_SEEN fs 
+                    WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND TO_CHAR(fs.session_id) = :p_sid
                 )
             """
 
@@ -1492,9 +1493,9 @@ class FlowService:
                 FROM TOMEHUB_CONTENT_V2
                 WHERE firebase_uid = :p_uid
                 AND VEC_EMBEDDING IS NOT NULL
-                AND id NOT IN (
-                    SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
-                    WHERE TO_CHAR(session_id) = :p_sid
+                AND NOT EXISTS (
+                    SELECT 1 FROM TOMEHUB_FLOW_SEEN fs 
+                    WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND TO_CHAR(fs.session_id) = :p_sid
                 )
             """
             sql, params = self._apply_resource_filter(sql, params, resource_type)
@@ -1547,9 +1548,9 @@ class FlowService:
             FROM TOMEHUB_CONTENT_V2
             WHERE firebase_uid = :p_uid
             AND VEC_EMBEDDING IS NOT NULL
-            AND id NOT IN (
-                SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
-                WHERE TO_CHAR(session_id) = :p_sid
+            AND NOT EXISTS (
+                SELECT 1 FROM TOMEHUB_FLOW_SEEN fs 
+                WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND TO_CHAR(fs.session_id) = :p_sid
             )
         """
         sql, params = self._apply_resource_filter(sql, params, resource_type)
@@ -1614,9 +1615,9 @@ class FlowService:
             if resource_type == 'PERSONAL_NOTE':
                 sql += " AND ct.content_type = 'PERSONAL_NOTE' "
             elif resource_type == 'ALL_NOTES':
-                sql += " AND ct.content_type IN ('HIGHLIGHT', 'INSIGHT', 'NOTES') "
+                sql += " AND ct.content_type IN ('HIGHLIGHT', 'INSIGHT') "
             elif resource_type == 'BOOK':
-                sql += " AND ct.content_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'BOOK', 'HIGHLIGHT', 'INSIGHT', 'NOTES') "
+                sql += " AND ct.content_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'BOOK', 'HIGHLIGHT', 'INSIGHT') "
             elif resource_type in ('ARTICLE', 'WEBSITE'):
                 sql += " AND ct.content_type = :p_type "
                 params["p_type"] = resource_type
@@ -1665,9 +1666,9 @@ class FlowService:
                 FROM TOMEHUB_CONTENT_V2
                 WHERE firebase_uid = :p_uid
                 AND VEC_EMBEDDING IS NOT NULL
-                AND id NOT IN (
-                    SELECT chunk_id FROM TOMEHUB_FLOW_SEEN 
-                    WHERE TO_CHAR(session_id) = :p_sid
+                AND NOT EXISTS (
+                    SELECT 1 FROM TOMEHUB_FLOW_SEEN fs 
+                    WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND TO_CHAR(fs.session_id) = :p_sid
                 )
             """
             sql, params = self._apply_resource_filter(sql, params, resource_type)
@@ -1857,8 +1858,9 @@ class FlowService:
             return None
         return int(sid_str)
     
-    def _record_seen_chunk(self, firebase_uid: str, session_id: str, chunk_id: str):
-        """Persist seen chunk to Database for cross-session global history and decay."""
+    def _record_seen_chunk(self, firebase_uid: str, session_id: str, chunk_id: str,
+                           reaction_type: Optional[str] = None, discovered_via: Optional[str] = None):
+        """Persist seen chunk to Database for cross-session global history, decay, and engagement tracking."""
         try:
             with DatabaseManager.get_write_connection() as conn:
                 with conn.cursor() as cursor:
@@ -1870,14 +1872,15 @@ class FlowService:
                     if coerced_id is None:
                         logger.debug(f"Skipping non-numeric chunk_id for seen record: {chunk_id}")
                         return
-                    # Ensure table exists/columns exist (In Oracle we'd usually have this pre-created)
                     cursor.execute("""
-                        INSERT INTO TOMEHUB_FLOW_SEEN (firebase_uid, session_id, chunk_id, seen_at)
-                        VALUES (:p_uid, :p_sid, :p_cid, CURRENT_TIMESTAMP)
-                    """, {"p_uid": firebase_uid, "p_sid": sid_int, "p_cid": coerced_id})
+                        INSERT INTO TOMEHUB_FLOW_SEEN (firebase_uid, session_id, chunk_id, seen_at, reaction_type, discovered_via)
+                        VALUES (:p_uid, :p_sid, :p_cid, CURRENT_TIMESTAMP, :p_reaction, :p_via)
+                    """, {
+                        "p_uid": firebase_uid, "p_sid": sid_int, "p_cid": coerced_id,
+                        "p_reaction": reaction_type, "p_via": discovered_via
+                    })
                     conn.commit()
         except Exception as e:
-            # Silently fail if DB not ready for tiered history yet
             logger.debug(f"DB seen recording failed (likely missing columns/table): {e}")
 
     def _is_globally_seen(self, firebase_uid: str, chunk_id: str, days: int = 30) -> bool:

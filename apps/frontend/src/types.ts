@@ -41,6 +41,7 @@ export interface LibraryItem {
   readingStatus: ReadingStatus; // Progress Status
   tags: string[];
   generalNotes?: string;
+  summaryText?: string;
   contentLanguageMode?: ContentLanguageMode;
   contentLanguageResolved?: ContentLanguageResolved;
   sourceLanguageHint?: string;

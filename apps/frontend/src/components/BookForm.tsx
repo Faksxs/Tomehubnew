@@ -52,6 +52,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
     readingStatus: 'To Read' as ReadingStatus,
     tags: '',
     generalNotes: '',
+    summaryText: '',
     coverUrl: '',
     lentToName: '',
     lentDate: '',
@@ -80,6 +81,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
         readingStatus: initialData.readingStatus,
         tags: initialData.tags.join(', '),
         generalNotes: initialData.generalNotes || '',
+        summaryText: initialData.summaryText || '',
         coverUrl: initialData.coverUrl || '',
         lentToName: initialData.lentInfo?.borrowerName || '',
         lentDate: initialData.lentInfo?.lentDate || '',
@@ -176,7 +178,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
       setFormData(prev => ({
         ...prev,
         tags: enriched.tags && enriched.tags.length > 0 ? enriched.tags.join(', ') : prev.tags,
-        generalNotes: enriched.summary && enriched.summary.length > 0 ? `AI Summary: ${enriched.summary}` : prev.generalNotes,
+        summaryText: enriched.summary && enriched.summary.length > 0 ? enriched.summary : prev.summaryText,
         publisher: enriched.publisher || prev.publisher,
         publicationYear: enriched.publishedDate ? String(enriched.publishedDate) : prev.publicationYear,
         isbn: enriched.isbn || prev.isbn,
@@ -203,7 +205,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
       publicationYear: draft.publishedDate || '',
       translator: draft.translator || '',
       tags: draft.tags ? draft.tags.join(', ') : '',
-      generalNotes: draft.summary ? `AI Summary: ${draft.summary}` : '',
+      summaryText: draft.summary || '',
       coverUrl: draft.coverUrl || '',
       // Only populate URL for websites/articles
       url: (initialType === 'WEBSITE' || initialType === 'ARTICLE') ? (draft.url || '') : '',
@@ -311,7 +313,8 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
       status: formData.status as PhysicalStatus,
       readingStatus: formData.readingStatus as ReadingStatus,
       tags: formData.tags.split(',').map(t => t.trim()).filter(t => t.length > 0),
-      generalNotes: formData.generalNotes,
+      generalNotes: isNote ? formData.generalNotes : '',
+      summaryText: isNote ? '' : formData.summaryText,
       contentLanguageMode: formData.contentLanguageMode,
       contentLanguageResolved: (formData.contentLanguageResolved || undefined) as 'tr' | 'en' | undefined,
       sourceLanguageHint: (formData.sourceLanguageHint || undefined) as 'tr' | 'en' | undefined,
@@ -868,9 +871,9 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                   Summary
                 </label>
                 <textarea
-                  name="generalNotes"
+                  name="summaryText"
                   rows={4}
-                  value={formData.generalNotes}
+                  value={formData.summaryText}
                   onChange={handleChange}
                   className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] resize-none leading-relaxed flex-1 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                   placeholder={initialType === 'WEBSITE' ? "Why did you save this website?" : "Your thoughts..."}

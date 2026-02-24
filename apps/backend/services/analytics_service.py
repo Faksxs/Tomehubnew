@@ -172,21 +172,21 @@ def resolve_book_id_from_question(firebase_uid: str, question: str) -> Optional[
             with conn.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT DISTINCT title, book_id
+                    SELECT DISTINCT title, ITEM_ID
                     FROM TOMEHUB_CONTENT_V2
                     WHERE firebase_uid = :p_uid
-                      AND book_id IS NOT NULL
-                      AND (content_type = 'PDF' OR content_type = 'EPUB' OR content_type = 'PDF_CHUNK' OR content_type = 'HIGHLIGHT')
+                      AND ITEM_ID IS NOT NULL
+                      AND (CONTENT_TYPE = 'PDF' OR CONTENT_TYPE = 'EPUB' OR CONTENT_TYPE = 'PDF_CHUNK' OR CONTENT_TYPE = 'HIGHLIGHT')
                     """,
                     {"p_uid": firebase_uid},
                 )
                 rows = cursor.fetchall() or []
 
-                # Canonical title fallback from books table.
+                # Canonical title fallback from library table.
                 cursor.execute(
                     """
-                    SELECT id, title
-                    FROM TOMEHUB_BOOKS
+                    SELECT ITEM_ID, title
+                    FROM TOMEHUB_LIBRARY_ITEMS
                     WHERE firebase_uid = :p_uid
                     """,
                     {"p_uid": firebase_uid},
@@ -272,21 +272,21 @@ def resolve_multiple_book_ids_from_question(
             with conn.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT DISTINCT title, book_id
+                    SELECT DISTINCT title, ITEM_ID
                     FROM TOMEHUB_CONTENT_V2
                     WHERE firebase_uid = :p_uid
-                      AND book_id IS NOT NULL
-                      AND (content_type = 'PDF' OR content_type = 'EPUB' OR content_type = 'PDF_CHUNK' OR content_type = 'HIGHLIGHT')
+                      AND ITEM_ID IS NOT NULL
+                      AND (CONTENT_TYPE = 'PDF' OR CONTENT_TYPE = 'EPUB' OR CONTENT_TYPE = 'PDF_CHUNK' OR CONTENT_TYPE = 'HIGHLIGHT')
                     """,
                     {"p_uid": firebase_uid},
                 )
                 rows = cursor.fetchall() or []
 
-                # Canonical title fallback from books table.
+                # Canonical title fallback from library table.
                 cursor.execute(
                     """
-                    SELECT id, title
-                    FROM TOMEHUB_BOOKS
+                    SELECT ITEM_ID, title
+                    FROM TOMEHUB_LIBRARY_ITEMS
                     WHERE firebase_uid = :p_uid
                     """,
                     {"p_uid": firebase_uid},
@@ -856,7 +856,7 @@ def get_comparative_stats(
             with DatabaseManager.get_read_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute(
-                        "SELECT title FROM TOMEHUB_BOOKS WHERE firebase_uid = :uid AND id = :bid",
+                        "SELECT title FROM TOMEHUB_LIBRARY_ITEMS WHERE firebase_uid = :uid AND ITEM_ID = :bid",
                         {"uid": firebase_uid, "bid": b_id}
                     )
                     row = cursor.fetchone()

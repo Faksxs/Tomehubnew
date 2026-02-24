@@ -454,7 +454,7 @@ def _load_book_context(book_id: str, firebase_uid: str) -> Dict[str, Any]:
         with DatabaseManager.get_read_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
-                    "SELECT TITLE, AUTHOR FROM TOMEHUB_BOOKS WHERE ID=:p_book AND FIREBASE_UID=:p_uid",
+                    "SELECT TITLE, AUTHOR FROM TOMEHUB_LIBRARY_ITEMS WHERE ITEM_ID=:p_book AND FIREBASE_UID=:p_uid",
                     {"p_book": book_id, "p_uid": firebase_uid},
                 )
                 row = cursor.fetchone()
@@ -1182,9 +1182,9 @@ def _count_books(scope_uid: Optional[str]) -> int:
     with DatabaseManager.get_read_connection() as conn:
         with conn.cursor() as cursor:
             if scope_uid:
-                cursor.execute("SELECT COUNT(*) FROM TOMEHUB_BOOKS WHERE FIREBASE_UID=:p_uid", {"p_uid": scope_uid})
+                cursor.execute("SELECT COUNT(*) FROM TOMEHUB_LIBRARY_ITEMS WHERE FIREBASE_UID=:p_uid", {"p_uid": scope_uid})
             else:
-                cursor.execute("SELECT COUNT(*) FROM TOMEHUB_BOOKS")
+                cursor.execute("SELECT COUNT(*) FROM TOMEHUB_LIBRARY_ITEMS")
             row = cursor.fetchone()
             return int(row[0] or 0) if row else 0
 
@@ -1197,9 +1197,9 @@ def _backfill_worker(scope_uid: Optional[str]) -> None:
         with DatabaseManager.get_read_connection() as conn:
             with conn.cursor() as cursor:
                 if scope_uid:
-                    cursor.execute("SELECT ID, FIREBASE_UID, TITLE, AUTHOR FROM TOMEHUB_BOOKS WHERE FIREBASE_UID=:p_uid ORDER BY ID", {"p_uid": scope_uid})
+                    cursor.execute("SELECT ITEM_ID, FIREBASE_UID, TITLE, AUTHOR FROM TOMEHUB_LIBRARY_ITEMS WHERE FIREBASE_UID=:p_uid ORDER BY ITEM_ID", {"p_uid": scope_uid})
                 else:
-                    cursor.execute("SELECT ID, FIREBASE_UID, TITLE, AUTHOR FROM TOMEHUB_BOOKS ORDER BY FIREBASE_UID, ID")
+                    cursor.execute("SELECT ITEM_ID, FIREBASE_UID, TITLE, AUTHOR FROM TOMEHUB_LIBRARY_ITEMS ORDER BY FIREBASE_UID, ITEM_ID")
                 while True:
                     rows = cursor.fetchmany(batch)
                     if not rows:

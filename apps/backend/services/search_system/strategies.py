@@ -113,9 +113,9 @@ def _apply_resource_type_filter(sql: str, params: Dict[str, Any], resource_type:
         return (sql, params)
 
     if rt == "BOOK":
-        sql += " AND c.content_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'BOOK', 'HIGHLIGHT', 'INSIGHT', 'NOTES') "
+        sql += " AND c.content_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'BOOK', 'HIGHLIGHT', 'INSIGHT') "
     elif rt == "ALL_NOTES":
-        sql += " AND c.content_type IN ('HIGHLIGHT', 'INSIGHT', 'NOTES') "
+        sql += " AND c.content_type IN ('HIGHLIGHT', 'INSIGHT') "
     elif rt == "PERSONAL_NOTE":
         sql += " AND c.content_type = 'PERSONAL_NOTE' "
     elif rt in {"ARTICLE", "WEBSITE"}:

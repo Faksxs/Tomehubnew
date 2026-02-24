@@ -1,0 +1,41 @@
+{
+  "started_at": "2026-02-24T01:07:56.610187Z",
+  "dry_run": false,
+  "overwrite_existing": false,
+  "target": {
+    "firebase_uid": null,
+    "all_users": true
+  },
+  "summary": {
+    "users_scanned": 1,
+    "users_with_folder_docs": 1,
+    "folder_docs_seen": 1,
+    "valid_folder_docs": 1,
+    "invalid_folder_docs": 0,
+    "oracle_existing_before": 1,
+    "insert_candidates": 1,
+    "update_candidates": 0,
+    "inserted": 1,
+    "updated": 0,
+    "skipped_existing": 0,
+    "errors": 0
+  },
+  "users": [
+    {
+      "firebase_uid": "vpq1p0UzcCSLAh1d18WgZZWPBE63",
+      "folder_docs_seen": 1,
+      "valid_folder_docs": 1,
+      "invalid_folder_docs": 0,
+      "oracle_existing_before": 1,
+      "insert_candidates": 1,
+      "update_candidates": 0,
+      "inserted": 1,
+      "updated": 0,
+      "skipped_existing": 0,
+      "invalid_examples": [],
+      "error": null
+    }
+  ],
+  "errors": [],
+  "finished_at": "2026-02-24T01:07:57.551799Z"
+}

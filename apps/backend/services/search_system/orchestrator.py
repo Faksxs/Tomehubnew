@@ -516,7 +516,6 @@ class SearchOrchestrator:
             st = item.get('source_type', '')
             if st == 'HIGHLIGHT': return 1
             if st == 'INSIGHT': return 2
-            if st == 'NOTES': return 3
             if item.get('comment') or item.get('personal_comment'): return 2.5
             return 4
 
@@ -662,7 +661,7 @@ class SearchOrchestrator:
 
                 allowed_source_types = {
                     "PDF", "EPUB", "PDF_CHUNK", "BOOK",
-                    "HIGHLIGHT", "INSIGHT", "NOTES",
+                    "HIGHLIGHT", "INSIGHT",
                     "PERSONAL_NOTE", "ARTICLE", "WEBSITE", "GRAPH_RELATION"
                 }
                 if source_type and source_type not in allowed_source_types:

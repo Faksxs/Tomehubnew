@@ -129,7 +129,7 @@ def normalize_source_type(source_type: Optional[str]) -> str:
         return st
     if st in {"NOTE", "PERSONAL"}:
         return "PERSONAL_NOTE"
-    if st in {"NOTES", "HIGHLIGHTS"}:
+    if st in {"HIGHLIGHTS"}:
         return "HIGHLIGHT"
     if st in {"INSIGHTS"}:
         return "INSIGHT"
@@ -193,30 +193,6 @@ def _mirror_book_registry_rows(
         logger.info(f"Mirrored book '{title}' to TOMEHUB_LIBRARY_ITEMS")
     except Exception as e:
         logger.warning(f"Mirroring to TOMEHUB_LIBRARY_ITEMS failed (Non-critical): {e}")
-
-    # 2) Legacy mirror (existing behavior preserved)
-    try:
-        cursor.execute(
-            """
-            MERGE INTO TOMEHUB_BOOKS b
-            USING (SELECT :p_id as id, :p_title as title, :p_author as author, :p_uid as uid FROM DUAL) src
-            ON (b.ID = src.id)
-            WHEN NOT MATCHED THEN
-                INSERT (ID, TITLE, AUTHOR, FIREBASE_UID, CREATED_AT)
-                VALUES (src.id, src.title, src.author, src.uid, CURRENT_TIMESTAMP)
-            WHEN MATCHED THEN
-                UPDATE SET LAST_UPDATED = CURRENT_TIMESTAMP
-            """,
-            {
-                "p_id": book_id,
-                "p_title": title,
-                "p_author": author,
-                "p_uid": firebase_uid,
-            },
-        )
-        logger.info(f"Mirrored book '{title}' to TOMEHUB_BOOKS")
-    except Exception as e:
-        logger.warning(f"Mirroring to TOMEHUB_BOOKS failed (Non-critical): {e}")
 
 
 def normalize_highlight_type(highlight_type: Optional[str]) -> str:
@@ -1002,7 +978,7 @@ def sync_highlights_for_item(
                     DELETE FROM TOMEHUB_CONTENT_V2
                     WHERE firebase_uid = :p_uid
                       AND book_id = :p_book
-                      AND source_type IN ('HIGHLIGHT', 'INSIGHT', 'NOTES')
+                      AND source_type IN ('HIGHLIGHT', 'INSIGHT')
                     """,
                     {"p_uid": firebase_uid, "p_book": book_id},
                 )

@@ -1,11 +1,11 @@
-import React from 'react';
+﻿import React from 'react';
 
 export const MIN_CATEGORY_BOOKS_VISIBLE = 4;
 
 export const CATEGORIES = [
-    "Felsefe", "Sosyoloji", "Psikoloji", "Bilim ve Teknoloji",
-    "Din ve İnanç", "Tarih", "Siyaset Bilimi", "Ekonomi ve Hukuk",
-    "Türk Edebiyatı", "Dünya Edebiyatı", "Sanat ve Kültür", "Diğer"
+    'Felsefe', 'Sosyoloji', 'Psikoloji', 'Bilim ve Teknoloji',
+    'Din ve İnanç', 'Tarih', 'İnceleme ve Araştırma', 'Ekonomi ve Hukuk',
+    'Türk Edebiyatı', 'Dünya Edebiyatı', 'Sanat ve Kültür', 'Diğer'
 ];
 
 interface CategorySelectorProps {

@@ -87,13 +87,11 @@ SELECT
     li.PAGE_COUNT,
     li.COVER_URL,
     li.SUMMARY_TEXT,
-    li.GENERAL_NOTES,
     li.TAGS_JSON,
     li.CATEGORY_JSON,
     li.INVENTORY_STATUS,
     li.READING_STATUS,
     li.PERSONAL_NOTE_CATEGORY,
-    li.STATUS,
     li.SEARCH_VISIBILITY,
     li.IS_FAVORITE,
     li.ORIGIN_SYSTEM,
@@ -326,4 +324,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
