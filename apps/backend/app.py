@@ -2185,6 +2185,8 @@ async def external_kb_backfill_status(
     return {"success": True, "status": get_external_kb_backfill_status()}
 
 
+import time
+
 @app.get("/api/library/items")
 async def list_library_items_endpoint(
     request: Request,
@@ -2196,12 +2198,17 @@ async def list_library_items_endpoint(
     try:
         verified_uid = get_verified_uid(request, firebase_uid_from_jwt)
         parsed_types = [t.strip() for t in str(types or "").split(",") if t.strip()] if types else None
+        
+        start_time = time.time()
         result = list_library_items(
             verified_uid,
             limit=limit,
             cursor=cursor,
             types=parsed_types,
         )
+        duration = time.time() - start_time
+        logger.info(f"library list completed in {duration:.4f}s for user {verified_uid}")
+        
         return {"success": True, **result}
     except HTTPException:
         raise

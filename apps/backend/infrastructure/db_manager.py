@@ -4,6 +4,9 @@ import oracledb
 import logging
 from config import settings
 
+# Global oracledb settings for performance
+oracledb.defaults.fetch_lobs = False # Fetch CLOBs as strings/bytes in same round-trip (Huge Speedup)
+
 logger = logging.getLogger(__name__)
 
 class DatabaseManager:
@@ -62,6 +65,16 @@ class DatabaseManager:
                 f"  Read Pool: max={settings.DB_READ_POOL_MAX}\n"
                 f"  Write Pool: max={settings.DB_WRITE_POOL_MAX}"
             )
+            
+            # Pre-warm common table schema cache (Task: Performance optimization)
+            try:
+                from services.library_service import _columns_for
+                _columns_for("TOMEHUB_LIBRARY_ITEMS")
+                _columns_for("TOMEHUB_CONTENT_V2")
+                _columns_for("TOMEHUB_INGESTED_FILES")
+                logger.info("✓ Metadata cache pre-warmed for common tables")
+            except Exception as me:
+                logger.warning(f"Metadata pre-warming failed: {me}")
             
         except Exception as e:
             logger.error(f"Failed to initialize Database Pools: {e}")

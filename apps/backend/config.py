@@ -53,15 +53,19 @@ class Settings:
         # AI
         self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
         self.LLM_MODEL_LITE = os.getenv("LLM_MODEL_LITE", "gemini-2.5-flash-lite")
-        self.LLM_MODEL_FLASH = os.getenv("LLM_MODEL_FLASH", "gemini-2.5-flash")
-        self.LLM_MODEL_PRO = os.getenv("LLM_MODEL_PRO", "gemini-2.5-pro")
+        # Economic policy: keep Gemini on a single cost-efficient model by default.
+        self.LLM_MODEL_FLASH = os.getenv("LLM_MODEL_FLASH", "gemini-2.5-flash-lite")
+        self.LLM_MODEL_PRO = os.getenv("LLM_MODEL_PRO", "gemini-2.5-flash-lite")
         self.EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "gemini-embedding-001")
-        self.LLM_PRO_FALLBACK_ENABLED = os.getenv("LLM_PRO_FALLBACK_ENABLED", "true").strip().lower() == "true"
+        self.LLM_PRO_FALLBACK_ENABLED = os.getenv("LLM_PRO_FALLBACK_ENABLED", "false").strip().lower() == "true"
         self.LLM_PRO_FALLBACK_MAX_PER_REQUEST = int(os.getenv("LLM_PRO_FALLBACK_MAX_PER_REQUEST", "1"))
         if self.LLM_PRO_FALLBACK_MAX_PER_REQUEST < 0:
             self.LLM_PRO_FALLBACK_MAX_PER_REQUEST = 0
         self.NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
         self.NVIDIA_BASE_URL = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com").strip().rstrip("/")
+        self.NVIDIA_DISABLE_TIMEOUT = (
+            os.getenv("NVIDIA_DISABLE_TIMEOUT", "false").strip().lower() == "true"
+        )
         self.LLM_EXPLORER_QWEN_PILOT_ENABLED = (
             os.getenv("LLM_EXPLORER_QWEN_PILOT_ENABLED", "true").strip().lower() == "true"
         )
@@ -83,6 +87,31 @@ class Settings:
         )
         if self.LLM_EXPLORER_SECONDARY_MAX_PER_REQUEST < 0:
             self.LLM_EXPLORER_SECONDARY_MAX_PER_REQUEST = 0
+
+        # Ingestion data-cleaner guardrails (token spike prevention)
+        self.INGESTION_DATA_CLEANER_AI_ENABLED = (
+            os.getenv("INGESTION_DATA_CLEANER_AI_ENABLED", "true").strip().lower() == "true"
+        )
+        self.INGESTION_DATA_CLEANER_NOISE_THRESHOLD = int(
+            os.getenv("INGESTION_DATA_CLEANER_NOISE_THRESHOLD", "4")
+        )
+        if self.INGESTION_DATA_CLEANER_NOISE_THRESHOLD < 0:
+            self.INGESTION_DATA_CLEANER_NOISE_THRESHOLD = 0
+        self.INGESTION_DATA_CLEANER_MAX_CALLS_PER_BOOK = int(
+            os.getenv("INGESTION_DATA_CLEANER_MAX_CALLS_PER_BOOK", "40")
+        )
+        if self.INGESTION_DATA_CLEANER_MAX_CALLS_PER_BOOK < 0:
+            self.INGESTION_DATA_CLEANER_MAX_CALLS_PER_BOOK = 0
+        self.INGESTION_DATA_CLEANER_MIN_CHARS_FOR_AI = int(
+            os.getenv("INGESTION_DATA_CLEANER_MIN_CHARS_FOR_AI", "180")
+        )
+        if self.INGESTION_DATA_CLEANER_MIN_CHARS_FOR_AI < 50:
+            self.INGESTION_DATA_CLEANER_MIN_CHARS_FOR_AI = 50
+        self.INGESTION_DATA_CLEANER_CACHE_SIZE = int(
+            os.getenv("INGESTION_DATA_CLEANER_CACHE_SIZE", "256")
+        )
+        if self.INGESTION_DATA_CLEANER_CACHE_SIZE < 0:
+            self.INGESTION_DATA_CLEANER_CACHE_SIZE = 0
 
         # Backward compatibility: ANSWER_MODEL_NAME still supported but deprecated.
         answer_model_env = os.getenv("ANSWER_MODEL_NAME")

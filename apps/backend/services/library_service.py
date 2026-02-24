@@ -77,9 +77,10 @@ def _content_table_shape(table_name: str) -> dict[str, Optional[str]]:
     type_col = next((c for c in _CONTENT_TYPE_CANDIDATES if c in cols), None)
     title_col = "TITLE" if "TITLE" in cols else None
     content_col = "CONTENT_CHUNK" if "CONTENT_CHUNK" in cols else None
-    comment_col = "COMMENT" if "COMMENT" in cols else None
-    # COMMENT is quoted in some schemas but USER_TAB_COLUMNS returns without quotes.
-    tags_col = "TAGS" if "TAGS" in cols else None
+    # Prefer V2 names, fall back to legacy names.
+    comment_col = next((c for c in ("COMMENT_TEXT", "COMMENT") if c in cols), None)
+    # COMMENT is quoted in some legacy schemas but USER_TAB_COLUMNS returns without quotes.
+    tags_col = next((c for c in ("TAGS_JSON", "TAGS") if c in cols), None)
     page_col = "PAGE_NUMBER" if "PAGE_NUMBER" in cols else None
     chunk_idx_col = "CHUNK_INDEX" if "CHUNK_INDEX" in cols else None
     id_col = "ID" if "ID" in cols else None
