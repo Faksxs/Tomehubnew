@@ -6,7 +6,13 @@ import oracledb
 import logging
 from datetime import datetime
 from dotenv import load_dotenv
-from services.llm_client import MODEL_TIER_FLASH, generate_text, get_model_for_tier
+from services.llm_client import (
+    MODEL_TIER_FLASH,
+    PROVIDER_QWEN,
+    ROUTE_MODE_EXPLORER_QWEN_PILOT,
+    generate_text,
+    get_model_for_tier,
+)
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -38,6 +44,10 @@ def extract_concepts_and_relations(text: str):
             task="graph_extract_concepts",
             model_tier=MODEL_TIER_FLASH,
             timeout_s=45.0,
+            provider_hint=PROVIDER_QWEN,
+            route_mode=ROUTE_MODE_EXPLORER_QWEN_PILOT,
+            allow_secondary_fallback=True,
+            fallback_state={"secondary_fallback_used": 0},
         )
         text_resp = result.text.strip()
         

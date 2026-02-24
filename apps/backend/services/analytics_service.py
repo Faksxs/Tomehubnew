@@ -21,6 +21,7 @@ from utils.text_utils import (
 )
 
 logger = logging.getLogger(__name__)
+_CONTENT_V2_ITEM_ID_COL: Optional[str] = None
 
 ANALYTIC_PATTERNS = [
     r"\bkaç\s+(defa|kez|kere)\s+geç",  # "kaç kez geçiyor"
@@ -75,6 +76,39 @@ BOOK_STOP_WORDS = [
     "kere",
     "kez",
 ]
+
+
+def _get_content_v2_item_id_col(cursor=None) -> str:
+    """
+    Oracle migration compatibility: TOMEHUB_CONTENT_V2 may use ITEM_ID (new) or BOOK_ID (legacy).
+    Returns a safe column name for filtering/selecting item ids.
+    """
+    global _CONTENT_V2_ITEM_ID_COL
+    if _CONTENT_V2_ITEM_ID_COL:
+        return _CONTENT_V2_ITEM_ID_COL
+
+    try:
+        if cursor is not None:
+            cursor.execute(
+                """
+                SELECT column_name
+                FROM user_tab_columns
+                WHERE table_name = 'TOMEHUB_CONTENT_V2'
+                """
+            )
+            cols = {str(r[0]).upper() for r in (cursor.fetchall() or []) if r and r[0]}
+            if "ITEM_ID" in cols:
+                _CONTENT_V2_ITEM_ID_COL = "ITEM_ID"
+                return _CONTENT_V2_ITEM_ID_COL
+            if "BOOK_ID" in cols:
+                _CONTENT_V2_ITEM_ID_COL = "BOOK_ID"
+                return _CONTENT_V2_ITEM_ID_COL
+    except Exception:
+        # Fall through to conservative default for older schemas.
+        pass
+
+    _CONTENT_V2_ITEM_ID_COL = "BOOK_ID"
+    return _CONTENT_V2_ITEM_ID_COL
 
 def _book_title_variants(title: str) -> List[str]:
     raw = str(title or "").strip()
@@ -353,16 +387,17 @@ def resolve_all_book_ids(
     try:
         with DatabaseManager.get_read_connection() as conn:
             with conn.cursor() as cursor:
+                item_id_col = _get_content_v2_item_id_col(cursor)
                 bind_names = [f":st{i}" for i in range(len(source_types))]
                 bind_clause = ",".join(bind_names)
                 params = {f"st{i}": st for i, st in enumerate(source_types)}
                 params.update({"p_uid": firebase_uid})
 
                 sql = f"""
-                    SELECT DISTINCT book_id
+                    SELECT DISTINCT {item_id_col} AS book_id
                     FROM TOMEHUB_CONTENT_V2
                     WHERE firebase_uid = :p_uid
-                      AND book_id IS NOT NULL
+                      AND {item_id_col} IS NOT NULL
                       AND content_type IN ({bind_clause})
                 """
                 cursor.execute(sql, params)
@@ -532,16 +567,17 @@ def count_lemma_occurrences(
         if count == 0:
             with DatabaseManager.get_read_connection() as conn:
                 with conn.cursor() as cursor:
+                    item_id_col = _get_content_v2_item_id_col(cursor)
                     bind_names = [f":st{i}" for i in range(len(source_types))]
                     bind_clause = ",".join(bind_names)
                     params = {f"st{i}": st for i, st in enumerate(source_types)}
                     params.update({"p_uid": firebase_uid, "p_bid": book_id, "p_term": term.lower()})
-                    
+
                     sql = f"""
                         SELECT SUM(REGEXP_COUNT(LOWER(content_chunk), :p_term))
                         FROM TOMEHUB_CONTENT_V2
                         WHERE firebase_uid = :p_uid
-                          AND book_id = :p_bid
+                          AND {item_id_col} = :p_bid
                           AND content_type IN ({bind_clause})
                     """
                     cursor.execute(sql, params)
@@ -598,6 +634,7 @@ def get_keyword_contexts(
     try:
         with DatabaseManager.get_read_connection() as conn:
             with conn.cursor() as cursor:
+                item_id_col = _get_content_v2_item_id_col(cursor)
                 # Build SQL for finding chunks
                 # We use INSTR on normalized_content for reliable matching
                 bind_names = [f":st{i}" for i in range(len(source_types))]
@@ -608,7 +645,7 @@ def get_keyword_contexts(
                     SELECT id, content_chunk, page_number, normalized_content
                     FROM TOMEHUB_CONTENT_V2
                     WHERE firebase_uid = :p_uid
-                      AND book_id = :p_bid
+                      AND {item_id_col} = :p_bid
                       AND content_type IN ({bind_clause})
                       AND (
                 """
@@ -724,6 +761,7 @@ def get_keyword_distribution(
     try:
         with DatabaseManager.get_read_connection() as conn:
             with conn.cursor() as cursor:
+                item_id_col = _get_content_v2_item_id_col(cursor)
                 bind_names = [f":st{i}" for i in range(len(source_types))]
                 bind_clause = ",".join(bind_names)
                 
@@ -732,7 +770,7 @@ def get_keyword_distribution(
                     SELECT page_number, normalized_content
                     FROM TOMEHUB_CONTENT_V2
                     WHERE firebase_uid = :p_uid
-                      AND book_id = :p_bid
+                      AND {item_id_col} = :p_bid
                       AND content_type IN ({bind_clause})
                       AND (
                 """

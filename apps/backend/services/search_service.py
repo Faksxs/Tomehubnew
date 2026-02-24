@@ -1637,19 +1637,20 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
         except Exception:
             pass
         
-        # Use Flash for conversational speed with controlled Pro fallback.
+        # Heavy Layer-3 generation policy:
+        # - Qwen primary for both Standard and Explorer (when pilot flag enabled)
+        # - Gemini (FLASH tier, configured as flash-lite) secondary fallback
         route_mode = ROUTE_MODE_DEFAULT
         provider_hint = None
         allow_secondary_fallback = False
-        allow_pro_fallback_effective = True
+        allow_pro_fallback_effective = False
         model_name = get_model_for_tier(MODEL_TIER_FLASH)
 
-        if answer_mode == 'EXPLORER' and settings.LLM_EXPLORER_QWEN_PILOT_ENABLED:
+        if settings.LLM_EXPLORER_QWEN_PILOT_ENABLED:
             route_mode = ROUTE_MODE_EXPLORER_QWEN_PILOT
             provider_hint = settings.LLM_EXPLORER_PRIMARY_PROVIDER
             model_name = settings.LLM_EXPLORER_PRIMARY_MODEL
             allow_secondary_fallback = True
-            allow_pro_fallback_effective = False
 
         max_output_tokens = None
         llm_timeout_s = None

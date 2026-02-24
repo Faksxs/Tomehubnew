@@ -23,6 +23,7 @@ services:
       - OCI_KEY_FILE=/app/oci_private_key.pem
 
       # App Configuration
+      - ENVIRONMENT=production
       - APP_ENV=production
       - APP_DEBUG=0
     volumes:
@@ -32,8 +33,8 @@ services:
       - ../apps/backend/oci_private_key.pem:/app/oci_private_key.pem:ro
       # Mount uploads directory for temporary file storage
       - tomehub-uploads:/app/uploads
-      # Caddy data for SSL certificates persistence
-      - caddy_data:/data
+      # Caddy data for SSL certificates persistence (matches Caddy default storage path)
+      - caddy_data:/root/.local/share/caddy
     healthcheck:
       test: [ "CMD", "curl", "-sf", "http://localhost:5000/" ]
       interval: 30s

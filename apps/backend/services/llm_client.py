@@ -11,6 +11,7 @@ Responsibilities:
 from __future__ import annotations
 
 from collections import deque
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 import json
 import logging
@@ -195,7 +196,9 @@ class NvidiaProvider:
         return f"{settings.NVIDIA_BASE_URL}/v1/chat/completions"
 
     @staticmethod
-    def _normalize_timeout(timeout_s: Optional[float]) -> float:
+    def _normalize_timeout(timeout_s: Optional[float]) -> Optional[float]:
+        if getattr(settings, "NVIDIA_DISABLE_TIMEOUT", False):
+            return None
         try:
             timeout = float(timeout_s) if timeout_s is not None else _NVIDIA_DEFAULT_TIMEOUT_S
         except (TypeError, ValueError):
@@ -243,7 +246,11 @@ class NvidiaProvider:
 
         try:
             with AI_SERVICE_LATENCY.labels(service="nvidia_qwen", operation="generate").time():
-                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                if timeout is None:
+                    resp_ctx = urllib.request.urlopen(req)
+                else:
+                    resp_ctx = urllib.request.urlopen(req, timeout=timeout)
+                with resp_ctx as resp:
                     raw = resp.read().decode("utf-8")
         except urllib.error.HTTPError as http_err:
             body = ""
@@ -423,18 +430,118 @@ def _mark_secondary_fallback_used(fallback_state: Optional[Dict[str, Any]]) -> N
 
 
 def _consume_qwen_rpm_slot() -> bool:
+    return _consume_qwen_rpm_slots(1)
+
+
+def _consume_qwen_rpm_slots(slots: int = 1) -> bool:
     cap = int(getattr(settings, "LLM_EXPLORER_RPM_CAP", 35))
     if cap <= 0:
         return False
+    try:
+        requested_slots = int(slots)
+    except (TypeError, ValueError):
+        requested_slots = 1
+    if requested_slots < 1:
+        requested_slots = 1
     now = time.monotonic()
     cutoff = now - _QWEN_WINDOW_SECONDS
     with _QWEN_RPM_LOCK:
         while _QWEN_RPM_TIMESTAMPS and _QWEN_RPM_TIMESTAMPS[0] < cutoff:
             _QWEN_RPM_TIMESTAMPS.popleft()
-        if len(_QWEN_RPM_TIMESTAMPS) >= cap:
+        if len(_QWEN_RPM_TIMESTAMPS) + requested_slots > cap:
             return False
-        _QWEN_RPM_TIMESTAMPS.append(now)
+        for _ in range(requested_slots):
+            _QWEN_RPM_TIMESTAMPS.append(now)
         return True
+
+
+def _use_explorer_parallel_nvidia_race(route_mode: str, primary_provider_hint: str) -> bool:
+    if route_mode != ROUTE_MODE_EXPLORER_QWEN_PILOT:
+        return False
+    if primary_provider_hint != PROVIDER_QWEN:
+        return False
+    if not settings.LLM_EXPLORER_QWEN_PILOT_ENABLED:
+        return False
+    if not bool(getattr(settings, "LLM_EXPLORER_PARALLEL_NVIDIA_ENABLED", False)):
+        return False
+    challenger_model = str(getattr(settings, "LLM_EXPLORER_PARALLEL_NVIDIA_MODEL", "") or "").strip()
+    return bool(challenger_model)
+
+
+def _parallel_nvidia_race_generate(
+    provider: LLMProvider,
+    primary_model: str,
+    challenger_model: str,
+    prompt: str,
+    temperature: Optional[float],
+    max_output_tokens: Optional[int],
+    response_mime_type: Optional[str],
+    timeout_s: Optional[float],
+) -> GenerateResult:
+    if not challenger_model or challenger_model == primary_model:
+        return provider.generate_text(
+            model=primary_model,
+            prompt=prompt,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+            response_mime_type=response_mime_type,
+            timeout_s=timeout_s,
+        )
+
+    def _call(model_name: str) -> GenerateResult:
+        return provider.generate_text(
+            model=model_name,
+            prompt=prompt,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+            response_mime_type=response_mime_type,
+            timeout_s=timeout_s,
+        )
+
+    executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="nvidia-llm-race")
+    primary_future = executor.submit(_call, primary_model)
+    challenger_future = executor.submit(_call, challenger_model)
+    future_to_model = {
+        primary_future: primary_model,
+        challenger_future: challenger_model,
+    }
+    pending = set(future_to_model.keys())
+    errors: Dict[str, Exception] = {}
+    winner_model: Optional[str] = None
+    try:
+        while pending:
+            done, pending = wait(pending, return_when=FIRST_COMPLETED)
+            for future in done:
+                model_name = future_to_model[future]
+                try:
+                    result = future.result()
+                    winner_model = model_name
+                    logger.info(
+                        "Explorer NVIDIA parallel race winner selected",
+                        extra={
+                            "winner_model": model_name,
+                            "loser_model": challenger_model if model_name == primary_model else primary_model,
+                        },
+                    )
+                    return result
+                except Exception as exc:
+                    errors[model_name] = exc
+                    logger.warning(
+                        "Explorer NVIDIA parallel race candidate failed",
+                        extra={"model": model_name},
+                        exc_info=True,
+                    )
+
+        primary_error = errors.get(primary_model)
+        challenger_error = errors.get(challenger_model)
+        raise RuntimeError(
+            "Explorer NVIDIA parallel race failed for both models: "
+            f"{primary_model} -> {primary_error}; {challenger_model} -> {challenger_error}"
+        )
+    finally:
+        for future in pending:
+            future.cancel()
+        executor.shutdown(wait=False, cancel_futures=True)
 
 
 def _resolve_secondary_provider() -> str:
@@ -506,13 +613,15 @@ def generate_text(
     allow_secondary_fallback: bool = False,
 ) -> GenerateResult:
     primary_provider_hint = _resolve_primary_provider_hint(provider_hint, route_mode)
+    use_parallel_nvidia_race = _use_explorer_parallel_nvidia_race(route_mode, primary_provider_hint)
+    required_qwen_slots = 2 if use_parallel_nvidia_race else 1
 
     if (
         route_mode == ROUTE_MODE_EXPLORER_QWEN_PILOT
         and primary_provider_hint == PROVIDER_QWEN
         and settings.LLM_EXPLORER_QWEN_PILOT_ENABLED
     ):
-        if not _consume_qwen_rpm_slot():
+        if not _consume_qwen_rpm_slots(required_qwen_slots):
             if allow_secondary_fallback and _can_use_secondary_fallback(fallback_state):
                 return _secondary_fallback_generate(
                     prompt=prompt,
@@ -532,14 +641,29 @@ def generate_text(
     provider_name = getattr(provider, "name", primary_provider_hint)
 
     try:
-        result = provider.generate_text(
-            model=model,
-            prompt=prompt,
-            temperature=temperature,
-            max_output_tokens=max_output_tokens,
-            response_mime_type=response_mime_type,
-            timeout_s=timeout_s,
-        )
+        if use_parallel_nvidia_race:
+            challenger_model = str(
+                getattr(settings, "LLM_EXPLORER_PARALLEL_NVIDIA_MODEL", "") or ""
+            ).strip()
+            result = _parallel_nvidia_race_generate(
+                provider=provider,
+                primary_model=model,
+                challenger_model=challenger_model,
+                prompt=prompt,
+                temperature=temperature,
+                max_output_tokens=max_output_tokens,
+                response_mime_type=response_mime_type,
+                timeout_s=timeout_s,
+            )
+        else:
+            result = provider.generate_text(
+                model=model,
+                prompt=prompt,
+                temperature=temperature,
+                max_output_tokens=max_output_tokens,
+                response_mime_type=response_mime_type,
+                timeout_s=timeout_s,
+            )
         result.model_tier = model_tier
         result.provider_name = provider_name
         _increment_call(task=task, model_tier=model_tier, status="success")
@@ -586,10 +710,14 @@ def generate_text(
             route_mode == ROUTE_MODE_EXPLORER_QWEN_PILOT
             and provider_name == PROVIDER_QWEN
             and allow_secondary_fallback
-            and is_retryable_llm_error(exc)
             and _can_use_secondary_fallback(fallback_state)
         ):
-            logger.warning("Qwen primary failed with retryable error; using secondary fallback", exc_info=True)
+            fallback_reason = "qwen_retryable_error" if is_retryable_llm_error(exc) else "qwen_primary_error"
+            logger.warning(
+                "Qwen primary failed; using secondary fallback",
+                extra={"reason": fallback_reason},
+                exc_info=True,
+            )
             return _secondary_fallback_generate(
                 prompt=prompt,
                 task=task,
@@ -600,7 +728,7 @@ def generate_text(
                 timeout_s=timeout_s,
                 fallback_state=fallback_state,
                 from_provider=PROVIDER_QWEN,
-                reason="qwen_retryable_error",
+                reason=fallback_reason,
             )
 
         raise

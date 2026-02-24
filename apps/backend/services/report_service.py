@@ -38,7 +38,7 @@ def get_book_chunks(book_id: str, firebase_uid: str) -> List[Dict]:
                 query = """
                     SELECT CONTENT_CHUNK, PAGE_NUMBER, CHUNK_INDEX
                     FROM TOMEHUB_CONTENT_V2
-                    WHERE BOOK_ID = :p_bid AND FIREBASE_UID = :p_uid
+                    WHERE ITEM_ID = :p_bid AND FIREBASE_UID = :p_uid
                     ORDER BY PAGE_NUMBER ASC, CHUNK_INDEX ASC
                 """
                 cursor.execute(query, {"p_bid": book_id, "p_uid": firebase_uid})
@@ -143,6 +143,8 @@ def generate_file_report(book_id: str, firebase_uid: str):
             model_tier=MODEL_TIER_FLASH,
             provider_hint=PROVIDER_NVIDIA,
             route_mode=ROUTE_MODE_EXPLORER_QWEN_PILOT,
+            allow_secondary_fallback=True,
+            fallback_state={"secondary_fallback_used": 0},
             response_mime_type="application/json",
             timeout_s=120.0, # Increased for larger model context
         )

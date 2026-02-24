@@ -23,9 +23,16 @@ export async function getFirebaseIdToken(): Promise<string> {
 
 export async function fetchWithAuth(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
     const token = await getFirebaseIdToken();
+    const { auth } = await import('./firebaseClient');
     const headers = new Headers(init.headers || {});
     if (!headers.has('Authorization')) {
         headers.set('Authorization', `Bearer ${token}`);
+    }
+    if (localhostHosts.has(window.location.hostname) && !headers.has('X-Firebase-UID')) {
+        const uid = auth.currentUser?.uid;
+        if (uid) {
+            headers.set('X-Firebase-UID', uid);
+        }
     }
     return fetch(input, { ...init, headers });
 }

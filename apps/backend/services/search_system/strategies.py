@@ -3,7 +3,7 @@ import os
 import logging
 import re
 from infrastructure.db_manager import DatabaseManager, safe_read_clob
-from utils.text_utils import deaccent_text, get_lemmas
+from utils.text_utils import deaccent_text, get_lemmas, repair_common_mojibake
 
 logger = logging.getLogger("search_strategies")
 
@@ -28,8 +28,8 @@ def _filter_query_lemmas(lemmas: List[str]) -> List[str]:
 
 def _normalize_match_text(text: str) -> str:
     # Preserve token boundaries before deaccenting; some normalizers can drop punctuation.
-    pre = (text or "").lower()
-    pre = re.sub(r"[^0-9a-zA-ZçğıöşüÇĞİÖŞÜ]+", " ", pre)
+    pre = repair_common_mojibake(text or "").lower()
+    pre = re.sub(r"[\W_]+", " ", pre, flags=re.UNICODE)
     norm = deaccent_text(pre).lower()
     norm = re.sub(r"[^a-z0-9]+", " ", norm)
     norm = re.sub(r"\s+", " ", norm).strip()

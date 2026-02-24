@@ -73,8 +73,15 @@ class Settings:
             os.getenv("LLM_EXPLORER_PRIMARY_PROVIDER", "qwen").strip().lower() or "qwen"
         )
         self.LLM_EXPLORER_PRIMARY_MODEL = (
-            os.getenv("LLM_EXPLORER_PRIMARY_MODEL", "qwen/qwen3-next-80b-a3b-instruct").strip()
-            or "qwen/qwen3-next-80b-a3b-instruct"
+            os.getenv("LLM_EXPLORER_PRIMARY_MODEL", "qwen/qwen3-next-80b-a3b-thinking").strip()
+            or "qwen/qwen3-next-80b-a3b-thinking"
+        )
+        self.LLM_EXPLORER_PARALLEL_NVIDIA_ENABLED = (
+            os.getenv("LLM_EXPLORER_PARALLEL_NVIDIA_ENABLED", "false").strip().lower() == "true"
+        )
+        self.LLM_EXPLORER_PARALLEL_NVIDIA_MODEL = (
+            os.getenv("LLM_EXPLORER_PARALLEL_NVIDIA_MODEL", "minimaxai/minimax-m2.1").strip()
+            or "minimaxai/minimax-m2.1"
         )
         self.LLM_EXPLORER_FALLBACK_PROVIDER = (
             os.getenv("LLM_EXPLORER_FALLBACK_PROVIDER", "gemini").strip().lower() or "gemini"

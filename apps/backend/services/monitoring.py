@@ -129,6 +129,23 @@ LLM_TOKENS_TOTAL = Counter(
     labelnames=['task', 'model_tier', 'direction']
 )
 
+DATA_CLEANER_AI_APPLIED_TOTAL = Counter(
+    'tomehub_data_cleaner_ai_applied_total',
+    'Number of ingestion chunks sent to AI data cleaner'
+)
+
+DATA_CLEANER_AI_SKIPPED_TOTAL = Counter(
+    'tomehub_data_cleaner_ai_skipped_total',
+    'Number of ingestion chunks skipped from AI data cleaner',
+    labelnames=['reason']
+)
+
+DATA_CLEANER_NOISE_SCORE = Histogram(
+    'tomehub_data_cleaner_noise_score',
+    'Heuristic noise score of chunks before AI cleaning',
+    buckets=(0, 1, 2, 3, 4, 5, 7, 10, 15, 20)
+)
+
 L3_PERF_GUARD_APPLIED_TOTAL = Counter(
     'tomehub_l3_perf_guard_applied_total',
     'Total number of Layer-3 performance guard applications',

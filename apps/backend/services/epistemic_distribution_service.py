@@ -28,9 +28,9 @@ def refresh_epistemic_distribution(book_id: str, firebase_uid: str, max_chunks: 
             with conn.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT CONTENT_CHUNK, SOURCE_TYPE
+                    SELECT CONTENT_CHUNK, CONTENT_TYPE AS SOURCE_TYPE
                     FROM TOMEHUB_CONTENT_V2
-                    WHERE BOOK_ID = :p_book
+                    WHERE ITEM_ID = :p_book
                       AND FIREBASE_UID = :p_uid
                     FETCH FIRST :p_limit ROWS ONLY
                     """,

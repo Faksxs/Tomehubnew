@@ -11,6 +11,8 @@ Date: 2026-01-09
 
 import os
 import sys
+import hashlib
+import threading
 from datetime import datetime
 from typing import Optional
 from dotenv import load_dotenv
@@ -35,7 +37,12 @@ from utils.logger import get_logger
 from config import settings
 
 logger = get_logger("ingestion_service")
-from services.monitoring import INGESTION_LATENCY
+from services.monitoring import (
+    INGESTION_LATENCY,
+    DATA_CLEANER_AI_APPLIED_TOTAL,
+    DATA_CLEANER_AI_SKIPPED_TOTAL,
+    DATA_CLEANER_NOISE_SCORE,
+)
 from services.epistemic_distribution_service import (
     delete_epistemic_distribution,
     maybe_trigger_epistemic_distribution_refresh_async,
@@ -490,70 +497,36 @@ def purge_item_content(firebase_uid: str, book_id: str) -> dict:
                 else:
                     logger.warning("[WARN] purge_item_content could not resolve active content table/item key column")
 
-                for key, query in (
-                    (
-                        "index_state",
-                        """
-                        DELETE FROM TOMEHUB_ITEM_INDEX_STATE
-                        WHERE FIREBASE_UID = :p_uid
-                          AND ITEM_ID = :p_book
-                        """,
-                    ),
-                    (
-                        "ingested_files",
-                        """
-                        DELETE FROM TOMEHUB_INGESTED_FILES
-                        WHERE FIREBASE_UID = :p_uid
-                          AND BOOK_ID = :p_book
-                        """,
-                    ),
-                    (
-                        "file_reports",
-                        """
-                        DELETE FROM TOMEHUB_FILE_REPORTS
-                        WHERE FIREBASE_UID = :p_uid
-                          AND BOOK_ID = :p_book
-                        """,
-                    ),
-                    (
-                        "external_meta",
-                        """
-                        DELETE FROM TOMEHUB_EXTERNAL_BOOK_META
-                        WHERE FIREBASE_UID = :p_uid
-                          AND BOOK_ID = :p_book
-                        """,
-                    ),
-                    (
-                        "external_edges",
-                        """
-                        DELETE FROM TOMEHUB_EXTERNAL_EDGES
-                        WHERE FIREBASE_UID = :p_uid
-                          AND BOOK_ID = :p_book
-                        """,
-                    ),
-                    (
-                        "book_epistemic_metrics",
-                        """
-                        DELETE FROM TOMEHUB_BOOK_EPISTEMIC_METRICS
-                        WHERE FIREBASE_UID = :p_uid
-                          AND BOOK_ID = :p_book
-                        """,
-                    ),
-                    (
-                        "library_items",
-                        """
-                        DELETE FROM TOMEHUB_LIBRARY_ITEMS
-                        WHERE FIREBASE_UID = :p_uid
-                          AND ITEM_ID = :p_book
-                        """,
-                    ),
-                ):
+                aux_specs = (
+                    ("index_state", "TOMEHUB_ITEM_INDEX_STATE", ("ITEM_ID", "BOOK_ID")),
+                    ("ingested_files", "TOMEHUB_INGESTED_FILES", ("BOOK_ID", "ITEM_ID")),
+                    ("file_reports", "TOMEHUB_FILE_REPORTS", ("BOOK_ID", "ITEM_ID")),
+                    ("external_meta", "TOMEHUB_EXTERNAL_BOOK_META", ("BOOK_ID", "ITEM_ID")),
+                    ("external_edges", "TOMEHUB_EXTERNAL_EDGES", ("BOOK_ID", "ITEM_ID")),
+                    ("book_epistemic_metrics", "TOMEHUB_BOOK_EPISTEMIC_METRICS", ("BOOK_ID", "ITEM_ID")),
+                    ("library_items", "TOMEHUB_LIBRARY_ITEMS", ("ITEM_ID", "BOOK_ID")),
+                )
+                for key, table_name, id_col_candidates in aux_specs:
                     try:
-                        cursor.execute(query, binds)
+                        aux_cols = _table_columns(cursor, table_name)
+                        if not aux_cols:
+                            continue
+                        id_col = next((c for c in id_col_candidates if c in aux_cols), None)
+                        if not id_col:
+                            logger.debug(f"[DEBUG] purge_item_content skipped {table_name}: no id column among {id_col_candidates}")
+                            continue
+                        cursor.execute(
+                            f"""
+                            DELETE FROM {table_name}
+                            WHERE FIREBASE_UID = :p_uid
+                              AND {id_col} = :p_book
+                            """,
+                            binds,
+                        )
                         aux_deleted[key] = cursor.rowcount or 0
                     except Exception as aux_error:
-                        if _is_missing_table_error(aux_error):
-                            logger.debug(f"[DEBUG] purge_item_content skipped missing table for {key}")
+                        if _is_missing_table_error(aux_error) or _is_invalid_identifier_error(aux_error):
+                            logger.debug(f"[DEBUG] purge_item_content skipped schema-mismatch table for {key}")
                             continue
                         raise
 
@@ -674,8 +647,8 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str, book
                 
                 insert_sql = """
                 INSERT INTO TOMEHUB_CONTENT_V2 
-                (firebase_uid, content_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, item_id, normalized_content, text_deaccented, lemma_tokens, token_freq, categories)
-                VALUES (:p_uid, :p_type, :p_title, :p_content, :p_chunk_type, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm_content, :p_deaccent, :p_lemmas, :p_token_freq, :p_cats)
+                (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, text_deaccented, lemma_tokens, token_freq, categories)
+                VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm_content, :p_deaccent, :p_lemmas, :p_token_freq, :p_cats)
                 RETURNING id INTO :p_out_id
                 """
                 
@@ -683,6 +656,26 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str, book
                 failed_embeddings = 0
                 
                 BATCH_SIZE = 50
+                data_cleaner_lock = threading.Lock()
+                data_cleaner_cache: dict[str, str] = {}
+                data_cleaner_budget = {
+                    "ai_enabled": bool(getattr(settings, "INGESTION_DATA_CLEANER_AI_ENABLED", True)),
+                    "noise_threshold": int(getattr(settings, "INGESTION_DATA_CLEANER_NOISE_THRESHOLD", 4) or 4),
+                    "max_calls_per_book": int(getattr(settings, "INGESTION_DATA_CLEANER_MAX_CALLS_PER_BOOK", 40) or 40),
+                    "min_chars_for_ai": int(getattr(settings, "INGESTION_DATA_CLEANER_MIN_CHARS_FOR_AI", 180) or 180),
+                    "cache_size": int(getattr(settings, "INGESTION_DATA_CLEANER_CACHE_SIZE", 256) or 0),
+                    "ai_calls_used": 0,
+                    "ai_calls_applied": 0,
+                    "cache_hits": 0,
+                    "skip_low_noise": 0,
+                    "skip_budget": 0,
+                    "skip_disabled": 0,
+                    "skip_too_short": 0,
+                }
+
+                def _data_cleaner_cache_key(text: str) -> str:
+                    payload = (text or "").encode("utf-8", errors="ignore")
+                    return hashlib.sha1(payload).hexdigest()
                 
                 def process_single_chunk_nlp(idx_chunk_tuple):
                     idx, chunk = idx_chunk_tuple
@@ -707,8 +700,6 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str, book
                     # Phase 13 Optimization: LINGUISTIC FILTER (Non-AI Repair)
                     # We apply deterministic regex and dictionary rules using ftfy + symspell
                     # This replaces the slow AI method and prevents memory crashes.
-                    chunk_text_before = chunk_text
-                    
                     # Force Repair via Linguistic Correction Service
                     repaired_text = corrector_service.fix_text(chunk_text)
                     repaired = False
@@ -719,7 +710,97 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str, book
                         # Log simple confirmation
                         logger.info("Linguistic Filter applied (Regex/Dict)", extra={"chunk_index": idx})
                     
-                    decluttered_text = DataCleanerService.clean_with_ai(chunk_text, title=title, author=author)
+                    # Rule-first cleaning (cheap, always-on)
+                    rule_cleaned_text = DataCleanerService.strip_basic_patterns(chunk_text)
+                    use_ai_cleaner = False
+                    ai_cleaner_reason = "low_noise"
+                    ai_cleaner_cache_hit = False
+                    ai_noise_assessment = DataCleanerService.assess_noise(rule_cleaned_text, title=title, author=author)
+                    ai_noise_score = int(ai_noise_assessment.get("score", 0))
+                    try:
+                        DATA_CLEANER_NOISE_SCORE.observe(ai_noise_score)
+                    except Exception:
+                        pass
+
+                    decluttered_text = rule_cleaned_text
+
+                    if not data_cleaner_budget["ai_enabled"]:
+                        ai_cleaner_reason = "disabled"
+                        with data_cleaner_lock:
+                            data_cleaner_budget["skip_disabled"] += 1
+                        try:
+                            DATA_CLEANER_AI_SKIPPED_TOTAL.labels(reason="disabled").inc()
+                        except Exception:
+                            pass
+                    elif len(rule_cleaned_text) < int(data_cleaner_budget["min_chars_for_ai"]):
+                        ai_cleaner_reason = "too_short"
+                        with data_cleaner_lock:
+                            data_cleaner_budget["skip_too_short"] += 1
+                        try:
+                            DATA_CLEANER_AI_SKIPPED_TOTAL.labels(reason="too_short").inc()
+                        except Exception:
+                            pass
+                    elif ai_noise_score < int(data_cleaner_budget["noise_threshold"]):
+                        ai_cleaner_reason = "low_noise"
+                        with data_cleaner_lock:
+                            data_cleaner_budget["skip_low_noise"] += 1
+                        try:
+                            DATA_CLEANER_AI_SKIPPED_TOTAL.labels(reason="low_noise").inc()
+                        except Exception:
+                            pass
+                    else:
+                        cache_key = _data_cleaner_cache_key(rule_cleaned_text)
+                        reserved_slot = False
+                        cached_value = None
+                        with data_cleaner_lock:
+                            if cache_key in data_cleaner_cache:
+                                cached_value = data_cleaner_cache.get(cache_key)
+                                data_cleaner_budget["cache_hits"] += 1
+                            elif data_cleaner_budget["ai_calls_used"] < int(data_cleaner_budget["max_calls_per_book"]):
+                                data_cleaner_budget["ai_calls_used"] += 1
+                                reserved_slot = True
+                            else:
+                                data_cleaner_budget["skip_budget"] += 1
+
+                        if cached_value is not None:
+                            decluttered_text = cached_value or rule_cleaned_text
+                            ai_cleaner_cache_hit = True
+                            ai_cleaner_reason = "cache_hit"
+                            try:
+                                DATA_CLEANER_AI_SKIPPED_TOTAL.labels(reason="cache_hit").inc()
+                            except Exception:
+                                pass
+                        elif reserved_slot:
+                            use_ai_cleaner = True
+                            ai_cleaner_reason = "applied"
+                            decluttered_text = DataCleanerService.clean_with_ai(
+                                rule_cleaned_text,
+                                title=title,
+                                author=author,
+                            )
+                            with data_cleaner_lock:
+                                data_cleaner_budget["ai_calls_applied"] += 1
+                                cache_size = int(data_cleaner_budget["cache_size"])
+                                if cache_size > 0:
+                                    if len(data_cleaner_cache) >= cache_size:
+                                        # FIFO-ish eviction (dict preserves insertion order on modern Python)
+                                        try:
+                                            oldest_key = next(iter(data_cleaner_cache))
+                                            data_cleaner_cache.pop(oldest_key, None)
+                                        except Exception:
+                                            data_cleaner_cache.clear()
+                                    data_cleaner_cache[cache_key] = decluttered_text
+                            try:
+                                DATA_CLEANER_AI_APPLIED_TOTAL.inc()
+                            except Exception:
+                                pass
+                        else:
+                            ai_cleaner_reason = "budget_exhausted"
+                            try:
+                                DATA_CLEANER_AI_SKIPPED_TOTAL.labels(reason="budget_exhausted").inc()
+                            except Exception:
+                                pass
+
                     return {
                         'index': idx,
                         'chunk': chunk,
@@ -731,7 +812,12 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str, book
                         'lemma_freqs': json.dumps(get_lemma_frequencies(decluttered_text), ensure_ascii=False),
                         'classification': classify_passage_fast(chunk_text),
                         'decluttered_text': decluttered_text,
-                        'skip': skip_chunk
+                        'skip': skip_chunk,
+                        'data_cleaner_ai_used': use_ai_cleaner,
+                        'data_cleaner_ai_reason': ai_cleaner_reason,
+                        'data_cleaner_cache_hit': ai_cleaner_cache_hit,
+                        'data_cleaner_noise_score': ai_noise_score,
+                        'data_cleaner_noise_signals': ai_noise_assessment.get("signals", {}),
                     }
 
                 # Filter out empty/short chunks before processing
@@ -774,7 +860,6 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str, book
                                 "p_type": "PDF" if file_ext == '.pdf' else "EPUB",
                                 "p_title": f"{title} - {author}",
                                 "p_content": res['decluttered_text'],
-                                "p_chunk_type": chunk.get('type', 'paragraph'),
                                 "p_page": chunk.get('page_num', 0),
                                 "p_chunk_idx": res['index'],
                                 "p_vec": embedding,
@@ -796,6 +881,28 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str, book
                             _runtime_log(f"[FAILED] Chunk {res['index']} DB insert: {e}")
                     
                     _runtime_log(f"[PROGRESS] Processed {min(i + BATCH_SIZE, len(valid_chunks))}/{len(valid_chunks)} chunks...")
+
+                try:
+                    logger.info(
+                        "Data cleaner ingestion summary",
+                        extra={
+                            "title": title,
+                            "author": author,
+                            "valid_chunk_count": len(valid_chunks),
+                            "ai_enabled": data_cleaner_budget["ai_enabled"],
+                            "noise_threshold": data_cleaner_budget["noise_threshold"],
+                            "max_calls_per_book": data_cleaner_budget["max_calls_per_book"],
+                            "ai_calls_used": data_cleaner_budget["ai_calls_used"],
+                            "ai_calls_applied": data_cleaner_budget["ai_calls_applied"],
+                            "cache_hits": data_cleaner_budget["cache_hits"],
+                            "skip_low_noise": data_cleaner_budget["skip_low_noise"],
+                            "skip_budget": data_cleaner_budget["skip_budget"],
+                            "skip_disabled": data_cleaner_budget["skip_disabled"],
+                            "skip_too_short": data_cleaner_budget["skip_too_short"],
+                        },
+                    )
+                except Exception:
+                    pass
                 
                 # Step 4: Commit (Releases Lock)
                 # Fail Loud Check: Abort if "Swiss Cheese" (Too many missing embeddings)
@@ -857,7 +964,19 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str, book
         item_id=book_id,
         entity_type="BOOK",
         event_type="book.ingested",
-        payload={"title": title, "author": author, "source_type": source_type, "chunks_inserted": successful_inserts},
+        payload={
+            "title": title,
+            "author": author,
+            "source_type": source_type,
+            "chunks_inserted": successful_inserts,
+            "data_cleaner": {
+                "ai_calls_used": data_cleaner_budget.get("ai_calls_used", 0) if 'data_cleaner_budget' in locals() else 0,
+                "ai_calls_applied": data_cleaner_budget.get("ai_calls_applied", 0) if 'data_cleaner_budget' in locals() else 0,
+                "cache_hits": data_cleaner_budget.get("cache_hits", 0) if 'data_cleaner_budget' in locals() else 0,
+                "skip_low_noise": data_cleaner_budget.get("skip_low_noise", 0) if 'data_cleaner_budget' in locals() else 0,
+                "skip_budget": data_cleaner_budget.get("skip_budget", 0) if 'data_cleaner_budget' in locals() else 0,
+            },
+        },
     )
 
     return True
@@ -906,15 +1025,14 @@ def ingest_text_item(
                     out_id = cursor.var(oracledb.NUMBER)
                     cursor.execute("""
                         INSERT INTO TOMEHUB_CONTENT_V2 
-                        (firebase_uid, content_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, item_id, normalized_content, text_deaccented, lemma_tokens, categories, "COMMENT", tags)
-                        VALUES (:p_uid, :p_type, :p_title, :p_content, :p_chunk_type, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_deaccent, :p_lemmas, :p_cats, :p_comment, :p_tags)
+                        (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, text_deaccented, lemma_tokens, categories, comment_text, tags_json)
+                        VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_deaccent, :p_lemmas, :p_cats, :p_comment, :p_tags)
                         RETURNING id INTO :p_out_id
                     """, {
                         "p_uid": firebase_uid,
                         "p_type": db_source_type,
                         "p_title": f"{title} - {author}",
                         "p_content": text,
-                        "p_chunk_type": chunk_type or "paragraph",
                         "p_page": page_number or 1,
                         "p_chunk_idx": chunk_index or 0,
                         "p_vec": embedding,
@@ -977,8 +1095,8 @@ def sync_highlights_for_item(
                     """
                     DELETE FROM TOMEHUB_CONTENT_V2
                     WHERE firebase_uid = :p_uid
-                      AND book_id = :p_book
-                      AND source_type IN ('HIGHLIGHT', 'INSIGHT')
+                      AND item_id = :p_book
+                      AND content_type IN ('HIGHLIGHT', 'INSIGHT')
                     """,
                     {"p_uid": firebase_uid, "p_book": book_id},
                 )
@@ -1002,8 +1120,8 @@ def sync_highlights_for_item(
 
                 insert_sql = """
                     INSERT INTO TOMEHUB_CONTENT_V2
-                    (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, book_id, normalized_content, text_deaccented, lemma_tokens, "COMMENT", tags)
-                    VALUES (:p_uid, :p_type, :p_title, :p_content, :p_chunk_type, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_deaccent, :p_lemmas, :p_comment, :p_tags)
+                    (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, text_deaccented, lemma_tokens, comment_text, tags_json)
+                    VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_deaccent, :p_lemmas, :p_comment, :p_tags)
                     RETURNING id INTO :p_out_id
                 """
 
@@ -1032,7 +1150,6 @@ def sync_highlights_for_item(
                             "p_type": source_type,
                             "p_title": f"{title} - {author}",
                             "p_content": text,
-                            "p_chunk_type": chunk_type,
                             "p_page": page_number,
                             "p_chunk_idx": idx,
                             "p_vec": embedding,
@@ -1097,8 +1214,8 @@ def sync_personal_note_for_item(
                     """
                     DELETE FROM TOMEHUB_CONTENT_V2
                     WHERE firebase_uid = :p_uid
-                      AND book_id = :p_book
-                      AND source_type IN ('PERSONAL_NOTE', 'INSIGHT')
+                      AND item_id = :p_book
+                      AND content_type IN ('PERSONAL_NOTE', 'INSIGHT')
                     """,
                     {"p_uid": firebase_uid, "p_book": book_id},
                 )
@@ -1146,8 +1263,8 @@ def sync_personal_note_for_item(
                 cursor.execute(
                     """
                     INSERT INTO TOMEHUB_CONTENT_V2
-                    (firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, book_id, normalized_content, text_deaccented, lemma_tokens, "COMMENT", tags)
-                    VALUES (:p_uid, :p_type, :p_title, :p_content, :p_chunk_type, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_deaccent, :p_lemmas, :p_comment, :p_tags)
+                    (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, text_deaccented, lemma_tokens, comment_text, tags_json)
+                    VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_deaccent, :p_lemmas, :p_comment, :p_tags)
                     RETURNING id INTO :p_out_id
                     """,
                     {
@@ -1155,7 +1272,6 @@ def sync_personal_note_for_item(
                         "p_type": db_source_type,
                         "p_title": f"{title} - {author}",
                         "p_content": text,
-                        "p_chunk_type": chunk_type,
                         "p_page": 1,
                         "p_chunk_idx": 0,
                         "p_vec": embedding,
@@ -1227,15 +1343,14 @@ def process_bulk_items_logic(items: list, firebase_uid: str) -> dict:
                         db_source_type = normalize_source_type(item.get('type', 'PERSONAL_NOTE'))
                         cursor.execute("""
                             INSERT INTO TOMEHUB_CONTENT_V2 
-                            (firebase_uid, content_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, item_id, normalized_content, text_deaccented, lemma_tokens, categories, "COMMENT", tags)
-                            VALUES (:p_uid, :p_type, :p_title, :p_content, :p_chunk_type, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_deaccent, :p_lemmas, :p_cats, :p_comment, :p_tags)
+                            (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, text_deaccented, lemma_tokens, categories, comment_text, tags_json)
+                            VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_deaccent, :p_lemmas, :p_cats, :p_comment, :p_tags)
                             RETURNING id INTO :p_out_id
                         """, {
                             "p_uid": firebase_uid,
                             "p_type": db_source_type,
                             "p_title": f"{item.get('title')} - {item.get('author')}",
                             "p_content": text,
-                            "p_chunk_type": item.get('chunk_type') or 'full_text',
                             "p_page": item.get('page_number') or 1,
                             "p_chunk_idx": item.get('chunk_index') or 0,
                             "p_vec": embedding,

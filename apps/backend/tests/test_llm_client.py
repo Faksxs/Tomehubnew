@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import patch
+import time
 
 from services import llm_client
 from services.llm_client import (
@@ -59,6 +60,29 @@ class _ProviderAlwaysRetryableError:
 
     def generate_text(self, **kwargs):
         raise TimeoutError("timed out")
+
+    def embed_contents(self, **kwargs):
+        return []
+
+
+class _ProviderModelDelays:
+    name = "qwen"
+
+    def __init__(self, delays):
+        self.delays = delays
+        self.calls = []
+
+    def generate_text(self, **kwargs):
+        model = kwargs["model"]
+        self.calls.append(model)
+        time.sleep(self.delays.get(model, 0.0))
+        return GenerateResult(
+            text=f"winner:{model}",
+            model_used=model,
+            model_tier=MODEL_TIER_FLASH,
+            fallback_applied=False,
+            usage_metadata=None,
+        )
 
     def embed_contents(self, **kwargs):
         return []
@@ -137,17 +161,18 @@ class LLMClientTests(unittest.TestCase):
             with patch.object(llm_client.settings, "LLM_EXPLORER_QWEN_PILOT_ENABLED", True):
                 with patch.object(llm_client.settings, "LLM_EXPLORER_FALLBACK_PROVIDER", "gemini"):
                     with patch.object(llm_client.settings, "LLM_EXPLORER_SECONDARY_MAX_PER_REQUEST", 1):
-                        with patch("services.llm_client._consume_qwen_rpm_slot", return_value=True):
-                            result = llm_client.generate_text(
-                                model=llm_client.settings.LLM_EXPLORER_PRIMARY_MODEL,
-                                prompt="hello",
-                                task="test_explorer",
-                                model_tier=MODEL_TIER_FLASH,
-                                provider_hint="qwen",
-                                route_mode=ROUTE_MODE_EXPLORER_QWEN_PILOT,
-                                allow_secondary_fallback=True,
-                                fallback_state=state,
-                            )
+                        with patch.object(llm_client.settings, "LLM_EXPLORER_PARALLEL_NVIDIA_ENABLED", False):
+                            with patch("services.llm_client._consume_qwen_rpm_slots", return_value=True):
+                                result = llm_client.generate_text(
+                                    model=llm_client.settings.LLM_EXPLORER_PRIMARY_MODEL,
+                                    prompt="hello",
+                                    task="test_explorer",
+                                    model_tier=MODEL_TIER_FLASH,
+                                    provider_hint="qwen",
+                                    route_mode=ROUTE_MODE_EXPLORER_QWEN_PILOT,
+                                    allow_secondary_fallback=True,
+                                    fallback_state=state,
+                                )
 
         self.assertEqual(result.text, "ok")
         self.assertEqual(result.provider_name, "gemini")
@@ -170,17 +195,18 @@ class LLMClientTests(unittest.TestCase):
             with patch.object(llm_client.settings, "LLM_EXPLORER_QWEN_PILOT_ENABLED", True):
                 with patch.object(llm_client.settings, "LLM_EXPLORER_FALLBACK_PROVIDER", "gemini"):
                     with patch.object(llm_client.settings, "LLM_EXPLORER_SECONDARY_MAX_PER_REQUEST", 1):
-                        with patch("services.llm_client._consume_qwen_rpm_slot", return_value=False):
-                            result = llm_client.generate_text(
-                                model=llm_client.settings.LLM_EXPLORER_PRIMARY_MODEL,
-                                prompt="hello",
-                                task="test_explorer_rpm",
-                                model_tier=MODEL_TIER_FLASH,
-                                provider_hint="qwen",
-                                route_mode=ROUTE_MODE_EXPLORER_QWEN_PILOT,
-                                allow_secondary_fallback=True,
-                                fallback_state=state,
-                            )
+                        with patch.object(llm_client.settings, "LLM_EXPLORER_PARALLEL_NVIDIA_ENABLED", False):
+                            with patch("services.llm_client._consume_qwen_rpm_slots", return_value=False):
+                                result = llm_client.generate_text(
+                                    model=llm_client.settings.LLM_EXPLORER_PRIMARY_MODEL,
+                                    prompt="hello",
+                                    task="test_explorer_rpm",
+                                    model_tier=MODEL_TIER_FLASH,
+                                    provider_hint="qwen",
+                                    route_mode=ROUTE_MODE_EXPLORER_QWEN_PILOT,
+                                    allow_secondary_fallback=True,
+                                    fallback_state=state,
+                                )
 
         self.assertEqual(result.text, "ok")
         self.assertEqual(result.provider_name, "gemini")
@@ -188,6 +214,36 @@ class LLMClientTests(unittest.TestCase):
         self.assertTrue(result.secondary_fallback_applied)
         self.assertEqual(result.fallback_reason, "qwen_rpm_cap")
         self.assertEqual(state["secondary_fallback_used"], 1)
+
+    def test_generate_text_explorer_parallel_nvidia_uses_faster_winner(self):
+        qwen_model = "qwen/qwen3-next-80b-a3b-thinking"
+        minimax_model = "minimaxai/minimax-m2.1"
+        provider = _ProviderModelDelays(
+            delays={
+                qwen_model: 0.05,
+                minimax_model: 0.01,
+            }
+        )
+
+        with patch("services.llm_client.get_provider", return_value=provider):
+            with patch.object(llm_client.settings, "LLM_EXPLORER_QWEN_PILOT_ENABLED", True):
+                with patch.object(llm_client.settings, "LLM_EXPLORER_PARALLEL_NVIDIA_ENABLED", True):
+                    with patch.object(llm_client.settings, "LLM_EXPLORER_PARALLEL_NVIDIA_MODEL", minimax_model):
+                        with patch("services.llm_client._consume_qwen_rpm_slots", return_value=True) as rpm_patch:
+                            result = llm_client.generate_text(
+                                model=qwen_model,
+                                prompt="hello",
+                                task="test_explorer_parallel",
+                                model_tier=MODEL_TIER_FLASH,
+                                provider_hint="qwen",
+                                route_mode=ROUTE_MODE_EXPLORER_QWEN_PILOT,
+                                allow_secondary_fallback=False,
+                            )
+
+        self.assertEqual(result.model_used, minimax_model)
+        self.assertEqual(result.text, f"winner:{minimax_model}")
+        self.assertFalse(result.fallback_applied)
+        rpm_patch.assert_called_once_with(2)
 
 
 if __name__ == "__main__":

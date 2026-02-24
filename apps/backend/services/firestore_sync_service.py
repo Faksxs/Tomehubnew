@@ -71,10 +71,10 @@ def _load_oracle_book_ids(firebase_uid: str) -> set[str]:
         with conn.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT DISTINCT book_id
+                SELECT DISTINCT ITEM_ID
                 FROM TOMEHUB_CONTENT_V2
                 WHERE firebase_uid = :p_uid
-                  AND book_id IS NOT NULL
+                  AND ITEM_ID IS NOT NULL
                 """,
                 {"p_uid": firebase_uid},
             )

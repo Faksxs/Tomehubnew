@@ -111,7 +111,15 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack,
         }
     };
 
-    const cleanAnswer = result?.answer.replace(/## AŞAMA 0:[\s\S]*?(?=##)/, "").trim() || "";
+    const rawAnswer = result?.answer || "";
+    const internalNotes = Array.from(rawAnswer.matchAll(/<think>([\s\S]*?)<\/think>/gi))
+        .map((match) => (match[1] || '').trim())
+        .filter(Boolean)
+        .join('\n\n');
+    const cleanAnswer = rawAnswer
+        .replace(/<think>[\s\S]*?<\/think>/gi, '')
+        .replace(/## AŞAMA 0:[\s\S]*?(?=##|$)/i, '')
+        .trim();
 
     return (
         <div className="max-w-[1100px] w-full mx-auto p-3 md:p-6 space-y-4 md:space-y-6">
@@ -208,6 +216,19 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack,
                                 }
                             })}
                         </div>
+
+                        {internalNotes && (
+                            <details className="rounded-lg border border-[#E6EAF2] dark:border-slate-700 bg-[#F8FAFC] dark:bg-slate-900/40">
+                                <summary className="cursor-pointer select-none px-3 md:px-4 py-2.5 text-xs md:text-sm font-medium text-slate-600 dark:text-slate-300">
+                                    Internal Notes (Optional)
+                                </summary>
+                                <div className="px-3 md:px-4 pb-3 md:pb-4 border-t border-[#E6EAF2] dark:border-slate-700">
+                                    <pre className="mt-3 whitespace-pre-wrap break-words text-xs md:text-sm leading-relaxed text-slate-600 dark:text-slate-300 font-sans">
+                                        {internalNotes}
+                                    </pre>
+                                </div>
+                            </details>
+                        )}
 
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 md:gap-4 pt-2.5 md:pt-4 border-t border-[#E6EAF2] dark:border-slate-700">
                             <div className="flex items-center gap-2.5 md:gap-4">

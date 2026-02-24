@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 def _allow_dev_unverified_auth() -> bool:
     return (
         settings.ENVIRONMENT == "development"
-        and not bool(getattr(settings, "FIREBASE_READY", False))
         and bool(getattr(settings, "DEV_UNSAFE_AUTH_BYPASS", False))
     )
 
@@ -115,6 +114,14 @@ async def verify_firebase_token(request: Request) -> str | None:
 
     except Exception as e:
         exception_type = type(e).__name__
+
+        if _allow_dev_unverified_auth():
+            logger.warning(
+                "DEV_UNSAFE_AUTH_BYPASS enabled: Firebase token verification failed; "
+                "allowing route-level UID fallback",
+                extra={"exception_type": exception_type},
+            )
+            return None
 
         if "ExpiredIdTokenError" in exception_type:
             raise HTTPException(status_code=401, detail="Token expired")

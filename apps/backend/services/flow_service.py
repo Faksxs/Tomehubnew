@@ -1217,7 +1217,7 @@ class FlowService:
             with DatabaseManager.get_read_connection() as conn:
                 with conn.cursor() as cursor:
                     sql = """
-                        SELECT id, content_chunk, title, page_number, source_type
+                        SELECT id, content_chunk, title, page_number, content_type AS source_type
                         FROM TOMEHUB_CONTENT_V2
                         WHERE firebase_uid = :p_uid
                     """
@@ -1602,7 +1602,7 @@ class FlowService:
             
             sql = """
                 SELECT DISTINCT
-                    ct.id, ct.content_chunk, ct.title, ct.content_type as content_type AS source_type, ct.page_number,
+                    ct.id, ct.content_chunk, ct.title, ct.content_type AS source_type, ct.page_number,
                     c.name as concept_name, c.centrality_score
                 FROM TOMEHUB_CONCEPTS c
                 JOIN TOMEHUB_CONCEPT_CHUNKS cc ON c.id = cc.concept_id

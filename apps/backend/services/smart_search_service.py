@@ -212,7 +212,7 @@ def perform_search(
             offset=offset,
             book_id=book_id,
             intent=intent,
-            resource_type=recontent_type,
+            resource_type=resource_type,
             session_id=session_id,
             result_mix_policy=result_mix_policy,
             semantic_tail_cap=semantic_tail_cap,
