@@ -83,6 +83,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   const [didRunLegacyFolderMigration, setDidRunLegacyFolderMigration] = useState(false);
   const flowPrewarmStartedRef = useRef(false);
   const realtimeCursorRef = useRef<number>(0);
+  const recentlyDeletedIdsRef = useRef<Set<string>>(new Set());
   const realtimeInFlightRef = useRef(false);
   const flowVisibleCategories = useMemo(() => {
     const normalizeTextKey = (value: string) => value.trim().toLocaleLowerCase('tr-TR');
@@ -190,7 +191,9 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
             fetchPersonalNoteFoldersForUser(userId),
           ]);
           if (!cancelled) {
-            setBooks(items);
+            const deletedIds = recentlyDeletedIdsRef.current;
+            const safeItems = deletedIds.size > 0 ? items.filter((i) => !deletedIds.has(i.id)) : items;
+            setBooks(safeItems);
             setPersonalNoteFolders(folders);
             setLastDoc(newLastDoc);
             setHasMore(!!newLastDoc);
@@ -546,6 +549,8 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     if (!window.confirm("Are you sure you want to delete this item?")) return;
     const deletedItem = books.find((b) => b.id === id);
 
+    recentlyDeletedIdsRef.current.add(id);
+    setTimeout(() => recentlyDeletedIdsRef.current.delete(id), 10000);
     setBooks((prev) => prev.filter((b) => b.id !== id));
 
     if (selectedBookId === id) {
@@ -576,6 +581,10 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     if (!window.confirm(`Are you sure you want to delete ${ids.length} items?`)) return;
     const deletedItems = books.filter((b) => ids.includes(b.id));
 
+    ids.forEach((id) => {
+      recentlyDeletedIdsRef.current.add(id);
+      setTimeout(() => recentlyDeletedIdsRef.current.delete(id), 10000);
+    });
     setBooks((prev) => prev.filter((b) => !ids.includes(b.id)));
 
     if (selectedBookId && ids.includes(selectedBookId)) {
