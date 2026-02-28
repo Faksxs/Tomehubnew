@@ -56,7 +56,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen
           <img
             src={logo}
             alt="TomeHub Icon"
-            className="h-16 lg:h-[77px] w-auto object-contain brightness-110 drop-shadow-md"
+            className="h-[68px] lg:h-[77px] w-auto object-contain brightness-110 drop-shadow-md"
           />
 
           <button
@@ -78,13 +78,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen
                   onTabChange(item.id as any);
                   onClose();
                 }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 lg:py-3 rounded-xl text-xs lg:text-sm font-medium transition-all duration-200 group ${isActive
+                className={`w-full flex items-center gap-3 px-3 py-2.5 lg:py-3 rounded-xl text-[13px] lg:text-sm font-medium transition-all duration-200 group ${isActive
                   ? 'bg-white/10 text-white shadow-sm border-r-2 border-[#CC561E]'
                   : 'text-white/70 hover:bg-white/5 hover:text-white'
                   }`}
               >
                 <Icon
-                  className={`w-[17px] h-[17px] lg:w-5 lg:h-5 transition-colors ${isActive ? 'text-[#CC561E]' : 'text-white/60 group-hover:text-white'
+                  className={`w-[18px] h-[18px] lg:w-5 lg:h-5 transition-colors ${isActive ? 'text-[#CC561E]' : 'text-white/60 group-hover:text-white'
                     }`}
                 />
                 {item.label}
@@ -99,7 +99,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen
               onTabChange('PROFILE');
               onClose();
             }}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 lg:py-3 rounded-xl text-xs lg:text-sm font-medium transition-all duration-200 group ${activeTab === 'PROFILE'
+            className={`w-full flex items-center gap-3 px-3 py-2.5 lg:py-3 rounded-xl text-[13px] lg:text-sm font-medium transition-all duration-200 group ${activeTab === 'PROFILE'
               ? 'bg-white/10 text-white shadow-sm border-r-2 border-[#CC561E]'
               : 'text-white/70 hover:bg-white/5 hover:text-white'
               }`}
@@ -113,7 +113,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen
 
           <button
             onClick={toggleTheme}
-            className="w-full flex items-center gap-3 px-3 py-2.5 lg:py-3 rounded-xl text-xs lg:text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white transition-all duration-200 group mt-1"
+            className="w-full flex items-center gap-3 px-3 py-2.5 lg:py-3 rounded-xl text-[13px] lg:text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white transition-all duration-200 group mt-1"
           >
             {theme === 'light' ? (
               <>
@@ -131,10 +131,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen
 
         <div className="p-4 border-t border-white/10">
           <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-            <p className="text-xs text-white/70 font-medium mb-1">My Personal Library</p>
+            <p className="text-[13px] text-white/70 font-medium mb-1">My Personal Library</p>
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-[#CC561E] animate-pulse" />
-              <p className="text-[10px] text-white/50 uppercase tracking-wider font-semibold">Online</p>
+              <p className="text-[11px] text-white/50 uppercase tracking-wider font-semibold">Online</p>
             </div>
           </div>
         </div>

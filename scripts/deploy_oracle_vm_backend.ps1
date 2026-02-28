@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [string]$Host,
+    [string]$VmHost,
 
     [Parameter(Mandatory = $true)]
     [string]$KeyPath,
@@ -62,18 +62,19 @@ $remoteScript = $remoteScript.Replace("__REGISTRY_REPO__", $RegistryRepo)
 $remoteScript = $remoteScript.Replace("__IMAGE_TAG__", $Tag)
 $remoteScript = $remoteScript.Replace("__API_HEALTH_URL__", $ApiHealthUrl)
 $remoteScript = $remoteScript.Replace("__SKIP_SMOKE_TEST__", ($(if ($SkipSmokeTest) { "true" } else { "false" })))
+$remoteScript = $remoteScript -replace "`r`n", "`n"
 
 Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host "OCIR Pull Deploy (VM)" -ForegroundColor Cyan
 Write-Host "=========================================" -ForegroundColor Cyan
-Write-Host "Target VM     : $User@$Host" -ForegroundColor Gray
+Write-Host "Target VM     : $User@$VmHost" -ForegroundColor Gray
 Write-Host "Remote Dir    : $RemoteComposeDir" -ForegroundColor Gray
 Write-Host "Registry Repo : $RegistryRepo" -ForegroundColor Gray
 Write-Host "Image Tag     : $Tag" -ForegroundColor Gray
 Write-Host "Smoke URL     : $ApiHealthUrl" -ForegroundColor Gray
 
-$remoteScript | ssh -i $KeyPath "$User@$Host" "bash -s"
+$remoteScript | ssh -i $KeyPath "$User@$VmHost" "bash -s"
 
 Write-Host "`nDeploy completed for tag: $Tag" -ForegroundColor Green
 Write-Host "Rollback example (previous tag):" -ForegroundColor Yellow
-Write-Host "  .\scripts\deploy_oracle_vm_backend.ps1 -Host $Host -User $User -KeyPath `"$KeyPath`" -Tag <previous-tag>" -ForegroundColor Yellow
+Write-Host "  .\scripts\deploy_oracle_vm_backend.ps1 -VmHost $VmHost -User $User -KeyPath `"$KeyPath`" -Tag <previous-tag>" -ForegroundColor Yellow

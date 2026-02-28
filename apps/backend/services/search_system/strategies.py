@@ -99,19 +99,22 @@ def _contains_like_pattern(value: str, escape_char: str = "\\") -> str:
 
 
 def _is_oracle_text_exact_enabled() -> bool:
-    return os.getenv("SEARCH_EXACT_ORACLE_TEXT_ENABLED", "false").strip().lower() == "true"
+    # Oracle Text should be first-path by default; legacy LIKE remains emergency fallback.
+    return os.getenv("SEARCH_EXACT_ORACLE_TEXT_ENABLED", "true").strip().lower() == "true"
 
 
 def _is_oracle_text_single_token_enabled() -> bool:
-    return os.getenv("SEARCH_EXACT_ORACLE_TEXT_SINGLE_TOKEN_ENABLED", "false").strip().lower() == "true"
+    return os.getenv("SEARCH_EXACT_ORACLE_TEXT_SINGLE_TOKEN_ENABLED", "true").strip().lower() == "true"
 
 
 def _oracle_text_min_rows_for_backfill() -> int:
-    raw = os.getenv("SEARCH_EXACT_ORACLE_TEXT_MIN_ROWS", "40").strip()
+    # Default=1 keeps backfill disabled for non-empty Oracle Text hits.
+    # Legacy LIKE is still used when Oracle returns zero rows or errors.
+    raw = os.getenv("SEARCH_EXACT_ORACLE_TEXT_MIN_ROWS", "1").strip()
     try:
         value = int(raw)
     except Exception:
-        value = 40
+        value = 1
     if value < 1:
         value = 1
     if value > 500:
