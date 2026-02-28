@@ -8,17 +8,26 @@ from .strategies import (
     ExactMatchStrategy,
     LemmaMatchStrategy,
     SemanticMatchStrategy,
+    OdlShadowRescueStrategy,
     _filter_query_lemmas,
 )
 from utils.logger import get_logger
 from .search_utils import compute_rrf
 from services.rerank_service import rerank_candidates
-from services.monitoring import SEARCH_FUSION_MODE_TOTAL, L3_PERF_GUARD_APPLIED_TOTAL
+from services.monitoring import (
+    SEARCH_FUSION_MODE_TOTAL,
+    L3_PERF_GUARD_APPLIED_TOTAL,
+    ODL_RESCUE_CALLS_TOTAL,
+    ODL_RESCUE_TIMEOUT_TOTAL,
+    ODL_RESCUE_CANDIDATE_CONTRIBUTION_RATIO,
+    ODL_RESCUE_LATENCY_DELTA_MS,
+)
 from services.query_expander import QueryExpander
 from services.cache_service import MultiLayerCache, generate_cache_key, get_cache
 from .semantic_router import SemanticRouter, to_strategy_labels
 from utils.spell_checker import get_spell_checker
 from utils.text_utils import get_lemmas, deaccent_text
+from services.odl_shadow_service import should_enable_odl_secondary_for_target
 from config import settings
 
 logger = get_logger("search_orchestrator")
@@ -48,13 +57,51 @@ class SearchOrchestrator:
         # Semantic strategy needs embedding function
         if self.embedding_fn:
             self.strategies.append(SemanticMatchStrategy(self.embedding_fn))
+        self.odl_rescue_strategy = OdlShadowRescueStrategy()
     
     @staticmethod
     def _item_key(item: Dict[str, Any]) -> str:
+        content_hash = str(item.get("content_hash") or "").strip().lower()
+        if content_hash:
+            return f"h:{content_hash}"
         item_id = item.get("id")
         if item_id is not None:
             return str(item_id)
         return f"{item.get('title', '')}_{item.get('page_number', 0)}_{str(item.get('content_chunk', ''))[:40]}"
+
+    @staticmethod
+    def _safe_float(value: Any, default: float = 0.0) -> float:
+        try:
+            return float(value)
+        except Exception:
+            return default
+
+    def _is_odl_rescue_allowed(self, firebase_uid: str, book_id: Optional[str]) -> bool:
+        if not bool(getattr(settings, "ODL_SECONDARY_ENABLED", False)):
+            return False
+        if not bool(getattr(settings, "ODL_RESCUE_ENABLED", False)):
+            return False
+        return should_enable_odl_secondary_for_target(firebase_uid=firebase_uid, item_id=book_id)
+
+    def _compute_top_score(self, rows: List[Dict[str, Any]], fusion_mode: str) -> float:
+        if not rows:
+            return 0.0
+        top = rows[0]
+        if fusion_mode == "rrf":
+            return self._safe_float(top.get("rrf_score", top.get("score", 0.0)))
+        return self._safe_float(top.get("score", 0.0))
+
+    def _odl_rescue_reason(self, total_found: int, top_score: float) -> Optional[str]:
+        reasons: List[str] = []
+        min_results = int(getattr(settings, "ODL_RESCUE_MIN_RESULTS", 5) or 5)
+        if total_found < min_results:
+            reasons.append("low_result_count")
+        threshold = self._safe_float(getattr(settings, "ODL_RESCUE_TOP1_SCORE_THRESHOLD", 0.0), default=0.0)
+        if threshold > 0.0 and top_score < threshold:
+            reasons.append("low_top1_score")
+        if not reasons:
+            return None
+        return "+".join(reasons)
     
     @staticmethod
     def _intent_weights(intent: str) -> Dict[str, float]:
@@ -130,6 +177,15 @@ class SearchOrchestrator:
         noise_guard_applied = bool(getattr(settings, "SEARCH_NOISE_GUARD_ENABLED", True))
         latency_budget_applied = False
         graph_timeout_triggered = False
+        odl_rescue_applied = False
+        odl_rescue_reason = None
+        odl_rescue_timed_out = False
+        odl_rescue_error = None
+        odl_rescue_latency_ms: Optional[int] = None
+        odl_rescue_candidates_raw = 0
+        odl_rescue_candidates_added = 0
+        odl_rescue_candidates_topk = 0
+        odl_shadow_status = "disabled"
 
         if getattr(settings, "SEARCH_MODE_ROUTING_ENABLED", True):
             if settings.SEARCH_ROUTER_MODE == "rule_based":
@@ -172,6 +228,10 @@ class SearchOrchestrator:
             cache_key += f"_vis:{(visibility_scope or 'default')}"
             cache_key += f"_ct:{(content_type or 'none')}"
             cache_key += f"_it:{(ingestion_type or 'none')}"
+            cache_key += f"_odl:{int(bool(getattr(settings, 'ODL_SECONDARY_ENABLED', False)))}"
+            cache_key += f"_odlr:{int(bool(getattr(settings, 'ODL_RESCUE_ENABLED', False)))}"
+            cache_key += f"_odlmin:{int(getattr(settings, 'ODL_RESCUE_MIN_RESULTS', 5) or 5)}"
+            cache_key += f"_odlthr:{self._safe_float(getattr(settings, 'ODL_RESCUE_TOP1_SCORE_THRESHOLD', 0.0), 0.0):.3f}"
             
             cached_payload = self.cache.get(cache_key)
             if cached_payload:
@@ -200,6 +260,14 @@ class SearchOrchestrator:
                     "latency_budget_applied": latency_budget_applied,
                     "graph_timeout_triggered": graph_timeout_triggered,
                     "noise_guard_applied": noise_guard_applied,
+                    "odl_rescue_applied": False,
+                    "odl_rescue_reason": None,
+                    "odl_rescue_timed_out": False,
+                    "odl_rescue_latency_ms": None,
+                    "odl_rescue_candidates_raw": 0,
+                    "odl_rescue_candidates_added": 0,
+                    "odl_rescue_candidates_topk": 0,
+                    "odl_shadow_status": "cache",
                 }
                 meta.update(cached_meta)
                 return cached_results, meta
@@ -509,6 +577,8 @@ class SearchOrchestrator:
             "typo_rescue_added_exact": typo_rescue_added_exact,
             "typo_rescue_added_lemma": typo_rescue_added_lemma,
             "lemma_seed_added_exact": lemma_seed_added,
+            "odl_rescue_raw_count": 0,
+            "odl_rescue_added_count": 0,
         }
 
         # Priority Helper
@@ -735,9 +805,113 @@ class SearchOrchestrator:
             final_list = lexical_list + semantic_tail
             mix_policy_applied = "lexical_then_semantic_tail"
 
+        # ODL secondary rescue (additive-only, never replacing primary).
+        if self._is_odl_rescue_allowed(firebase_uid=firebase_uid, book_id=book_id):
+            odl_shadow_status = "eligible"
+            primary_total_found = len(final_list)
+            primary_top_score = self._compute_top_score(final_list, fusion_mode)
+            trigger_reason = self._odl_rescue_reason(primary_total_found, primary_top_score)
+            if trigger_reason:
+                odl_shadow_status = "triggered"
+                odl_rescue_reason = trigger_reason
+                try:
+                    ODL_RESCUE_CALLS_TOTAL.labels(reason=trigger_reason).inc()
+                except Exception:
+                    pass
+
+                timeout_ms = int(getattr(settings, "ODL_RESCUE_TIMEOUT_MS", 250) or 250)
+                timeout_ms = max(50, timeout_ms)
+                rescue_limit = int(getattr(settings, "ODL_RESCUE_MAX_CANDIDATES", 8) or 8)
+                rescue_limit = max(1, rescue_limit)
+                started_rescue = time.perf_counter()
+                rescue_rows: List[Dict[str, Any]] = []
+                rescue_executor = ThreadPoolExecutor(max_workers=1)
+                rescue_future = rescue_executor.submit(
+                    self.odl_rescue_strategy.search,
+                    query,
+                    firebase_uid,
+                    rescue_limit,
+                    0,
+                    resource_type=resource_type,
+                    book_id=book_id,
+                    visibility_scope=visibility_scope,
+                    content_type=content_type,
+                    ingestion_type=ingestion_type,
+                )
+                try:
+                    rescue_rows = rescue_future.result(timeout=(timeout_ms / 1000.0))
+                except FutureTimeoutError:
+                    rescue_future.cancel()
+                    odl_rescue_timed_out = True
+                    odl_shadow_status = "timeout"
+                    try:
+                        ODL_RESCUE_TIMEOUT_TOTAL.inc()
+                    except Exception:
+                        pass
+                except Exception as e:
+                    odl_rescue_error = str(e)
+                    odl_shadow_status = "error"
+                finally:
+                    try:
+                        rescue_executor.shutdown(wait=False, cancel_futures=True)
+                    except Exception:
+                        pass
+
+                odl_rescue_latency_ms = int((time.perf_counter() - started_rescue) * 1000)
+                try:
+                    ODL_RESCUE_LATENCY_DELTA_MS.observe(float(odl_rescue_latency_ms))
+                except Exception:
+                    pass
+
+                odl_rescue_candidates_raw = len(rescue_rows)
+                if rescue_rows:
+                    seen_keys = {self._item_key(item) for item in final_list}
+                    unique_rows: List[Dict[str, Any]] = []
+                    for item in rescue_rows:
+                        key = self._item_key(item)
+                        if key in seen_keys:
+                            continue
+                        seen_keys.add(key)
+                        unique_rows.append(dict(item))
+
+                    max_ratio = self._safe_float(getattr(settings, "ODL_RESCUE_MAX_RATIO", 0.25), default=0.25)
+                    if max_ratio <= 0.0:
+                        max_ratio = 0.25
+                    if max_ratio > 0.9:
+                        max_ratio = 0.9
+                    ratio_cap = max(1, int(max(primary_total_found, max(limit, 1)) * max_ratio))
+                    hard_cap = max(1, int(getattr(settings, "ODL_RESCUE_MAX_CANDIDATES", 8) or 8))
+                    keep_cap = min(ratio_cap, hard_cap)
+                    if keep_cap > 0:
+                        unique_rows = unique_rows[:keep_cap]
+                    else:
+                        unique_rows = []
+
+                    if unique_rows:
+                        final_list.extend(unique_rows)
+                        odl_rescue_candidates_added = len(unique_rows)
+                        odl_rescue_applied = True
+                        odl_shadow_status = "applied"
+                    elif odl_shadow_status == "triggered":
+                        odl_shadow_status = "ready_no_unique_hits"
+                elif odl_shadow_status == "triggered":
+                    odl_shadow_status = "ready_no_hits"
+            else:
+                odl_shadow_status = "not_triggered"
+
         # Pagination Slicing
         total_found = len(final_list)
         top_candidates = final_list[offset : offset + limit]
+        bucket_raw_counts["odl_rescue_raw_count"] = odl_rescue_candidates_raw
+        bucket_raw_counts["odl_rescue_added_count"] = odl_rescue_candidates_added
+        if top_candidates:
+            odl_rescue_candidates_topk = sum(1 for item in top_candidates if bool(item.get("odl_shadow")))
+            try:
+                ODL_RESCUE_CANDIDATE_CONTRIBUTION_RATIO.observe(
+                    float(odl_rescue_candidates_topk) / float(len(top_candidates))
+                )
+            except Exception:
+                pass
 
         duration = time.time() - start_time
 
@@ -771,6 +945,15 @@ class SearchOrchestrator:
             "noise_guard_applied": noise_guard_applied,
             "expansion_skipped_reason": expansion_skipped_reason,
             "strategy_timing_ms": strategy_timing_ms,
+            "odl_rescue_applied": odl_rescue_applied,
+            "odl_rescue_reason": odl_rescue_reason,
+            "odl_rescue_timed_out": odl_rescue_timed_out,
+            "odl_rescue_error": odl_rescue_error,
+            "odl_rescue_latency_ms": odl_rescue_latency_ms,
+            "odl_rescue_candidates_raw": odl_rescue_candidates_raw,
+            "odl_rescue_candidates_added": odl_rescue_candidates_added,
+            "odl_rescue_candidates_topk": odl_rescue_candidates_topk,
+            "odl_shadow_status": odl_shadow_status,
             "VECTOR_TIME_MS": strategy_timing_ms.get("SemanticMatchStrategy"),
             "GRAPH_TIME_MS": None,
             "RERANK_TIME_MS": None,
@@ -831,6 +1014,15 @@ class SearchOrchestrator:
                             "noise_guard_applied": noise_guard_applied,
                             "expansion_skipped_reason": expansion_skipped_reason,
                             "strategy_timing_ms": strategy_timing_ms,
+                            "odl_rescue_applied": odl_rescue_applied,
+                            "odl_rescue_reason": odl_rescue_reason,
+                            "odl_rescue_timed_out": odl_rescue_timed_out,
+                            "odl_rescue_error": odl_rescue_error,
+                            "odl_rescue_latency_ms": odl_rescue_latency_ms,
+                            "odl_rescue_candidates_raw": odl_rescue_candidates_raw,
+                            "odl_rescue_candidates_added": odl_rescue_candidates_added,
+                            "odl_rescue_candidates_topk": odl_rescue_candidates_topk,
+                            "odl_shadow_status": odl_shadow_status,
                             "VECTOR_TIME_MS": strategy_timing_ms.get("SemanticMatchStrategy"),
                             "GRAPH_TIME_MS": None,
                             "RERANK_TIME_MS": None,
@@ -877,6 +1069,15 @@ class SearchOrchestrator:
             "noise_guard_applied": noise_guard_applied,
             "expansion_skipped_reason": expansion_skipped_reason,
             "strategy_timing_ms": strategy_timing_ms,
+            "odl_rescue_applied": odl_rescue_applied,
+            "odl_rescue_reason": odl_rescue_reason,
+            "odl_rescue_timed_out": odl_rescue_timed_out,
+            "odl_rescue_error": odl_rescue_error,
+            "odl_rescue_latency_ms": odl_rescue_latency_ms,
+            "odl_rescue_candidates_raw": odl_rescue_candidates_raw,
+            "odl_rescue_candidates_added": odl_rescue_candidates_added,
+            "odl_rescue_candidates_topk": odl_rescue_candidates_topk,
+            "odl_shadow_status": odl_shadow_status,
             "VECTOR_TIME_MS": strategy_timing_ms.get("SemanticMatchStrategy"),
             "GRAPH_TIME_MS": None,
             "RERANK_TIME_MS": None,

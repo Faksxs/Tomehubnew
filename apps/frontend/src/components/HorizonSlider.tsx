@@ -99,10 +99,12 @@ export const HorizonSlider: React.FC<HorizonSliderProps> = ({
                 }
 
                 .horizon-slider__title {
-                    font-size: 13px;
+                    font-size: 11px;
                     font-weight: 700;
+                    text-transform: uppercase;
+                    letter-spacing: 0.1em;
                     color: hsl(var(--card-foreground));
-                    letter-spacing: -0.01em;
+                    opacity: 0.8;
                     font-family: 'Outfit', sans-serif;
                 }
 

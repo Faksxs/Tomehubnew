@@ -10,7 +10,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 backend_dir = os.path.dirname(current_dir)
 sys.path.append(backend_dir) 
 
-from utils.text_utils import deaccent_text, get_lemmas
+from utils.text_utils import normalize_text, get_lemmas
 
 env_path = os.path.join(backend_dir, '.env')
 load_dotenv(dotenv_path=env_path)
@@ -42,7 +42,7 @@ def backfill_metadata():
         sql_fetch = """
             SELECT id, content_chunk 
             FROM TOMEHUB_CONTENT 
-            WHERE text_deaccented IS NULL OR lemma_tokens IS NULL
+            WHERE normalized_content IS NULL OR lemma_tokens IS NULL
         """
         cursor.execute(sql_fetch)
         rows = cursor.fetchall()
@@ -56,14 +56,14 @@ def backfill_metadata():
             rid, content_clob = row
             content = content_clob.read() if content_clob else ""
             
-            # 1. De-accent
-            deaccented = deaccent_text(content)
-            
+            # 1. Normalized content
+            normalized = normalize_text(content)
+
             # 2. Lemmas
             lemma_list = get_lemmas(content)
             lemmas_json = json.dumps(lemma_list, ensure_ascii=False)
             
-            batch_data.append((deaccented, lemmas_json, rid))
+            batch_data.append((normalized, lemmas_json, rid))
             count += 1
             
             # Batch Update
@@ -71,7 +71,7 @@ def backfill_metadata():
                 print(f"Updating batch... ({count}/{total})")
                 sql_update = """
                     UPDATE TOMEHUB_CONTENT 
-                    SET text_deaccented = :1, lemma_tokens = :2 
+                    SET normalized_content = :1, lemma_tokens = :2 
                     WHERE id = :3
                 """
                 cursor.executemany(sql_update, batch_data)
@@ -83,7 +83,7 @@ def backfill_metadata():
             print(f"Updating final batch... ({count}/{total})")
             sql_update = """
                 UPDATE TOMEHUB_CONTENT 
-                SET text_deaccented = :1, lemma_tokens = :2 
+                SET normalized_content = :1, lemma_tokens = :2 
                 WHERE id = :3
             """
             cursor.executemany(sql_update, batch_data)

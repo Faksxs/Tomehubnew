@@ -55,6 +55,49 @@ SEARCH_FUSION_MODE_TOTAL = Counter(
     labelnames=['fusion_mode']
 )
 
+# ODL secondary observability
+ODL_SHADOW_JOBS_TOTAL = Counter(
+    'tomehub_odl_shadow_jobs_total',
+    'ODL shadow ingestion jobs by status',
+    labelnames=['status']
+)
+
+ODL_SHADOW_JOB_DURATION_SECONDS = Histogram(
+    'tomehub_odl_shadow_job_duration_seconds',
+    'ODL shadow ingestion job duration in seconds',
+    labelnames=['status'],
+    buckets=(0.5, 1.0, 3.0, 5.0, 10.0, 20.0, 40.0, 80.0, 160.0, 300.0)
+)
+
+ODL_SHADOW_READY_COUNT = Gauge(
+    'tomehub_odl_shadow_ready_count',
+    'Latest READY chunk count for ODL shadow by user and item',
+    labelnames=['firebase_uid', 'item_id']
+)
+
+ODL_RESCUE_CALLS_TOTAL = Counter(
+    'tomehub_odl_rescue_calls_total',
+    'ODL rescue calls by trigger reason',
+    labelnames=['reason']
+)
+
+ODL_RESCUE_TIMEOUT_TOTAL = Counter(
+    'tomehub_odl_rescue_timeout_total',
+    'ODL rescue timeout count'
+)
+
+ODL_RESCUE_CANDIDATE_CONTRIBUTION_RATIO = Histogram(
+    'tomehub_odl_rescue_candidate_contribution_ratio',
+    'ODL candidate share inside top-k response',
+    buckets=(0.0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.75, 1.0)
+)
+
+ODL_RESCUE_LATENCY_DELTA_MS = Histogram(
+    'tomehub_odl_rescue_latency_delta_ms',
+    'Additional ODL rescue latency in milliseconds',
+    buckets=(1, 5, 10, 20, 40, 80, 120, 200, 300, 500, 1000)
+)
+
 # Graph enrichment metrics (async jobs triggered on ingest or manual calls)
 GRAPH_ENRICH_JOBS_TOTAL = Counter(
     'tomehub_graph_enrich_jobs_total',
@@ -127,6 +170,30 @@ LLM_TOKENS_TOTAL = Counter(
     'tomehub_llm_tokens_total',
     'Total number of LLM tokens by direction',
     labelnames=['task', 'model_tier', 'direction']
+)
+
+LLM_PARALLEL_RACE_TOTAL = Counter(
+    'tomehub_llm_parallel_race_total',
+    'Explorer parallel NVIDIA race outcomes and winners',
+    labelnames=['route_mode', 'winner_provider', 'winner_model', 'status']
+)
+
+LLM_PARALLEL_RACE_LOSER_TOTAL = Counter(
+    'tomehub_llm_parallel_race_loser_total',
+    'Explorer parallel NVIDIA race loser outcomes',
+    labelnames=['route_mode', 'loser_provider', 'outcome']
+)
+
+LLM_RPM_GUARD_TOTAL = Counter(
+    'tomehub_llm_rpm_guard_total',
+    'Rate-limit guard slot reservation decisions for Qwen/NVIDIA route',
+    labelnames=['provider', 'result', 'mode']
+)
+
+REDIS_AVAILABLE = Gauge(
+    'tomehub_redis_available',
+    'Whether Redis-backed L2 cache is available (1=yes, 0=no)',
+    labelnames=['layer']
 )
 
 DATA_CLEANER_AI_APPLIED_TOTAL = Counter(

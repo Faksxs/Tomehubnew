@@ -11,7 +11,6 @@ Project context:
 
 Global rules:
 - Never generate placeholder code
-- Never leave TODOs
 - Always produce production-ready implementations
 - Prefer clarity over cleverness
 - Make senior-level assumptions when requirements are missing

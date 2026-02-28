@@ -25,7 +25,6 @@ import {
 } from 'lucide-react';
 import { LibraryItem } from '../../types';
 import { CATEGORIES, MIN_CATEGORY_BOOKS_VISIBLE } from '../CategorySelector';
-import { EpistemicDistributionRow, getEpistemicDistribution } from '../../services/backendApiService';
 import {
     KnowledgeBaseLogo,
     HighlightsLogo,
@@ -57,9 +56,6 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
     onMobileMenuClick
 }) => {
     const [showLevelC, setShowLevelC] = useState(false);
-    const [epistemicRows, setEpistemicRows] = useState<EpistemicDistributionRow[]>([]);
-    const [epistemicLoading, setEpistemicLoading] = useState(false);
-    const [epistemicError, setEpistemicError] = useState<string | null>(null);
     const normalizeTextKey = (value: string) => value.trim().toLocaleLowerCase('tr-TR');
     const normalizeAddedAt = (value: unknown): number => {
         if (typeof value === 'number' && Number.isFinite(value)) {
@@ -146,61 +142,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
         });
     });
 
-    useEffect(() => {
-        let active = true;
 
-        async function loadEpistemicDistribution() {
-            if (!userId) {
-                setEpistemicRows([]);
-                return;
-            }
-            setEpistemicLoading(true);
-            setEpistemicError(null);
-            try {
-                const response = await getEpistemicDistribution(userId, undefined, 300);
-                if (!active) return;
-                setEpistemicRows(response.items || []);
-            } catch {
-                if (!active) return;
-                setEpistemicError('Epistemik dagilim yuklenemedi');
-            } finally {
-                if (active) setEpistemicLoading(false);
-            }
-        }
-
-        loadEpistemicDistribution();
-        return () => {
-            active = false;
-        };
-    }, [userId, items.length]);
-
-    const epistemicTotals = useMemo(() => {
-        let levelA = 0;
-        let levelB = 0;
-        let levelC = 0;
-        let total = 0;
-        epistemicRows.forEach((row) => {
-            levelA += row.level_a || 0;
-            levelB += row.level_b || 0;
-            levelC += row.level_c || 0;
-            total += row.total_chunks || 0;
-        });
-        return { levelA, levelB, levelC, total };
-    }, [epistemicRows]);
-
-    const topEpistemicBooks = useMemo(() => {
-        const titleById = new Map<string, string>();
-        books.forEach((book) => {
-            titleById.set(String(book.id), book.title);
-        });
-        return [...epistemicRows]
-            .sort((a, b) => (b.total_chunks || 0) - (a.total_chunks || 0))
-            .slice(0, 8)
-            .map((row) => ({
-                ...row,
-                title: titleById.get(String(row.book_id)) || `Book ${row.book_id}`,
-            }));
-    }, [books, epistemicRows]);
 
     return (
         <div className="min-h-full w-full space-y-5 md:space-y-8 animate-in fade-in duration-700 relative">
@@ -236,7 +178,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
 
                 {/* 🔸 Level A – Core Assets (Perfect Ratios) */}
                 <section className="space-y-2 md:space-y-4">
-                    <div className="flex items-center gap-1.5 md:gap-2 px-1 text-xs md:text-sm font-bold uppercase tracking-[0.15em] md:tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                    <div className="flex items-center gap-1.5 md:gap-2 px-1 text-xs md:text-sm font-bold uppercase tracking-[0.15em] md:tracking-[0.18em] text-slate-500 dark:text-slate-400">
                         <Activity size={11} className="text-primary/60 md:w-3 md:h-3" /> Level A • Core Stats
                     </div>
                     <div className="grid grid-cols-2 min-[560px]:grid-cols-3 lg:grid-cols-5 gap-2.5 md:gap-4">
@@ -285,7 +227,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
 
 
                 <section className="space-y-1 md:space-y-4">
-                    <div className="flex items-center gap-1.5 md:gap-2 px-1 text-xs md:text-sm font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] text-slate-400 dark:text-slate-500">
+                    <div className="flex items-center gap-1.5 md:gap-2 px-1 text-xs md:text-sm font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] text-slate-500 dark:text-slate-400">
                         <PieChart size={12} className="text-primary/60" /> Level B • Structure
                     </div>
 
@@ -427,59 +369,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                 exit={{ opacity: 0, height: 0, y: 10 }}
                                 className="overflow-hidden"
                             >
-                                <div className="space-y-4 mb-4">
-                                    <div className="flex items-center gap-1.5 md:gap-2 px-1 text-xs md:text-sm font-bold uppercase tracking-[0.15em] md:tracking-[0.18em] text-slate-400 dark:text-slate-500">
-                                        <LayoutGrid size={11} className="text-primary/60 md:w-3 md:h-3" /> Epistemic Quality
-                                    </div>
 
-                                    <div className="rounded-2xl md:rounded-3xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 backdrop-blur-xl p-3 md:p-6 shadow-lg space-y-3 md:space-y-5">
-                                        <div className="grid grid-cols-3 gap-2 md:gap-4">
-                                            <div className="p-2 md:p-3 rounded-xl border border-emerald-400/30 bg-emerald-500/10">
-                                                <p className="text-[10px] md:text-xs uppercase tracking-wider text-emerald-300 font-bold">Level A</p>
-                                                <p className="text-lg md:text-2xl font-black text-white">{epistemicTotals.levelA}</p>
-                                            </div>
-                                            <div className="p-2 md:p-3 rounded-xl border border-sky-400/30 bg-sky-500/10">
-                                                <p className="text-[10px] md:text-xs uppercase tracking-wider text-sky-300 font-bold">Level B</p>
-                                                <p className="text-lg md:text-2xl font-black text-white">{epistemicTotals.levelB}</p>
-                                            </div>
-                                            <div className="p-2 md:p-3 rounded-xl border border-amber-400/30 bg-amber-500/10">
-                                                <p className="text-[10px] md:text-xs uppercase tracking-wider text-amber-300 font-bold">Level C</p>
-                                                <p className="text-lg md:text-2xl font-black text-white">{epistemicTotals.levelC}</p>
-                                            </div>
-                                        </div>
-
-                                        {epistemicLoading && (
-                                            <div className="text-xs md:text-sm text-slate-400">Yukleniyor...</div>
-                                        )}
-                                        {epistemicError && !epistemicLoading && (
-                                            <div className="text-xs md:text-sm text-rose-300">{epistemicError}</div>
-                                        )}
-                                        {!epistemicLoading && !epistemicError && topEpistemicBooks.length === 0 && (
-                                            <div className="text-xs md:text-sm text-slate-400">Epistemik veri henuz olusmadi.</div>
-                                        )}
-
-                                        {!epistemicLoading && !epistemicError && topEpistemicBooks.length > 0 && (
-                                            <div className="space-y-1.5">
-                                                {topEpistemicBooks.map((row) => (
-                                                    <div key={row.book_id} className="grid grid-cols-12 gap-2 items-center text-[10px] md:text-xs py-1.5 border-b border-white/5 last:border-b-0">
-                                                        <div className="col-span-5 text-slate-200 truncate font-semibold">{row.title}</div>
-                                                        <div className="col-span-2 text-emerald-300 font-bold text-right">{Math.round((row.ratio_a || 0) * 100)}%</div>
-                                                        <div className="col-span-2 text-sky-300 font-bold text-right">{Math.round((row.ratio_b || 0) * 100)}%</div>
-                                                        <div className="col-span-2 text-amber-300 font-bold text-right">{Math.round((row.ratio_c || 0) * 100)}%</div>
-                                                        <div className="col-span-1 text-slate-400 text-right">{row.total_chunks}</div>
-                                                    </div>
-                                                ))}
-                                                <div className="grid grid-cols-12 gap-2 text-[10px] md:text-xs text-slate-400 pt-1">
-                                                    <div className="col-span-5">Book</div>
-                                                    <div className="col-span-2 text-right">A</div>
-                                                    <div className="col-span-2 text-right">B</div>
-                                                    <div className="col-span-2 text-right">C</div>
-                                                    <div className="col-span-1 text-right">N</div>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
 
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 pt-0.5 md:pt-2">
                                     <div className="p-2.5 md:p-5 rounded-lg md:rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 backdrop-blur-xl flex flex-col gap-1 md:gap-2 shadow-lg min-h-[70px] md:min-h-0">
@@ -518,7 +408,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
 
             {/* Footer Branding */}
             <div className="max-w-6xl mx-auto pt-8 border-t border-slate-200/50 dark:border-white/5 text-center opacity-20">
-                <p className="text-[9px] font-black uppercase tracking-[0.5em] text-slate-500">TomeHub • Intellect Engine • v2.1.3_Balanced</p>
+                <p className="text-[9px] font-black uppercase tracking-[0.5em] text-slate-500 dark:text-slate-400">TomeHub • Intellect Engine • v2.1.3_Balanced</p>
             </div>
         </div>
     );

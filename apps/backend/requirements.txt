@@ -26,6 +26,7 @@ turkishnlp==0.0.61
 
 # PDF Processing
 PyPDF2>=3.0.0
+opendataloader-pdf==1.11.2
 
 # EPUB Processing
 ebooklib>=0.18
@@ -45,7 +46,7 @@ gunicorn>=21.0.0
 rank_bm25>=0.2.2
 python-json-logger
 zeyrek>=0.1.0
-symspellpy>=6.7.0
+symspellpy==6.5.2
 slowapi>=0.1.9
 tenacity>=8.2.0
 
@@ -55,3 +56,6 @@ redis>=5.0.0
 
 # Observability
 prometheus-fastapi-instrumentator>=6.0.0
+
+# Testing
+pytest>=9.0.0

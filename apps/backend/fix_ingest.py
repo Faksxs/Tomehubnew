@@ -9,18 +9,18 @@ text = text.replace('alias = "TOMEHUB_CONTENT_V2"', 'alias = "TOMEHUB_CONTENT_V2
 
 # Replace known INSERT statements specifically for TOMEHUB_CONTENT_V2
 text = text.replace(
-    '(firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, book_id, normalized_content, text_deaccented, lemma_tokens, token_freq, categories)',
-    '(firebase_uid, content_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, item_id, normalized_content, text_deaccented, lemma_tokens, token_freq, categories)'
+    '(firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, book_id, normalized_content, lemma_tokens, token_freq, categories)',
+    '(firebase_uid, content_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, item_id, normalized_content, lemma_tokens, token_freq, categories)'
 )
 
 text = text.replace(
-    '(firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, book_id, normalized_content, text_deaccented, lemma_tokens, categories, "COMMENT", tags)',
-    '(firebase_uid, content_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, item_id, normalized_content, text_deaccented, lemma_tokens, categories, "COMMENT", tags)'
+    '(firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, book_id, normalized_content, lemma_tokens, categories, "COMMENT", tags)',
+    '(firebase_uid, content_type, title, content_chunk, chunk_type, page_number, chunk_index, vec_embedding, item_id, normalized_content, lemma_tokens, categories, "COMMENT", tags)'
 )
 
 text = text.replace(
-    '(firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, book_id, vec_embedding, normalized_content, text_deaccented, lemma_tokens, categories, "COMMENT", tags)',
-    '(firebase_uid, content_type, title, content_chunk, chunk_type, page_number, chunk_index, item_id, vec_embedding, normalized_content, text_deaccented, lemma_tokens, categories, "COMMENT", tags)'
+    '(firebase_uid, source_type, title, content_chunk, chunk_type, page_number, chunk_index, book_id, vec_embedding, normalized_content, lemma_tokens, categories, "COMMENT", tags)',
+    '(firebase_uid, content_type, title, content_chunk, chunk_type, page_number, chunk_index, item_id, vec_embedding, normalized_content, lemma_tokens, categories, "COMMENT", tags)'
 )
 
 # For DELETE FROM TOMEHUB_CONTENT_V2

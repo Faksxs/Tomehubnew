@@ -6,7 +6,7 @@ import sys
 sys.path.append(os.path.join(os.getcwd(), 'apps', 'backend'))
 
 from infrastructure.db_manager import DatabaseManager
-from utils.text_utils import deaccent_text
+from utils.text_utils import normalize_text
 
 def check_content():
     term = "zaman"
@@ -17,17 +17,17 @@ def check_content():
             with conn.cursor() as cursor:
                 # Same logic as ExactMatch without the strat wrapper
                 sql = """
-                    SELECT id, source_type, DBMS_LOB.SUBSTR(content_chunk, 100, 1) as snippet
-                    FROM TOMEHUB_CONTENT
-                    WHERE source_type IN ('HIGHLIGHT', 'ARTICLE', 'PERSONAL_NOTE')
+                    SELECT id, content_type, DBMS_LOB.SUBSTR(content_chunk, 100, 1) as snippet
+                    FROM TOMEHUB_CONTENT_V2
+                    WHERE content_type IN ('HIGHLIGHT', 'ARTICLE', 'PERSONAL_NOTE')
                     AND (
-                        text_deaccented LIKE '%' || :p_term || '%'
+                        normalized_content LIKE '%' || :p_term || '%'
                         OR LOWER(content_chunk) LIKE '%' || :p_term_lower || '%'
                     )
                     FETCH FIRST 10 ROWS ONLY
                 """
                 params = {
-                    "p_term": deaccent_text(term),
+                    "p_term": normalize_text(term),
                     "p_term_lower": term.lower()
                 }
                 

@@ -290,6 +290,16 @@ class FlowService:
             new_vector, new_label, resolved_id = self._resolve_anchor(
                 anchor_type, anchor_id, firebase_uid, resource_type, category
             )
+            if not new_vector and anchor_type == "topic" and category:
+                # Category filter can legitimately yield no candidate content.
+                # Fallback to an unfiltered topic anchor instead of failing the pivot.
+                logger.warning(
+                    "[FLOW] reset_anchor fallback: no topic anchor with category=%s, retrying unfiltered",
+                    category,
+                )
+                new_vector, new_label, resolved_id = self._resolve_anchor(
+                    anchor_type, anchor_id, firebase_uid, resource_type, None
+                )
             if not new_vector:
                 raise ValueError(f"Could not resolve new anchor: {anchor_id}")
 
@@ -568,14 +578,24 @@ class FlowService:
             if not norm:
                 return sql, params
 
-            # Resolve content table alias (ct, c, t) or fallback to table name
+            # Resolve content table alias from FROM/JOIN clauses.
+            # This prevents invalid SQL like `TOMEHUB_CONTENT_V2.id` when table alias is used (e.g. `... FROM TOMEHUB_CONTENT_V2 t`).
             alias = "TOMEHUB_CONTENT_V2"
-            if re.search(r"\bTOMEHUB_CONTENT\s+ct\b", sql, re.IGNORECASE):
-                alias = "ct"
-            elif re.search(r"\bTOMEHUB_CONTENT\s+c\b", sql, re.IGNORECASE):
-                alias = "c"
-            elif re.search(r"\bTOMEHUB_CONTENT\s+t\b", sql, re.IGNORECASE):
-                alias = "t"
+            alias_match = re.search(
+                r"\b(?:FROM|JOIN)\s+TOMEHUB_CONTENT_V2\s+([A-Za-z_][A-Za-z0-9_$#]*)\b",
+                sql,
+                re.IGNORECASE,
+            )
+            if alias_match:
+                alias = alias_match.group(1)
+            else:
+                legacy_match = re.search(
+                    r"\b(?:FROM|JOIN)\s+TOMEHUB_CONTENT\s+([A-Za-z_][A-Za-z0-9_$#]*)\b",
+                    sql,
+                    re.IGNORECASE,
+                )
+                if legacy_match:
+                    alias = legacy_match.group(1)
 
             sql += f"""
                 AND EXISTS (
