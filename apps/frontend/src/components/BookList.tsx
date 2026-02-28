@@ -27,7 +27,7 @@ import {
 } from './ui/FeatureLogos';
 import { isInsightType } from '../lib/highlightType';
 import { getPersonalNoteCategory, isPersonalNote } from '../lib/personalNotePolicy';
-import { extractPersonalNoteText, hasMeaningfulPersonalNoteContent, toPersonalNotePreviewHtml } from '../lib/personalNoteRender';
+import { extractPersonalNoteText, hasMeaningfulPersonalNoteContent } from '../lib/personalNoteRender';
 import { PersonalNoteEditor } from './PersonalNoteEditor';
 const KnowledgeDashboard = React.lazy(() => import('./dashboard/KnowledgeDashboard').then(module => ({ default: module.KnowledgeDashboard })));
 type NoteSmartFilter = 'NONE' | 'FAVORITES' | 'RECENT';
@@ -1336,12 +1336,10 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                                             </div>
 
                                                             <h3 className="font-bold text-sm md:text-base text-slate-900 dark:text-white mb-2 leading-tight pl-8 pr-8">{note.title}</h3>
-                                                            <div className="text-slate-600 dark:text-slate-300 text-xs md:text-sm leading-relaxed max-h-[180px] overflow-hidden relative mb-3 prose prose-sm dark:prose-invert prose-slate max-w-none">
-                                                                <div
-                                                                    dangerouslySetInnerHTML={{ __html: toPersonalNotePreviewHtml(note.generalNotes || '') }}
-                                                                />
-                                                                {(note.generalNotes || '').length > 140 && (
-                                                                    <div className="absolute bottom-0 inset-x-0 h-8 bg-gradient-to-t from-white dark:from-slate-800 to-transparent" />
+                                                            <div className="text-slate-600 dark:text-slate-300 text-xs md:text-sm whitespace-pre-wrap leading-relaxed max-h-[180px] overflow-hidden relative font-lora mb-3">
+                                                                {notePreview || <span className="italic text-slate-400 dark:text-slate-500">Empty</span>}
+                                                                {notePreview.length > 140 && (
+                                                                    <div className="absolute bottom-0 inset-x-0 h-8 bg-gradient-to-t from-white dark:from-slate-900 to-transparent" />
                                                                 )}
                                                             </div>
 

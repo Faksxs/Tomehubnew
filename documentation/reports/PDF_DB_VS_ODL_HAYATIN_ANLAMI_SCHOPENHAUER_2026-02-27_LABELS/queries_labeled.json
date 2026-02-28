@@ -1,0 +1,42 @@
+[
+  {
+    "query": "hayat ıstırap",
+    "expected_terms": ["ıstırap", "acı", "sefalet", "hayatın ilk konusu", "ihtiyaç"]
+  },
+  {
+    "query": "yaşama iradesi",
+    "expected_terms": ["irade", "yaşam isteği", "mücadele", "dizginlenme", "engellenme"]
+  },
+  {
+    "query": "mutluluk menfi",
+    "expected_terms": ["mutluluk menfi", "iyilik menfi", "acı müspet", "tatmin", "arzunun elenmesi"]
+  },
+  {
+    "query": "can sıkıntısı",
+    "expected_terms": ["can sıkıntısı", "insan", "düşünme gücü", "boşluk", "zihin"]
+  },
+  {
+    "query": "hayat neden aldanıştır",
+    "expected_terms": ["aldanış", "hile", "desise", "umut", "vaat"]
+  },
+  {
+    "query": "ölüm irade hakkında ne söyler",
+    "expected_terms": ["ölüm", "mahkûmiyet", "irade", "mücadele", "sona erer"]
+  },
+  {
+    "query": "umut ve beklenti neden aldatıcı",
+    "expected_terms": ["umut", "beklenti", "aldanma", "gelecekte mutluluk", "gerçekleşmeyen vaat"]
+  },
+  {
+    "query": "zamanın hayatın beyhudeliğindeki rolü nedir",
+    "expected_terms": ["zaman", "gelip geçicilik", "yok oluş", "nesnel unsur", "beyhudelik", "a priori biçim"]
+  },
+  {
+    "query": "hayatın genel yapısı neden sefalet üretir",
+    "expected_terms": ["ihtiyaç", "zaruret", "mücadele", "çatışma", "sürekli çaba", "ıstırap kuraldır"]
+  },
+  {
+    "query": "Schopenhauer’e göre dünya neden cehennemdir",
+    "expected_terms": ["dünya", "cehennem", "sefalet", "azap", "işkence", "irade", "mahkûmiyet"]
+  }
+]
