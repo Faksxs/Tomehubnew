@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { BrowserMultiFormatReader, DecodeHintType, BarcodeFormat, NotFoundException } from '@zxing/library';
 import { X, Camera, Loader2 } from 'lucide-react';
 
 interface BarcodeScannerProps {
@@ -6,152 +7,102 @@ interface BarcodeScannerProps {
     onClose: () => void;
 }
 
-// Extend Window for BarcodeDetector (Shape Detection API)
-interface BarcodeDetectorResult {
-    rawValue: string;
-    format: string;
-}
-
-interface BarcodeDetectorInstance {
-    detect: (source: HTMLVideoElement) => Promise<BarcodeDetectorResult[]>;
-}
-
-interface BarcodeDetectorConstructor {
-    new(options?: { formats?: string[] }): BarcodeDetectorInstance;
-    getSupportedFormats: () => Promise<string[]>;
-}
-
-declare global {
-    interface Window {
-        BarcodeDetector?: BarcodeDetectorConstructor;
-    }
-}
-
 export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected, onClose }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
-    const streamRef = useRef<MediaStream | null>(null);
+    const readerRef = useRef<BrowserMultiFormatReader | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [isStarting, setIsStarting] = useState(true);
     const hasDetected = useRef(false);
-    const rafId = useRef<number>(0);
 
-    // Refs for callbacks to avoid stale closures
     const onDetectedRef = useRef(onDetected);
     onDetectedRef.current = onDetected;
     const onCloseRef = useRef(onClose);
     onCloseRef.current = onClose;
 
-    const stopCamera = useCallback(() => {
-        cancelAnimationFrame(rafId.current);
-        if (streamRef.current) {
-            streamRef.current.getTracks().forEach((t) => t.stop());
-            streamRef.current = null;
-        }
-    }, []);
-
     useEffect(() => {
         let mounted = true;
 
-        const start = async () => {
-            // 1) Check native BarcodeDetector support
-            if (!window.BarcodeDetector) {
-                if (mounted) {
-                    setError('Barcode scanning is not supported in this browser. Please use Chrome or Safari.');
-                    setIsStarting(false);
-                }
-                return;
+        const hints = new Map<DecodeHintType, unknown>();
+        // Focus on formats relevant for books — EAN-13 is the main ISBN barcode format
+        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+            BarcodeFormat.EAN_13,
+            BarcodeFormat.EAN_8,
+            BarcodeFormat.UPC_A,
+            BarcodeFormat.UPC_E,
+            BarcodeFormat.CODE_128,
+        ]);
+        // Try harder — slower but more reliable in poor lighting
+        hints.set(DecodeHintType.TRY_HARDER, true);
+
+        const reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 150 });
+        readerRef.current = reader;
+
+        const startScanning = async () => {
+            // Pick rear-facing camera
+            let deviceId: string | undefined;
+            try {
+                const devices = await BrowserMultiFormatReader.listVideoInputDevices();
+                const rear = devices.find(
+                    (d) =>
+                        d.label.toLowerCase().includes('back') ||
+                        d.label.toLowerCase().includes('rear') ||
+                        d.label.toLowerCase().includes('environment')
+                );
+                deviceId = rear?.deviceId ?? devices[devices.length - 1]?.deviceId;
+            } catch {
+                // If we can't list, let ZXing choose automatically
+                deviceId = undefined;
             }
 
-            // 2) Request camera
-            let stream: MediaStream;
             try {
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        facingMode: 'environment',
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 },
-                    },
-                });
+                await reader.decodeFromVideoDevice(
+                    deviceId,
+                    videoRef.current!,
+                    (result, err) => {
+                        if (!mounted || hasDetected.current) return;
+
+                        if (result) {
+                            hasDetected.current = true;
+                            const code = result.getText().replace(/[-\s]/g, '');
+                            reader.reset();
+                            onDetectedRef.current(code);
+                            return;
+                        }
+
+                        // NotFoundException is normal (no barcode in frame yet) — ignore it
+                        if (err && !(err instanceof NotFoundException)) {
+                            console.error('ZXing scan error:', err);
+                        }
+                    }
+                );
+
+                if (mounted) setIsStarting(false);
             } catch (err) {
                 if (!mounted) return;
                 const msg = err instanceof Error ? err.message : String(err);
                 if (msg.includes('NotAllowed') || msg.includes('Permission')) {
                     setError('Camera permission denied. Please allow camera access and try again.');
-                } else if (msg.includes('NotFound')) {
+                } else if (msg.includes('NotFound') || msg.includes('no camera')) {
                     setError('No camera found on this device.');
                 } else {
                     setError(`Camera error: ${msg}`);
                 }
                 setIsStarting(false);
-                return;
             }
-
-            if (!mounted) {
-                stream.getTracks().forEach((t) => t.stop());
-                return;
-            }
-
-            streamRef.current = stream;
-
-            // 3) Attach stream to video element
-            const video = videoRef.current;
-            if (!video) return;
-            video.srcObject = stream;
-            try {
-                await video.play();
-            } catch {
-                // autoplay might be blocked, ignore
-            }
-
-            if (mounted) setIsStarting(false);
-
-            // 4) Create BarcodeDetector for book barcodes
-            const detector = new window.BarcodeDetector({
-                formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'],
-            });
-
-            // 5) Scan loop using requestAnimationFrame
-            const scanFrame = async () => {
-                if (!mounted || hasDetected.current || !video || video.readyState < 2) {
-                    if (mounted && !hasDetected.current) {
-                        rafId.current = requestAnimationFrame(scanFrame);
-                    }
-                    return;
-                }
-
-                try {
-                    const results = await detector.detect(video);
-                    if (results.length > 0 && !hasDetected.current) {
-                        hasDetected.current = true;
-                        const code = results[0].rawValue.replace(/[-\s]/g, '');
-                        stopCamera();
-                        onDetectedRef.current(code);
-                        return;
-                    }
-                } catch {
-                    // Frame detection error — skip frame
-                }
-
-                if (mounted && !hasDetected.current) {
-                    rafId.current = requestAnimationFrame(scanFrame);
-                }
-            };
-
-            rafId.current = requestAnimationFrame(scanFrame);
         };
 
-        start();
+        startScanning();
 
         return () => {
             mounted = false;
-            stopCamera();
+            readerRef.current?.reset();
         };
-    }, [stopCamera]);
+    }, []);
 
     const handleClose = useCallback(() => {
-        stopCamera();
+        readerRef.current?.reset();
         onCloseRef.current();
-    }, [stopCamera]);
+    }, []);
 
     return (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
@@ -198,21 +149,19 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected, onCl
                             ref={videoRef}
                             playsInline
                             muted
-                            autoPlay
                             className="w-full rounded-lg"
-                            style={{ transform: 'scaleX(1)' }}
                         />
-                        {/* Scanning guide overlay */}
+                        {/* Scanning guide overlay — thin horizontal bar to guide user */}
                         {!isStarting && !error && (
                             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                <div className="w-[70%] h-16 border-2 border-white/70 rounded-lg shadow-[0_0_0_9999px_rgba(0,0,0,0.3)]" />
+                                <div className="w-[75%] h-14 border-2 border-white/80 rounded shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
                             </div>
                         )}
                     </div>
 
                     {!isStarting && !error && (
                         <p className="text-center text-xs text-slate-400 dark:text-slate-500 mt-3">
-                            Point camera at the barcode on the back of the book
+                            Align the barcode within the white frame
                         </p>
                     )}
                 </div>
