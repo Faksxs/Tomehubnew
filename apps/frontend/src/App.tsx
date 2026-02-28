@@ -93,6 +93,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   const recentlyDeletedIdsRef = useRef<Set<string>>(new Set());
   const realtimeInFlightRef = useRef(false);
   const pendingContentSyncRef = useRef<Map<string, PendingContentSyncEntry>>(new Map());
+  const mutationInFlightCountRef = useRef(0);
   const flowVisibleCategories = useMemo(() => {
     const normalizeTextKey = (value: string) => value.trim().toLocaleLowerCase('tr-TR');
     const categoryLookup = new Map<string, string>(
@@ -121,6 +122,15 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     if (!pending) return;
     window.clearTimeout(pending.timerId);
     pendingContentSyncRef.current.delete(itemId);
+  }, []);
+
+  const runWithMutationLock = useCallback(async <T,>(task: () => Promise<T>): Promise<T> => {
+    mutationInFlightCountRef.current += 1;
+    try {
+      return await task();
+    } finally {
+      mutationInFlightCountRef.current = Math.max(0, mutationInFlightCountRef.current - 1);
+    }
   }, []);
 
   const markPendingContentSync = useCallback((mode: PendingContentSyncMode, snapshot: LibraryItem) => {
@@ -326,6 +336,10 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
         scheduleNext();
         return;
       }
+      if (mutationInFlightCountRef.current > 0) {
+        scheduleNext();
+        return;
+      }
       realtimeInFlightRef.current = true;
 
       try {
@@ -496,6 +510,19 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     return folder?.name;
   }, [personalNoteFolders]);
 
+  const refreshLibraryFromServer = useCallback(async () => {
+    const [{ items, lastDoc: newLastDoc }, folders] = await Promise.all([
+      fetchItemsForUser(userId),
+      fetchPersonalNoteFoldersForUser(userId),
+    ]);
+    const deletedIds = recentlyDeletedIdsRef.current;
+    const safeItems = deletedIds.size > 0 ? items.filter((i) => !deletedIds.has(i.id)) : items;
+    setBooks(applyPendingContentSyncOverrides(safeItems));
+    setPersonalNoteFolders(folders);
+    setLastDoc(newLastDoc);
+    setHasMore(!!newLastDoc);
+  }, [applyPendingContentSyncOverrides, userId]);
+
   const handleAddBook = useCallback(
     async (itemData: Omit<LibraryItem, "id" | "highlights"> & { id?: string }) => {
       // 1) Yeni item'i oluştur (AI dokunmadan önceki ham hali)
@@ -512,10 +539,28 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
       setPersonalNoteDraftDefaults({});
 
       // 3) Ham halini Firestore'a kaydet (veri kaybolmasın)
+      let saveSucceeded = false;
+      let saveErrorMessage = "";
       try {
-        await saveItemForUser(userId, newItem);
+        await runWithMutationLock(async () => {
+          await saveItemForUser(userId, newItem);
+        });
+        saveSucceeded = true;
       } catch (err) {
-        console.error("Failed to save item to Firestore:", err);
+        saveErrorMessage = err instanceof Error ? err.message : String(err);
+        console.error("Failed to save item to Oracle:", err);
+      }
+
+      if (!saveSucceeded) {
+        setBooks((prev) => prev.filter((item) => item.id !== newItem.id));
+        window.alert(`Item kaydedilemedi: ${saveErrorMessage || "Bilinmeyen hata"}`);
+        return;
+      }
+
+      try {
+        await refreshLibraryFromServer();
+      } catch (err) {
+        console.warn("Post-create refresh failed:", err);
       }
 
       // 4) Sync to Oracle Backend (Layer 3 Search)
@@ -642,7 +687,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
         })();
       }
     },
-    [patchItemForUser, syncPersonalNoteToBackend, userId]
+    [patchItemForUser, refreshLibraryFromServer, runWithMutationLock, syncPersonalNoteToBackend, userId]
   );
 
   const handleOpenPersonalNoteForm = useCallback((defaults?: { category?: PersonalNoteCategory; folderId?: string; folderPath?: string }) => {
@@ -698,16 +743,34 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
       markPendingContentSync(isPendingPersonalNote ? "PERSONAL_NOTE" : "ITEM", updatedItem);
 
       let metadataSaveSucceeded = false;
+      let metadataErrorMessage = "";
       try {
-        await saveItemForUser(userId, updatedItem);
+        await runWithMutationLock(async () => {
+          await saveItemForUser(userId, updatedItem);
+        });
         metadataSaveSucceeded = true;
       } catch (err) {
+        metadataErrorMessage = err instanceof Error ? err.message : String(err);
         console.error("Failed to update item in Oracle:", err);
       }
 
       let personalNoteSyncSucceeded = true;
+      let noteSyncErrorMessage = "";
       if (isPendingPersonalNote) {
-        personalNoteSyncSucceeded = await syncPersonalNoteToBackend(updatedItem, false);
+        try {
+          personalNoteSyncSucceeded = await runWithMutationLock(async () => syncPersonalNoteToBackend(updatedItem!, false));
+        } catch (err) {
+          personalNoteSyncSucceeded = false;
+          noteSyncErrorMessage = err instanceof Error ? err.message : String(err);
+        }
+      }
+
+      if (metadataSaveSucceeded) {
+        try {
+          await refreshLibraryFromServer();
+        } catch (err) {
+          console.warn("Post-update refresh failed:", err);
+        }
       }
 
       if (!metadataSaveSucceeded || !personalNoteSyncSucceeded) {
@@ -715,14 +778,16 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
         if (previousItem) {
           setBooks((prev) => prev.map((b) => (b.id === previousItem!.id ? previousItem! : b)));
         }
-        window.alert("Changes could not be saved. Previous version was restored.");
+        const details = [metadataErrorMessage, noteSyncErrorMessage].filter(Boolean).join(" | ");
+        window.alert(`Changes could not be saved. Previous version was restored.${details ? `\n${details}` : ""}`);
       }
     }
-  }, [clearPendingContentSync, editingBookId, markPendingContentSync, syncPersonalNoteToBackend, userId]);
+  }, [clearPendingContentSync, editingBookId, markPendingContentSync, refreshLibraryFromServer, runWithMutationLock, syncPersonalNoteToBackend, userId]);
 
   const handleDeleteBook = useCallback(async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this item?")) return;
     const deletedItem = books.find((b) => b.id === id);
+    if (!deletedItem) return;
 
     clearPendingContentSync(id);
     recentlyDeletedIdsRef.current.add(id);
@@ -735,27 +800,42 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     }
 
     let firestoreDeleteSucceeded = false;
+    let deleteErrorMessage = "";
     try {
-      await deleteItemForUser(userId, id);
+      await runWithMutationLock(async () => {
+        await deleteItemForUser(userId, id);
+      });
       firestoreDeleteSucceeded = true;
     } catch (err) {
-      console.error("Failed to delete item from Firestore:", err);
+      deleteErrorMessage = err instanceof Error ? err.message : String(err);
+      console.error("Failed to delete item from Oracle:", err);
     }
 
-    if (!firestoreDeleteSucceeded || !deletedItem) {
+    if (!firestoreDeleteSucceeded) {
+      recentlyDeletedIdsRef.current.delete(id);
+      setBooks((prev) => [deletedItem, ...prev]);
+      window.alert(`Delete failed: ${deleteErrorMessage || "Unknown error"}`);
       return;
     }
 
     try {
-      await purgeResourceContent(userId, deletedItem.id);
+      await runWithMutationLock(async () => {
+        await purgeResourceContent(userId, deletedItem.id);
+      });
     } catch (err) {
       console.error("Failed to purge item from AI Backend:", err);
     }
-  }, [books, clearPendingContentSync, selectedBookId, userId]);
+    try {
+      await refreshLibraryFromServer();
+    } catch (err) {
+      console.warn("Post-delete refresh failed:", err);
+    }
+  }, [books, clearPendingContentSync, refreshLibraryFromServer, runWithMutationLock, selectedBookId, userId]);
 
   const handleBulkDelete = useCallback(async (ids: string[]) => {
     if (!window.confirm(`Are you sure you want to delete ${ids.length} items?`)) return;
     const deletedItems = books.filter((b) => ids.includes(b.id));
+    if (deletedItems.length === 0) return;
 
     ids.forEach((id) => {
       clearPendingContentSync(id);
@@ -770,19 +850,26 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     }
 
     let firestoreDeleteSucceeded = false;
+    let deleteErrorMessage = "";
     try {
-      await deleteMultipleItemsForUser(userId, ids);
+      await runWithMutationLock(async () => {
+        await deleteMultipleItemsForUser(userId, ids);
+      });
       firestoreDeleteSucceeded = true;
     } catch (err) {
-      console.error("Failed to delete items from Firestore:", err);
+      deleteErrorMessage = err instanceof Error ? err.message : String(err);
+      console.error("Failed to delete items from Oracle:", err);
     }
 
-    if (!firestoreDeleteSucceeded || deletedItems.length === 0) {
+    if (!firestoreDeleteSucceeded) {
+      ids.forEach((id) => recentlyDeletedIdsRef.current.delete(id));
+      setBooks((prev) => [...deletedItems, ...prev]);
+      window.alert(`Bulk delete failed: ${deleteErrorMessage || "Unknown error"}`);
       return;
     }
 
     const purgeResults = await Promise.allSettled(
-      deletedItems.map((item) => purgeResourceContent(userId, item.id))
+      deletedItems.map((item) => runWithMutationLock(async () => purgeResourceContent(userId, item.id)))
     );
 
     purgeResults.forEach((result, index) => {
@@ -790,7 +877,12 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
         console.error(`Failed to purge item ${deletedItems[index].id} from AI Backend:`, result.reason);
       }
     });
-  }, [books, clearPendingContentSync, selectedBookId, userId]);
+    try {
+      await refreshLibraryFromServer();
+    } catch (err) {
+      console.warn("Post-bulk-delete refresh failed:", err);
+    }
+  }, [books, clearPendingContentSync, refreshLibraryFromServer, runWithMutationLock, selectedBookId, userId]);
 
   const handleUpdateHighlights = useCallback(async (highlights: Highlight[]) => {
     if (!selectedBookId) return;
@@ -812,17 +904,21 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     if (updatedItem) {
       markPendingContentSync("HIGHLIGHTS", updatedItem);
       let syncSucceeded = false;
+      let syncErrorMessage = "";
       try {
         // For highlights, Oracle content table is authoritative. Sync directly.
-        await syncHighlights(
-          userId,
-          updatedItem.id,
-          updatedItem.title,
-          updatedItem.author,
-          updatedItem.highlights || []
-        );
+        await runWithMutationLock(async () => {
+          await syncHighlights(
+            userId,
+            updatedItem!.id,
+            updatedItem!.title,
+            updatedItem!.author,
+            updatedItem!.highlights || []
+          );
+        });
         syncSucceeded = true;
       } catch (err) {
+        syncErrorMessage = err instanceof Error ? err.message : String(err);
         console.error("Failed to sync highlights to AI Backend:", err);
       }
 
@@ -831,11 +927,17 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
         setBooks((prev) =>
           prev.map((b) => (b.id === updatedItem!.id ? { ...b, highlights: previousHighlights } : b))
         );
-        window.alert("Highlight changes could not be saved. Previous version was restored.");
+        window.alert(`Highlight changes could not be saved. Previous version was restored.${syncErrorMessage ? `\n${syncErrorMessage}` : ""}`);
+      } else {
+        try {
+          await refreshLibraryFromServer();
+        } catch (err) {
+          console.warn("Post-highlight refresh failed:", err);
+        }
       }
     }
   }
-    , [clearPendingContentSync, markPendingContentSync, selectedBookId, userId]);
+    , [clearPendingContentSync, markPendingContentSync, refreshLibraryFromServer, runWithMutationLock, selectedBookId, userId]);
 
   const handleToggleFavorite = useCallback(async (id: string) => {
     // 1. Find and update the item
@@ -855,7 +957,10 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
 
     // 3. Update Firestore
     try {
-      await saveItemForUser(userId, updatedBook);
+      await runWithMutationLock(async () => {
+        await patchItemForUser(userId, updatedBook.id, { isFavorite: updatedBook.isFavorite });
+      });
+      await refreshLibraryFromServer();
     } catch (err) {
       console.error("Failed to update favorite status in Oracle:", err);
       clearPendingContentSync(updatedBook.id);
@@ -867,9 +972,10 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
         }
         return newBooks;
       });
-      window.alert("Favorite update failed. Previous value was restored.");
+      const msg = err instanceof Error ? err.message : String(err);
+      window.alert(`Favorite update failed. Previous value was restored.\n${msg}`);
     }
-  }, [books, clearPendingContentSync, markPendingContentSync, userId]);
+  }, [books, clearPendingContentSync, markPendingContentSync, patchItemForUser, refreshLibraryFromServer, runWithMutationLock, userId]);
 
   const handleToggleHighlightFavorite = useCallback(async (bookId: string, highlightId: string) => {
     // 1. Find and update the item
@@ -893,13 +999,32 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
       return newBooks;
     });
 
-    // 3. Update Firestore
+    // 3. Update backend
     try {
-      await saveItemForUser(userId, updatedBook);
+      await runWithMutationLock(async () => {
+        await syncHighlights(
+          userId,
+          updatedBook.id,
+          updatedBook.title,
+          updatedBook.author,
+          updatedBook.highlights || []
+        );
+      });
+      await refreshLibraryFromServer();
     } catch (err) {
-      console.error("Failed to update highlight favorite status in Firestore:", err);
+      console.error("Failed to update highlight favorite status in backend:", err);
+      setBooks(prev => {
+        const newBooks = [...prev];
+        const idx = newBooks.findIndex((b) => b.id === bookId);
+        if (idx !== -1) {
+          newBooks[idx] = book;
+        }
+        return newBooks;
+      });
+      const msg = err instanceof Error ? err.message : String(err);
+      window.alert(`Highlight favorite update failed. Previous value was restored.\n${msg}`);
     }
-  }, [books, userId]);
+  }, [books, refreshLibraryFromServer, runWithMutationLock, userId]);
 
   const handleUpdateBookForEnrichment = useCallback((updatedBook: LibraryItem) => {
     setBooks(prev => prev.map(b => b.id === updatedBook.id ? updatedBook : b));

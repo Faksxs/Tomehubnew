@@ -786,3 +786,31 @@ export async function pollRealtimeEvents(
     }
     return response.json();
 }
+
+/**
+ * Scan an ISBN barcode from a photo using server-side pyzbar decoding.
+ * @param file - Image file containing the barcode
+ * @returns The decoded ISBN string
+ * @throws Error('NO_BARCODE_FOUND') if no barcode detected, or other error message
+ */
+export async function scanIsbnFromPhoto(file: File): Promise<string> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/scan-isbn`, {
+        method: 'POST',
+        body: formData,
+    });
+
+    if (response.status === 404) {
+        throw new Error('NO_BARCODE_FOUND');
+    }
+
+    if (!response.ok) {
+        const error: ApiError = await response.json().catch(() => ({ error: 'Scan failed' }));
+        throw new Error(error.details || error.error || 'Barcode scan failed');
+    }
+
+    const data = await response.json();
+    return data.isbn as string;
+}

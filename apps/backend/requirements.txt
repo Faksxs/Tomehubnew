@@ -28,6 +28,10 @@ turkishnlp==0.0.61
 PyPDF2>=3.0.0
 opendataloader-pdf==1.11.2
 
+# Barcode Scanning
+pyzbar>=0.1.9
+Pillow>=10.0.0
+
 # EPUB Processing
 ebooklib>=0.18
 beautifulsoup4>=4.12.0

@@ -1,6 +1,7 @@
 import logging
 import traceback
-from fastapi import APIRouter, Request, Depends, HTTPException, Body
+from io import BytesIO
+from fastapi import APIRouter, Request, Depends, HTTPException, Body, UploadFile, File
 from fastapi.responses import StreamingResponse
 
 from models.request_models import (
@@ -130,5 +131,52 @@ async def search_resources_endpoint(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.post("/api/scan-isbn")
+async def scan_isbn_endpoint(
+    file: UploadFile = File(...),
+    user_id: str = Depends(verify_firebase_token)
+):
+    """
+    Decode a barcode (ISBN) from an uploaded image using pyzbar.
+    Accepts image/jpeg, image/png, image/webp, image/heic etc.
+    Returns { "isbn": "9781234567890" } or 404 if not found.
+    """
+
+    try:
+        from PIL import Image as PILImage
+        from pyzbar.pyzbar import decode as pyzbar_decode, ZBarSymbol
+    except ImportError:
+        raise HTTPException(status_code=503, detail="Barcode scanning library not available")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    try:
+        img = PILImage.open(BytesIO(content))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Cannot open image")
+
+    # Try original image first
+    symbols = [ZBarSymbol.EAN13, ZBarSymbol.EAN8, ZBarSymbol.UPCA, ZBarSymbol.UPCE, ZBarSymbol.CODE128]
+    barcodes = pyzbar_decode(img, symbols=symbols)
+
+    # If no result, try grayscale + contrast enhanced version
+    if not barcodes:
+        try:
+            from PIL import ImageEnhance, ImageFilter
+            gray = img.convert("L")
+            enhanced = ImageEnhance.Contrast(gray).enhance(2.0)
+            barcodes = pyzbar_decode(enhanced, symbols=symbols)
+        except Exception:
+            pass
+
+    if not barcodes:
+        raise HTTPException(status_code=404, detail="No barcode found in image")
+
+    raw = barcodes[0].data.decode("utf-8", errors="ignore").strip()
+    logger.info(f"ISBN barcode scanned successfully: {raw[:6]}****")
+    return {"isbn": raw}
 
 

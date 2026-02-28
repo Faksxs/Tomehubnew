@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BrowserMultiFormatReader, DecodeHintType, BarcodeFormat, NotFoundException } from '@zxing/library';
 import { X, Camera, Loader2 } from 'lucide-react';
+import { scanIsbnFromPhoto } from '../services/backendApiService';
 
 interface BarcodeScannerProps {
     onDetected: (code: string) => void;
@@ -361,15 +362,27 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected, onCl
         setError(null);
         setIsDecodingPhoto(true);
         try {
-            const decodedRaw = await decodeImageFile(file);
-            if (!decodedRaw) {
-                setError('Could not read barcode from photo. Try another angle, better light, or use manual ISBN.');
+            // Primary: backend pyzbar (reliable, server-side)
+            const isbn = await scanIsbnFromPhoto(file);
+            emitDetectedCode(isbn);
+        } catch (backendErr) {
+            const msg = backendErr instanceof Error ? backendErr.message : '';
+            if (msg === 'NO_BARCODE_FOUND') {
+                setError('Could not read barcode from photo. Try better lighting or a flatter angle.');
                 return;
             }
-            emitDetectedCode(decodedRaw);
-        } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            setError(`Photo decode failed: ${msg}`);
+            // Fallback: client-side ZXing if backend unavailable
+            try {
+                const decodedRaw = await decodeImageFile(file);
+                if (!decodedRaw) {
+                    setError('Could not read barcode from photo. Try another angle, better light, or use manual ISBN.');
+                    return;
+                }
+                emitDetectedCode(decodedRaw);
+            } catch (err) {
+                const fallbackMsg = err instanceof Error ? err.message : String(err);
+                setError(`Photo decode failed: ${fallbackMsg}`);
+            }
         } finally {
             setIsDecodingPhoto(false);
             event.target.value = '';
