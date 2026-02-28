@@ -154,6 +154,18 @@ def get_verified_uid(request: Request, uid_from_jwt: Optional[str]) -> str:
 
 def _validate_cors_origins(origins: list[str]) -> list[str]:
     normalized = [o.strip() for o in origins if str(o).strip()]
+    if settings.ENVIRONMENT == "development":
+        dev_defaults = [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:5174",
+            "http://127.0.0.1:5174",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ]
+        for origin in dev_defaults:
+            if origin not in normalized:
+                normalized.append(origin)
     if not normalized:
         raise ValueError("ALLOWED_ORIGINS cannot be empty")
     if "*" in normalized:
