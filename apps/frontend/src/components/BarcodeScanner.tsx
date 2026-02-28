@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { BrowserMultiFormatReader, DecodeHintType, BarcodeFormat, NotFoundException } from '@zxing/library';
 import { X, Camera, Loader2 } from 'lucide-react';
 
 interface BarcodeScannerProps {
@@ -7,7 +7,15 @@ interface BarcodeScannerProps {
     onClose: () => void;
 }
 
-const normalizeDetectedCode = (raw: string) => {
+const SCAN_FORMATS = [
+    BarcodeFormat.EAN_13,
+    BarcodeFormat.EAN_8,
+    BarcodeFormat.UPC_A,
+    BarcodeFormat.UPC_E,
+    BarcodeFormat.CODE_128,
+];
+
+const normalizeDetectedCode = (raw: string): string => {
     const compact = raw.replace(/[\s-]/g, '').trim();
     const isbnCharsOnly = compact.replace(/[^0-9Xx]/g, '').toUpperCase();
 
@@ -24,96 +32,114 @@ const normalizeDetectedCode = (raw: string) => {
     return compact;
 };
 
-const scannerFormats = [
-    Html5QrcodeSupportedFormats.EAN_13,
-    Html5QrcodeSupportedFormats.EAN_8,
-    Html5QrcodeSupportedFormats.UPC_A,
-    Html5QrcodeSupportedFormats.UPC_E,
-    Html5QrcodeSupportedFormats.CODE_128,
-];
-
 export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected, onClose }) => {
-    const scannerRef = useRef<Html5Qrcode | null>(null);
+    const videoRef = useRef<HTMLVideoElement | null>(null);
+    const streamRef = useRef<MediaStream | null>(null);
+    const readerRef = useRef<BrowserMultiFormatReader | null>(null);
+    const hasDetected = useRef(false);
+
     const [error, setError] = useState<string | null>(null);
     const [isStarting, setIsStarting] = useState(true);
     const [manualCode, setManualCode] = useState('');
-    const hasDetected = useRef(false);
 
     const onDetectedRef = useRef(onDetected);
     onDetectedRef.current = onDetected;
     const onCloseRef = useRef(onClose);
     onCloseRef.current = onClose;
 
-    const scannerElementId = useMemo(() => `isbn-scanner-${Math.random().toString(36).slice(2, 10)}`, []);
-
-    const stopScanner = useCallback(async () => {
-        const scanner = scannerRef.current;
-        scannerRef.current = null;
-        if (!scanner) return;
-
-        try {
-            await scanner.stop();
-        } catch {
-            // Already stopped or not started.
+    const cleanup = useCallback(() => {
+        if (readerRef.current) {
+            try {
+                readerRef.current.reset();
+            } catch {
+                // Already reset
+            }
+            readerRef.current = null;
         }
 
-        try {
-            scanner.clear();
-        } catch {
-            // No-op if DOM is already cleaned.
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+        }
+
+        if (videoRef.current) {
+            videoRef.current.srcObject = null;
         }
     }, []);
 
     useEffect(() => {
         let mounted = true;
 
-        const startScanner = async () => {
+        const startScanning = async () => {
             try {
-                const scanner = new Html5Qrcode(scannerElementId, {
-                    formatsToSupport: scannerFormats,
-                    useBarCodeDetectorIfSupported: true,
-                    verbose: false,
-                });
-                scannerRef.current = scanner;
-
-                const onSuccess = async (decodedText: string) => {
-                    if (!mounted || hasDetected.current) return;
-                    hasDetected.current = true;
-                    const normalizedCode = normalizeDetectedCode(decodedText);
-                    await stopScanner();
-                    if (mounted) onDetectedRef.current(normalizedCode);
-                };
-
-                const onError = () => {
-                    // Per-frame decode errors are normal while scanning.
-                };
-
-                const scanConfig = {
-                    fps: 12,
-                    qrbox: { width: 280, height: 90 },
-                    aspectRatio: 16 / 9,
-                    disableFlip: false,
-                    videoConstraints: {
+                // Step 1: Get camera stream directly — most reliable on iOS Safari
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
                         facingMode: { ideal: 'environment' },
-                        width: { ideal: 1920 },
-                        height: { ideal: 1080 },
+                        width: { ideal: 1920, min: 640 },
+                        height: { ideal: 1080, min: 480 },
                     },
-                };
+                    audio: false,
+                });
 
-                try {
-                    await scanner.start({ facingMode: { ideal: 'environment' } }, scanConfig, onSuccess, onError);
-                } catch {
-                    await scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 260, height: 80 } }, onSuccess, onError);
+                if (!mounted) {
+                    stream.getTracks().forEach(t => t.stop());
+                    return;
                 }
 
-                if (mounted) setIsStarting(false);
+                streamRef.current = stream;
+
+                const video = videoRef.current;
+                if (!video) return;
+
+                video.srcObject = stream;
+                video.setAttribute('playsinline', 'true');
+                video.setAttribute('autoplay', 'true');
+                video.muted = true;
+
+                await video.play();
+
+                if (!mounted) return;
+                setIsStarting(false);
+
+                // Step 2: Create ZXing reader with barcode-specific hints
+                const hints = new Map<DecodeHintType, unknown>();
+                hints.set(DecodeHintType.POSSIBLE_FORMATS, SCAN_FORMATS);
+                hints.set(DecodeHintType.TRY_HARDER, true);
+
+                const reader = new BrowserMultiFormatReader(hints, 500);
+                readerRef.current = reader;
+
+                // Step 3: Use continuous decode — ZXing will poll the video element
+                // and call our callback on each result (or error)
+                reader.decodeFromVideoElementContinuously(video, (result, err) => {
+                    if (!mounted || hasDetected.current) return;
+
+                    if (result) {
+                        const raw = result.getText();
+                        const normalized = normalizeDetectedCode(raw);
+
+                        if (normalized) {
+                            hasDetected.current = true;
+                            cleanup();
+                            onDetectedRef.current(normalized);
+                        }
+                        return;
+                    }
+
+                    // NotFoundException is expected on frames without a barcode — ignore it
+                    if (err && !(err instanceof NotFoundException)) {
+                        // ChecksumException, FormatException etc. — just retry
+                    }
+                });
+
             } catch (err) {
                 if (!mounted) return;
                 const msg = err instanceof Error ? err.message : String(err);
 
                 if (msg.includes('NotAllowed') || msg.includes('Permission') || msg.includes('denied')) {
                     setError('Camera permission denied. Please allow camera access and try again.');
-                } else if (msg.includes('NotFound') || msg.includes('camera') || msg.includes('Overconstrained')) {
+                } else if (msg.includes('NotFound') || msg.includes('Overconstrained')) {
                     setError('No suitable camera found on this device.');
                 } else {
                     setError(`Camera error: ${msg}`);
@@ -123,30 +149,25 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected, onCl
             }
         };
 
-        startScanner();
+        startScanning();
 
         return () => {
             mounted = false;
-            void stopScanner();
+            cleanup();
         };
-    }, [scannerElementId, stopScanner]);
+    }, [cleanup]);
 
     const handleClose = useCallback(() => {
-        void (async () => {
-            await stopScanner();
-            onCloseRef.current();
-        })();
-    }, [stopScanner]);
+        cleanup();
+        onCloseRef.current();
+    }, [cleanup]);
 
     const handleManualSubmit = useCallback(() => {
-        const normalizedCode = normalizeDetectedCode(manualCode);
-        if (!normalizedCode) return;
-
-        void (async () => {
-            await stopScanner();
-            onDetectedRef.current(normalizedCode);
-        })();
-    }, [manualCode, stopScanner]);
+        const normalized = normalizeDetectedCode(manualCode);
+        if (!normalized) return;
+        cleanup();
+        onDetectedRef.current(normalized);
+    }, [manualCode, cleanup]);
 
     return (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
@@ -179,7 +200,29 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected, onCl
                     ) : (
                         <>
                             <div className="relative rounded-lg overflow-hidden bg-black min-h-[320px]">
-                                <div id={scannerElementId} className="w-full h-[320px]" />
+                                <video
+                                    ref={videoRef}
+                                    className="w-full h-[320px] object-cover"
+                                    playsInline
+                                    autoPlay
+                                    muted
+                                />
+
+                                {/* Scan frame overlay */}
+                                <div className="absolute inset-0 pointer-events-none">
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                        <div className="w-[280px] h-[90px] relative">
+                                            {/* Corner markers */}
+                                            <div className="absolute top-0 left-0 w-8 h-8 border-l-3 border-t-3 border-white" />
+                                            <div className="absolute top-0 right-0 w-8 h-8 border-r-3 border-t-3 border-white" />
+                                            <div className="absolute bottom-0 left-0 w-8 h-8 border-l-3 border-b-3 border-white" />
+                                            <div className="absolute bottom-0 right-0 w-8 h-8 border-r-3 border-b-3 border-white" />
+                                            {/* Scanning line animation */}
+                                            <div className="absolute top-1/2 left-2 right-2 h-0.5 bg-[#CC561E]/70 animate-pulse" />
+                                        </div>
+                                    </div>
+                                </div>
+
                                 {isStarting && (
                                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/50">
                                         <Loader2 className="animate-spin text-[#CC561E]" size={32} />

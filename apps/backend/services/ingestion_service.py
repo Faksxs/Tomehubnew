@@ -446,7 +446,127 @@ def _chunked(seq, size: int):
         yield chunk
 
 
-def purge_item_content(firebase_uid: str, book_id: str) -> dict:
+def _delete_content_children_by_ids(cursor, content_ids: list[int]) -> None:
+    if not content_ids:
+        return
+    child_specs = [
+        ("TOMEHUB_CONTENT_TAGS", ("CONTENT_ID", "CHUNK_ID")),
+        ("TOMEHUB_FLOW_SEEN", ("CHUNK_ID", "CONTENT_ID")),
+        ("TOMEHUB_CONCEPT_CHUNKS", ("CONTENT_ID", "CHUNK_ID")),
+    ]
+    for child_table, col_candidates in child_specs:
+        try:
+            child_cols = _table_columns(cursor, child_table)
+            if not child_cols:
+                continue
+            child_col = next((c for c in col_candidates if c in child_cols), None)
+            if not child_col:
+                continue
+            for batch in _chunked(content_ids, 500):
+                local_binds = {}
+                phs = []
+                for i, cid in enumerate(batch):
+                    k = f"p_c{i}"
+                    phs.append(f":{k}")
+                    local_binds[k] = cid
+                cursor.execute(
+                    f"DELETE FROM {child_table} WHERE {child_col} IN ({', '.join(phs)})",
+                    local_binds,
+                )
+        except Exception as child_err:
+            if _is_missing_table_error(child_err) or _is_invalid_identifier_error(child_err):
+                logger.debug(f"[DEBUG] child cleanup skipped for {child_table}: {child_err}")
+                continue
+            raise
+
+
+def _delete_content_rows_for_item(
+    cursor,
+    *,
+    firebase_uid: str,
+    book_id: str,
+    content_types: tuple[str, ...],
+) -> int:
+    if not content_types:
+        return 0
+
+    type_binds = {}
+    type_placeholders = []
+    for idx, raw_type in enumerate(content_types):
+        key = f"p_t{idx}"
+        type_binds[key] = str(raw_type or "").upper()
+        type_placeholders.append(f":{key}")
+
+    binds = {
+        "p_uid": firebase_uid,
+        "p_book": book_id,
+        **type_binds,
+    }
+
+    cursor.execute(
+        f"""
+        SELECT ID
+        FROM TOMEHUB_CONTENT_V2
+        WHERE firebase_uid = :p_uid
+          AND item_id = :p_book
+          AND content_type IN ({', '.join(type_placeholders)})
+        """,
+        binds,
+    )
+    content_ids: list[int] = []
+    for row in cursor.fetchall():
+        try:
+            if row and row[0] is not None:
+                content_ids.append(int(row[0]))
+        except Exception:
+            continue
+
+    _delete_content_children_by_ids(cursor, content_ids)
+
+    cursor.execute(
+        f"""
+        DELETE FROM TOMEHUB_CONTENT_V2
+        WHERE firebase_uid = :p_uid
+          AND item_id = :p_book
+          AND content_type IN ({', '.join(type_placeholders)})
+        """,
+        binds,
+    )
+    return cursor.rowcount or 0
+
+
+def _oracle_error_code(error: Exception) -> Optional[int]:
+    if not isinstance(error, oracledb.DatabaseError):
+        return None
+    try:
+        code = getattr(error.args[0], "code", None)
+        return int(code) if code is not None else None
+    except Exception:
+        return None
+
+
+def _ensure_serial_write_session(cursor) -> None:
+    """
+    Guard pooled write sessions against lingering parallel settings.
+    Prevents ORA-12839 on multi-step item purge/sync transactions.
+    """
+    statements = (
+        "ALTER SESSION DISABLE PARALLEL QUERY",
+        "ALTER SESSION DISABLE PARALLEL DML",
+        "ALTER SESSION SET PARALLEL_DEGREE_POLICY = MANUAL",
+    )
+    for stmt in statements:
+        try:
+            cursor.execute(stmt)
+        except Exception as e:
+            logger.debug(f"[DEBUG] serial session guard skipped '{stmt}': {e}")
+
+
+def purge_item_content(
+    firebase_uid: str,
+    book_id: str,
+    _retry_on_parallel: bool = True,
+) -> dict:
     """
     Hard-delete all DB rows linked to a specific user item id.
     """
@@ -471,6 +591,8 @@ def purge_item_content(firebase_uid: str, book_id: str) -> dict:
     try:
         with DatabaseManager.get_write_connection() as connection:
             with connection.cursor() as cursor:
+                _ensure_serial_write_session(cursor)
+
                 # Schema-aware content table resolution (V2 vs legacy, book_id vs item_id drift).
                 content_table = None
                 content_cols = set()
@@ -512,36 +634,7 @@ def purge_item_content(firebase_uid: str, book_id: str) -> dict:
                             raise
 
                     # Child-first delete for content-linked tables (best-effort, schema-aware).
-                    if content_ids:
-                        child_specs = [
-                            ("TOMEHUB_CONTENT_TAGS", ("CONTENT_ID", "CHUNK_ID")),
-                            ("TOMEHUB_FLOW_SEEN", ("CHUNK_ID", "CONTENT_ID")),
-                            ("TOMEHUB_CONCEPT_CHUNKS", ("CONTENT_ID", "CHUNK_ID")),
-                        ]
-                        for child_table, col_candidates in child_specs:
-                            try:
-                                child_cols = _table_columns(cursor, child_table)
-                                if not child_cols:
-                                    continue
-                                child_col = next((c for c in col_candidates if c in child_cols), None)
-                                if not child_col:
-                                    continue
-                                for batch in _chunked(content_ids, 500):
-                                    local_binds = {}
-                                    phs = []
-                                    for i, cid in enumerate(batch):
-                                        k = f"p_c{i}"
-                                        phs.append(f":{k}")
-                                        local_binds[k] = cid
-                                    cursor.execute(
-                                        f"DELETE FROM {child_table} WHERE {child_col} IN ({', '.join(phs)})",
-                                        local_binds,
-                                    )
-                            except Exception as child_err:
-                                if _is_missing_table_error(child_err) or _is_invalid_identifier_error(child_err):
-                                    logger.debug(f"[DEBUG] purge_item_content skipped child cleanup for {child_table}: {child_err}")
-                                    continue
-                                raise
+                    _delete_content_children_by_ids(cursor, content_ids)
 
                     cursor.execute(
                         f"""
@@ -601,6 +694,13 @@ def purge_item_content(firebase_uid: str, book_id: str) -> dict:
         )
         return {"success": True, "deleted": deleted, "aux_deleted": aux_deleted}
     except Exception as e:
+        if _retry_on_parallel and _oracle_error_code(e) == 12839:
+            logger.warning("[WARN] purge_item_content ORA-12839, retrying once with fresh serial session")
+            return purge_item_content(
+                firebase_uid=firebase_uid,
+                book_id=book_id,
+                _retry_on_parallel=False,
+            )
         logger.error(f"[ERROR] purge_item_content failed: {e}")
         return {"success": False, "deleted": deleted, "aux_deleted": aux_deleted, "error": str(e)}
 
@@ -1139,7 +1239,8 @@ def sync_highlights_for_item(
     book_id: str,
     title: str,
     author: str,
-    highlights: list
+    highlights: list,
+    _retry_on_parallel: bool = True,
 ) -> dict:
     """
     Replace all highlights/insights for a given book_id with the provided list.
@@ -1153,6 +1254,8 @@ def sync_highlights_for_item(
     try:
         with DatabaseManager.get_write_connection() as connection:
             with connection.cursor() as cursor:
+                _ensure_serial_write_session(cursor)
+
                 # FK safety: ensure parent row exists even if upstream item-save failed.
                 _mirror_book_registry_rows(
                     cursor,
@@ -1164,16 +1267,12 @@ def sync_highlights_for_item(
                 )
 
                 # Delete existing highlight/insight rows for this book/user
-                cursor.execute(
-                    """
-                    DELETE FROM TOMEHUB_CONTENT_V2
-                    WHERE firebase_uid = :p_uid
-                      AND item_id = :p_book
-                      AND content_type IN ('HIGHLIGHT', 'INSIGHT')
-                    """,
-                    {"p_uid": firebase_uid, "p_book": book_id},
+                deleted = _delete_content_rows_for_item(
+                    cursor,
+                    firebase_uid=firebase_uid,
+                    book_id=book_id,
+                    content_types=("HIGHLIGHT", "INSIGHT"),
                 )
-                deleted = cursor.rowcount or 0
 
                 if not highlights:
                     connection.commit()
@@ -1252,6 +1351,16 @@ def sync_highlights_for_item(
                 )
                 return {"success": True, "deleted": deleted, "inserted": inserted}
     except Exception as e:
+        if _retry_on_parallel and _oracle_error_code(e) == 12839:
+            logger.warning("[WARN] sync_highlights_for_item ORA-12839, retrying once with fresh serial session")
+            return sync_highlights_for_item(
+                firebase_uid=firebase_uid,
+                book_id=book_id,
+                title=title,
+                author=author,
+                highlights=highlights,
+                _retry_on_parallel=False,
+            )
         logger.error(f"[ERROR] sync_highlights_for_item failed: {e}")
         return {"success": False, "deleted": deleted, "inserted": inserted, "error": str(e)}
 
@@ -1265,6 +1374,7 @@ def sync_personal_note_for_item(
     tags: Optional[list],
     category: str = "PRIVATE",
     delete_only: bool = False,
+    _retry_on_parallel: bool = True,
 ) -> dict:
     """
     Keep Personal Note representation in Oracle AI store in sync with Firestore.
@@ -1281,6 +1391,8 @@ def sync_personal_note_for_item(
     try:
         with DatabaseManager.get_write_connection() as connection:
             with connection.cursor() as cursor:
+                _ensure_serial_write_session(cursor)
+
                 # FK safety: ensure parent row exists even if upstream item-save failed.
                 _mirror_book_registry_rows(
                     cursor,
@@ -1291,16 +1403,12 @@ def sync_personal_note_for_item(
                     item_type="PERSONAL_NOTE",
                 )
 
-                cursor.execute(
-                    """
-                    DELETE FROM TOMEHUB_CONTENT_V2
-                    WHERE firebase_uid = :p_uid
-                      AND item_id = :p_book
-                      AND content_type IN ('PERSONAL_NOTE', 'INSIGHT')
-                    """,
-                    {"p_uid": firebase_uid, "p_book": book_id},
+                deleted = _delete_content_rows_for_item(
+                    cursor,
+                    firebase_uid=firebase_uid,
+                    book_id=book_id,
+                    content_types=("PERSONAL_NOTE", "INSIGHT"),
                 )
-                deleted = cursor.rowcount or 0
 
                 normalized_category = str(category or "PRIVATE").strip().upper()
                 if delete_only:
@@ -1383,6 +1491,19 @@ def sync_personal_note_for_item(
                 )
                 return {"success": True, "deleted": deleted, "inserted": inserted}
     except Exception as e:
+        if _retry_on_parallel and _oracle_error_code(e) == 12839:
+            logger.warning("[WARN] sync_personal_note_for_item ORA-12839, retrying once with fresh serial session")
+            return sync_personal_note_for_item(
+                firebase_uid=firebase_uid,
+                book_id=book_id,
+                title=title,
+                author=author,
+                content=content,
+                tags=tags,
+                category=category,
+                delete_only=delete_only,
+                _retry_on_parallel=False,
+            )
         logger.error(f"[ERROR] sync_personal_note_for_item failed: {e}")
         return {"success": False, "deleted": deleted, "inserted": inserted, "error": str(e)}
 

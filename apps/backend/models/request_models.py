@@ -268,7 +268,7 @@ class HighlightSyncRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=256)
     author: str = Field(..., min_length=1, max_length=256)
     resource_type: Optional[str] = Field(default=None, max_length=64)
-    highlights: List[HighlightItem] = Field(default_factory=list, min_length=1, max_length=1000)
+    highlights: List[HighlightItem] = Field(default_factory=list, max_length=1000)
 
 
 class PersonalNoteSyncRequest(BaseModel):
