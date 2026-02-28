@@ -1260,9 +1260,9 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                                 value={quickNoteTitle}
                                                 onChange={(e) => setQuickNoteTitle(e.target.value)}
                                                 placeholder="Note title (optional)"
-                                                className="w-full md:max-w-none max-w-[90%] mx-auto mb-3 border border-[#E6EAF2] dark:border-slate-700 rounded-xl px-4 py-3 text-sm md:text-base bg-white dark:bg-slate-950 block"
+                                                className="w-full mb-3 border border-[#E6EAF2] dark:border-slate-700 rounded-xl px-4 py-3 text-sm md:text-base bg-white dark:bg-slate-950 block"
                                             />
-                                            <div className="max-w-[90%] md:max-w-none mx-auto">
+                                            <div className="w-full">
                                                 <PersonalNoteEditor
                                                     key="quick-capture-editor"
                                                     value={quickNoteBody}
@@ -1272,7 +1272,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                                     minHeight={242}
                                                 />
                                             </div>
-                                            <div className="mt-3 flex justify-end max-w-[90%] md:max-w-none mx-auto">
+                                            <div className="mt-3 flex justify-end w-full">
                                                 <button
                                                     onClick={handleQuickCapture}
                                                     disabled={!hasMeaningfulPersonalNoteContent(quickNoteBody)}
@@ -1605,7 +1605,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
 
             {/* Compact Filters for Mobile (Hide in Stats view) */}
             {!isStats && (
-                <div className="bg-white dark:bg-slate-900 p-1.5 md:p-4 rounded-xl shadow-sm border border-[#E6EAF2] dark:border-slate-800 mb-2 md:mb-8 flex flex-col md:flex-row gap-2 md:gap-4 max-w-[90%] md:max-w-none mx-auto w-full">
+                <div className="bg-white dark:bg-slate-900 p-1.5 md:p-4 rounded-xl shadow-sm border border-[#E6EAF2] dark:border-slate-800 mb-2 md:mb-8 flex flex-col md:flex-row gap-2 md:gap-4 w-full">
                     <div className="flex-1 relative">
                         <Search className="absolute left-2 md:left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 w-3.5 h-3.5 md:w-5 md:h-5" />
                         <input
