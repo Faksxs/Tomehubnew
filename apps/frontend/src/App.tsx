@@ -56,6 +56,13 @@ interface LayoutProps {
 }
 
 const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
+  type PendingContentSyncMode = "HIGHLIGHTS" | "PERSONAL_NOTE";
+  type PendingContentSyncEntry = {
+    mode: PendingContentSyncMode;
+    snapshot: LibraryItem;
+    timerId: number;
+  };
+
   const [books, setBooks] = useState<LibraryItem[]>([]);
   const booksRef = useRef<LibraryItem[]>([]);
   const [view, setView] = useState<"list" | "detail">("list");
@@ -85,6 +92,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   const realtimeCursorRef = useRef<number>(0);
   const recentlyDeletedIdsRef = useRef<Set<string>>(new Set());
   const realtimeInFlightRef = useRef(false);
+  const pendingContentSyncRef = useRef<Map<string, PendingContentSyncEntry>>(new Map());
   const flowVisibleCategories = useMemo(() => {
     const normalizeTextKey = (value: string) => value.trim().toLocaleLowerCase('tr-TR');
     const categoryLookup = new Map<string, string>(
@@ -107,6 +115,57 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   useEffect(() => {
     booksRef.current = books;
   }, [books]);
+
+  const clearPendingContentSync = useCallback((itemId: string) => {
+    const pending = pendingContentSyncRef.current.get(itemId);
+    if (!pending) return;
+    window.clearTimeout(pending.timerId);
+    pendingContentSyncRef.current.delete(itemId);
+  }, []);
+
+  const markPendingContentSync = useCallback((mode: PendingContentSyncMode, snapshot: LibraryItem) => {
+    clearPendingContentSync(snapshot.id);
+    const timerId = window.setTimeout(() => {
+      pendingContentSyncRef.current.delete(snapshot.id);
+    }, 45000);
+    pendingContentSyncRef.current.set(snapshot.id, { mode, snapshot, timerId });
+  }, [clearPendingContentSync]);
+
+  const applyPendingContentSyncOverrides = useCallback((serverItems: LibraryItem[]): LibraryItem[] => {
+    if (pendingContentSyncRef.current.size === 0) return serverItems;
+    return serverItems.map((serverItem) => {
+      const pending = pendingContentSyncRef.current.get(serverItem.id);
+      if (!pending) return serverItem;
+
+      if (pending.mode === "HIGHLIGHTS") {
+        return {
+          ...serverItem,
+          highlights: pending.snapshot.highlights,
+        };
+      }
+
+      return {
+        ...serverItem,
+        title: pending.snapshot.title,
+        author: pending.snapshot.author,
+        tags: pending.snapshot.tags,
+        generalNotes: pending.snapshot.generalNotes,
+        summaryText: pending.snapshot.summaryText,
+        personalNoteCategory: pending.snapshot.personalNoteCategory,
+        personalFolderId: pending.snapshot.personalFolderId,
+        folderPath: pending.snapshot.folderPath,
+      };
+    });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      for (const entry of pendingContentSyncRef.current.values()) {
+        window.clearTimeout(entry.timerId);
+      }
+      pendingContentSyncRef.current.clear();
+    };
+  }, []);
 
 
   useEffect(() => {
@@ -193,7 +252,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
           if (!cancelled) {
             const deletedIds = recentlyDeletedIdsRef.current;
             const safeItems = deletedIds.size > 0 ? items.filter((i) => !deletedIds.has(i.id)) : items;
-            setBooks(safeItems);
+            setBooks(applyPendingContentSyncOverrides(safeItems));
             setPersonalNoteFolders(folders);
             setLastDoc(newLastDoc);
             setHasMore(!!newLastDoc);
@@ -232,7 +291,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
       }
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [userId]);
+  }, [applyPendingContentSyncOverrides, userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -315,8 +374,8 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     };
   }, [userId]);
 
-  const syncPersonalNoteToBackend = useCallback(async (note: LibraryItem, deleteOnly: boolean = false) => {
-    if (!isPersonalNote(note)) return;
+  const syncPersonalNoteToBackend = useCallback(async (note: LibraryItem, deleteOnly: boolean = false): Promise<boolean> => {
+    if (!isPersonalNote(note)) return true;
     try {
       await syncPersonalNote(userId, note.id, {
         title: note.title,
@@ -327,8 +386,10 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
         category: getPersonalNoteCategory(note),
         delete_only: deleteOnly,
       });
+      return true;
     } catch (err) {
       console.error("Failed to sync personal note to AI Backend:", err);
+      return false;
     }
   }, [userId]);
 
@@ -534,21 +595,30 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     setEditingBookId(null);
 
     if (updatedItem) {
+      const isPendingPersonalNote = isPersonalNote(updatedItem);
+      if (isPendingPersonalNote) {
+        markPendingContentSync("PERSONAL_NOTE", updatedItem);
+      }
       try {
         await saveItemForUser(userId, updatedItem);
       } catch (err) {
         console.error("Failed to update item in Firestore:", err);
       }
-      if (isPersonalNote(updatedItem)) {
-        syncPersonalNoteToBackend(updatedItem, false);
+      if (isPendingPersonalNote) {
+        try {
+          await syncPersonalNoteToBackend(updatedItem, false);
+        } finally {
+          clearPendingContentSync(updatedItem.id);
+        }
       }
     }
-  }, [editingBookId, syncPersonalNoteToBackend, userId]);
+  }, [clearPendingContentSync, editingBookId, markPendingContentSync, syncPersonalNoteToBackend, userId]);
 
   const handleDeleteBook = useCallback(async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this item?")) return;
     const deletedItem = books.find((b) => b.id === id);
 
+    clearPendingContentSync(id);
     recentlyDeletedIdsRef.current.add(id);
     setTimeout(() => recentlyDeletedIdsRef.current.delete(id), 10000);
     setBooks((prev) => prev.filter((b) => b.id !== id));
@@ -575,13 +645,14 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     } catch (err) {
       console.error("Failed to purge item from AI Backend:", err);
     }
-  }, [books, selectedBookId, userId]);
+  }, [books, clearPendingContentSync, selectedBookId, userId]);
 
   const handleBulkDelete = useCallback(async (ids: string[]) => {
     if (!window.confirm(`Are you sure you want to delete ${ids.length} items?`)) return;
     const deletedItems = books.filter((b) => ids.includes(b.id));
 
     ids.forEach((id) => {
+      clearPendingContentSync(id);
       recentlyDeletedIdsRef.current.add(id);
       setTimeout(() => recentlyDeletedIdsRef.current.delete(id), 10000);
     });
@@ -613,7 +684,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
         console.error(`Failed to purge item ${deletedItems[index].id} from AI Backend:`, result.reason);
       }
     });
-  }, [books, selectedBookId, userId]);
+  }, [books, clearPendingContentSync, selectedBookId, userId]);
 
   const handleUpdateHighlights = useCallback(async (highlights: Highlight[]) => {
     if (!selectedBookId) return;
@@ -631,29 +702,24 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     );
 
     if (updatedItem) {
+      markPendingContentSync("HIGHLIGHTS", updatedItem);
       try {
-        await saveItemForUser(userId, updatedItem);
+        // For highlights, Oracle content table is authoritative. Sync directly.
+        await syncHighlights(
+          userId,
+          updatedItem.id,
+          updatedItem.title,
+          updatedItem.author,
+          updatedItem.highlights || []
+        );
       } catch (err) {
-        console.error("Failed to update highlights in Firestore:", err);
+        console.error("Failed to sync highlights to AI Backend:", err);
+      } finally {
+        clearPendingContentSync(updatedItem.id);
       }
-
-      // Sync highlights/insights to Oracle (replace existing for this book)
-      (async () => {
-        try {
-          await syncHighlights(
-            userId,
-            updatedItem.id,
-            updatedItem.title,
-            updatedItem.author,
-            updatedItem.highlights || []
-          );
-        } catch (err) {
-          console.error("Failed to sync highlights to AI Backend:", err);
-        }
-      })();
     }
   }
-    , [selectedBookId, userId]);
+    , [clearPendingContentSync, markPendingContentSync, selectedBookId, userId]);
 
   const handleToggleFavorite = useCallback(async (id: string) => {
     // 1. Find and update the item

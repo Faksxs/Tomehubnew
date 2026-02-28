@@ -1,39 +1,11 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { BrowserMultiFormatReader, DecodeHintType, BarcodeFormat, NotFoundException } from '@zxing/library';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { X, Camera, Loader2 } from 'lucide-react';
 
 interface BarcodeScannerProps {
     onDetected: (code: string) => void;
     onClose: () => void;
 }
-
-interface DetectedBarcodeValue {
-    rawValue?: string;
-}
-
-interface BarcodeDetectorInstance {
-    detect: (source: ImageBitmapSource) => Promise<DetectedBarcodeValue[]>;
-}
-
-type BarcodeDetectorCtor = new (options?: { formats?: string[] }) => BarcodeDetectorInstance;
-
-type WindowWithOptionalBarcodeDetector = Window & {
-    BarcodeDetector?: BarcodeDetectorCtor;
-};
-
-const buildDecodeHints = () => {
-    const hints = new Map<DecodeHintType, unknown>();
-    hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-        BarcodeFormat.EAN_13,
-        BarcodeFormat.EAN_8,
-        BarcodeFormat.UPC_A,
-        BarcodeFormat.UPC_E,
-        BarcodeFormat.CODE_128,
-    ]);
-    hints.set(DecodeHintType.TRY_HARDER, true);
-    hints.set(DecodeHintType.ALSO_INVERTED, true);
-    return hints;
-};
 
 const normalizeDetectedCode = (raw: string) => {
     const compact = raw.replace(/[\s-]/g, '').trim();
@@ -44,43 +16,27 @@ const normalizeDetectedCode = (raw: string) => {
     }
 
     const ean13 = isbnCharsOnly.match(/97[89]\d{10}/)?.[0];
-    if (ean13) {
-        return ean13;
-    }
+    if (ean13) return ean13;
 
     const isbn10 = isbnCharsOnly.match(/\d{9}[0-9X]/)?.[0];
-    if (isbn10) {
-        return isbn10;
-    }
+    if (isbn10) return isbn10;
 
     return compact;
 };
 
-const stopStreamTracks = (stream: MediaStream | null) => {
-    if (!stream) return;
-    stream.getTracks().forEach((track) => track.stop());
-};
-
-const applyMobileFocusHint = async (stream: MediaStream) => {
-    const [videoTrack] = stream.getVideoTracks();
-    if (!videoTrack) return;
-
-    try {
-        await videoTrack.applyConstraints({
-            advanced: [{ focusMode: 'continuous' } as MediaTrackConstraintSet],
-        } as MediaTrackConstraints);
-    } catch {
-        // Some browsers do not support focusMode.
-    }
-};
+const scannerFormats = [
+    Html5QrcodeSupportedFormats.EAN_13,
+    Html5QrcodeSupportedFormats.EAN_8,
+    Html5QrcodeSupportedFormats.UPC_A,
+    Html5QrcodeSupportedFormats.UPC_E,
+    Html5QrcodeSupportedFormats.CODE_128,
+];
 
 export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected, onClose }) => {
-    const videoRef = useRef<HTMLVideoElement>(null);
-    const readerRef = useRef<BrowserMultiFormatReader | null>(null);
-    const streamRef = useRef<MediaStream | null>(null);
-    const detectTimerRef = useRef<number | null>(null);
+    const scannerRef = useRef<Html5Qrcode | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [isStarting, setIsStarting] = useState(true);
+    const [manualCode, setManualCode] = useState('');
     const hasDetected = useRef(false);
 
     const onDetectedRef = useRef(onDetected);
@@ -88,157 +44,113 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected, onCl
     const onCloseRef = useRef(onClose);
     onCloseRef.current = onClose;
 
-    const stopScanner = useCallback(() => {
-        if (detectTimerRef.current !== null) {
-            window.clearTimeout(detectTimerRef.current);
-            detectTimerRef.current = null;
+    const scannerElementId = useMemo(() => `isbn-scanner-${Math.random().toString(36).slice(2, 10)}`, []);
+
+    const stopScanner = useCallback(async () => {
+        const scanner = scannerRef.current;
+        scannerRef.current = null;
+        if (!scanner) return;
+
+        try {
+            await scanner.stop();
+        } catch {
+            // Already stopped or not started.
         }
-        readerRef.current?.reset();
-        stopStreamTracks(streamRef.current);
-        streamRef.current = null;
+
+        try {
+            scanner.clear();
+        } catch {
+            // No-op if DOM is already cleaned.
+        }
     }, []);
 
     useEffect(() => {
         let mounted = true;
 
-        const reader = new BrowserMultiFormatReader(buildDecodeHints(), { delayBetweenScanAttempts: 100 });
-        readerRef.current = reader;
-
-        const finishWithCode = (rawCode: string) => {
-            if (!mounted || hasDetected.current) return;
-            hasDetected.current = true;
-            const normalized = normalizeDetectedCode(rawCode);
-            stopScanner();
-            onDetectedRef.current(normalized);
-        };
-
-        const startNativeBarcodeDetector = (videoEl: HTMLVideoElement) => {
-            const barcodeDetectorCtor = (window as WindowWithOptionalBarcodeDetector).BarcodeDetector;
-            if (!barcodeDetectorCtor) return;
-
-            let detector: BarcodeDetectorInstance;
+        const startScanner = async () => {
             try {
-                detector = new barcodeDetectorCtor({
-                    formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'],
+                const scanner = new Html5Qrcode(scannerElementId, {
+                    formatsToSupport: scannerFormats,
+                    useBarCodeDetectorIfSupported: true,
+                    verbose: false,
                 });
-            } catch {
-                try {
-                    detector = new barcodeDetectorCtor();
-                } catch {
-                    return;
-                }
-            }
+                scannerRef.current = scanner;
 
-            const runDetectLoop = async () => {
-                if (!mounted || hasDetected.current) return;
+                const onSuccess = async (decodedText: string) => {
+                    if (!mounted || hasDetected.current) return;
+                    hasDetected.current = true;
+                    const normalizedCode = normalizeDetectedCode(decodedText);
+                    await stopScanner();
+                    if (mounted) onDetectedRef.current(normalizedCode);
+                };
 
-                try {
-                    if (videoEl.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-                        const barcodes = await detector.detect(videoEl);
-                        const rawValue = barcodes.find((item) => item.rawValue?.trim())?.rawValue;
-                        if (rawValue) {
-                            finishWithCode(rawValue);
-                            return;
-                        }
-                    }
-                } catch {
-                    // Native detector can fail per frame.
-                }
+                const onError = () => {
+                    // Per-frame decode errors are normal while scanning.
+                };
 
-                detectTimerRef.current = window.setTimeout(runDetectLoop, 120);
-            };
-
-            runDetectLoop();
-        };
-
-        const startScanning = async () => {
-            try {
-                let stream: MediaStream;
-                const preferredConstraints: MediaStreamConstraints = {
-                    audio: false,
-                    video: {
+                const scanConfig = {
+                    fps: 12,
+                    qrbox: { width: 280, height: 90 },
+                    aspectRatio: 16 / 9,
+                    disableFlip: false,
+                    videoConstraints: {
                         facingMode: { ideal: 'environment' },
                         width: { ideal: 1920 },
                         height: { ideal: 1080 },
-                        aspectRatio: { ideal: 16 / 9 },
                     },
                 };
 
                 try {
-                    stream = await navigator.mediaDevices.getUserMedia(preferredConstraints);
+                    await scanner.start({ facingMode: { ideal: 'environment' } }, scanConfig, onSuccess, onError);
                 } catch {
-                    stream = await navigator.mediaDevices.getUserMedia({
-                        audio: false,
-                        video: { facingMode: { ideal: 'environment' } },
-                    });
+                    await scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 260, height: 80 } }, onSuccess, onError);
                 }
-
-                if (!mounted) {
-                    stopStreamTracks(stream);
-                    return;
-                }
-
-                streamRef.current = stream;
-                await applyMobileFocusHint(stream);
-
-                const videoEl = videoRef.current;
-                if (!videoEl) {
-                    throw new Error('Video element not available');
-                }
-
-                videoEl.srcObject = stream;
-                videoEl.setAttribute('playsinline', 'true');
-                videoEl.setAttribute('autoplay', 'true');
-                await videoEl.play().catch(() => undefined);
 
                 if (mounted) setIsStarting(false);
-
-                // Run native detector and ZXing together for better mobile reliability.
-                startNativeBarcodeDetector(videoEl);
-
-                await reader.decodeFromStream(stream, videoEl, (result, err) => {
-                    if (!mounted || hasDetected.current) return;
-
-                    if (result) {
-                        finishWithCode(result.getText());
-                        return;
-                    }
-
-                    if (err && !(err instanceof NotFoundException)) {
-                        console.error('ZXing scan error:', err);
-                    }
-                });
             } catch (err) {
                 if (!mounted) return;
                 const msg = err instanceof Error ? err.message : String(err);
-                if (msg.includes('NotAllowed') || msg.includes('Permission')) {
+
+                if (msg.includes('NotAllowed') || msg.includes('Permission') || msg.includes('denied')) {
                     setError('Camera permission denied. Please allow camera access and try again.');
-                } else if (msg.includes('NotFound') || msg.includes('no camera') || msg.includes('Overconstrained')) {
+                } else if (msg.includes('NotFound') || msg.includes('camera') || msg.includes('Overconstrained')) {
                     setError('No suitable camera found on this device.');
                 } else {
                     setError(`Camera error: ${msg}`);
                 }
+
                 setIsStarting(false);
             }
         };
 
-        startScanning();
+        startScanner();
 
         return () => {
             mounted = false;
-            stopScanner();
+            void stopScanner();
         };
-    }, [stopScanner]);
+    }, [scannerElementId, stopScanner]);
 
     const handleClose = useCallback(() => {
-        stopScanner();
-        onCloseRef.current();
+        void (async () => {
+            await stopScanner();
+            onCloseRef.current();
+        })();
     }, [stopScanner]);
+
+    const handleManualSubmit = useCallback(() => {
+        const normalizedCode = normalizeDetectedCode(manualCode);
+        if (!normalizedCode) return;
+
+        void (async () => {
+            await stopScanner();
+            onDetectedRef.current(normalizedCode);
+        })();
+    }, [manualCode, stopScanner]);
 
     return (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
             <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
-                {/* Header */}
                 <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
                     <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
                         <Camera className="text-[#CC561E]" size={20} />
@@ -252,16 +164,8 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected, onCl
                     </button>
                 </div>
 
-                {/* Scanner Region */}
                 <div className="p-4">
-                    {isStarting && !error && (
-                        <div className="flex flex-col items-center justify-center py-12 gap-3">
-                            <Loader2 className="animate-spin text-[#CC561E]" size={32} />
-                            <p className="text-sm text-slate-500 dark:text-slate-400">Starting camera...</p>
-                        </div>
-                    )}
-
-                    {error && (
+                    {error ? (
                         <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
                             <Camera className="text-red-400" size={32} />
                             <p className="text-sm text-red-500 dark:text-red-400 max-w-xs">{error}</p>
@@ -272,28 +176,37 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected, onCl
                                 Close
                             </button>
                         </div>
-                    )}
-
-                    {/* Live Camera Feed */}
-                    <div className={`relative rounded-lg overflow-hidden ${isStarting || error ? 'h-0' : ''}`}>
-                        <video
-                            ref={videoRef}
-                            playsInline
-                            autoPlay
-                            muted
-                            className="w-full rounded-lg"
-                        />
-                        {!isStarting && !error && (
-                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                <div className="w-[75%] h-14 border-2 border-white/80 rounded shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
+                    ) : (
+                        <>
+                            <div className="relative rounded-lg overflow-hidden bg-black min-h-[320px]">
+                                <div id={scannerElementId} className="w-full h-[320px]" />
+                                {isStarting && (
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/50">
+                                        <Loader2 className="animate-spin text-[#CC561E]" size={32} />
+                                        <p className="text-sm text-slate-200">Starting camera...</p>
+                                    </div>
+                                )}
                             </div>
-                        )}
-                    </div>
-
-                    {!isStarting && !error && (
-                        <p className="text-center text-xs text-slate-400 dark:text-slate-500 mt-3">
-                            Align the barcode in the white frame and keep the phone steady.
-                        </p>
+                            <p className="text-center text-xs text-slate-400 dark:text-slate-500 mt-3">
+                                Align the barcode in the frame and keep the phone steady.
+                            </p>
+                            <div className="mt-4 flex gap-2">
+                                <input
+                                    value={manualCode}
+                                    onChange={(e) => setManualCode(e.target.value)}
+                                    placeholder="Type or paste ISBN"
+                                    className="flex-1 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-mono bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={handleManualSubmit}
+                                    disabled={!manualCode.trim()}
+                                    className="px-3 py-2 rounded-lg text-sm font-medium bg-[#CC561E] text-white disabled:opacity-50"
+                                >
+                                    Use ISBN
+                                </button>
+                            </div>
+                        </>
                     )}
                 </div>
             </div>
