@@ -35,7 +35,6 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected, onCl
                         fps: 15,
                         qrbox: { width: 220, height: 80 },
                         aspectRatio: 1.5,
-                        formatsToSupport: [0], // 0 = QR_CODE, but html5-qrcode also scans 1D barcodes by default
                     },
                     (decodedText) => {
                         if (hasDetected.current || !mounted) return;
