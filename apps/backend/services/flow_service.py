@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 Layer 4: Flow Service (The Flux Engine)
 =====================================================
@@ -89,6 +89,11 @@ INITIAL_BATCH_SIZE = 5
 FLOW_CONTENT_CHAR_LIMIT = 650
 FLOW_CONTENT_FORWARD_WINDOW = 120
 LIMITED_SOURCE_TYPES = {"PDF", "EPUB", "PDF_CHUNK", "ARTICLE", "WEBSITE"}
+SQL_CLAUSE_KEYWORDS = {
+    "WHERE", "JOIN", "ON", "LEFT", "RIGHT", "FULL", "INNER", "OUTER", "CROSS",
+    "GROUP", "ORDER", "FETCH", "OFFSET", "UNION", "HAVING", "CONNECT", "START",
+    "MODEL", "MATCH_RECOGNIZE",
+}
 
 
 def _is_numeric_session_id(session_id: str) -> bool:
@@ -142,9 +147,9 @@ def _limit_flow_content(text: str, limit: int = FLOW_CONTENT_CHAR_LIMIT) -> str:
     if len(normalized) <= limit:
         # Start-Trimming Logic (New)
         # If text does not start with upper case and is not a quote, find first full sentence.
-        if normalized and len(normalized) > 10 and not normalized[0].isupper() and not normalized.startswith(('"', "'", "“", "‘")):
+        if normalized and len(normalized) > 10 and not normalized[0].isupper() and not normalized.startswith(('"', "'", "â€œ", "â€˜")):
              # Look for ". X" pattern
-             match = re.search(r'[.!?]\s+([A-ZĞÜŞİÖÇ])', normalized)
+             match = re.search(r'[.!?]\s+([A-ZÄžÃœÅžÄ°Ã–Ã‡])', normalized)
              if match:
                  # Start from the capital letter found
                  normalized = normalized[match.start(1):]
@@ -180,8 +185,8 @@ def _limit_flow_content(text: str, limit: int = FLOW_CONTENT_CHAR_LIMIT) -> str:
         candidate = normalized[:limit].strip()
     
     # Start-Trimming Logic (Applied to result)
-    if candidate and len(candidate) > 10 and not candidate[0].isupper() and not candidate.startswith(('"', "'", "“", "‘")):
-         match = re.search(r'[.!?]\s+([A-ZĞÜŞİÖÇ])', candidate)
+    if candidate and len(candidate) > 10 and not candidate[0].isupper() and not candidate.startswith(('"', "'", "â€œ", "â€˜")):
+         match = re.search(r'[.!?]\s+([A-ZÄžÃœÅžÄ°Ã–Ã‡])', candidate)
          if match:
              candidate = candidate[match.start(1):]
              
@@ -395,7 +400,7 @@ class FlowService:
                     flow_id=str(uuid.uuid4()),
                     chunk_id=f"pivot_{resolved_id}",
                     content=pivot_info.message,
-                    title="Yönlendirilmiş Keşif",
+                    title="YÃ¶nlendirilmiÅŸ KeÅŸif",
                     source_type="external",
                     epistemic_level="A",
                     zone=4,
@@ -426,7 +431,7 @@ class FlowService:
             with DatabaseManager.get_read_connection() as conn:
                 with conn.cursor() as cursor:
                     # PRIORITY 1: Epistemic Gaps (High centrality concepts NOT in seen history)
-                    # This satisfies "hiç dokunulmamış ama merkezi concept"
+                    # This satisfies "hiÃ§ dokunulmamÄ±ÅŸ ama merkezi concept"
                     params = {"p_uid": state.firebase_uid, "p_sid": state.session_id}
                     
                     sql = """
@@ -462,7 +467,7 @@ class FlowService:
                                 self._to_list(vec_row[0]), 
                                 f"Temel: {concept_name}", 
                                 str(content_id),
-                                PivotInfo(type="discovery_gap", message=f"Henüz incelemediğiniz temel bir kavrama geçiş yapılıyor: '{title}' içinde '{concept_name}'.")
+                                PivotInfo(type="discovery_gap", message=f"HenÃ¼z incelemediÄŸiniz temel bir kavrama geÃ§iÅŸ yapÄ±lÄ±yor: '{title}' iÃ§inde '{concept_name}'.")
                             )
 
                     # PRIORITY 2: Dormant Books / Distant Content
@@ -565,46 +570,53 @@ class FlowService:
         return sql, params
 
     @staticmethod
+    def _resolve_content_table_alias(sql: str) -> str:
+        """
+        Resolve the usable alias/token for TOMEHUB_CONTENT_V2 or legacy TOMEHUB_CONTENT.
+        If no explicit alias exists, returns the table name itself.
+        """
+        for table_name in ("TOMEHUB_CONTENT_V2", "TOMEHUB_CONTENT"):
+            pattern = re.compile(
+                rf"\b(?:FROM|JOIN)\s+{table_name}\b(?:\s+(?:AS\s+)?([A-Za-z_][A-Za-z0-9_$#]*))?",
+                re.IGNORECASE,
+            )
+            for match in pattern.finditer(sql):
+                candidate = match.group(1)
+                if candidate and candidate.upper() not in SQL_CLAUSE_KEYWORDS:
+                    return candidate
+
+            if re.search(rf"\b(?:FROM|JOIN)\s+{table_name}\b", sql, re.IGNORECASE):
+                return table_name
+
+        return "TOMEHUB_CONTENT_V2"
+    @staticmethod
     def _apply_category_filter(
         sql: str,
         params: dict,
         category: Optional[str]
     ) -> Tuple[str, dict]:
         """
-        Append category filter if active using normalized category table.
+        Append category filter using TOMEHUB_CONTENT_V2.CATEGORIES.
+        Categories are stored as comma-separated labels.
         """
         if category:
-            norm = normalize_text(category)
-            if not norm:
+            raw = str(category or "").strip()
+            if not raw:
                 return sql, params
 
-            # Resolve content table alias from FROM/JOIN clauses.
-            # This prevents invalid SQL like `TOMEHUB_CONTENT_V2.id` when table alias is used (e.g. `... FROM TOMEHUB_CONTENT_V2 t`).
-            alias = "TOMEHUB_CONTENT_V2"
-            alias_match = re.search(
-                r"\b(?:FROM|JOIN)\s+TOMEHUB_CONTENT_V2\s+([A-Za-z_][A-Za-z0-9_$#]*)\b",
-                sql,
-                re.IGNORECASE,
-            )
-            if alias_match:
-                alias = alias_match.group(1)
-            else:
-                legacy_match = re.search(
-                    r"\b(?:FROM|JOIN)\s+TOMEHUB_CONTENT\s+([A-Za-z_][A-Za-z0-9_$#]*)\b",
-                    sql,
-                    re.IGNORECASE,
-                )
-                if legacy_match:
-                    alias = legacy_match.group(1)
+            alias = FlowService._resolve_content_table_alias(sql)
+            params["p_cat_raw"] = raw
 
             sql += f"""
-                AND EXISTS (
-                    SELECT 1 FROM TOMEHUB_CONTENT_CATEGORIES cc
-                    WHERE cc.content_id = {alias}.id
-                    AND cc.category_norm = :p_cat_norm
+                AND {alias}.categories IS NOT NULL
+                AND (
+                    INSTR(
+                        ',' || LOWER(REGEXP_REPLACE({alias}.categories, '\\s*,\\s*', ',')) || ',',
+                        ',' || LOWER(TRIM(:p_cat_raw)) || ','
+                    ) > 0
+                    OR LOWER({alias}.categories) LIKE '%' || LOWER(TRIM(:p_cat_raw)) || '%'
                 )
             """
-            params["p_cat_norm"] = norm
         return sql, params
 
     def _select_low_engagement_note_anchor(
@@ -673,7 +685,7 @@ class FlowService:
                     if not vec:
                         return None, None, None
 
-                    label = title or "Düşük etkileşimli not"
+                    label = title or "DÃ¼ÅŸÃ¼k etkileÅŸimli not"
                     logger.info(
                         f"[FLOW] Low-engagement anchor selected: id={content_id} "
                         f"seen={seen_count} ctx={ctx_count}"
@@ -775,7 +787,7 @@ class FlowService:
                                 if norm > 0:
                                     centroid = centroid / norm
                                     logger.info(f"[FLOW] Zero Gravity Profile generated using {len(recent_vectors)} recent notes for UID {firebase_uid}")
-                                    return centroid.tolist(), "Kişisel İlgi Profiliniz", "General Discovery"
+                                    return centroid.tolist(), "KiÅŸisel Ä°lgi Profiliniz", "General Discovery"
                                     
                             # 2. Fallback to low engagement note anchor
                             vec, label, resolved_id = self._select_low_engagement_note_anchor(
@@ -928,7 +940,7 @@ class FlowService:
                     sim = 1 - row[5]
                     
                     # Tag based on similarity (No drop!)
-                    tag = "🎯 Precision" if sim > 0.6 else "🔗 Related" if sim > 0.3 else "🌊 Flow"
+                    tag = "ðŸŽ¯ Precision" if sim > 0.6 else "ðŸ”— Related" if sim > 0.3 else "ðŸŒŠ Flow"
                     
                     cards.append(FlowCard(
                         flow_id=str(uuid.uuid4()),
@@ -974,7 +986,7 @@ class FlowService:
         sql += " ORDER BY id DESC FETCH FIRST :p_limit ROWS ONLY "
         
         # Recency = Zone 2 (High priority but below strong semantic matches)
-        return self._execute_simple_fetch(sql, params, "✨ Recent", zone=2)
+        return self._execute_simple_fetch(sql, params, "âœ¨ Recent", zone=2)
 
     def _fetch_seed_serendipity(self, uid: str, sid: str, r_type: Optional[str], category: Optional[str], limit: int) -> List[FlowCard]:
         """Fetch random high-quality chunks."""
@@ -1005,7 +1017,7 @@ class FlowService:
         sql += " ORDER BY DBMS_RANDOM.VALUE FETCH FIRST :p_limit ROWS ONLY "
         
         # Discovery = Zone 3 (Discovery / Low priority)
-        return self._execute_simple_fetch(sql, params, "🎲 Serendipity", zone=3)
+        return self._execute_simple_fetch(sql, params, "ðŸŽ² Serendipity", zone=3)
 
     def _execute_simple_fetch(self, sql: str, params: dict, reason_prefix: str, zone: int) -> List[FlowCard]:
          cards = []
@@ -1131,11 +1143,11 @@ class FlowService:
         """
         Calculate the target vector using Dual Anchor gravity.
         
-        V_target = α * V_global + (1-α) * V_local
+        V_target = Î± * V_global + (1-Î±) * V_local
         
-        α is inversely proportional to horizon_value:
-        - Low horizon (Focus): α ≈ 0.8 (Strong global gravity)
-        - High horizon (Explore): α ≈ 0.3 (Weak global gravity)
+        Î± is inversely proportional to horizon_value:
+        - Low horizon (Focus): Î± â‰ˆ 0.8 (Strong global gravity)
+        - High horizon (Explore): Î± â‰ˆ 0.3 (Weak global gravity)
         """
         if not state.global_anchor_vector:
             return None
@@ -1287,7 +1299,7 @@ class FlowService:
                             source_type="personal" if resource_type == 'PERSONAL_NOTE' else row[4].lower(),
                             zone=1,
                             epistemic_level="A",
-                            reason=f"🎲 Random {resource_type.title().replace('_', ' ')}"
+                            reason=f"ðŸŽ² Random {resource_type.title().replace('_', ' ')}"
                         ))
         except Exception as e:
             logger.error(f"Simple fetch failed for {resource_type}: {e}")
@@ -1363,7 +1375,7 @@ class FlowService:
                             source_type="personal" if row[3] in ('HIGHLIGHT','INSIGHT','PERSONAL_NOTE') else "pdf_chunk",
                             zone=1,
                             epistemic_level="B", # Contextual
-                            reason=f"🎯 Konu Odaklı ({similarity:.0%})"
+                            reason=f"ðŸŽ¯ Konu OdaklÄ± ({similarity:.0%})"
                         ))
                     else:
                         logger.debug(f"[FLOW] Skipping candidate with low similarity: {similarity:.2f}")
@@ -1597,7 +1609,7 @@ class FlowService:
                 source_type="pdf_chunk" if row[3] in ["PDF", "PDF_CHUNK", "EPUB"] else "personal",
                 zone=3,
                 epistemic_level="B", # Dialectical
-                reason=f"🔗 Anlamsal Bağlantı ({similarity:.0%})"
+                reason=f"ðŸ”— Anlamsal BaÄŸlantÄ± ({similarity:.0%})"
             ))
         
         return cards
@@ -1661,7 +1673,7 @@ class FlowService:
                     source_type="pdf_chunk" if row[3] in ["PDF", "PDF_CHUNK", "EPUB"] else "personal",
                     zone=4,
                     epistemic_level="A", # Foundational
-                    reason=f"💎 Temel Kavram: {concept_name} (merkezilik: {centrality:.2f})"
+                    reason=f"ðŸ’Ž Temel Kavram: {concept_name} (merkezilik: {centrality:.2f})"
                 ))
                 
         except Exception as e:
@@ -2081,3 +2093,4 @@ def get_flow_service() -> FlowService:
     if _flow_service is None:
         _flow_service = FlowService()
     return _flow_service
+
