@@ -31,6 +31,7 @@ from services.correction_service import LinguisticCorrectionService
 corrector_service = LinguisticCorrectionService()
 from services.data_health_service import DataHealthService
 from services.data_cleaner_service import DataCleanerService
+from services.category_taxonomy_service import extract_book_categories_from_tags
 from utils.text_utils import normalize_text, get_lemmas, get_lemma_frequencies
 from utils.tag_utils import prepare_labels
 import json
@@ -93,23 +94,6 @@ def _runtime_log(message: str, level: str = "info") -> None:
         return
     logger.info(msg)
 
-def _insert_content_categories(cursor, content_id: int, prepared_categories):
-    if not prepared_categories:
-        return
-    for raw, norm in prepared_categories:
-        try:
-            cursor.execute(
-                """
-                INSERT INTO TOMEHUB_CONTENT_CATEGORIES (content_id, category, category_norm)
-                VALUES (:p_cid, :p_cat, :p_norm)
-                """,
-                {"p_cid": content_id, "p_cat": raw, "p_norm": norm},
-            )
-        except oracledb.IntegrityError:
-            # Duplicate category for this content_id
-            pass
-
-
 def _insert_content_tags(cursor, content_id: int, prepared_tags):
     if not prepared_tags:
         return
@@ -125,6 +109,23 @@ def _insert_content_tags(cursor, content_id: int, prepared_tags):
         except oracledb.IntegrityError:
             # Duplicate tag for this content_id
             pass
+
+
+def _parse_category_tokens(raw_categories: Optional[str]) -> list[str]:
+    text = str(raw_categories or "").strip()
+    if not text:
+        return []
+    return [part.strip() for part in text.replace("\n", ",").split(",") if part and part.strip()]
+
+
+def _categories_json_from_raw(raw_categories: Optional[str]) -> Optional[str]:
+    tags = _parse_category_tokens(raw_categories)
+    if not tags:
+        return None
+    canonical = extract_book_categories_from_tags(tags)
+    if not canonical:
+        return None
+    return json.dumps(canonical, ensure_ascii=False)
 
 
 def normalize_source_type(source_type: Optional[str]) -> str:
@@ -156,6 +157,7 @@ def _mirror_book_registry_rows(
     author: str,
     firebase_uid: str,
     item_type: str = "BOOK",
+    categories: Optional[str] = None,
 ) -> None:
     """
     Best-effort registry mirroring for Phase 1C routing prep.
@@ -206,6 +208,23 @@ def _mirror_book_registry_rows(
         logger.info(f"Mirrored book '{title}' to TOMEHUB_LIBRARY_ITEMS")
     except Exception as e:
         logger.warning(f"Mirroring to TOMEHUB_LIBRARY_ITEMS failed (Non-critical): {e}")
+
+    category_json = _categories_json_from_raw(categories)
+    if not category_json:
+        return
+    try:
+        cursor.execute(
+            """
+            UPDATE TOMEHUB_LIBRARY_ITEMS
+            SET CATEGORY_JSON = TO_CLOB(:p_category_json),
+                UPDATED_AT = CURRENT_TIMESTAMP
+            WHERE ITEM_ID = :p_item_id
+              AND FIREBASE_UID = :p_uid
+            """,
+            {"p_item_id": book_id, "p_uid": firebase_uid, "p_category_json": category_json},
+        )
+    except Exception as e:
+        logger.warning(f"Mirroring CATEGORY_JSON to TOMEHUB_LIBRARY_ITEMS failed (Non-critical): {e}")
 
 
 def normalize_highlight_type(highlight_type: Optional[str]) -> str:
@@ -496,7 +515,6 @@ def purge_item_content(firebase_uid: str, book_id: str) -> dict:
                     if content_ids:
                         child_specs = [
                             ("TOMEHUB_CONTENT_TAGS", ("CONTENT_ID", "CHUNK_ID")),
-                            ("TOMEHUB_CONTENT_CATEGORIES", ("CONTENT_ID", "CHUNK_ID")),
                             ("TOMEHUB_FLOW_SEEN", ("CHUNK_ID", "CONTENT_ID")),
                             ("TOMEHUB_CONCEPT_CHUNKS", ("CONTENT_ID", "CHUNK_ID")),
                         ]
@@ -591,7 +609,6 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str, book
     # Normalize categories: remove newlines and extra spaces
     if categories:
         categories = ",".join([c.strip() for c in categories.replace("\n", ",").split(",") if c.strip()])
-    prepared_categories = prepare_labels(categories) if categories else []
     # DEBUG: Verify file exists at start
     _runtime_log(f"[DEBUG] File exists at start: {os.path.exists(file_path)}")
     
@@ -655,6 +672,7 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str, book
                     title=title,
                     author=author,
                     firebase_uid=firebase_uid,
+                    categories=categories,
                 )
 
                 # A. ACQUIRE LOCK (The critical section starts here)
@@ -687,8 +705,8 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str, book
                 
                 insert_sql = """
                 INSERT INTO TOMEHUB_CONTENT_V2 
-                (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, lemma_tokens, token_freq, categories)
-                VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm_content, :p_lemmas, :p_token_freq, :p_cats)
+                (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, lemma_tokens, token_freq)
+                VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm_content, :p_lemmas, :p_token_freq)
                 RETURNING id INTO :p_out_id
                 """
                 
@@ -906,14 +924,11 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str, book
                                 "p_norm_content": res['normalized'],
                                 "p_lemmas": res['lemmas'],
                                 "p_token_freq": res['lemma_freqs'],
-                                "p_cats": categories,
                                 "p_out_id": out_id
                             })
                             new_id = out_id.getvalue()
                             if isinstance(new_id, list):
                                 new_id = new_id[0] if new_id else None
-                            if new_id is not None:
-                                _insert_content_categories(cursor, int(new_id), prepared_categories)
                             successful_inserts += 1
                         except Exception as e:
                             _runtime_log(f"[FAILED] Chunk {res['index']} DB insert: {e}")
@@ -1050,7 +1065,6 @@ def ingest_text_item(
     # Normalize categories
     if categories:
         categories = ",".join([c.strip() for c in categories.replace("\n", ",").split(",") if c.strip()])
-    prepared_categories = prepare_labels(categories) if categories else []
     _runtime_log(f"\n[INFO] Text Ingestion: {title}")
     try:
         with DatabaseManager.get_write_connection() as connection:
@@ -1077,8 +1091,8 @@ def ingest_text_item(
                     out_id = cursor.var(oracledb.NUMBER)
                     cursor.execute("""
                         INSERT INTO TOMEHUB_CONTENT_V2 
-                        (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, lemma_tokens, categories, comment_text, tags_json)
-                        VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_lemmas, :p_cats, :p_comment, :p_tags)
+                        (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, lemma_tokens, comment_text, tags_json)
+                        VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_lemmas, :p_comment, :p_tags)
                         RETURNING id INTO :p_out_id
                     """, {
                         "p_uid": firebase_uid,
@@ -1091,7 +1105,6 @@ def ingest_text_item(
                         "p_book_id": book_id,
                         "p_norm": normalized_text,
                         "p_lemmas": lemmas_json,
-                        "p_cats": categories,
                         "p_comment": comment,
                         "p_tags": tags_json,
                         "p_out_id": out_id
@@ -1100,7 +1113,6 @@ def ingest_text_item(
                     if isinstance(new_id, list):
                         new_id = new_id[0] if new_id else None
                     if new_id is not None:
-                        _insert_content_categories(cursor, int(new_id), prepared_categories)
                         _insert_content_tags(cursor, int(new_id), prepared_tags)
                     connection.commit()
                     _invalidate_search_cache(firebase_uid=firebase_uid, book_id=book_id)
@@ -1401,7 +1413,6 @@ def process_bulk_items_logic(items: list, firebase_uid: str) -> dict:
                         cats = item.get('categories')
                         if cats:
                             cats = ",".join([c.strip() for c in cats.replace("\n", ",").split(",") if c.strip()])
-                        prepared_categories = prepare_labels(cats) if cats else []
 
                         tags = item.get('tags')
                         tags_json = json.dumps(tags, ensure_ascii=False) if tags else None
@@ -1411,8 +1422,8 @@ def process_bulk_items_logic(items: list, firebase_uid: str) -> dict:
                         db_source_type = normalize_source_type(item.get('type', 'PERSONAL_NOTE'))
                         cursor.execute("""
                             INSERT INTO TOMEHUB_CONTENT_V2 
-                            (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, lemma_tokens, categories, comment_text, tags_json)
-                            VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_lemmas, :p_cats, :p_comment, :p_tags)
+                            (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, lemma_tokens, comment_text, tags_json)
+                            VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_lemmas, :p_comment, :p_tags)
                             RETURNING id INTO :p_out_id
                         """, {
                             "p_uid": firebase_uid,
@@ -1425,7 +1436,6 @@ def process_bulk_items_logic(items: list, firebase_uid: str) -> dict:
                             "p_book_id": item.get('book_id'),
                             "p_norm": normalized_text,
                             "p_lemmas": lemmas_json,
-                            "p_cats": cats,
                             # Here item.get is used differently in old logic? No, just keys.
                             "p_comment": item.get('comment'), 
                             "p_tags": tags_json,
@@ -1435,7 +1445,6 @@ def process_bulk_items_logic(items: list, firebase_uid: str) -> dict:
                         if isinstance(new_id, list):
                             new_id = new_id[0] if new_id else None
                         if new_id is not None:
-                            _insert_content_categories(cursor, int(new_id), prepared_categories)
                             _insert_content_tags(cursor, int(new_id), prepared_tags)
                         success += 1
                         time.sleep(0.2) # Rate limit

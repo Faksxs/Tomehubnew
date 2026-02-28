@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 Layer 4: Flow Service (The Flux Engine)
 =====================================================
@@ -27,7 +27,6 @@ from services.flow_text_repair_service import repair_for_flow_card
 from infrastructure.db_manager import DatabaseManager, safe_read_clob
 import oracledb  # For DatabaseError exception handling
 from config import settings
-from utils.text_utils import normalize_text
 
 logger = logging.getLogger(__name__)
 
@@ -96,30 +95,19 @@ SQL_CLAUSE_KEYWORDS = {
 }
 
 
-def _is_numeric_session_id(session_id: str) -> bool:
-    """Check if session_id can be used in TOMEHUB_FLOW_SEEN queries (NUMBER column)."""
-    if session_id is None:
-        return False
-    return str(session_id).strip().isdigit()
-
-
 def _build_seen_exclusion_sql(session_id: str, params: dict, column_name: str = "id") -> tuple:
     """
     Build SQL exclusion clause for FLOW_SEEN table.
-    
-    Returns (sql_clause, updated_params) where sql_clause is either:
-    - The exclusion subquery if session_id is numeric
-    - Empty string if session_id is UUID (can't query FLOW_SEEN)
-    
-    This prevents ORA-01722 errors when UUID session_ids are used.
+
+    Returns (sql_clause, updated_params).
+    Session ids are treated as opaque strings (UUID-compatible).
     """
-    if not _is_numeric_session_id(session_id):
-        # UUID session_id - can't query NUMBER column, skip exclusion
+    sid = str(session_id or "").strip()
+    if not sid:
         return "", params
-    
-    # Numeric session_id - safe to add exclusion (NOT EXISTS is faster than NOT IN on Oracle)
+
     sql_clause = f" AND NOT EXISTS (SELECT 1 FROM TOMEHUB_FLOW_SEEN fs WHERE fs.chunk_id = {column_name} AND fs.session_id = :p_sid) "
-    new_params = {**params, "p_sid": int(session_id)}
+    new_params = {**params, "p_sid": sid}
     return sql_clause, new_params
 
 
@@ -147,9 +135,9 @@ def _limit_flow_content(text: str, limit: int = FLOW_CONTENT_CHAR_LIMIT) -> str:
     if len(normalized) <= limit:
         # Start-Trimming Logic (New)
         # If text does not start with upper case and is not a quote, find first full sentence.
-        if normalized and len(normalized) > 10 and not normalized[0].isupper() and not normalized.startswith(('"', "'", "â€œ", "â€˜")):
+        if normalized and len(normalized) > 10 and not normalized[0].isupper() and not normalized.startswith(('"', "'", "“", "‘")):
              # Look for ". X" pattern
-             match = re.search(r'[.!?]\s+([A-ZÄžÃœÅžÄ°Ã–Ã‡])', normalized)
+             match = re.search(r'[.!?]\s+([A-ZĞÜŞİÖÇ])', normalized)
              if match:
                  # Start from the capital letter found
                  normalized = normalized[match.start(1):]
@@ -185,8 +173,8 @@ def _limit_flow_content(text: str, limit: int = FLOW_CONTENT_CHAR_LIMIT) -> str:
         candidate = normalized[:limit].strip()
     
     # Start-Trimming Logic (Applied to result)
-    if candidate and len(candidate) > 10 and not candidate[0].isupper() and not candidate.startswith(('"', "'", "â€œ", "â€˜")):
-         match = re.search(r'[.!?]\s+([A-ZÄžÃœÅžÄ°Ã–Ã‡])', candidate)
+    if candidate and len(candidate) > 10 and not candidate[0].isupper() and not candidate.startswith(('"', "'", "“", "‘")):
+         match = re.search(r'[.!?]\s+([A-ZĞÜŞİÖÇ])', candidate)
          if match:
              candidate = candidate[match.start(1):]
              
@@ -400,7 +388,7 @@ class FlowService:
                     flow_id=str(uuid.uuid4()),
                     chunk_id=f"pivot_{resolved_id}",
                     content=pivot_info.message,
-                    title="YÃ¶nlendirilmiÅŸ KeÅŸif",
+                    title="Yönlendirilmiş Keşif",
                     source_type="external",
                     epistemic_level="A",
                     zone=4,
@@ -431,7 +419,7 @@ class FlowService:
             with DatabaseManager.get_read_connection() as conn:
                 with conn.cursor() as cursor:
                     # PRIORITY 1: Epistemic Gaps (High centrality concepts NOT in seen history)
-                    # This satisfies "hiÃ§ dokunulmamÄ±ÅŸ ama merkezi concept"
+                    # This satisfies "hiç dokunulmamış ama merkezi concept"
                     params = {"p_uid": state.firebase_uid, "p_sid": state.session_id}
                     
                     sql = """
@@ -442,7 +430,7 @@ class FlowService:
                         WHERE ct.firebase_uid = :p_uid
                         AND ct.ai_eligible = 1
                         AND NOT EXISTS (
-                            SELECT 1 FROM TOMEHUB_FLOW_SEEN fs WHERE fs.chunk_id = ct.id AND TO_CHAR(fs.session_id) = :p_sid
+                            SELECT 1 FROM TOMEHUB_FLOW_SEEN fs WHERE fs.chunk_id = ct.id AND fs.session_id = :p_sid
                         )
                         AND c.id NOT IN (
                             SELECT concept_id FROM TOMEHUB_CONCEPT_CHUNKS 
@@ -467,7 +455,7 @@ class FlowService:
                                 self._to_list(vec_row[0]), 
                                 f"Temel: {concept_name}", 
                                 str(content_id),
-                                PivotInfo(type="discovery_gap", message=f"HenÃ¼z incelemediÄŸiniz temel bir kavrama geÃ§iÅŸ yapÄ±lÄ±yor: '{title}' iÃ§inde '{concept_name}'.")
+                                PivotInfo(type="discovery_gap", message=f"Henüz incelemediğiniz temel bir kavrama geçiş yapılıyor: '{title}' içinde '{concept_name}'.")
                             )
 
                     # PRIORITY 2: Dormant Books / Distant Content
@@ -596,8 +584,8 @@ class FlowService:
         category: Optional[str]
     ) -> Tuple[str, dict]:
         """
-        Append category filter using TOMEHUB_CONTENT_V2.CATEGORIES.
-        Categories are stored as comma-separated labels.
+        Append category filter using TOMEHUB_LIBRARY_ITEMS.CATEGORY_JSON.
+        This keeps category source-of-truth at item level.
         """
         if category:
             raw = str(category or "").strip()
@@ -608,13 +596,16 @@ class FlowService:
             params["p_cat_raw"] = raw
 
             sql += f"""
-                AND {alias}.categories IS NOT NULL
-                AND (
-                    INSTR(
-                        ',' || LOWER(REGEXP_REPLACE({alias}.categories, '\\s*,\\s*', ',')) || ',',
-                        ',' || LOWER(TRIM(:p_cat_raw)) || ','
-                    ) > 0
-                    OR LOWER({alias}.categories) LIKE '%' || LOWER(TRIM(:p_cat_raw)) || '%'
+                AND EXISTS (
+                    SELECT 1
+                    FROM TOMEHUB_LIBRARY_ITEMS li
+                    WHERE li.FIREBASE_UID = {alias}.firebase_uid
+                      AND li.ITEM_ID = {alias}.item_id
+                      AND li.CATEGORY_JSON IS NOT NULL
+                      AND (
+                          INSTR(LOWER(li.CATEGORY_JSON), LOWER(TRIM(:p_cat_raw))) > 0
+                          OR LOWER(li.CATEGORY_JSON) LIKE '%' || LOWER(TRIM(:p_cat_raw)) || '%'
+                      )
                 )
             """
         return sql, params
@@ -685,7 +676,7 @@ class FlowService:
                     if not vec:
                         return None, None, None
 
-                    label = title or "DÃ¼ÅŸÃ¼k etkileÅŸimli not"
+                    label = title or "Düşük etkileşimli not"
                     logger.info(
                         f"[FLOW] Low-engagement anchor selected: id={content_id} "
                         f"seen={seen_count} ctx={ctx_count}"
@@ -787,7 +778,7 @@ class FlowService:
                                 if norm > 0:
                                     centroid = centroid / norm
                                     logger.info(f"[FLOW] Zero Gravity Profile generated using {len(recent_vectors)} recent notes for UID {firebase_uid}")
-                                    return centroid.tolist(), "KiÅŸisel Ä°lgi Profiliniz", "General Discovery"
+                                    return centroid.tolist(), "Kişisel İlgi Profiliniz", "General Discovery"
                                     
                             # 2. Fallback to low engagement note anchor
                             vec, label, resolved_id = self._select_low_engagement_note_anchor(
@@ -910,7 +901,7 @@ class FlowService:
             WHERE firebase_uid = :p_uid
             AND VEC_EMBEDDING IS NOT NULL
             AND DBMS_LOB.GETLENGTH(content_chunk) > 12
-            AND NOT EXISTS (SELECT 1 FROM TOMEHUB_FLOW_SEEN fs WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND TO_CHAR(fs.session_id) = :p_sid)
+            AND NOT EXISTS (SELECT 1 FROM TOMEHUB_FLOW_SEEN fs WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND fs.session_id = :p_sid)
         """
         if r_type == 'BOOK':
              # Books = PDFs + Highlights
@@ -940,7 +931,7 @@ class FlowService:
                     sim = 1 - row[5]
                     
                     # Tag based on similarity (No drop!)
-                    tag = "ðŸŽ¯ Precision" if sim > 0.6 else "ðŸ”— Related" if sim > 0.3 else "ðŸŒŠ Flow"
+                    tag = "🎯 Precision" if sim > 0.6 else "🔗 Related" if sim > 0.3 else "🌊 Flow"
                     
                     cards.append(FlowCard(
                         flow_id=str(uuid.uuid4()),
@@ -964,7 +955,7 @@ class FlowService:
             FROM TOMEHUB_CONTENT_V2
             WHERE firebase_uid = :p_uid
             AND DBMS_LOB.GETLENGTH(content_chunk) > 12
-            AND NOT EXISTS (SELECT 1 FROM TOMEHUB_FLOW_SEEN fs WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND TO_CHAR(fs.session_id) = :p_sid)
+            AND NOT EXISTS (SELECT 1 FROM TOMEHUB_FLOW_SEEN fs WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND fs.session_id = :p_sid)
         """
         params = {"p_uid": uid, "p_sid": sid, "p_limit": limit}
         
@@ -986,7 +977,7 @@ class FlowService:
         sql += " ORDER BY id DESC FETCH FIRST :p_limit ROWS ONLY "
         
         # Recency = Zone 2 (High priority but below strong semantic matches)
-        return self._execute_simple_fetch(sql, params, "âœ¨ Recent", zone=2)
+        return self._execute_simple_fetch(sql, params, "✨ Recent", zone=2)
 
     def _fetch_seed_serendipity(self, uid: str, sid: str, r_type: Optional[str], category: Optional[str], limit: int) -> List[FlowCard]:
         """Fetch random high-quality chunks."""
@@ -995,7 +986,7 @@ class FlowService:
             FROM TOMEHUB_CONTENT_V2
             WHERE firebase_uid = :p_uid
             AND DBMS_LOB.GETLENGTH(content_chunk) > 12
-            AND NOT EXISTS (SELECT 1 FROM TOMEHUB_FLOW_SEEN fs WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND TO_CHAR(fs.session_id) = :p_sid)
+            AND NOT EXISTS (SELECT 1 FROM TOMEHUB_FLOW_SEEN fs WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND fs.session_id = :p_sid)
         """
         params = {"p_uid": uid, "p_sid": sid, "p_limit": limit}
 
@@ -1017,7 +1008,7 @@ class FlowService:
         sql += " ORDER BY DBMS_RANDOM.VALUE FETCH FIRST :p_limit ROWS ONLY "
         
         # Discovery = Zone 3 (Discovery / Low priority)
-        return self._execute_simple_fetch(sql, params, "ðŸŽ² Serendipity", zone=3)
+        return self._execute_simple_fetch(sql, params, "🎲 Serendipity", zone=3)
 
     def _execute_simple_fetch(self, sql: str, params: dict, reason_prefix: str, zone: int) -> List[FlowCard]:
          cards = []
@@ -1143,11 +1134,11 @@ class FlowService:
         """
         Calculate the target vector using Dual Anchor gravity.
         
-        V_target = Î± * V_global + (1-Î±) * V_local
+        V_target = α * V_global + (1-α) * V_local
         
-        Î± is inversely proportional to horizon_value:
-        - Low horizon (Focus): Î± â‰ˆ 0.8 (Strong global gravity)
-        - High horizon (Explore): Î± â‰ˆ 0.3 (Weak global gravity)
+        α is inversely proportional to horizon_value:
+        - Low horizon (Focus): α ≈ 0.8 (Strong global gravity)
+        - High horizon (Explore): α ≈ 0.3 (Weak global gravity)
         """
         if not state.global_anchor_vector:
             return None
@@ -1277,7 +1268,7 @@ class FlowService:
                     sql += """
                         AND NOT EXISTS (
                             SELECT 1 FROM TOMEHUB_FLOW_SEEN fs 
-                            WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND TO_CHAR(fs.session_id) = :p_sid
+                            WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND fs.session_id = :p_sid
                         )
                         ORDER BY DBMS_RANDOM.VALUE
                         FETCH FIRST :p_limit ROWS ONLY
@@ -1299,7 +1290,7 @@ class FlowService:
                             source_type="personal" if resource_type == 'PERSONAL_NOTE' else row[4].lower(),
                             zone=1,
                             epistemic_level="A",
-                            reason=f"ðŸŽ² Random {resource_type.title().replace('_', ' ')}"
+                            reason=f"🎲 Random {resource_type.title().replace('_', ' ')}"
                         ))
         except Exception as e:
             logger.error(f"Simple fetch failed for {resource_type}: {e}")
@@ -1351,7 +1342,7 @@ class FlowService:
                     AND VEC_EMBEDDING IS NOT NULL
                     AND NOT EXISTS (
                         SELECT 1 FROM TOMEHUB_FLOW_SEEN fs 
-                        WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND TO_CHAR(fs.session_id) = :p_sid
+                        WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND fs.session_id = :p_sid
                     )
                 """
                 # Apply filters
@@ -1375,7 +1366,7 @@ class FlowService:
                             source_type="personal" if row[3] in ('HIGHLIGHT','INSIGHT','PERSONAL_NOTE') else "pdf_chunk",
                             zone=1,
                             epistemic_level="B", # Contextual
-                            reason=f"ðŸŽ¯ Konu OdaklÄ± ({similarity:.0%})"
+                            reason=f"🎯 Konu Odaklı ({similarity:.0%})"
                         ))
                     else:
                         logger.debug(f"[FLOW] Skipping candidate with low similarity: {similarity:.2f}")
@@ -1408,7 +1399,7 @@ class FlowService:
         sql += """
             AND NOT EXISTS (
                 SELECT 1 FROM TOMEHUB_FLOW_SEEN fs 
-                WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND TO_CHAR(fs.session_id) = :p_sid
+                WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND fs.session_id = :p_sid
             )
         """
         sql, params = self._apply_resource_filter(sql, params, resource_type)
@@ -1483,7 +1474,7 @@ class FlowService:
             sql += """
                 AND NOT EXISTS (
                     SELECT 1 FROM TOMEHUB_FLOW_SEEN fs 
-                    WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND TO_CHAR(fs.session_id) = :p_sid
+                    WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND fs.session_id = :p_sid
                 )
             """
 
@@ -1527,7 +1518,7 @@ class FlowService:
                 AND VEC_EMBEDDING IS NOT NULL
                 AND NOT EXISTS (
                     SELECT 1 FROM TOMEHUB_FLOW_SEEN fs 
-                    WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND TO_CHAR(fs.session_id) = :p_sid
+                    WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND fs.session_id = :p_sid
                 )
             """
             sql, params = self._apply_resource_filter(sql, params, resource_type)
@@ -1582,7 +1573,7 @@ class FlowService:
             AND VEC_EMBEDDING IS NOT NULL
             AND NOT EXISTS (
                 SELECT 1 FROM TOMEHUB_FLOW_SEEN fs 
-                WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND TO_CHAR(fs.session_id) = :p_sid
+                WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND fs.session_id = :p_sid
             )
         """
         sql, params = self._apply_resource_filter(sql, params, resource_type)
@@ -1609,7 +1600,7 @@ class FlowService:
                 source_type="pdf_chunk" if row[3] in ["PDF", "PDF_CHUNK", "EPUB"] else "personal",
                 zone=3,
                 epistemic_level="B", # Dialectical
-                reason=f"ðŸ”— Anlamsal BaÄŸlantÄ± ({similarity:.0%})"
+                reason=f"🔗 Anlamsal Bağlantı ({similarity:.0%})"
             ))
         
         return cards
@@ -1673,7 +1664,7 @@ class FlowService:
                     source_type="pdf_chunk" if row[3] in ["PDF", "PDF_CHUNK", "EPUB"] else "personal",
                     zone=4,
                     epistemic_level="A", # Foundational
-                    reason=f"ðŸ’Ž Temel Kavram: {concept_name} (merkezilik: {centrality:.2f})"
+                    reason=f"💎 Temel Kavram: {concept_name} (merkezilik: {centrality:.2f})"
                 ))
                 
         except Exception as e:
@@ -1700,7 +1691,7 @@ class FlowService:
                 AND VEC_EMBEDDING IS NOT NULL
                 AND NOT EXISTS (
                     SELECT 1 FROM TOMEHUB_FLOW_SEEN fs 
-                    WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND TO_CHAR(fs.session_id) = :p_sid
+                    WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND fs.session_id = :p_sid
                 )
             """
             sql, params = self._apply_resource_filter(sql, params, resource_type)
@@ -1879,16 +1870,12 @@ class FlowService:
             return None
         return int(chunk_str)
     
-    def _coerce_session_id(self, session_id: str) -> Optional[int]:
-        """Coerce session_id to int for DB operations; return None if invalid."""
+    def _coerce_session_id(self, session_id: str) -> Optional[str]:
+        """Normalize session_id for DB operations; return None if empty."""
         if session_id is None:
             return None
-        if isinstance(session_id, (int, np.integer)):
-            return int(session_id)
         sid_str = str(session_id).strip()
-        if not sid_str.isdigit():
-            return None
-        return int(sid_str)
+        return sid_str or None
     
     def _record_seen_chunk(self, firebase_uid: str, session_id: str, chunk_id: str,
                            reaction_type: Optional[str] = None, discovered_via: Optional[str] = None):
@@ -1896,9 +1883,9 @@ class FlowService:
         try:
             with DatabaseManager.get_write_connection() as conn:
                 with conn.cursor() as cursor:
-                    sid_int = self._coerce_session_id(session_id)
-                    if sid_int is None:
-                        logger.debug(f"Skipping seen record insert for non-numeric session_id: {session_id}")
+                    sid = self._coerce_session_id(session_id)
+                    if sid is None:
+                        logger.debug("Skipping seen record insert for empty session_id")
                         return
                     coerced_id = self._coerce_chunk_id(chunk_id)
                     if coerced_id is None:
@@ -1908,7 +1895,7 @@ class FlowService:
                         INSERT INTO TOMEHUB_FLOW_SEEN (firebase_uid, session_id, chunk_id, seen_at, reaction_type, discovered_via)
                         VALUES (:p_uid, :p_sid, :p_cid, CURRENT_TIMESTAMP, :p_reaction, :p_via)
                     """, {
-                        "p_uid": firebase_uid, "p_sid": sid_int, "p_cid": coerced_id,
+                        "p_uid": firebase_uid, "p_sid": sid, "p_cid": coerced_id,
                         "p_reaction": reaction_type, "p_via": discovered_via
                     })
                     conn.commit()
@@ -2093,4 +2080,5 @@ def get_flow_service() -> FlowService:
     if _flow_service is None:
         _flow_service = FlowService()
     return _flow_service
+
 
