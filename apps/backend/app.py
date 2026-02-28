@@ -91,7 +91,7 @@ from slowapi.errors import RateLimitExceeded
 from config import settings
 from infrastructure.db_manager import DatabaseManager
 from services.cache_service import get_cache, generate_cache_key
-from services.monitoring import DB_POOL_UTILIZATION, CIRCUIT_BREAKER_STATE
+from services.monitoring import DB_POOL_UTILIZATION, CIRCUIT_BREAKER_STATE, REDIS_AVAILABLE
 from services.memory_monitor_service import MemoryMonitor
 from services.embedding_service import get_circuit_breaker_status
 
@@ -109,6 +109,7 @@ logHandler = logging.StreamHandler()
 formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s %(message)s')
 logHandler.setFormatter(formatter)
 logger.addHandler(logHandler)
+logger.propagate = False
 
 # Remove default handlers to avoid duplicates
 logging.getLogger().handlers = []
@@ -357,6 +358,17 @@ async def lifespan(app: FastAPI):
                 cb_status = get_circuit_breaker_status()
                 state_map = {"CLOSED": 0, "HALF_OPEN": 1, "OPEN": 2}
                 CIRCUIT_BREAKER_STATE.labels(service="embedding").set(state_map.get(cb_status["state"], 0))
+
+                # Redis-backed L2 cache health (0/1)
+                redis_available = 0
+                cache = getattr(app.state, "cache", None)
+                if cache is not None:
+                    try:
+                        if getattr(cache, "l2", None) is not None and cache.l2.is_available():
+                            redis_available = 1
+                    except Exception:
+                        redis_available = 0
+                REDIS_AVAILABLE.labels(layer="l2_cache").set(redis_available)
                 
                 await asyncio.sleep(10)
             except asyncio.CancelledError:
@@ -427,6 +439,11 @@ from routes import flow_routes
 app.include_router(flow_routes.router)
 logger.info("Router registered", extra={"route_count": len(flow_routes.router.routes)})
 
+# Include AI Routes (migrated from local app.py handlers)
+from routes import ai_routes
+app.include_router(ai_routes.router)
+logger.info("Router registered", extra={"route_count": len(ai_routes.router.routes)})
+
 # Prometheus Instrumentation (must be AFTER all routers are added)
 from prometheus_fastapi_instrumentator import Instrumentator
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
@@ -436,146 +453,13 @@ Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 # HEALTH CHECK
 # ============================================================================
 
-
-
 @app.get("/")
 async def health_check():
     return {
         "status": "online",
         "service": "TomeHub API (FastAPI)",
-        "version": "2.0.0",
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
     }
-
-
-@app.get("/api/cache/status")
-async def cache_status():
-    """Check cache status and statistics."""
-    try:
-        from services.cache_service import get_cache
-        cache = get_cache()
-        
-        if not cache:
-            return {
-                "status": "disabled",
-                "message": "Cache is not initialized or disabled"
-            }
-        
-        status = {
-            "status": "enabled",
-            "l1": {
-                "size": cache.l1.size(),
-                "maxsize": cache.l1.cache.maxsize,
-                "ttl": cache.l1.cache.ttl
-            },
-            "l2": {
-                "available": cache.l2.is_available(),
-                "type": "redis" if cache.l2.is_available() else "none"
-            }
-        }
-        
-        return status
-    except Exception as e:
-        return {
-            "status": "error",
-            "error": str(e)
-        }
-
-@app.get("/api/health/circuit-breaker")
-async def circuit_breaker_status():
-    """Check circuit breaker status for embedding API."""
-    try:
-        from services.embedding_service import get_circuit_breaker_status
-        status = get_circuit_breaker_status()
-        
-        return {
-            "status": "ok",
-            "circuit_breaker": status
-        }
-    except Exception as e:
-        logger.error(f"Error getting circuit breaker status: {e}")
-        return {
-            "status": "error",
-            "error": str(e)
-        }
-
-@app.get("/api/health/memory")
-async def health_memory():
-    """Get memory usage statistics and health status (Task A2)."""
-    try:
-        from services.memory_monitor_service import MemoryMonitor
-        
-        stats = MemoryMonitor.get_memory_stats()
-        status = MemoryMonitor.check_memory_health()
-        
-        return {
-            "status": "ok",
-            "memory": stats,
-            "health": status,
-            "health_emoji": MemoryMonitor.get_status_emoji(status)
-        }
-    except Exception as e:
-        logger.error(f"Error getting memory health: {e}")
-        return {
-            "status": "error",
-            "error": str(e)
-        }
-
-
-@app.get("/api/health/memory-layer")
-async def health_memory_layer():
-    """
-    Oracle-backed chat memory health:
-    - sessions/messages totals
-    - stale sessions older than retention target
-    """
-    try:
-        with DatabaseManager.get_read_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT COUNT(*) FROM TOMEHUB_CHAT_SESSIONS")
-                sessions_total = int((cursor.fetchone() or [0])[0] or 0)
-
-                cursor.execute("SELECT COUNT(*) FROM TOMEHUB_CHAT_MESSAGES")
-                messages_total = int((cursor.fetchone() or [0])[0] or 0)
-
-                cursor.execute(
-                    """
-                    SELECT COUNT(*)
-                    FROM TOMEHUB_CHAT_SESSIONS
-                    WHERE UPDATED_AT < (SYSTIMESTAMP - NUMTODSINTERVAL(:p_days, 'DAY'))
-                    """,
-                    {"p_days": int(settings.CHAT_RETENTION_DAYS)},
-                )
-                stale_sessions = int((cursor.fetchone() or [0])[0] or 0)
-
-        return {
-            "status": "ok",
-            "memory_layer": {
-                "sessions_total": sessions_total,
-                "messages_total": messages_total,
-                "stale_sessions_over_retention": stale_sessions,
-                "retention_days": int(settings.CHAT_RETENTION_DAYS),
-            },
-        }
-    except Exception as e:
-        logger.error(f"Error getting memory-layer health: {e}")
-        return {"status": "error", "error": str(e)}
-
-@app.get("/api/health/restart")
-async def health_restart():
-    """Get auto-restart status and memory pressure state (Task A2)."""
-    try:
-        from services.auto_restart_service import auto_restart_manager
-        
-        status = await auto_restart_manager.get_status()
-        
-        return status
-    except Exception as e:
-        logger.error(f"Error getting restart status: {e}")
-        return {
-            "status": "error",
-            "error": str(e)
-        }
 
 
 @app.get("/api/realtime/poll")
@@ -603,7 +487,6 @@ async def realtime_poll(
     events: list[dict[str, Any]] = []
     cutoff_ms = max(int(since_ms or 0), 0)
 
-    # Phase 4: Prefer outbox-backed changes when available.
     try:
         from services.change_event_service import fetch_change_events_since
         changes, last_event_id = fetch_change_events_since(
@@ -619,7 +502,7 @@ async def realtime_poll(
                 "server_time": datetime.now().isoformat(),
                 "last_event_id": last_event_id,
                 "changes": changes,
-                "events": changes,  # backward-compatible alias
+                "events": changes,
                 "count": len(changes),
                 "source": "outbox",
             }
@@ -629,7 +512,6 @@ async def realtime_poll(
     try:
         with DatabaseManager.get_read_connection() as conn:
             with conn.cursor() as cursor:
-                # BOOK-level updates
                 cursor.execute(
                     """
                     SELECT ITEM_ID, TITLE, COALESCE(UPDATED_AT, CREATED_AT)
@@ -654,7 +536,6 @@ async def realtime_poll(
                         }
                     )
 
-                # Highlight/personal-note sync signals from content rows
                 cursor.execute(
                     """
                     SELECT ITEM_ID, CONTENT_TYPE, MAX(CREATED_AT)
@@ -699,6 +580,8 @@ async def realtime_poll(
         "count": len(events),
         "source": "legacy_aggregate",
     }
+
+
 
 # ============================================================================
 # SEARCH ENDPOINTS
@@ -1731,33 +1614,54 @@ def fetch_ingestion_status(book_id: str, firebase_uid: str):
         return None
 
 
-def _normalize_title_candidates(raw_title: Optional[str]) -> List[str]:
-    """Build conservative title candidates for ingestion-status fallback."""
-    if not raw_title:
-        return []
-    title = str(raw_title).strip()
-    if not title:
-        return []
-
-    candidates: List[str] = []
-
-    def _add(value: str):
-        v = str(value or "").strip()
-        if len(v) < 2:
-            return
-        if v not in candidates:
-            candidates.append(v)
-
-    _add(title)
-    no_suffix = re.sub(r"\s*\((highlight|insight|note)\)\s*$", "", title, flags=re.IGNORECASE).strip()
-    _add(no_suffix)
-    if " - " in no_suffix:
-        _add(no_suffix.split(" - ", 1)[0].strip())
-    if ":" in no_suffix:
-        _add(no_suffix.split(":", 1)[0].strip())
-
-    return candidates
-
+def _get_pdf_index_stats(book_id: str, firebase_uid: str) -> Dict[str, int]:
+    """
+    Returns effective PDF chunk/embedding counts, excluding synthetic metadata-only rows
+    that were inserted by non-PDF item sync paths in older versions.
+    """
+    stats = {"effective_chunks": 0, "effective_embeddings": 0, "raw_chunks": 0}
+    if not book_id or not firebase_uid:
+        return stats
+    try:
+        with DatabaseManager.get_read_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        COUNT(*) AS raw_chunks,
+                        SUM(
+                            CASE
+                                WHEN UPPER(DBMS_LOB.SUBSTR(CONTENT_CHUNK, 7, 1)) = 'TITLE: '
+                                     AND DBMS_LOB.INSTR(UPPER(CONTENT_CHUNK), CHR(10) || 'AUTHOR:') > 0
+                                THEN 1 ELSE 0
+                            END
+                        ) AS synthetic_chunks,
+                        SUM(
+                            CASE
+                                WHEN VEC_EMBEDDING IS NOT NULL
+                                     AND NOT (
+                                         UPPER(DBMS_LOB.SUBSTR(CONTENT_CHUNK, 7, 1)) = 'TITLE: '
+                                         AND DBMS_LOB.INSTR(UPPER(CONTENT_CHUNK), CHR(10) || 'AUTHOR:') > 0
+                                     )
+                                THEN 1 ELSE 0
+                            END
+                        ) AS effective_embeddings
+                    FROM TOMEHUB_CONTENT_V2
+                    WHERE ITEM_ID = :p_bid
+                      AND FIREBASE_UID = :p_uid
+                      AND CONTENT_TYPE IN ('PDF', 'EPUB', 'PDF_CHUNK')
+                    """,
+                    {"p_bid": book_id, "p_uid": firebase_uid},
+                )
+                row = cursor.fetchone() or (0, 0, 0)
+                raw_chunks = int(row[0] or 0)
+                synthetic_chunks = int(row[1] or 0)
+                stats["raw_chunks"] = raw_chunks
+                stats["effective_chunks"] = max(0, raw_chunks - synthetic_chunks)
+                stats["effective_embeddings"] = int(row[2] or 0)
+    except Exception as e:
+        logger.error(f"Failed to compute PDF index stats: {e}")
+    return stats
 
 
 def _normalize_title_candidates(raw_title: Optional[str]) -> List[str]:
@@ -2052,55 +1956,50 @@ async def get_ingestion_status(
 
     freshness = get_index_freshness_state(effective_book_id, verified_firebase_uid)
     if row:
-        item_index_state = row.get("item_index_state") or {}
-        return {
-            "status": row.get("status"),
-            "file_name": row.get("file_name"),
-            "chunk_count": int(row["chunk_count"]) if row.get("chunk_count") is not None else None,
-            "embedding_count": int(row["embedding_count"]) if row.get("embedding_count") is not None else None,
-            "updated_at": row["updated_at"].isoformat() if row.get("updated_at") else None,
-            "resolved_book_id": effective_book_id,
-            "matched_by_title": matched_by_title,
-            "match_source": match_source,
-            "match_confidence": match_confidence,
-            "item_index_state": item_index_state,
-            "index_freshness_state": freshness.get("index_freshness_state"),
-            "index_freshness": freshness,
-        }
+        row_status = str(row.get("status") or "").upper()
+        # Guard against stale/incorrect status rows by validating effective PDF-like chunks.
+        if row_status == "COMPLETED":
+            pdf_stats = _get_pdf_index_stats(effective_book_id, verified_firebase_uid)
+            if pdf_stats.get("effective_chunks", 0) <= 0:
+                row = None
+            else:
+                row["chunk_count"] = pdf_stats.get("effective_chunks")
+                row["embedding_count"] = pdf_stats.get("effective_embeddings")
+        if row:
+            item_index_state = row.get("item_index_state") or {}
+            return {
+                "status": row.get("status"),
+                "file_name": row.get("file_name"),
+                "chunk_count": int(row["chunk_count"]) if row.get("chunk_count") is not None else None,
+                "embedding_count": int(row["embedding_count"]) if row.get("embedding_count") is not None else None,
+                "updated_at": row["updated_at"].isoformat() if row.get("updated_at") else None,
+                "resolved_book_id": effective_book_id,
+                "matched_by_title": matched_by_title,
+                "match_source": match_source,
+                "match_confidence": match_confidence,
+                "item_index_state": item_index_state,
+                "index_freshness_state": freshness.get("index_freshness_state"),
+                "index_freshness": freshness,
+            }
 
     # Fallback: check if content exists for this book
     try:
-        with DatabaseManager.get_read_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT COUNT(*) as chunk_count,
-                           SUM(CASE WHEN VEC_EMBEDDING IS NOT NULL THEN 1 ELSE 0 END) as embedding_count
-                    FROM TOMEHUB_CONTENT_V2
-                    WHERE ITEM_ID = :p_bid
-                      AND FIREBASE_UID = :p_uid
-                      AND CONTENT_TYPE IN ('PDF', 'EPUB', 'PDF_CHUNK')
-                    """,
-                    {"p_bid": effective_book_id, "p_uid": verified_firebase_uid}
-                )
-                row = cursor.fetchone()
-                chunk_count = row[0] if row else 0
-                embedding_count = row[1] if row and row[1] is not None else 0
-                if chunk_count > 0:
-                    return {
-                        "status": "COMPLETED",
-                        "file_name": None,
-                        "chunk_count": int(chunk_count),
-                        "embedding_count": int(embedding_count),
-                        "updated_at": datetime.now().isoformat(),
-                        "resolved_book_id": effective_book_id,
-                        "matched_by_title": matched_by_title,
-                        "match_source": "content_fallback",
-                        "match_confidence": 0.5,
-                        "item_index_state": None,
-                        "index_freshness_state": freshness.get("index_freshness_state"),
-                        "index_freshness": freshness,
-                    }
+        pdf_stats = _get_pdf_index_stats(effective_book_id, verified_firebase_uid)
+        if pdf_stats.get("effective_chunks", 0) > 0:
+            return {
+                "status": "COMPLETED",
+                "file_name": None,
+                "chunk_count": int(pdf_stats.get("effective_chunks", 0)),
+                "embedding_count": int(pdf_stats.get("effective_embeddings", 0)),
+                "updated_at": datetime.now().isoformat(),
+                "resolved_book_id": effective_book_id,
+                "matched_by_title": matched_by_title,
+                "match_source": "content_fallback",
+                "match_confidence": 0.5,
+                "item_index_state": None,
+                "index_freshness_state": freshness.get("index_freshness_state"),
+                "index_freshness": freshness,
+            }
     except Exception as e:
         logger.error(f"Fallback ingestion status check failed: {e}")
 
@@ -2446,22 +2345,31 @@ async def sync_highlights_endpoint(
         )
         if not result.get("success"):
             raise HTTPException(status_code=500, detail=result.get("error", "Sync failed"))
-        maybe_trigger_graph_enrichment_async(
-            firebase_uid=verified_firebase_uid,
-            book_id=book_id,
-            reason="sync_highlights",
-        )
-        maybe_trigger_external_enrichment_async(
-            book_id=book_id,
-            firebase_uid=verified_firebase_uid,
-            title=request.title,
-            author=request.author,
-            tags=_collect_highlight_tags(request.highlights),
-            mode_hint="INGEST",
-        )
-        freshness = get_index_freshness_state(book_id, verified_firebase_uid)
-        result["index_freshness_state"] = freshness.get("index_freshness_state")
-        result["index_freshness"] = freshness
+        try:
+            maybe_trigger_graph_enrichment_async(
+                firebase_uid=verified_firebase_uid,
+                book_id=book_id,
+                reason="sync_highlights",
+            )
+        except Exception as e:
+            logger.warning(f"Graph enrichment trigger skipped after highlight sync: {e}")
+        try:
+            maybe_trigger_external_enrichment_async(
+                book_id=book_id,
+                firebase_uid=verified_firebase_uid,
+                title=request.title,
+                author=request.author,
+                tags=_collect_highlight_tags(request.highlights),
+                mode_hint="INGEST",
+            )
+        except Exception as e:
+            logger.warning(f"External enrichment trigger skipped after highlight sync: {e}")
+        try:
+            freshness = get_index_freshness_state(book_id, verified_firebase_uid)
+            result["index_freshness_state"] = freshness.get("index_freshness_state")
+            result["index_freshness"] = freshness
+        except Exception as e:
+            logger.warning(f"Index freshness read failed after highlight sync: {e}")
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -2494,22 +2402,31 @@ async def sync_personal_note_endpoint(
         )
         if not result.get("success"):
             raise HTTPException(status_code=500, detail=result.get("error", "Sync failed"))
-        maybe_trigger_graph_enrichment_async(
-            firebase_uid=verified_firebase_uid,
-            book_id=book_id,
-            reason="sync_personal_note",
-        )
-        maybe_trigger_external_enrichment_async(
-            book_id=book_id,
-            firebase_uid=verified_firebase_uid,
-            title=request.title,
-            author=request.author,
-            tags=request.tags,
-            mode_hint="INGEST",
-        )
-        freshness = get_index_freshness_state(book_id, verified_firebase_uid)
-        result["index_freshness_state"] = freshness.get("index_freshness_state")
-        result["index_freshness"] = freshness
+        try:
+            maybe_trigger_graph_enrichment_async(
+                firebase_uid=verified_firebase_uid,
+                book_id=book_id,
+                reason="sync_personal_note",
+            )
+        except Exception as e:
+            logger.warning(f"Graph enrichment trigger skipped after personal note sync: {e}")
+        try:
+            maybe_trigger_external_enrichment_async(
+                book_id=book_id,
+                firebase_uid=verified_firebase_uid,
+                title=request.title,
+                author=request.author,
+                tags=request.tags,
+                mode_hint="INGEST",
+            )
+        except Exception as e:
+            logger.warning(f"External enrichment trigger skipped after personal note sync: {e}")
+        try:
+            freshness = get_index_freshness_state(book_id, verified_firebase_uid)
+            result["index_freshness_state"] = freshness.get("index_freshness_state")
+            result["index_freshness"] = freshness
+        except Exception as e:
+            logger.warning(f"Index freshness read failed after personal note sync: {e}")
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -2565,118 +2482,6 @@ async def migrate_bulk_endpoint(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-
-# ============================================================================
-# NEW AI ENDPOINTS (NOT IN FLASK, MIGRATED FROM FIREBASE)
-# ============================================================================
-
-from fastapi import Body
-
-@app.post("/api/ai/enrich-book")
-@limiter.limit(settings.RATE_LIMIT_AI_ENRICH)
-async def enrich_book_endpoint(
-    request: Request,
-    enrich_request: EnrichBookRequest,
-    user_id: str = Depends(verify_firebase_token)
-):
-    """
-    Enrich a single book with metadata (Summary, Tags, etc.)
-    """
-    logger.info(f"AI Enrichment requested for: {enrich_request.title}")
-    try:
-        # data = request.model_dump()
-        # Passing dictionary as expected by service
-        result = await enrich_book_async(enrich_request.model_dump())
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/ai/enrich-batch")
-async def enrich_batch_endpoint(
-    request: Request,
-    user_id: str = Depends(verify_firebase_token)
-):
-    """
-    Stream enriched books back to client using SSE.
-    Expects JSON body: { "books": [...] }
-    """
-    try:
-        data = await request.json()
-        books = data.get('books', [])
-        
-        if not books:
-             raise HTTPException(status_code=400, detail="No books provided")
-             
-        if len(books) > 50:
-             logger.warning(f"Large batch enrichment requested ({len(books)}). Capping at 50.")
-             books = books[:50]
-             
-        # Use StreamingResponse for SSE
-        return StreamingResponse(
-            stream_enrichment(books),
-            media_type="text/event-stream"
-        )
-    except Exception as e:
-        logger.error("Streaming error", extra={"error": str(e), "traceback": traceback.format_exc()})
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/ai/generate-tags")
-@limiter.limit(settings.RATE_LIMIT_AI_ENRICH)
-async def generate_tags_endpoint(
-    request: Request,
-    tags_request: GenerateTagsRequest,
-    user_id: str = Depends(verify_firebase_token)
-):
-    try:
-        tags = await generate_tags_async(tags_request.note_content)
-        return {"tags": tags}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/ai/verify-cover")
-@limiter.limit(settings.RATE_LIMIT_AI_COVER)
-async def verify_cover_endpoint(
-    request: Request,
-    cover_request: VerifyCoverRequest,
-    user_id: str = Depends(verify_firebase_token)
-):
-    try:
-        url = await verify_cover_async(cover_request.title, cover_request.author, cover_request.isbn)
-        return {"url": url}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/ai/analyze-highlights")
-@limiter.limit(settings.RATE_LIMIT_AI_ANALYZE)
-async def analyze_highlights_endpoint(
-    request: Request,
-    highlights_request: AnalyzeHighlightsRequest,
-    user_id: str = Depends(verify_firebase_token)
-):
-    try:
-        summary = await analyze_highlights_async(highlights_request.highlights)
-        return {"summary": summary}
-    except Exception as e:
-         raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/ai/search-resources")
-@limiter.limit(settings.RATE_LIMIT_AI_ENRICH)
-async def search_resources_endpoint(
-    request: Request,
-    query: str = Body(...), 
-    type: str = Body(...),
-    user_id: str = Depends(verify_firebase_token)
-):
-    try:
-        results = await search_resources_async(query, type)
-        return {"results": results}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-
 
 if __name__ == "__main__":
     logger.info("Starting FastAPI Server on port 8000 (DIRECT)...")

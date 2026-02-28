@@ -1,11 +1,9 @@
 # TomeHub Docker Compose
 # Backend with self-discovering Caddy for auto-HTTPS
 
-version: '3.8'
-
 services:
   backend:
-    image: ams.ocir.io/axrluoxw8q8k/tomehub/backend:latest
+    image: ${BACKEND_IMAGE_REPO:-ams.ocir.io/axrluoxw8q8k/tomehub/backend}:${BACKEND_IMAGE_TAG:-latest}
     build:
       context: ../apps/backend
       dockerfile: Dockerfile
@@ -21,6 +19,7 @@ services:
     environment:
       # Overrides for Docker environment
       - OCI_KEY_FILE=/app/oci_private_key.pem
+      - REDIS_URL=redis://redis:6379/0
 
       # App Configuration
       - ENVIRONMENT=production
@@ -41,6 +40,24 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - tomehub-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: tomehub-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
     networks:
       - tomehub-network
 
@@ -106,6 +123,8 @@ volumes:
   prometheus_data:
     driver: local
   grafana_data:
+    driver: local
+  redis_data:
     driver: local
 
 networks:

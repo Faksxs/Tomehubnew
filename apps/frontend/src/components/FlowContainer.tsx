@@ -280,12 +280,12 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     {onClose && (
                         <button
                             onClick={onClose}
-                            className="flow-left__back group flex items-center gap-2 text-slate-500 hover:text-[#CC561E] transition-all duration-300"
+                            className="flow-left__back group flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-[#CC561E] transition-all duration-300"
                         >
                             <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
                                 <ChevronLeft size={16} />
                             </div>
-                            <span className="text-xs font-bold uppercase tracking-wider">Back to Home</span>
+                            <span className="text-xs font-bold uppercase tracking-wider">Back</span>
                         </button>
                     )}
                     {(activeFilter === 'ALL' || activeFilter === 'BOOK') && (
@@ -300,7 +300,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                 {/* Main Content */}
                 <div className="flow-main">
                     {/* Header */}
-                    <div className="flow-container__header">
+                    <div className="flow-container__header lg:hidden">
                         <div className="flow-container__title-section">
                             <div className="flow-container__mobile-actions relative flex items-center justify-between">
                                 {/* Left Group: Back + Kesif Alanlari */}
@@ -308,7 +308,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                                     {onClose && (
                                         <button
                                             onClick={onClose}
-                                            className="flow-mobile-action-btn group flex items-center gap-2 text-slate-500 hover:text-[#CC561E] transition-all duration-300"
+                                            className="flow-mobile-action-btn group flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-[#CC561E] transition-all duration-300"
                                             aria-label="Back"
                                         >
                                             <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
@@ -318,12 +318,12 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                                     )}
                                     <button
                                         onClick={() => setIsCategoryDrawerOpen(true)}
-                                        className="flow-mobile-action-btn group flex items-center gap-2 text-slate-500 hover:text-[#CC561E] transition-all duration-300"
+                                        className="flow-mobile-action-btn group flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-[#CC561E] transition-all duration-300"
                                     >
                                         <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
                                             <Settings2 size={16} />
                                         </div>
-                                        <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">Keşif</span>
+                                        <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">Explore</span>
                                     </button>
                                 </div>
 
@@ -338,7 +338,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                                 <div className="lg:hidden flex items-center justify-end gap-2 z-10 w-1/3">
                                     <button
                                         onClick={() => setIsSidebarOpen(true)}
-                                        className="flow-mobile-action-btn group flex items-center gap-2 text-slate-500 hover:text-[#CC561E] transition-all duration-300"
+                                        className="flow-mobile-action-btn group flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-[#CC561E] transition-all duration-300"
                                     >
                                         <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">Filters</span>
                                         <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
@@ -371,16 +371,16 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                         {!flowStarted ? (
                             <div className="flex flex-col items-center justify-center py-20 text-center px-4">
                                 <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-3">
-                                    Flux başlatılmadı
+                                    Flux session not started
                                 </h3>
-                                <p className="text-slate-500 max-w-md mx-auto mb-6">
-                                    Başlamak için bir filtre seçebilir veya aşağıdaki butona tıklayabilirsin.
+                                <p className="text-slate-500 dark:text-slate-400 max-w-md mx-auto mb-6">
+                                    Select a filter to begin or click the button below.
                                 </p>
                                 <button
                                     onClick={() => setFlowStarted(true)}
                                     className="px-6 py-2.5 bg-[#CC561E] hover:bg-[#b04a1a] text-white font-medium rounded-lg transition-colors"
                                 >
-                                    Flux Başlat
+                                    Start Flux
                                 </button>
                             </div>
                         ) : (
@@ -401,7 +401,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                                         <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">
                                             {activeFilter === 'PERSONAL_NOTE' ? 'No Personal Notes Found' : 'Library Empty'}
                                         </h3>
-                                        <p className="text-slate-500 max-w-md mx-auto mb-8">
+                                        <p className="text-slate-500 dark:text-slate-400 max-w-md mx-auto mb-8">
                                             {activeFilter === 'PERSONAL_NOTE'
                                                 ? "We couldn't find any personal notes or highlights. Try adding some content or switching to 'All Notes'."
                                                 : "Your knowledge stream is waiting for content. Upload books or add notes to get started."}
@@ -421,7 +421,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                         {flowStarted && (cards.length > 0 || isLoading) && (
                             <div className="flow-container__load-more py-8 flex justify-center">
                                 {isLoading ? (
-                                    <div className="flex items-center gap-3 text-slate-500">
+                                    <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400">
                                         <div className="w-5 h-5 border-2 border-[#CC561E] border-t-transparent rounded-full animate-spin" />
                                         <span className="text-sm font-medium">{isJumping ? 'Topic is shifting...' : 'Loading more thoughts...'}</span>
                                     </div>
@@ -431,7 +431,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                                             onClick={loadMore}
                                             className="px-8 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-[#CC561E]/50 text-slate-700 dark:text-slate-300 hover:text-[#CC561E] dark:hover:text-[#CC561E] font-medium rounded-full shadow-sm hover:shadow-md transition-all duration-300 flex items-center gap-2 group"
                                         >
-                                            <span>Daha Fazla Göster</span>
+                                            <span>Load More</span>
                                             <ChevronDown className="w-4 h-4 group-hover:translate-y-0.5 transition-transform" />
                                         </button>
                                     )
@@ -459,7 +459,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                                     <div className="p-2 rounded-xl bg-[rgba(204,86,30,0.1)] text-[#CC561E]">
                                         <Settings2 size={20} />
                                     </div>
-                                    <span className="font-bold text-slate-800 dark:text-white">Keşif Alanları</span>
+                                    <span className="font-bold text-slate-800 dark:text-white">Discovery Areas</span>
                                 </div>
                                 <button
                                     onClick={() => setIsCategoryDrawerOpen(false)}
@@ -493,7 +493,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     <aside className="flow-sidebar">
                         <div className="flow-sidebar__sticky">
                             {/* Mobile Drawer Header */}
-                            <div className="lg:hidden flex items-center justify-between mb-6 pb-4 border-bottom border-slate-100 dark:border-slate-800">
+                            <div className="lg:hidden flex items-center justify-between mb-4 md:mb-0 pb-4 md:pb-0 border-bottom border-slate-100 dark:border-slate-800">
                                 <div className="flex items-center gap-3">
                                     <div className="p-2 rounded-xl bg-[rgba(204,86,30,0.1)] text-[#CC561E]">
                                         <Settings2 size={20} />
@@ -530,12 +530,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                                 Change Topic
                             </button>
 
-                            <div className="flow-sidebar__stats">
-                                <div className="stat-item">
-                                    <span className="stat-label">Session ID</span>
-                                    <span className="stat-value">{sessionId !== null ? sessionId.toString() : '—'}</span>
-                                </div>
-                            </div>
+
                         </div>
                     </aside>
                 </div>
@@ -576,8 +571,8 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
 
                 .flow-layout {
                     display: grid;
-                    grid-template-columns: 150px 1fr 220px;
-                    gap: 20px;
+                    grid-template-columns: 210px 1fr 210px;
+                    gap: 24px;
                     align-items: flex-start;
                     padding-top: 20px;
                     max-width: 1280px;
@@ -593,6 +588,10 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
 
                     .flow-left {
                         display: none;
+                    }
+
+                    .flow-main {
+                        padding-top: 48px;
                     }
 
                     .flow-sidebar-container {
@@ -766,14 +765,35 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     gap: 8px;
                 }
 
+                .flow-main {
+                    padding-top: 0;
+                }
+
+                @media (min-width: 1025px) {
+                    .flow-main {
+                        padding-top: 40px; /* Aligns with category labels */
+                    }
+                    .flow-sidebar__sticky {
+                        padding-top: 40px; /* Aligns with category labels */
+                    }
+                }
+
                 .flow-left {
                     position: sticky;
                     top: 24px;
                     align-self: flex-start;
                 }
 
+                .flow-sidebar-container {
+                    align-self: flex-start;
+                }
+
+                .flow-sidebar {
+                    align-self: flex-start;
+                }
+
                 .flow-left__back {
-                    margin-bottom: 16px;
+                    margin-bottom: 24px;
                 }
 
                 .flow-card__content:not(.expanded)::after {
@@ -842,9 +862,15 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     display: flex;
                     justify-content: space-between;
                     align-items: flex-end;
-                    margin-bottom: 40px;
-                    padding-bottom: 24px;
+                    margin-bottom: 24px;
+                    padding-bottom: 12px;
                     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+                }
+
+                @media (min-width: 1025px) {
+                    .flow-container__header {
+                        display: none;
+                    }
                 }
 
                 .flow-badge {

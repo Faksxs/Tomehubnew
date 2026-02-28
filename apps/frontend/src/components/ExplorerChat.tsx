@@ -533,7 +533,7 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack }) =>
                         <button
                             onClick={handleSend}
                             disabled={!input.trim() || isLoading}
-                            className="px-4 py-3 bg-[#CC561E] hover:bg-[#b34b1a] disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white rounded-xl transition-all shadow-lg shadow-[#CC561E]/20 flex items-center gap-2"
+                            className="px-4 py-3 bg-[#CC561E] hover:bg-[#b34b1a] disabled:bg-slate-300 dark:disabled:bg-slate-800 disabled:text-slate-500 dark:disabled:text-slate-500 disabled:opacity-50 text-white rounded-xl transition-all shadow-lg shadow-[#CC561E]/20 flex items-center gap-2"
                         >
                             {isLoading ? (
                                 <Loader2 className="w-5 h-5 animate-spin" />

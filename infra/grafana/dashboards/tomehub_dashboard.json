@@ -23,23 +23,202 @@
   "liveNow": false,
   "panels": [
     {
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
       "id": 16,
       "title": "System Health & Memory",
-      "type": "row"
+      "type": "row",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      }
     },
     {
+      "id": 101,
+      "title": "Backend Scrape Up",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 6,
+        "h": 4
+      },
       "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "max(up{job=\"tomehub_backend\"}) or vector(0)"
+        }
+      ],
       "fieldConfig": {
         "defaults": {
-          "unit": "percentunit",
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 102,
+      "title": "AI Metric Last Seen (s)",
+      "type": "stat",
+      "gridPos": {
+        "x": 6,
+        "y": 1,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "time() - max(timestamp(tomehub_ai_service_duration_seconds_count))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 103,
+      "title": "LLM Metric Last Seen (s)",
+      "type": "stat",
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "time() - max(timestamp(tomehub_llm_calls_total))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 104,
+      "title": "Ingestion Metric Last Seen (s)",
+      "type": "stat",
+      "gridPos": {
+        "x": 18,
+        "y": 1,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "time() - max(timestamp(tomehub_ingestion_duration_seconds_count))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 22,
+      "title": "Circuit Breakers",
+      "type": "gauge",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 4,
+        "h": 6
+      },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "tomehub_circuit_breaker_state",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
           "min": 0,
           "max": 2,
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "CLOSED"
+                },
+                "1": {
+                  "text": "HALF_OPEN"
+                },
+                "2": {
+                  "text": "OPEN"
+                }
+              }
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -57,86 +236,102 @@
               }
             ]
           }
-        }
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 4,
-        "x": 0,
-        "y": 1
-      },
-      "id": 22,
-      "title": "Circuit Breakers",
-      "targets": [
-        {
-          "expr": "tomehub_circuit_breaker_state",
-          "legendFormat": "{{service}}"
-        }
-      ],
-      "type": "gauge"
+        },
+        "overrides": []
+      }
     },
     {
-      "datasource": "Prometheus",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s"
-        }
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 10,
-        "x": 4,
-        "y": 1
-      },
       "id": 4,
+      "title": "API Latency (Avg)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 4,
+        "y": 5,
+        "w": 10,
+        "h": 6
+      },
+      "datasource": "Prometheus",
       "targets": [
         {
           "expr": "rate(http_request_duration_seconds_sum[5m]) / rate(http_request_duration_seconds_count[5m])",
           "legendFormat": "Avg Latency"
         }
       ],
-      "title": "API Latency (Avg)",
-      "type": "timeseries"
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "10.0.0"
     },
     {
-      "datasource": "Prometheus",
-      "gridPos": {
-        "h": 6,
-        "w": 10,
-        "x": 14,
-        "y": 1
-      },
       "id": 24,
       "title": "AI Service Latency (Internal)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 14,
+        "y": 5,
+        "w": 10,
+        "h": 6
+      },
+      "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "rate(tomehub_ai_service_duration_seconds_sum[5m]) / rate(tomehub_ai_service_duration_seconds_count[5m])",
+          "expr": "sum by (service, operation) (rate(tomehub_ai_service_duration_seconds_sum[5m])) / sum by (service, operation) (rate(tomehub_ai_service_duration_seconds_count[5m]))",
           "legendFormat": "{{service}} ({{operation}})"
         }
       ],
-      "type": "timeseries"
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "10.0.0"
     },
     {
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 7
-      },
       "id": 18,
       "title": "Database Resilience",
-      "type": "row"
+      "type": "row",
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 24,
+        "h": 1
+      }
     },
     {
-      "datasource": "Prometheus",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 8
-      },
       "id": 26,
       "title": "DB Pool Utilization (Read)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": "Prometheus",
       "targets": [
         {
           "expr": "tomehub_db_pool_utilization{pool_type=\"read\", metric_type=\"active\"}",
@@ -147,18 +342,33 @@
           "legendFormat": "Max Cap"
         }
       ],
-      "type": "timeseries"
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "10.0.0"
     },
     {
-      "datasource": "Prometheus",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 8
-      },
       "id": 28,
       "title": "DB Pool Utilization (Write)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": "Prometheus",
       "targets": [
         {
           "expr": "tomehub_db_pool_utilization{pool_type=\"write\", metric_type=\"active\"}",
@@ -169,113 +379,237 @@
           "legendFormat": "Max Cap"
         }
       ],
-      "type": "timeseries"
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "10.0.0"
     },
     {
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 16
-      },
       "id": 20,
       "title": "Ingestion Pipeline",
-      "type": "row"
+      "type": "row",
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 1
+      }
     },
     {
-      "datasource": "Prometheus",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 17
-      },
       "id": 30,
       "title": "Ingestion Success vs Fail",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "sum(increase(tomehub_ingestion_duration_seconds_count{status=\"success\"}[1h]))",
+          "expr": "sum(increase(tomehub_ingestion_duration_seconds_count{status=\"success\"}[1h])) or vector(0)",
           "legendFormat": "Success"
         },
         {
-          "expr": "sum(increase(tomehub_ingestion_duration_seconds_count{status=\"fail\"}[1h]))",
+          "expr": "sum(increase(tomehub_ingestion_duration_seconds_count{status=\"fail\"}[1h])) or vector(0)",
           "legendFormat": "Fail"
         }
       ],
-      "type": "timeseries"
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "10.0.0"
     },
     {
-      "datasource": "Prometheus",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 17
-      },
       "id": 32,
       "title": "Ingestion Latency Distribution",
+      "type": "heatmap",
+      "gridPos": {
+        "x": 8,
+        "y": 21,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": "Prometheus",
       "targets": [
         {
           "expr": "sum(rate(tomehub_ingestion_duration_seconds_bucket[5m])) by (le)",
           "format": "heatmap"
         }
       ],
-      "type": "heatmap"
+      "options": {
+        "calculate": false
+      }
     },
     {
+      "id": 105,
+      "title": "Ingestion Events (1h)",
+      "type": "stat",
       "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 25
+        "x": 16,
+        "y": 21,
+        "w": 8,
+        "h": 8
       },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(increase(tomehub_ingestion_duration_seconds_count[1h])) or vector(0)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto"
+      }
+    },
+    {
       "id": 34,
       "title": "Epistemic Quality (Judge AI)",
-      "type": "row"
+      "type": "row",
+      "gridPos": {
+        "x": 0,
+        "y": 29,
+        "w": 24,
+        "h": 1
+      }
     },
     {
-      "datasource": "Prometheus",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 26
-      },
       "id": 6,
       "title": "Judge AI Score Distribution",
       "type": "heatmap",
+      "gridPos": {
+        "x": 0,
+        "y": 30,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": "Prometheus",
       "targets": [
         {
           "expr": "sum(rate(tomehub_judge_score_bucket[5m])) by (le)",
           "format": "heatmap"
         }
-      ]
+      ],
+      "options": {
+        "calculate": false
+      }
     },
     {
-      "datasource": "Prometheus",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 26
-      },
       "id": 8,
       "title": "Judge Verdicts (Pass vs Regenerate)",
       "type": "timeseries",
+      "gridPos": {
+        "x": 8,
+        "y": 30,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "sum(increase(tomehub_judge_score_count{verdict=\"PASS\"}[1h]))",
+          "expr": "sum(increase(tomehub_judge_score_count{verdict=\"PASS\"}[1h])) or vector(0)",
           "legendFormat": "PASS"
         },
         {
-          "expr": "sum(increase(tomehub_judge_score_count{verdict=\"REGENERATE\"}[1h]))",
+          "expr": "sum(increase(tomehub_judge_score_count{verdict=\"REGENERATE\"}[1h])) or vector(0)",
           "legendFormat": "REGENERATE"
         },
         {
-          "expr": "sum(increase(tomehub_judge_score_count{verdict=\"DECLINE\"}[1h]))",
+          "expr": "sum(increase(tomehub_judge_score_count{verdict=\"DECLINE\"}[1h])) or vector(0)",
           "legendFormat": "DECLINE"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "10.0.0"
+    },
+    {
+      "id": 106,
+      "title": "Judge Events (1h)",
+      "type": "stat",
+      "gridPos": {
+        "x": 16,
+        "y": 30,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(increase(tomehub_judge_score_count[1h])) or vector(0)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto"
+      }
     }
   ],
   "refresh": "5s",
@@ -295,6 +629,6 @@
   "timezone": "",
   "title": "TomeHub Unified Observability",
   "uid": "tomehub-main",
-  "version": 2,
+  "version": 3,
   "weekStart": ""
 }

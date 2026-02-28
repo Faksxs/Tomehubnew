@@ -575,7 +575,8 @@ export async function syncHighlights(
     });
 
     if (!response.ok) {
-        throw new Error('Failed to sync highlights');
+        const detail = await response.text();
+        throw new Error(detail || 'Failed to sync highlights');
     }
     return response.json();
 }
@@ -605,7 +606,8 @@ export async function syncPersonalNote(
     });
 
     if (!response.ok) {
-        throw new Error('Failed to sync personal note');
+        const detail = await response.text();
+        throw new Error(detail || 'Failed to sync personal note');
     }
     return response.json();
 }
@@ -769,9 +771,18 @@ export async function pollRealtimeEvents(
     const response = await fetchWithAuth(url.toString(), {
         headers: { 'Content-Type': 'application/json' }
     });
+    if (response.status === 404) {
+        throw new Error('REALTIME_ENDPOINT_NOT_FOUND');
+    }
     if (!response.ok) {
-        const error: ApiError = await response.json();
-        throw new Error(error.details || error.error || 'Realtime polling failed');
+        let message = 'Realtime polling failed';
+        try {
+            const error: ApiError = await response.json();
+            message = error.details || error.error || message;
+        } catch {
+            // Keep fallback message when response is not JSON.
+        }
+        throw new Error(message);
     }
     return response.json();
 }

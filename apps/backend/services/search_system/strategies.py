@@ -4,6 +4,7 @@ import logging
 import re
 from infrastructure.db_manager import DatabaseManager, safe_read_clob
 from utils.text_utils import deaccent_text, get_lemmas, repair_common_mojibake
+from config import settings
 
 logger = logging.getLogger("search_strategies")
 
@@ -96,6 +97,81 @@ def _escape_like_literal(value: str, escape_char: str = "\\") -> str:
 def _contains_like_pattern(value: str, escape_char: str = "\\") -> str:
     return f"%{_escape_like_literal(value, escape_char=escape_char)}%"
 
+
+def _is_oracle_text_exact_enabled() -> bool:
+    return os.getenv("SEARCH_EXACT_ORACLE_TEXT_ENABLED", "false").strip().lower() == "true"
+
+
+def _is_oracle_text_single_token_enabled() -> bool:
+    return os.getenv("SEARCH_EXACT_ORACLE_TEXT_SINGLE_TOKEN_ENABLED", "false").strip().lower() == "true"
+
+
+def _oracle_text_min_rows_for_backfill() -> int:
+    raw = os.getenv("SEARCH_EXACT_ORACLE_TEXT_MIN_ROWS", "40").strip()
+    try:
+        value = int(raw)
+    except Exception:
+        value = 40
+    if value < 1:
+        value = 1
+    if value > 500:
+        value = 500
+    return value
+
+
+def _build_oracle_text_query(raw_query: str) -> str:
+    """
+    Build a conservative Oracle Text query from user input.
+    - Normalize/deaccent first
+    - Keep only alphanumeric tokens
+    - Join with AND for precision
+    """
+    normalized = _normalize_match_text(raw_query or "")
+    tokens = [t for t in normalized.split(" ") if t and len(t) >= 2]
+    if not tokens:
+        return ""
+    # Cap token count to keep query parser cost bounded.
+    tokens = tokens[:8]
+    return " AND ".join(tokens)
+
+
+def _should_use_oracle_text_for_query(raw_query: str) -> bool:
+    normalized = _normalize_match_text(raw_query or "")
+    tokens = [t for t in normalized.split(" ") if t and len(t) >= 2]
+    if len(tokens) >= 2:
+        return True
+    if len(tokens) == 1 and _is_oracle_text_single_token_enabled():
+        return True
+    return False
+
+
+def _merge_rows_prefer_first(primary_rows: List[Any], secondary_rows: List[Any], max_rows: int) -> List[Any]:
+    """
+    Merge two row lists by row-id (r[0]), preserving primary order.
+    """
+    out: List[Any] = []
+    seen_ids = set()
+
+    for row in primary_rows or []:
+        row_id = row[0] if row else None
+        if row_id in seen_ids:
+            continue
+        seen_ids.add(row_id)
+        out.append(row)
+        if len(out) >= max_rows:
+            return out
+
+    for row in secondary_rows or []:
+        row_id = row[0] if row else None
+        if row_id in seen_ids:
+            continue
+        seen_ids.add(row_id)
+        out.append(row)
+        if len(out) >= max_rows:
+            break
+    return out
+
+
 class SearchStrategy:
     def search(self, query: str, firebase_uid: str, limit: int = 100, offset: int = 0, **kwargs) -> List[Dict[str, Any]]:
         raise NotImplementedError
@@ -112,18 +188,27 @@ def _apply_resource_type_filter(sql: str, params: Dict[str, Any], resource_type:
     if not rt:
         return (sql, params)
 
+    uses_v2_alias = " c." in sql or " c " in sql
+    field = "c.content_type" if uses_v2_alias else "source_type"
+
     if rt == "BOOK":
-        sql += " AND c.content_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'BOOK', 'HIGHLIGHT', 'INSIGHT') "
+        if field == "source_type":
+            sql += " AND source_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'BOOK', 'HIGHLIGHT', 'INSIGHT', 'NOTES') "
+        else:
+            sql += " AND c.content_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'BOOK', 'HIGHLIGHT', 'INSIGHT') "
     elif rt == "ALL_NOTES":
-        sql += " AND c.content_type IN ('HIGHLIGHT', 'INSIGHT') "
+        if field == "source_type":
+            sql += " AND source_type IN ('HIGHLIGHT', 'INSIGHT', 'NOTES') "
+        else:
+            sql += " AND c.content_type IN ('HIGHLIGHT', 'INSIGHT') "
     elif rt == "PERSONAL_NOTE":
-        sql += " AND c.content_type = 'PERSONAL_NOTE' "
+        sql += f" AND {field} = 'PERSONAL_NOTE' "
     elif rt in {"ARTICLE", "WEBSITE"}:
-        sql += " AND c.content_type = :p_res_type "
+        sql += f" AND {field} = :p_res_type "
         params["p_res_type"] = rt
     else:
         # Backward-compatible strict mode for custom/legacy values.
-        sql += " AND c.content_type = :p_res_type "
+        sql += f" AND {field} = :p_res_type "
         params["p_res_type"] = rt
 
     return (sql, params)
@@ -132,7 +217,11 @@ def _apply_resource_type_filter(sql: str, params: Dict[str, Any], resource_type:
 def _apply_book_id_filter(sql: str, params: Dict[str, Any], book_id: Optional[str]) -> tuple:
     bid = str(book_id or "").strip()
     if bid:
-        sql += " AND c.item_id = :p_book_id "
+        uses_v2_alias = " c." in sql or " c " in sql
+        if uses_v2_alias:
+            sql += " AND c.item_id = :p_book_id "
+        else:
+            sql += " AND book_id = :p_book_id "
         params["p_book_id"] = bid
     return (sql, params)
 
@@ -206,8 +295,8 @@ class ExactMatchStrategy(SearchStrategy):
                 with conn.cursor() as cursor:
                     q_deaccented = deaccent_text(query)
                     candidate_limit = min(max(limit * 4, limit + 40), 2500)
-                    
-                    sql = """
+
+                    base_sql = """
                         SELECT c.id, c.content_chunk, c.title, c.content_type as source_type, c.page_number, 
                                c.tags_json as tags, l.summary_text as summary, c.comment_text as "COMMENT",
                                c.item_id as book_id, c.normalized_content
@@ -216,57 +305,91 @@ class ExactMatchStrategy(SearchStrategy):
                         WHERE c.firebase_uid = :p_uid
                           AND c.AI_ELIGIBLE = 1
                     """
-                    
-                    params = {
-                        "p_uid": firebase_uid, 
-                        "p_candidate_limit": candidate_limit,
-                        "p_exact_like": _contains_like_pattern(q_deaccented),
-                    }
-                    
-                    sql, params = _apply_resource_type_filter(sql, params, resource_type)
-                    sql, params = _apply_book_id_filter(sql, params, book_id)
-                    sql, params = _apply_visibility_filter(sql, params, visibility_scope)
-                    sql, params = _apply_content_type_filter(sql, params, content_type)
-                    sql, params = _apply_ingestion_type_filter(sql, params, ingestion_type)
-                    
-                    # 1. TRY FIRST: Search without PDF (exclude raw PDF content)
-                    if _should_exclude_pdf_in_first_pass(resource_type, book_id):
-                        sql += " AND c.content_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK') "
-                    
-                    # 2. SEARCH CONDITION (bind-safe; escape LIKE wildcards)
-                    sql += " AND text_deaccented LIKE :p_exact_like ESCAPE '\\' "
 
-                    # 3. Simple Sort (Priority handled in Orchestrator)
-                    sql += """
-                        ORDER BY id DESC
-                        FETCH FIRST :p_candidate_limit ROWS ONLY
-                    """
-                    
-                    cursor.execute(sql, params)
-                    rows = cursor.fetchall()
-                    
-                    # 4. FALLBACK: If no results found and no resource_type filter, search including PDF content
-                    if not rows and not resource_type and not book_id:
-                        logger.info(f"ExactMatchStrategy: No results without PDF content, trying with PDF fallback")
-                        sql_with_pdf = """
-                            SELECT c.id, c.content_chunk, c.title, c.content_type as source_type, c.page_number, 
-                                   c.tags_json as tags, l.summary_text as summary, c.comment_text as "COMMENT",
-                                   c.item_id as book_id, c.normalized_content
-                            FROM TOMEHUB_CONTENT_V2 c
-                            LEFT JOIN TOMEHUB_LIBRARY_ITEMS l ON c.item_id = l.item_id AND c.firebase_uid = l.firebase_uid
-                            WHERE c.firebase_uid = :p_uid
-                              AND c.AI_ELIGIBLE = 1
-                        """
-                        sql_with_pdf += " AND text_deaccented LIKE :p_exact_like ESCAPE '\\' "
-                        sql_with_pdf, params = _apply_visibility_filter(sql_with_pdf, params, visibility_scope)
-                        sql_with_pdf, params = _apply_content_type_filter(sql_with_pdf, params, content_type)
-                        sql_with_pdf, params = _apply_ingestion_type_filter(sql_with_pdf, params, ingestion_type)
-                        sql_with_pdf += """
+                    base_params = {
+                        "p_uid": firebase_uid,
+                        "p_candidate_limit": candidate_limit,
+                    }
+                    exact_like_pattern = _contains_like_pattern(q_deaccented)
+
+                    oracle_text_query = _build_oracle_text_query(query)
+                    oracle_text_enabled = (
+                        _is_oracle_text_exact_enabled()
+                        and bool(oracle_text_query)
+                        and _should_use_oracle_text_for_query(query)
+                    )
+                    min_rows_for_backfill = _oracle_text_min_rows_for_backfill()
+
+                    def _run_exact_query(include_pdf: bool, use_oracle_text: bool) -> List[Any]:
+                        sql = base_sql
+                        params = dict(base_params)
+
+                        sql, params = _apply_resource_type_filter(sql, params, resource_type)
+                        sql, params = _apply_book_id_filter(sql, params, book_id)
+                        sql, params = _apply_visibility_filter(sql, params, visibility_scope)
+                        sql, params = _apply_content_type_filter(sql, params, content_type)
+                        sql, params = _apply_ingestion_type_filter(sql, params, ingestion_type)
+
+                        if not include_pdf and _should_exclude_pdf_in_first_pass(resource_type, book_id):
+                            sql += " AND c.content_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK') "
+
+                        if use_oracle_text:
+                            params["p_oracle_text_query"] = oracle_text_query
+                            sql += " AND CONTAINS(c.content_chunk, :p_oracle_text_query, 1) > 0 "
+                        else:
+                            params["p_exact_like"] = exact_like_pattern
+                            sql += " AND c.normalized_content LIKE :p_exact_like ESCAPE '\\' "
+
+                        sql += """
                             ORDER BY id DESC
                             FETCH FIRST :p_candidate_limit ROWS ONLY
                         """
-                        cursor.execute(sql_with_pdf, params)
-                        rows = cursor.fetchall()
+                        cursor.execute(sql, params)
+                        return cursor.fetchall()
+
+                    rows: List[Any] = []
+                    match_mode = "exact_deaccented"
+
+                    # First pass: prefer Oracle Text (feature-flagged), fallback to legacy LIKE.
+                    if oracle_text_enabled:
+                        try:
+                            rows = _run_exact_query(include_pdf=False, use_oracle_text=True)
+                            match_mode = "exact_oracle_text"
+                            if len(rows) < min_rows_for_backfill:
+                                legacy_rows = _run_exact_query(include_pdf=False, use_oracle_text=False)
+                                rows = _merge_rows_prefer_first(rows, legacy_rows, candidate_limit)
+                                match_mode = "exact_oracle_text_backfill"
+                        except Exception as oracle_err:
+                            logger.warning(
+                                "ExactMatchStrategy Oracle Text disabled for this request due to error: %s",
+                                oracle_err,
+                            )
+                            rows = []
+
+                    if not rows:
+                        rows = _run_exact_query(include_pdf=False, use_oracle_text=False)
+                        match_mode = "exact_deaccented"
+
+                    # Fallback pass with PDF included (only when query is not scoped).
+                    if not rows and not resource_type and not book_id:
+                        logger.info("ExactMatchStrategy: no first-pass results, trying PDF-inclusive fallback")
+                        if oracle_text_enabled:
+                            try:
+                                rows = _run_exact_query(include_pdf=True, use_oracle_text=True)
+                                match_mode = "exact_oracle_text"
+                                if len(rows) < min_rows_for_backfill:
+                                    legacy_rows = _run_exact_query(include_pdf=True, use_oracle_text=False)
+                                    rows = _merge_rows_prefer_first(rows, legacy_rows, candidate_limit)
+                                    match_mode = "exact_oracle_text_backfill"
+                            except Exception as oracle_err:
+                                logger.warning(
+                                    "ExactMatchStrategy Oracle Text fallback failed, using legacy LIKE: %s",
+                                    oracle_err,
+                                )
+                                rows = []
+                        if not rows:
+                            rows = _run_exact_query(include_pdf=True, use_oracle_text=False)
+                            match_mode = "exact_deaccented"
                     
                     results = []
                     for r in rows:
@@ -289,7 +412,7 @@ class ExactMatchStrategy(SearchStrategy):
                             'comment': note,
                             'book_id': r[8],
                             'score': 100.0,
-                            'match_type': 'exact_deaccented'
+                            'match_type': match_mode
                         })
                         if len(results) >= limit:
                             break
@@ -563,4 +686,122 @@ class SemanticMatchStrategy(SearchStrategy):
 
         except Exception as e:
             logger.error(f"SemanticMatchStrategy failed: {e}", exc_info=True)
+            return []
+
+
+class OdlShadowRescueStrategy(SearchStrategy):
+    """
+    Strategy for ODL secondary rescue retrieval.
+    Reads additive candidates from TOMEHUB_CONTENT_ODL_SHADOW.
+    """
+
+    def search(
+        self,
+        query: str,
+        firebase_uid: str,
+        limit: int = 8,
+        offset: int = 0,
+        resource_type: Optional[str] = None,
+        book_id: Optional[str] = None,
+        visibility_scope: Optional[str] = None,
+        content_type: Optional[str] = None,
+        ingestion_type: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        # ODL shadow only serves PDF-like chunks.
+        if content_type and str(content_type).strip().upper() not in {"PDF", "EPUB", "PDF_CHUNK"}:
+            return []
+        if resource_type:
+            rt = str(resource_type).strip().upper()
+            if rt not in {"BOOK", "PDF", "PDF_CHUNK", "EPUB"}:
+                return []
+        if not bool(getattr(settings, "ODL_RESCUE_ENABLED", False)):
+            return []
+
+        query_text = str(query or "").strip()
+        if not query_text:
+            return []
+        q_deaccented = deaccent_text(query_text)
+        lemma_candidates = _filter_query_lemmas(get_lemmas(query_text))[:6]
+
+        try:
+            with DatabaseManager.get_read_connection() as conn:
+                with conn.cursor() as cursor:
+                    candidate_limit = min(max(int(limit or 8) * 24, 200), 1200)
+                    sql = """
+                        SELECT
+                            s.ID, s.CONTENT_CHUNK, s.TITLE, s.PAGE_NUMBER, s.CHUNK_INDEX,
+                            s.NORMALIZED_CONTENT, s.LEMMA_TOKENS, s.ITEM_ID, s.CONTENT_HASH
+                        FROM TOMEHUB_CONTENT_ODL_SHADOW s
+                        LEFT JOIN TOMEHUB_LIBRARY_ITEMS l
+                            ON s.ITEM_ID = l.ITEM_ID AND s.FIREBASE_UID = l.FIREBASE_UID
+                        WHERE s.FIREBASE_UID = :p_uid
+                          AND EXISTS (
+                              SELECT 1
+                              FROM TOMEHUB_ODL_SHADOW_STATUS st
+                              WHERE st.FIREBASE_UID = s.FIREBASE_UID
+                                AND st.ITEM_ID = s.ITEM_ID
+                                AND st.STATUS = 'READY'
+                          )
+                    """
+                    params: Dict[str, Any] = {"p_uid": firebase_uid, "p_candidate_limit": candidate_limit}
+                    sql, params = _apply_book_id_filter(sql, params, book_id)
+                    sql, params = _apply_visibility_filter(sql, params, visibility_scope)
+                    sql += """
+                        ORDER BY s.CREATED_AT DESC, NVL(s.PAGE_NUMBER, 0), NVL(s.CHUNK_INDEX, 0)
+                        FETCH FIRST :p_candidate_limit ROWS ONLY
+                    """
+                    cursor.execute(sql, params)
+                    rows = cursor.fetchall() or []
+
+                    out: List[Dict[str, Any]] = []
+                    for r in rows:
+                        content = safe_read_clob(r[1])
+                        normalized = safe_read_clob(r[5]) or content
+                        if not content:
+                            continue
+
+                        exact_hit = _contains_exact_term_boundary(normalized, q_deaccented)
+                        lemma_hits = _count_lemma_stem_hits(normalized, lemma_candidates) if lemma_candidates else 0
+                        if not exact_hit and lemma_hits <= 0:
+                            continue
+
+                        score = 0.0
+                        if exact_hit:
+                            score = 65.0 + min(20.0, len(query_text.split()) * 2.0) + min(10.0, float(lemma_hits) * 2.0)
+                            match_type = "odl_shadow_exact"
+                        else:
+                            score = 40.0 + min(35.0, float(lemma_hits) * 5.0)
+                            match_type = "odl_shadow_lemma"
+
+                        title = str(r[2] or "")
+                        if title and (
+                            _contains_exact_term_boundary(title, q_deaccented)
+                            or any(_contains_lemma_stem_boundary(title, lm) for lm in lemma_candidates)
+                        ):
+                            score += 4.0
+
+                        out.append(
+                            {
+                                "id": f"odl:{r[0]}",
+                                "title": title,
+                                "content_chunk": content,
+                                "source_type": "ODL_SHADOW",
+                                "page_number": r[3],
+                                "chunk_index": r[4],
+                                "tags": None,
+                                "summary": None,
+                                "comment": None,
+                                "book_id": str(r[7] or ""),
+                                "score": min(99.0, score),
+                                "match_type": match_type,
+                                "odl_shadow": True,
+                                "content_hash": str(r[8] or ""),
+                            }
+                        )
+                        if len(out) >= int(limit or 8):
+                            break
+                    return out
+        except Exception as e:
+            if "ORA-00942" not in str(e):
+                logger.warning("OdlShadowRescueStrategy failed", exc_info=True)
             return []

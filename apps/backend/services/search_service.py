@@ -85,6 +85,8 @@ from services.analytics_service import (
     is_analytic_word_count,
     extract_target_term,
     count_lemma_occurrences,
+    resolve_multiple_book_ids_from_question,
+    resolve_all_book_ids,
 )
 
 NOISE_SOURCE_ALLOWLIST = {
@@ -93,6 +95,27 @@ NOISE_SOURCE_ALLOWLIST = {
     "ARTICLE", "WEBSITE", "GRAPH_RELATION", 
     "UNKNOWN", "OTHER" 
 }
+
+
+def _resolve_user_book_ids(firebase_uid: str) -> set[str]:
+    """
+    Backward-compatible helper used by compare policy and tests.
+    Returns the set of book ids the user can compare against.
+    """
+    try:
+        return {str(bid).strip() for bid in (resolve_all_book_ids(firebase_uid) or []) if str(bid).strip()}
+    except Exception:
+        return set()
+
+
+def resolve_book_ids_from_question(firebase_uid: str, question: str) -> List[str]:
+    """
+    Backward-compatible alias for compare target auto-resolution.
+    """
+    try:
+        return list(resolve_multiple_book_ids_from_question(firebase_uid, question) or [])
+    except Exception:
+        return []
 
 _REWRITE_TRIGGER_TOKENS = {
     "bu", "bunu", "buna", "bunun", "bundan",
@@ -906,78 +929,146 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
     all_chunks_map = {}
 
     # ── Compare Policy: Per-Book Fan-Out Retrieval ──────────────────
+    compare_focus_query = (keywords[0] if keywords else effective_query).strip() or effective_query
     _compare_targets = [str(b).strip() for b in (target_book_ids or []) if str(b or "").strip()]
-    
-    # Auto-resolve if empty but comparison intent might be present
-    if not _compare_targets:
-        from services.analytics_service import resolve_multiple_book_ids_from_question
-        resolved_ids = resolve_multiple_book_ids_from_question(firebase_uid, effective_query)
-        if len(resolved_ids) >= 2:
-            _compare_targets = resolved_ids
-            if settings.DEBUG_VERBOSE_PIPELINE:
-                logger.debug("Auto-resolved compare targets from query: %s", _compare_targets)
-
-    compare_applied = len(_compare_targets) >= 2
-    compare_applied = len(_compare_targets) >= 2
+    auto_resolved_target_book_ids: List[str] = []
+    unauthorized_target_book_ids: List[str] = []
     per_book_evidence_count: Dict[str, int] = {}
     target_books_used: List[str] = []
     target_books_truncated = False
     compare_degrade_reason = ""
     evidence_policy = "standard"
+    latency_budget_hit = False
+
+    compare_mode_norm = str(compare_mode or "").strip().upper()
+    compare_policy_enabled = bool(getattr(settings, "SEARCH_COMPARE_POLICY_ENABLED", False))
+    if not compare_policy_enabled:
+        canary_uids = getattr(settings, "SEARCH_COMPARE_CANARY_UIDS", set()) or set()
+        compare_policy_enabled = str(firebase_uid) in {str(uid).strip() for uid in canary_uids}
+
+    q_norm = (effective_query or "").lower()
+    notes_vs_single_requested = bool(
+        context_book_id and not _compare_targets and any(tok in q_norm for tok in ("not", "note", "highlight", "vurgu"))
+    )
+
+    if notes_vs_single_requested:
+        _compare_targets = [str(context_book_id).strip(), "__USER_NOTES__"]
+    elif not _compare_targets:
+        resolved_ids = resolve_book_ids_from_question(firebase_uid, effective_query)
+        if len(resolved_ids) >= 2:
+            auto_resolved_target_book_ids = [str(b).strip() for b in resolved_ids if str(b).strip()]
+            _compare_targets = list(auto_resolved_target_book_ids)
+            if settings.DEBUG_VERBOSE_PIPELINE:
+                logger.debug("Auto-resolved compare targets from query: %s", _compare_targets)
+
+    authorized_book_ids = _resolve_user_book_ids(firebase_uid)
+    filtered_targets: List[str] = []
+    for bid in _compare_targets:
+        if not bid:
+            continue
+        if bid == "__USER_NOTES__":
+            if bid not in filtered_targets:
+                filtered_targets.append(bid)
+            continue
+        if authorized_book_ids and bid not in authorized_book_ids:
+            unauthorized_target_book_ids.append(bid)
+            continue
+        if bid not in filtered_targets:
+            filtered_targets.append(bid)
+    _compare_targets = filtered_targets
+
+    compare_requested = compare_mode_norm == "EXPLICIT_ONLY" or compare_policy_enabled or notes_vs_single_requested
+    compare_applied = compare_requested and len(_compare_targets) >= 2
 
     if compare_applied:
-        evidence_policy = "per_book_fanout"
-        # Cap to 5 books max to avoid latency explosion
-        if len(_compare_targets) > 5:
-            _compare_targets = _compare_targets[:5]
+        max_targets = max(2, int(getattr(settings, "SEARCH_COMPARE_TARGET_MAX", 8) or 8))
+        if len(_compare_targets) > max_targets:
+            _compare_targets = _compare_targets[:max_targets]
             target_books_truncated = True
+
         target_books_used = list(_compare_targets)
-        per_book_limit = max(8, (limit or 20) // len(_compare_targets))
+        evidence_policy = "TEXT_PRIMARY_NOTES_SECONDARY_V1"
+
+        per_book_primary_limit = max(1, int(getattr(settings, "SEARCH_COMPARE_PRIMARY_PER_BOOK", 6) or 6))
+        per_book_secondary_limit = max(0, int(getattr(settings, "SEARCH_COMPARE_SECONDARY_PER_BOOK", 2) or 2))
+        timeout_ms = max(50, int(getattr(settings, "SEARCH_COMPARE_TIMEOUT_MS", 2500) or 2500))
+        deadline = time.monotonic() + (timeout_ms / 1000.0)
         search_depth = 'deep' if mode == 'EXPLORER' else 'normal'
-        min_per_book_quota = 3  # Guarantee at least 3 chunks per book
+        compare_primary_rows: List[Dict[str, Any]] = []
+        compare_secondary_rows: List[Dict[str, Any]] = []
 
-        def _search_one_book(bid: str):
+        for bid in _compare_targets:
+            if time.monotonic() > deadline:
+                latency_budget_hit = True
+                compare_degrade_reason = "timeout_partial_results"
+                break
+
             try:
-                return bid, perform_search(
-                    effective_query, firebase_uid,
-                    intent=intent, book_id=bid,
-                    search_depth=search_depth,
-                    resource_type=resource_type,
-                    visibility_scope=visibility_scope,
-                    content_type=content_type,
-                    ingestion_type=ingestion_type,
-                    limit=per_book_limit,
-                    offset=0,
-                    session_id=session_id,
-                )
-            except Exception as exc:
-                logger.error("Compare fan-out search failed for book %s: %s", bid, exc)
-                return bid, ([], {})
-
-        with ThreadPoolExecutor(max_workers=min(5, len(_compare_targets))) as cmp_exec:
-            futures = [cmp_exec.submit(_search_one_book, bid) for bid in _compare_targets]
-            for fut in futures:
-                bid, (book_results, book_meta) = fut.result()
-                count = 0
-                for c in (book_results or []):
-                    c = dict(c)
-                    c["_compare_target"] = True
-                    c["_compare_book_id"] = bid
-                    key = f"{c.get('title','')}_{str(c.get('content_chunk',''))[:20]}"
-                    if key not in all_chunks_map:
-                        all_chunks_map[key] = c
-                        count += 1
-                per_book_evidence_count[bid] = count
-                if count < min_per_book_quota:
-                    compare_degrade_reason = (
-                        compare_degrade_reason
-                        or f"low_evidence_for_{bid}_{count}_chunks"
+                if bid == "__USER_NOTES__":
+                    rows, _meta = perform_search(
+                        compare_focus_query,
+                        firebase_uid,
+                        intent=intent,
+                        book_id=None,
+                        search_depth=search_depth,
+                        resource_type="ALL_NOTES",
+                        visibility_scope=visibility_scope,
+                        content_type=content_type,
+                        ingestion_type=ingestion_type,
+                        limit=per_book_secondary_limit,
+                        offset=0,
+                        session_id=session_id,
                     )
+                    count = 0
+                    for c in (rows or []):
+                        c2 = dict(c)
+                        c2["_compare_target"] = True
+                        c2["_compare_book_id"] = "__USER_NOTES__"
+                        c2["_compare_secondary"] = True
+                        compare_secondary_rows.append(c2)
+                        count += 1
+                    per_book_evidence_count[bid] = count
+                else:
+                    rows, _meta = perform_search(
+                        compare_focus_query,
+                        firebase_uid,
+                        intent=intent,
+                        book_id=bid,
+                        search_depth=search_depth,
+                        resource_type="BOOK",
+                        visibility_scope=visibility_scope,
+                        content_type=content_type,
+                        ingestion_type=ingestion_type,
+                        limit=per_book_primary_limit,
+                        offset=0,
+                        session_id=session_id,
+                    )
+                    count = 0
+                    for c in (rows or []):
+                        c2 = dict(c)
+                        c2["_compare_target"] = True
+                        c2["_compare_book_id"] = bid
+                        c2["_compare_primary"] = True
+                        compare_primary_rows.append(c2)
+                        count += 1
+                    per_book_evidence_count[bid] = count
+            except Exception as exc:
+                logger.error("Compare fan-out search failed for target %s: %s", bid, exc)
+                per_book_evidence_count[bid] = 0
+
+        max_secondary_allowed = max(1, len(compare_primary_rows) // 3) if compare_primary_rows else 0
+        if max_secondary_allowed and len(compare_secondary_rows) > max_secondary_allowed:
+            compare_secondary_rows = compare_secondary_rows[:max_secondary_allowed]
+
+        for c in compare_primary_rows + compare_secondary_rows:
+            key = f"{c.get('title','')}_{str(c.get('content_chunk',''))[:20]}"
+            if key not in all_chunks_map:
+                all_chunks_map[key] = c
 
         if settings.DEBUG_VERBOSE_PIPELINE:
             logger.debug(
-                "Compare fan-out results: targets=%s evidence=%s",
-                _compare_targets, per_book_evidence_count,
+                "Compare fan-out results: targets=%s evidence=%s focus_query=%s",
+                _compare_targets, per_book_evidence_count, compare_focus_query,
             )
 
     # 2. Parallel Retrieval (Vector + Graph)
@@ -1324,6 +1415,13 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
     selected_buckets = vec_meta.get("selected_buckets", [])
     executed_strategies = vec_meta.get("executed_strategies", [])
     expansion_skipped_reason = vec_meta.get("expansion_skipped_reason")
+    odl_rescue_applied = bool(vec_meta.get("odl_rescue_applied", False))
+    odl_rescue_reason = vec_meta.get("odl_rescue_reason")
+    odl_rescue_timed_out = bool(vec_meta.get("odl_rescue_timed_out", False))
+    odl_rescue_latency_ms = vec_meta.get("odl_rescue_latency_ms")
+    odl_rescue_candidates_added = int(vec_meta.get("odl_rescue_candidates_added", 0) or 0)
+    odl_rescue_candidates_topk = int(vec_meta.get("odl_rescue_candidates_topk", 0) or 0)
+    odl_shadow_status = vec_meta.get("odl_shadow_status")
 
     dynamic_confidence = max(0.5, min(5.0, float(avg_conf or 0.0)))
     source_diversity_count = len(
@@ -1358,6 +1456,13 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
             "source_diversity_count": source_diversity_count,
             "source_type_diversity_count": source_type_diversity_count,
             "level_counts": {"A": level_a_count, "B": level_b_count, "C": level_c_count},
+            "odl_rescue_applied": odl_rescue_applied,
+            "odl_rescue_reason": odl_rescue_reason,
+            "odl_rescue_timed_out": odl_rescue_timed_out,
+            "odl_rescue_latency_ms": odl_rescue_latency_ms,
+            "odl_rescue_candidates_added": odl_rescue_candidates_added,
+            "odl_rescue_candidates_topk": odl_rescue_candidates_topk,
+            "odl_shadow_status": odl_shadow_status,
         },
     )
 
@@ -1397,9 +1502,20 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         "supplementary_keyword_search_applied": supplementary_search_applied,
         "supplementary_search_skipped_reason": supplementary_search_skipped_reason,
         "expansion_skipped_reason": expansion_skipped_reason,
+        "odl_rescue_applied": odl_rescue_applied,
+        "odl_rescue_reason": odl_rescue_reason,
+        "odl_rescue_timed_out": odl_rescue_timed_out,
+        "odl_rescue_latency_ms": odl_rescue_latency_ms,
+        "odl_rescue_candidates_added": odl_rescue_candidates_added,
+        "odl_rescue_candidates_topk": odl_rescue_candidates_topk,
+        "odl_shadow_status": odl_shadow_status,
         "compare_applied": compare_applied,
         "target_books_used": target_books_used,
         "target_books_truncated": target_books_truncated,
+        "unauthorized_target_book_ids": unauthorized_target_book_ids,
+        "auto_resolved_target_book_ids": auto_resolved_target_book_ids,
+        "compare_focus_query": compare_focus_query,
+        "latency_budget_hit": latency_budget_hit,
         "evidence_policy": evidence_policy,
         "per_book_evidence_count": per_book_evidence_count,
         "compare_degrade_reason": compare_degrade_reason,
@@ -1437,9 +1553,20 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
             "supplementary_keyword_search_applied": supplementary_search_applied,
             "supplementary_search_skipped_reason": supplementary_search_skipped_reason,
             "expansion_skipped_reason": expansion_skipped_reason,
+            "odl_rescue_applied": odl_rescue_applied,
+            "odl_rescue_reason": odl_rescue_reason,
+            "odl_rescue_timed_out": odl_rescue_timed_out,
+            "odl_rescue_latency_ms": odl_rescue_latency_ms,
+            "odl_rescue_candidates_added": odl_rescue_candidates_added,
+            "odl_rescue_candidates_topk": odl_rescue_candidates_topk,
+            "odl_shadow_status": odl_shadow_status,
             "compare_applied": compare_applied,
             "target_books_used": target_books_used,
             "target_books_truncated": target_books_truncated,
+            "unauthorized_target_book_ids": unauthorized_target_book_ids,
+            "auto_resolved_target_book_ids": auto_resolved_target_book_ids,
+            "compare_focus_query": compare_focus_query,
+            "latency_budget_hit": latency_budget_hit,
             "evidence_policy": evidence_policy,
             "per_book_evidence_count": per_book_evidence_count,
             "compare_degrade_reason": compare_degrade_reason,
@@ -1456,6 +1583,13 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
                 "retrieval_mode": retrieval_mode,
                 "selected_buckets": selected_buckets,
                 "executed_strategies": executed_strategies,
+                "odl_rescue_applied": odl_rescue_applied,
+                "odl_rescue_reason": odl_rescue_reason,
+                "odl_rescue_timed_out": odl_rescue_timed_out,
+                "odl_rescue_latency_ms": odl_rescue_latency_ms,
+                "odl_rescue_candidates_added": odl_rescue_candidates_added,
+                "odl_rescue_candidates_topk": odl_rescue_candidates_topk,
+                "odl_shadow_status": odl_shadow_status,
             },
         }
     }

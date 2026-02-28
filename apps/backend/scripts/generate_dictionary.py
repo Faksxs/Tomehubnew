@@ -35,17 +35,17 @@ def generate_dictionary():
     cursor = conn.cursor()
     
     try:
-        # Fetch all de-accented text
+        # Fetch normalized searchable text
         # This gives us a broad vocabulary of "searchable" forms
         print("Fetching content tokens...")
-        sql = "SELECT text_deaccented FROM TOMEHUB_CONTENT WHERE text_deaccented IS NOT NULL"
+        sql = "SELECT normalized_content FROM TOMEHUB_CONTENT WHERE normalized_content IS NOT NULL"
         cursor.execute(sql)
         
         token_counter = Counter()
         row_count = 0
         
         # Simple regex for tokenization (alphanumeric only)
-        # We assume text_deaccented is already lowercased and cleanish
+        # We assume normalized_content is already lowercased and cleanish
         tokenizer = re.compile(r'\w+') 
         
         while True:

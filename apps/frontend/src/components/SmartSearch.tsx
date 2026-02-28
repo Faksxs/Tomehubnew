@@ -148,84 +148,78 @@ export default function SmartSearch({ userId, onBack, books = [] }: SmartSearchP
     };
 
     return (
-        <div className="flex flex-col h-full p-6 max-w-[1100px] mx-auto w-full animate-in fade-in duration-500">
-            <div className="sticky top-0 z-50 -mx-6 px-6 pt-2 md:pt-6 pb-2 md:pb-4 bg-[#F7F8FB]/95 dark:bg-[#0b0e14]/95 backdrop-blur border-b border-[#E6EAF2]/60 dark:border-white/5">
-                {!searched ? (
-                    <div className="flex flex-row md:flex-col items-center justify-center gap-3 md:space-y-3 relative">
-                        {onBack && (
-                            <div className="absolute left-0 top-1/2 -translate-y-1/2 md:top-0 md:translate-y-0">
-                                <button
-                                    onClick={onBack}
-                                    className="group flex items-center gap-2 text-slate-500 hover:text-[#CC561E] transition-all duration-300"
-                                >
-                                    <div className="p-1.5 rounded-lg bg-[#F3F5FA] dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
-                                        <ChevronLeft size={16} />
-                                    </div>
-                                    <span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">Back</span>
-                                </button>
+        <div className={`max-w-[1100px] w-full mx-auto p-3 md:p-6 flex flex-col transition-all duration-1000 ease-in-out ${!searched ? 'min-h-[70vh]' : 'space-y-6 md:space-y-8'}`}>
+            <div className="relative flex items-center justify-between w-full h-10 md:h-12 mb-2 md:mb-6">
+                <div className="flex-shrink-0 z-10">
+                    {onBack && (
+                        <button
+                            onClick={onBack}
+                            className="group flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-[#CC561E] transition-all duration-300"
+                        >
+                            <div className="p-1.5 rounded-lg bg-[#F3F5FA] dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
+                                <ChevronLeft size={16} />
                             </div>
-                        )}
-                        <div className="inline-flex items-center justify-center p-2 md:p-3 bg-[rgba(204,86,30,0.1)] dark:bg-[rgba(204,86,30,0.2)] rounded-2xl mb-0 md:mb-2 shrink-0">
-                            <SmartSearchLogo className="w-6 h-6 md:w-8 md:h-8" />
+                            <span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">Back</span>
+                        </button>
+                    )}
+                </div>
+
+                {/* Centered Branding - Only visible when results are shown */}
+                {searched && (
+                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-2 md:gap-3 transition-all duration-500 origin-center animate-in fade-in zoom-in-95">
+                        <div className="p-1.5 md:p-2 bg-[rgba(204,86,30,0.1)] dark:bg-[rgba(204,86,30,0.2)] rounded-2xl shrink-0 scale-75">
+                            <SmartSearchLogo className="w-5 h-5 md:w-8 md:h-8" />
                         </div>
-                        <h2 className="text-2xl md:text-4xl font-extrabold bg-gradient-to-r from-[#CC561E] to-[#e66a2e] bg-clip-text text-transparent tracking-tight">
+                        <h1 className="font-extrabold bg-gradient-to-r from-[#CC561E] to-[#e66a2e] bg-clip-text text-transparent tracking-tight text-xl md:text-2xl">
                             Search
-                        </h2>
-                    </div>
-                ) : (
-                    <div className="flex items-center gap-4">
-                        {onBack && (
-                            <button
-                                onClick={onBack}
-                                className="group flex items-center gap-2 text-slate-500 hover:text-[#CC561E] transition-all duration-300"
-                            >
-                                <div className="p-1.5 rounded-lg bg-[#F3F5FA] dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
-                                    <ChevronLeft size={16} />
-                                </div>
-                                <span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">Back</span>
-                            </button>
-                        )}
-                        <div className="flex items-center gap-2">
-                            <SmartSearchLogo className="w-6 h-6" />
-                            <h2 className="text-2xl font-bold bg-gradient-to-r from-[#CC561E] to-[#e66a2e] bg-clip-text text-transparent">
-                                Search
-                            </h2>
-                        </div>
+                        </h1>
                     </div>
                 )}
-
-                <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl border border-[#E6EAF2] dark:border-gray-700 overflow-hidden mt-2 md:mt-4 max-w-2xl mx-auto">
-                    <div className="p-2 md:p-3">
-                        <form onSubmit={handleSearch} className="flex items-center gap-2">
-                            <div className="relative flex-1 group">
-                                <Search className="absolute left-3 md:left-4 top-1/2 -translate-y-1/2 w-4 h-4 md:w-5 md:h-5 text-gray-400 group-focus-within:text-[#262D40]" />
-                                <input
-                                    type="text"
-                                    placeholder="Kütüphanende akıllı arama yap..."
-                                    value={query}
-                                    onChange={(e) => setQuery(e.target.value)}
-                                    className="w-full pl-9 md:pl-12 pr-4 py-2 md:py-4 text-base md:text-lg bg-transparent border-none outline-none text-gray-900 dark:text-gray-100 placeholder:text-gray-400 font-medium"
-                                />
-                            </div>
-                            <button
-                                type="submit"
-                                disabled={loading || !query.trim()}
-                                className="px-4 md:px-8 py-2 md:py-4 bg-[#262D40] hover:bg-[#1d2333] text-white rounded-xl md:rounded-2xl font-bold text-sm md:text-base transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-[#262D40]/20"
-                            >
-                                {loading ? <Loader2 className="w-4 h-4 md:w-5 md:h-5 animate-spin" /> : <span>Search</span>}
-                            </button>
-                        </form>
-                    </div>
-                </div>
+                <div className="w-20 hidden sm:block" /> {/* Spacer for balance */}
             </div>
 
-            {!searched && (
-                <div className="bg-[#F3F5FA] dark:bg-gray-900/40 px-6 py-3 rounded-2xl border border-[#E6EAF2] dark:border-gray-700 flex flex-wrap gap-4 text-sm text-gray-500 font-medium mt-6">
-                    <span className="flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-1 rounded-full border border-[#E6EAF2] dark:border-gray-700 shadow-sm"><Sparkles className="w-4 h-4 text-[#CC561E]" /> AI Query Expansion</span>
-                    <span className="flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-1 rounded-full border border-[#E6EAF2] dark:border-gray-700 shadow-sm"><Type className="w-4 h-4 text-[#262D40]/90" /> Typo Correction</span>
-                    <span className="flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-1 rounded-full border border-[#E6EAF2] dark:border-gray-700 shadow-sm"><BookOpen className="w-4 h-4 text-[#262D40]/90" /> Hybrid Retrieval</span>
-                </div>
-            )}
+            <div className={`flex-1 flex flex-col relative transition-all duration-700 ${!searched ? 'justify-center items-center' : 'pt-4 md:pt-6'}`}>
+                <form onSubmit={handleSearch} className={`space-y-4 md:space-y-6 w-full transition-all duration-1000 ease-in-out ${!searched ? 'max-w-2xl text-center' : 'max-w-none'}`}>
+                    {!searched && (
+                        <div className="mb-6 md:mb-10 space-y-4 animate-slide-up">
+                            <div className="flex items-center justify-center gap-3">
+                                <div className="p-1.5 md:p-2 bg-[rgba(204,86,30,0.1)] dark:bg-[rgba(204,86,30,0.2)] rounded-2xl shrink-0">
+                                    <SmartSearchLogo className="w-6 h-6 md:w-10 md:h-10" />
+                                </div>
+                                <h1 className="text-2xl md:text-5xl font-extrabold bg-gradient-to-r from-[#CC561E] to-[#e66a2e] bg-clip-text text-transparent tracking-tight">
+                                    Search
+                                </h1>
+                            </div>
+
+                            <div className="flex flex-wrap items-center justify-center gap-2 md:gap-4 mt-4 opacity-80">
+                                <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] md:text-xs font-bold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                                    <Sparkles className="w-3 h-3 text-[#CC561E]" /> AI Query Expansion
+                                </span>
+                                <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] md:text-xs font-bold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                                    <Type className="w-3 h-3" /> Typo Correction
+                                </span>
+                                <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] md:text-xs font-bold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                                    <BookOpen className="w-3 h-3" /> Hybrid Retrieval
+                                </span>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="relative group">
+                        <Search className="absolute left-4 md:left-5 top-1/2 -translate-y-1/2 w-4 h-4 md:w-5 md:h-5 text-slate-400 group-focus-within:text-[#CC561E] transition-colors" />
+                        <input
+                            type="text"
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            placeholder="Search your library intelligently..."
+                            className="w-full pl-11 md:pl-14 pr-4 md:pr-6 py-3.5 md:py-5 rounded-2xl border border-[#E6EAF2] dark:border-slate-700 bg-white dark:bg-slate-800 text-base md:text-lg text-slate-900 dark:text-white shadow-sm focus:shadow-xl focus:shadow-[#CC561E]/5 focus:outline-none focus:ring-2 focus:ring-[#CC561E]/50 transition-all placeholder:text-slate-400"
+                        />
+                    </div>
+                    <div className={`text-[11px] md:text-xs text-slate-500 dark:text-slate-400 ${!searched ? 'text-center' : 'text-left'}`}>
+                        Tip: <span className="font-bold text-[#CC561E]">Enter</span> to search.
+                    </div>
+                </form>
+            </div>
 
             {error && (
                 <div className="bg-[#262D40]/5 dark:bg-[#262D40]/20 text-[#262D40] dark:text-[#262D40]/78 p-5 rounded-2xl flex items-center gap-4 border border-[#262D40]/8 dark:border-[#262D40]/50 shadow-sm">

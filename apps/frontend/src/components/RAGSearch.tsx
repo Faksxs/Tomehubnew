@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Search, BookOpen, Loader2, AlertCircle, ExternalLink, ThumbsUp, ThumbsDown, MessageCircle, ChevronLeft, Sparkles, BarChart2, LayoutPanelLeft, FileSearch } from 'lucide-react';
+import { DeepChatbotLogo, SmartSearchLogo } from './ui/FeatureLogos';
 import { searchLibrary, submitFeedback, SearchResponse } from '../services/backendApiService';
 import { ExplorerChat } from './ExplorerChat';
 import { ConcordanceView } from './ConcordanceView';
@@ -38,7 +39,7 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack,
                         <div className="p-1.5 rounded-lg bg-[#F3F5FA] dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
                             <ChevronLeft size={16} />
                         </div>
-                        <span className="text-xs font-bold uppercase tracking-wider">Back to Home</span>
+                        <span className="text-xs font-bold uppercase tracking-wider">Back</span>
                     </button>
                 </div>
 
@@ -122,62 +123,106 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack,
         .trim();
 
     return (
-        <div className="max-w-[1100px] w-full mx-auto p-3 md:p-6 space-y-4 md:space-y-6">
-            <div className="flex justify-start">
-                <button
-                    onClick={onBack}
-                    className="group flex items-center gap-2 text-slate-500 hover:text-[#CC561E] transition-all duration-300"
-                >
-                    <div className="p-1.5 rounded-lg bg-[#F3F5FA] dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
-                        <ChevronLeft size={16} />
+        <div className={`max-w-[1100px] w-full mx-auto p-3 md:p-6 flex flex-col transition-all duration-1000 ease-in-out ${!result ? 'min-h-[70vh]' : 'space-y-6 md:space-y-8'}`}>
+            {/* Header Area */}
+            {/* Header Area */}
+            <div className="relative flex flex-row items-center justify-between w-full h-10 md:h-12 mb-2 md:mb-6">
+                <div className="flex items-center gap-3 md:gap-5 z-10">
+                    <button
+                        onClick={onBack}
+                        className="group flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-[#CC561E] transition-all duration-300"
+                    >
+                        <div className="p-1.5 rounded-lg bg-[#F3F5FA] dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
+                            <ChevronLeft size={16} />
+                        </div>
+                        <span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">Back</span>
+                    </button>
+                </div>
+
+                {/* Centered Branding - Only visible when results are shown */}
+                {result && (
+                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-2 md:gap-3 transition-all duration-500 origin-center animate-in fade-in zoom-in-95">
+                        <div className="p-1.5 md:p-2 bg-[rgba(204,86,30,0.1)] dark:bg-[rgba(204,86,30,0.2)] rounded-2xl shrink-0 scale-75">
+                            <SmartSearchLogo className="w-5 h-5 md:w-8 md:h-8" />
+                        </div>
+                        <h1 className="font-extrabold bg-gradient-to-r from-[#CC561E] to-[#e66a2e] bg-clip-text text-transparent tracking-tight text-xl md:text-2xl">
+                            LogosChat
+                        </h1>
                     </div>
-                    <span className="text-xs font-bold uppercase tracking-wider">Back to Home</span>
-                </button>
+                )}
+
+                <div className="bg-[#F3F5FA] dark:bg-slate-800 p-0.5 md:p-1 rounded-lg inline-flex items-center z-10">
+                    <button
+                        type="button"
+                        className="px-3 md:px-4 py-1.5 md:py-2 rounded-md text-xs md:text-sm font-medium transition-all bg-white dark:bg-slate-700 text-[#CC561E] shadow-sm"
+                    >
+                        Standard
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setMode('EXPLORER')}
+                        className="px-3 md:px-4 py-1.5 md:py-2 rounded-md text-xs md:text-sm font-medium transition-all flex items-center gap-1.5 md:gap-2 text-slate-500 hover:text-slate-700 dark:text-slate-400"
+                    >
+                        <MessageCircle className="w-3.5 h-3.5 md:w-4 md:h-4" /> Explorer
+                    </button>
+                </div>
             </div>
 
-            <form onSubmit={handleSearch} className="space-y-3 md:space-y-4">
-                <div className="flex justify-center mb-2 md:mb-4">
-                    <div className="bg-[#F3F5FA] dark:bg-slate-800 p-0.5 md:p-1 rounded-lg inline-flex items-center">
+            <div className={`flex-1 flex flex-col relative transition-all duration-700 ${!result ? 'justify-center items-center' : 'pt-4 md:pt-6'}`}>
+                {!result && !isSearching && (
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-4xl h-full pointer-events-none -z-10 animate-fade-in">
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] md:w-[600px] h-[300px] md:h-[600px] bg-[#CC561E]/5 dark:bg-[#CC561E]/10 rounded-full blur-[80px] md:blur-[120px]" />
+                        <div className="absolute top-1/3 left-1/4 w-[200px] h-[200px] bg-blue-500/5 dark:bg-blue-500/5 rounded-full blur-[100px]" />
+                    </div>
+                )}
+
+                <form onSubmit={handleSearch} className={`space-y-4 md:space-y-6 w-full transition-all duration-1000 ease-in-out ${!result ? 'max-w-2xl text-center' : 'max-w-none'}`}>
+                    {!result && !isSearching && (
+                        <div className="mb-6 md:mb-10 space-y-4 animate-slide-up">
+                            <div className="flex items-center justify-center gap-3">
+                                <div className="p-1.5 md:p-2 bg-[rgba(204,86,30,0.1)] dark:bg-[rgba(204,86,30,0.2)] rounded-xl shrink-0">
+                                    <DeepChatbotLogo className="w-5 h-5 md:w-8 md:h-8" />
+                                </div>
+                                <h1 className="text-2xl md:text-4xl font-black text-slate-900 dark:text-white tracking-tight">
+                                    Logos<span className="text-[#CC561E]">Chat</span>
+                                </h1>
+                            </div>
+                            <p className="text-sm md:text-base text-slate-500 dark:text-slate-400 max-w-lg mx-auto leading-relaxed">
+                                Analyze your library with intelligence. Ask anything.
+                            </p>
+                        </div>
+                    )}
+
+                    <div className="relative group flex items-center">
+                        <div className="relative flex-1 group">
+                            <Search className="absolute left-4 md:left-5 top-1/2 -translate-y-1/2 w-4 h-4 md:w-5 md:h-5 text-slate-400 group-focus-within:text-[#CC561E] transition-colors" />
+                            <input
+                                type="text"
+                                value={question}
+                                onChange={(e) => setQuestion(e.target.value)}
+                                placeholder="Type your question here..."
+                                className="w-full pl-11 md:pl-14 pr-4 md:pr-6 py-3.5 md:py-5 rounded-2xl border border-[#E6EAF2] dark:border-slate-700 bg-white dark:bg-slate-800 text-base md:text-lg text-slate-900 dark:text-white shadow-sm focus:shadow-xl focus:shadow-[#CC561E]/5 focus:outline-none focus:ring-2 focus:ring-[#CC561E]/50 transition-all placeholder:text-slate-400"
+                                disabled={isSearching}
+                            />
+                        </div>
                         <button
-                            type="button"
-                            className="px-3 md:px-4 py-1.5 md:py-2 rounded-md text-xs md:text-sm font-medium transition-all bg-white dark:bg-slate-700 text-[#CC561E] shadow-sm"
+                            type="submit"
+                            disabled={isSearching || !question.trim()}
+                            className={`ml-2 md:ml-3 p-3.5 md:p-5 rounded-2xl bg-[#CC561E] text-white shadow-lg shadow-[#CC561E]/20 hover:bg-[#b04a1a] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed group/btn`}
                         >
-                            Standard
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setMode('EXPLORER')}
-                            className="px-3 md:px-4 py-1.5 md:py-2 rounded-md text-xs md:text-sm font-medium transition-all flex items-center gap-1.5 md:gap-2 text-slate-500 hover:text-slate-700 dark:text-slate-400"
-                        >
-                            <MessageCircle className="w-3.5 h-3.5 md:w-4 md:h-4" /> Explorer
+                            {isSearching ? (
+                                <Loader2 className="w-5 h-5 md:w-6 md:h-6 animate-spin" />
+                            ) : (
+                                <Search className="w-5 h-5 md:w-6 md:h-6 group-hover/btn:scale-110 transition-transform" />
+                            )}
                         </button>
                     </div>
-                </div>
 
-                <div className="relative">
-                    <Search className="absolute left-3 md:left-4 top-1/2 -translate-y-1/2 w-4 h-4 md:w-5 md:h-5 text-slate-400" />
-                    <input
-                        type="text"
-                        value={question}
-                        onChange={(e) => setQuestion(e.target.value)}
-                        placeholder="Ask a question about your books..."
-                        className="w-full pl-10 md:pl-12 pr-3 md:pr-4 py-2.5 md:py-4 rounded-xl border border-[#E6EAF2] dark:border-slate-700 bg-white dark:bg-slate-800 text-sm md:text-base text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#CC561E] transition-all"
-                        disabled={isSearching}
-                    />
-                </div>
-                <div className="text-[11px] md:text-xs text-slate-500 dark:text-slate-400">
-                    Tip: Kelimeyi netleştirmek için <span className="font-medium text-slate-700 dark:text-slate-300">@zaman</span> gibi yazabilirsin.
-                </div>
-
-                <button
-                    type="submit"
-                    disabled={isSearching || !question.trim()}
-                    className="w-full bg-[#CC561E] hover:bg-[#b34b1a] text-white text-sm md:text-base font-medium py-2.5 md:py-3 px-4 md:px-6 rounded-xl transition-all shadow-lg shadow-[#CC561E]/20 flex items-center justify-center gap-1.5 md:gap-2 disabled:bg-slate-300"
-                >
-                    {isSearching ? <Loader2 className="w-4 h-4 md:w-5 md:h-5 animate-spin" /> : <Search className="w-4 h-4 md:w-5 md:h-5" />}
-                    {isSearching ? 'Searching...' : 'Search'}
-                </button>
-            </form>
+                    <div className={`text-[11px] md:text-xs text-slate-500 dark:text-slate-400 ${!result ? 'text-center' : 'text-left'}`}>
+                        Tip: <span className="font-bold text-[#CC561E]">Enter</span> to search. Mention <span className="font-bold text-[#CC561E]">@book</span> for focus.
+                    </div>
+                </form>
+            </div>
 
             {error && (
                 <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 flex items-start gap-3">

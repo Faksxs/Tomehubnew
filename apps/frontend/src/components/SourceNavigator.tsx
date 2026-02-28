@@ -19,7 +19,7 @@ const SourceNavigator: React.FC<SourceNavigatorProps> = ({ activeFilter, onFilte
 
     return (
         <div className="w-full flex flex-col gap-2 p-3 bg-card border border-white/10 rounded-2xl">
-            <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 px-1 flex items-center gap-2">
+            <h3 className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1 px-1 flex items-center gap-2">
                 <span className="w-1 h-1 bg-[#CC561E] rounded-full"></span>
                 Source Navigator
             </h3>

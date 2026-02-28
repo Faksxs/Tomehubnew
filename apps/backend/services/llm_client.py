@@ -29,7 +29,10 @@ from services.monitoring import (
     AI_SERVICE_LATENCY,
     LLM_CALLS_TOTAL,
     LLM_FALLBACK_TOTAL,
+    LLM_PARALLEL_RACE_LOSER_TOTAL,
+    LLM_PARALLEL_RACE_TOTAL,
     LLM_PROVIDER_CALLS_TOTAL,
+    LLM_RPM_GUARD_TOTAL,
     LLM_TOKENS_TOTAL,
 )
 
@@ -379,6 +382,28 @@ def _increment_fallback(from_provider: str, to_provider: str, reason: str) -> No
     ).inc()
 
 
+def _increment_qwen_rpm_guard(result: str, slots: int) -> None:
+    mode = "parallel" if int(slots) >= 2 else "single"
+    LLM_RPM_GUARD_TOTAL.labels(provider=PROVIDER_QWEN, result=result, mode=mode).inc()
+
+
+def _increment_parallel_race_winner(route_mode: str, winner_model: str, status: str) -> None:
+    LLM_PARALLEL_RACE_TOTAL.labels(
+        route_mode=route_mode,
+        winner_provider=PROVIDER_NVIDIA,
+        winner_model=winner_model,
+        status=status,
+    ).inc()
+
+
+def _increment_parallel_race_loser(route_mode: str, outcome: str) -> None:
+    LLM_PARALLEL_RACE_LOSER_TOTAL.labels(
+        route_mode=route_mode,
+        loser_provider=PROVIDER_NVIDIA,
+        outcome=outcome,
+    ).inc()
+
+
 def is_retryable_llm_error(exc: Exception) -> bool:
     if isinstance(exc, TimeoutError):
         return True
@@ -443,15 +468,18 @@ def _consume_qwen_rpm_slots(slots: int = 1) -> bool:
         requested_slots = 1
     if requested_slots < 1:
         requested_slots = 1
+    mode_slots = requested_slots
     now = time.monotonic()
     cutoff = now - _QWEN_WINDOW_SECONDS
     with _QWEN_RPM_LOCK:
         while _QWEN_RPM_TIMESTAMPS and _QWEN_RPM_TIMESTAMPS[0] < cutoff:
             _QWEN_RPM_TIMESTAMPS.popleft()
         if len(_QWEN_RPM_TIMESTAMPS) + requested_slots > cap:
+            _increment_qwen_rpm_guard(result="reject", slots=mode_slots)
             return False
         for _ in range(requested_slots):
             _QWEN_RPM_TIMESTAMPS.append(now)
+        _increment_qwen_rpm_guard(result="allow", slots=mode_slots)
         return True
 
 
@@ -470,6 +498,7 @@ def _use_explorer_parallel_nvidia_race(route_mode: str, primary_provider_hint: s
 
 def _parallel_nvidia_race_generate(
     provider: LLMProvider,
+    route_mode: str,
     primary_model: str,
     challenger_model: str,
     prompt: str,
@@ -508,6 +537,7 @@ def _parallel_nvidia_race_generate(
     pending = set(future_to_model.keys())
     errors: Dict[str, Exception] = {}
     winner_model: Optional[str] = None
+    loser_future_outcome_recorded = False
     try:
         while pending:
             done, pending = wait(pending, return_when=FIRST_COMPLETED)
@@ -516,6 +546,11 @@ def _parallel_nvidia_race_generate(
                 try:
                     result = future.result()
                     winner_model = model_name
+                    _increment_parallel_race_winner(
+                        route_mode=route_mode,
+                        winner_model=model_name,
+                        status="success",
+                    )
                     logger.info(
                         "Explorer NVIDIA parallel race winner selected",
                         extra={
@@ -534,13 +569,34 @@ def _parallel_nvidia_race_generate(
 
         primary_error = errors.get(primary_model)
         challenger_error = errors.get(challenger_model)
+        _increment_parallel_race_winner(
+            route_mode=route_mode,
+            winner_model="none",
+            status="both_failed",
+        )
         raise RuntimeError(
             "Explorer NVIDIA parallel race failed for both models: "
             f"{primary_model} -> {primary_error}; {challenger_model} -> {challenger_error}"
         )
     finally:
+        if winner_model is not None:
+            loser_model = challenger_model if winner_model == primary_model else primary_model
+            loser_future = challenger_future if loser_model == challenger_model else primary_future
+            outcome = "cancel_not_possible"
+            if loser_future.done():
+                try:
+                    loser_future.result()
+                    outcome = "late_success"
+                except Exception:
+                    outcome = "failed"
+            elif loser_future.cancel():
+                outcome = "cancelled"
+            _increment_parallel_race_loser(route_mode=route_mode, outcome=outcome)
+            loser_future_outcome_recorded = True
         for future in pending:
             future.cancel()
+        if winner_model is not None and not loser_future_outcome_recorded:
+            _increment_parallel_race_loser(route_mode=route_mode, outcome="cancel_not_possible")
         executor.shutdown(wait=False, cancel_futures=True)
 
 
@@ -647,6 +703,7 @@ def generate_text(
             ).strip()
             result = _parallel_nvidia_race_generate(
                 provider=provider,
+                route_mode=route_mode,
                 primary_model=model,
                 challenger_model=challenger_model,
                 prompt=prompt,

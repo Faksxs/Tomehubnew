@@ -43,7 +43,6 @@ import { CATEGORIES, MIN_CATEGORY_BOOKS_VISIBLE } from "./components/CategorySel
 import { prewarmFlowStartSession } from "./services/flowService";
 import { addTextItem, syncHighlights, syncPersonalNote, purgeResourceContent, pollRealtimeEvents } from "./services/backendApiService";
 import { getPersonalNoteBackendType, getPersonalNoteCategory, isPersonalNote } from "./lib/personalNotePolicy";
-import { extractPersonalNoteText } from "./lib/personalNoteRender";
 
 // ----------------- LAYOUT (ANA UYGULAMA) -----------------
 
@@ -149,6 +148,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
 
     let cancelled = false;
     let timerId: number | null = null;
+    let realtimeDisabled = false;
 
     realtimeCursorRef.current = Date.now();
     realtimeInFlightRef.current = false;
@@ -195,9 +195,17 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
           }
         }
       } catch (err) {
+        if (err instanceof Error && err.message === 'REALTIME_ENDPOINT_NOT_FOUND') {
+          realtimeDisabled = true;
+          console.warn("Realtime polling disabled: endpoint is not available on current backend.");
+          return;
+        }
         console.warn("Realtime polling failed (non-critical):", err);
       } finally {
         realtimeInFlightRef.current = false;
+        if (realtimeDisabled) {
+          return;
+        }
         scheduleNext();
       }
     };
@@ -308,7 +316,8 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
       await syncPersonalNote(userId, note.id, {
         title: note.title,
         author: note.author,
-        content: extractPersonalNoteText(note.generalNotes || ""),
+        // Preserve original rich note content (HTML/markdown/list structure) in storage.
+        content: note.generalNotes || "",
         tags: note.tags || [],
         category: getPersonalNoteCategory(note),
         delete_only: deleteOnly,

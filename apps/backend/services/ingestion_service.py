@@ -13,11 +13,13 @@ import os
 import sys
 import hashlib
 import threading
+import re
 from datetime import datetime
 from typing import Optional
 from dotenv import load_dotenv
 import oracledb
 import uuid
+from html import unescape
 
 # Import TomeHub services
 from services.pdf_service import extract_pdf_content
@@ -29,7 +31,7 @@ from services.correction_service import LinguisticCorrectionService
 corrector_service = LinguisticCorrectionService()
 from services.data_health_service import DataHealthService
 from services.data_cleaner_service import DataCleanerService
-from utils.text_utils import normalize_text, deaccent_text, get_lemmas, get_lemma_frequencies
+from utils.text_utils import normalize_text, get_lemmas, get_lemma_frequencies
 from utils.tag_utils import prepare_labels
 import json
 from concurrent.futures import ThreadPoolExecutor
@@ -47,6 +49,7 @@ from services.epistemic_distribution_service import (
     delete_epistemic_distribution,
     maybe_trigger_epistemic_distribution_refresh_async,
 )
+from services.odl_shadow_service import maybe_trigger_odl_shadow_ingestion_async
 import time
 
 # Phase 6: Semantic Classification at Ingest Time
@@ -152,6 +155,7 @@ def _mirror_book_registry_rows(
     title: str,
     author: str,
     firebase_uid: str,
+    item_type: str = "BOOK",
 ) -> None:
     """
     Best-effort registry mirroring for Phase 1C routing prep.
@@ -173,7 +177,8 @@ def _mirror_book_registry_rows(
                     :p_item_id AS item_id,
                     :p_uid AS firebase_uid,
                     :p_title AS title,
-                    :p_author AS author
+                    :p_author AS author,
+                    :p_item_type AS item_type
                 FROM DUAL
             ) src
             ON (li.ITEM_ID = src.item_id AND li.FIREBASE_UID = src.firebase_uid)
@@ -182,7 +187,7 @@ def _mirror_book_registry_rows(
                     ITEM_ID, FIREBASE_UID, ITEM_TYPE, TITLE, AUTHOR, CREATED_AT, UPDATED_AT
                 )
                 VALUES (
-                    src.item_id, src.firebase_uid, 'BOOK', src.title, src.author, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                    src.item_id, src.firebase_uid, src.item_type, src.title, src.author, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                 )
             WHEN MATCHED THEN
                 UPDATE SET
@@ -195,6 +200,7 @@ def _mirror_book_registry_rows(
                 "p_uid": firebase_uid,
                 "p_title": title,
                 "p_author": author,
+                "p_item_type": item_type,
             },
         )
         logger.info(f"Mirrored book '{title}' to TOMEHUB_LIBRARY_ITEMS")
@@ -211,6 +217,40 @@ def normalize_highlight_type(highlight_type: Optional[str]) -> str:
     if st in {"insight", "note"}:
         return "INSIGHT"
     return "HIGHLIGHT"
+
+
+def _extract_personal_note_semantic_text(raw_content: Optional[str]) -> str:
+    """
+    Build semantic text from rich note content while preserving raw content for display.
+    """
+    text = str(raw_content or "")
+    if not text:
+        return ""
+
+    # Remove script/style payloads first.
+    text = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", text, flags=re.IGNORECASE | re.DOTALL)
+    # Keep structure hints as line breaks before stripping tags.
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"</(p|div|li|h1|h2|h3|h4|h5|h6|blockquote|pre|tr|td|th|ul|ol)>",
+        "\n",
+        text,
+        flags=re.IGNORECASE,
+    )
+    # Strip remaining HTML tags.
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = unescape(text)
+
+    # Normalize common markdown list markers for semantic processing.
+    text = re.sub(r"^[ \t]*[-*+]\s+", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^[ \t]*\d+\.\s+", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^[ \t]*>\s?", "", text, flags=re.MULTILINE)
+
+    text = text.replace("\r\n", "\n")
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    return text.strip()
 
 
 def _invalidate_search_cache(firebase_uid: str, book_id: Optional[str] = None) -> None:
@@ -647,8 +687,8 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str, book
                 
                 insert_sql = """
                 INSERT INTO TOMEHUB_CONTENT_V2 
-                (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, text_deaccented, lemma_tokens, token_freq, categories)
-                VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm_content, :p_deaccent, :p_lemmas, :p_token_freq, :p_cats)
+                (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, lemma_tokens, token_freq, categories)
+                VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm_content, :p_lemmas, :p_token_freq, :p_cats)
                 RETURNING id INTO :p_out_id
                 """
                 
@@ -807,7 +847,6 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str, book
                         'text_used': chunk_text, # The (potentially repaired) text
                         'repaired': repaired,
                         'normalized': normalize_text(chunk_text),
-                        'deaccented': deaccent_text(chunk_text),
                         'lemmas': json.dumps(get_lemmas(chunk_text), ensure_ascii=False),
                         'lemma_freqs': json.dumps(get_lemma_frequencies(decluttered_text), ensure_ascii=False),
                         'classification': classify_passage_fast(chunk_text),
@@ -865,7 +904,6 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str, book
                                 "p_vec": embedding,
                                 "p_book_id": book_id,
                                 "p_norm_content": res['normalized'],
-                                "p_deaccent": res['deaccented'],
                                 "p_lemmas": res['lemmas'],
                                 "p_token_freq": res['lemma_freqs'],
                                 "p_cats": categories,
@@ -932,6 +970,20 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str, book
         # avoiding manually accessing 'connection' here since it might not be bound if get_connection fails
         return False
     
+    # Step 4.5: Trigger ODL shadow ingestion (non-critical, async, post-commit)
+    odl_shadow_triggered = False
+    if file_ext == ".pdf" and successful_inserts > 0:
+        try:
+            odl_shadow_triggered = maybe_trigger_odl_shadow_ingestion_async(
+                file_path=file_path,
+                title=title,
+                author=author,
+                firebase_uid=firebase_uid,
+                item_id=book_id,
+            )
+        except Exception as e:
+            logger.warning("ODL shadow trigger failed (non-critical)", extra={"error": str(e), "book_id": book_id})
+
     # Step 5: Cleanup
     _runtime_log(f"\n{'='*70}")
     _runtime_log("Step 5: Cleaning Up File")
@@ -969,6 +1021,7 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str, book
             "author": author,
             "source_type": source_type,
             "chunks_inserted": successful_inserts,
+            "odl_shadow_triggered": bool(odl_shadow_triggered),
             "data_cleaner": {
                 "ai_calls_used": data_cleaner_budget.get("ai_calls_used", 0) if 'data_cleaner_budget' in locals() else 0,
                 "ai_calls_applied": data_cleaner_budget.get("ai_calls_applied", 0) if 'data_cleaner_budget' in locals() else 0,
@@ -1009,7 +1062,6 @@ def ingest_text_item(
 
                 # NLP Processing
                 normalized_text = normalize_text(text)
-                deaccented_text = deaccent_text(text)
                 lemmas_json = json.dumps(get_lemmas(text), ensure_ascii=False)
                 
                 embedding = get_embedding(text)
@@ -1025,8 +1077,8 @@ def ingest_text_item(
                     out_id = cursor.var(oracledb.NUMBER)
                     cursor.execute("""
                         INSERT INTO TOMEHUB_CONTENT_V2 
-                        (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, text_deaccented, lemma_tokens, categories, comment_text, tags_json)
-                        VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_deaccent, :p_lemmas, :p_cats, :p_comment, :p_tags)
+                        (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, lemma_tokens, categories, comment_text, tags_json)
+                        VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_lemmas, :p_cats, :p_comment, :p_tags)
                         RETURNING id INTO :p_out_id
                     """, {
                         "p_uid": firebase_uid,
@@ -1038,7 +1090,6 @@ def ingest_text_item(
                         "p_vec": embedding,
                         "p_book_id": book_id,
                         "p_norm": normalized_text,
-                        "p_deaccent": deaccented_text,
                         "p_lemmas": lemmas_json,
                         "p_cats": categories,
                         "p_comment": comment,
@@ -1090,6 +1141,16 @@ def sync_highlights_for_item(
     try:
         with DatabaseManager.get_write_connection() as connection:
             with connection.cursor() as cursor:
+                # FK safety: ensure parent row exists even if upstream item-save failed.
+                _mirror_book_registry_rows(
+                    cursor,
+                    book_id=book_id,
+                    title=title,
+                    author=author,
+                    firebase_uid=firebase_uid,
+                    item_type="BOOK",
+                )
+
                 # Delete existing highlight/insight rows for this book/user
                 cursor.execute(
                     """
@@ -1120,8 +1181,8 @@ def sync_highlights_for_item(
 
                 insert_sql = """
                     INSERT INTO TOMEHUB_CONTENT_V2
-                    (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, text_deaccented, lemma_tokens, comment_text, tags_json)
-                    VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_deaccent, :p_lemmas, :p_comment, :p_tags)
+                    (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, lemma_tokens, comment_text, tags_json)
+                    VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_lemmas, :p_comment, :p_tags)
                     RETURNING id INTO :p_out_id
                 """
 
@@ -1139,8 +1200,6 @@ def sync_highlights_for_item(
                     prepared_tags = prepare_labels(tags_json) if tags_json else []
 
                     embedding = embeddings[idx] if idx < len(embeddings) else None
-                    if embedding is None:
-                        continue
 
                     out_id = cursor.var(oracledb.NUMBER)
                     cursor.execute(
@@ -1152,10 +1211,10 @@ def sync_highlights_for_item(
                             "p_content": text,
                             "p_page": page_number,
                             "p_chunk_idx": idx,
+                            # Keep highlight rows even when vector generation is unavailable.
                             "p_vec": embedding,
                             "p_book_id": book_id,
                             "p_norm": normalize_text(text),
-                            "p_deaccent": deaccent_text(text),
                             "p_lemmas": json.dumps(get_lemmas(text), ensure_ascii=False),
                             "p_comment": comment,
                             "p_tags": tags_json,
@@ -1210,6 +1269,16 @@ def sync_personal_note_for_item(
     try:
         with DatabaseManager.get_write_connection() as connection:
             with connection.cursor() as cursor:
+                # FK safety: ensure parent row exists even if upstream item-save failed.
+                _mirror_book_registry_rows(
+                    cursor,
+                    book_id=book_id,
+                    title=title,
+                    author=author,
+                    firebase_uid=firebase_uid,
+                    item_type="PERSONAL_NOTE",
+                )
+
                 cursor.execute(
                     """
                     DELETE FROM TOMEHUB_CONTENT_V2
@@ -1235,8 +1304,10 @@ def sync_personal_note_for_item(
                     )
                     return {"success": True, "deleted": deleted, "inserted": 0}
 
-                text = (content or "").strip()
-                if not DataHealthService.validate_content(text):
+                raw_content = str(content or "")
+                stored_text = raw_content.strip()
+                semantic_text = _extract_personal_note_semantic_text(raw_content)
+                if not DataHealthService.validate_content(semantic_text):
                     connection.commit()
                     _invalidate_search_cache(firebase_uid=firebase_uid, book_id=book_id)
                     maybe_trigger_epistemic_distribution_refresh_async(book_id=book_id, firebase_uid=firebase_uid, reason="sync_personal_note_invalid")
@@ -1249,9 +1320,7 @@ def sync_personal_note_for_item(
                     )
                     return {"success": True, "deleted": deleted, "inserted": 0}
 
-                embedding = get_embedding(text)
-                if embedding is None:
-                    return {"success": False, "deleted": deleted, "inserted": 0, "error": "embedding_failed"}
+                embedding = get_embedding(semantic_text)
 
                 tags_json = json.dumps(tags, ensure_ascii=False) if tags else None
                 prepared_tags = prepare_labels(tags_json) if tags_json else []
@@ -1263,22 +1332,22 @@ def sync_personal_note_for_item(
                 cursor.execute(
                     """
                     INSERT INTO TOMEHUB_CONTENT_V2
-                    (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, text_deaccented, lemma_tokens, comment_text, tags_json)
-                    VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_deaccent, :p_lemmas, :p_comment, :p_tags)
+                    (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, lemma_tokens, comment_text, tags_json)
+                    VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_lemmas, :p_comment, :p_tags)
                     RETURNING id INTO :p_out_id
                     """,
                     {
                         "p_uid": firebase_uid,
                         "p_type": db_source_type,
                         "p_title": f"{title} - {author}",
-                        "p_content": text,
+                        "p_content": stored_text or semantic_text,
                         "p_page": 1,
                         "p_chunk_idx": 0,
+                        # Keep personal note row even when vector generation is unavailable.
                         "p_vec": embedding,
                         "p_book_id": book_id,
-                        "p_norm": normalize_text(text),
-                        "p_deaccent": deaccent_text(text),
-                        "p_lemmas": json.dumps(get_lemmas(text), ensure_ascii=False),
+                        "p_norm": normalize_text(semantic_text),
+                        "p_lemmas": json.dumps(get_lemmas(semantic_text), ensure_ascii=False),
                         "p_comment": None,
                         "p_tags": tags_json,
                         "p_out_id": out_id,
@@ -1326,7 +1395,6 @@ def process_bulk_items_logic(items: list, firebase_uid: str) -> dict:
 
                         # NLP Processing
                         normalized_text = normalize_text(text)
-                        deaccented_text = deaccent_text(text)
                         lemmas_json = json.dumps(get_lemmas(text), ensure_ascii=False)
 
                         # Normalize categories if present in item
@@ -1343,8 +1411,8 @@ def process_bulk_items_logic(items: list, firebase_uid: str) -> dict:
                         db_source_type = normalize_source_type(item.get('type', 'PERSONAL_NOTE'))
                         cursor.execute("""
                             INSERT INTO TOMEHUB_CONTENT_V2 
-                            (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, text_deaccented, lemma_tokens, categories, comment_text, tags_json)
-                            VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_deaccent, :p_lemmas, :p_cats, :p_comment, :p_tags)
+                            (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, lemma_tokens, categories, comment_text, tags_json)
+                            VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_lemmas, :p_cats, :p_comment, :p_tags)
                             RETURNING id INTO :p_out_id
                         """, {
                             "p_uid": firebase_uid,
@@ -1356,7 +1424,6 @@ def process_bulk_items_logic(items: list, firebase_uid: str) -> dict:
                             "p_vec": embedding,
                             "p_book_id": item.get('book_id'),
                             "p_norm": normalized_text,
-                            "p_deaccent": deaccented_text,
                             "p_lemmas": lemmas_json,
                             "p_cats": cats,
                             # Here item.get is used differently in old logic? No, just keys.

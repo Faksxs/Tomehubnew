@@ -181,7 +181,7 @@ def check_phase1d_code() -> int:
     else:
         _fail("Phase 1D bind-safe exact LIKE present")
         failures += 1
-    if "text_deaccented LIKE '%{safe_term}%'" in txt:
+    if "LIKE '%{safe_term}%'" in txt:
         _fail("Phase 1D legacy exact interpolation removed")
         failures += 1
     else:
@@ -222,4 +222,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

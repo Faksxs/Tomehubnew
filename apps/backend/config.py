@@ -17,6 +17,10 @@ def _parse_csv_upper(raw: str) -> List[str]:
     return [part.strip().upper() for part in str(raw or "").split(",") if part.strip()]
 
 
+def _parse_csv(raw: str) -> List[str]:
+    return [part.strip() for part in str(raw or "").split(",") if part.strip()]
+
+
 class Settings:
     def __init__(self):
         # Environment mode
@@ -205,6 +209,34 @@ class Settings:
         )
         if self.SEARCH_SEMANTIC_EXPANSION_MAX_VARIATIONS < 0:
             self.SEARCH_SEMANTIC_EXPANSION_MAX_VARIATIONS = 0
+
+        # ODL secondary rescue path (default-off, canary-safe).
+        self.ODL_SECONDARY_ENABLED = os.getenv("ODL_SECONDARY_ENABLED", "false").strip().lower() == "true"
+        self.ODL_SHADOW_INGEST_ENABLED = (
+            os.getenv("ODL_SHADOW_INGEST_ENABLED", "false").strip().lower() == "true"
+        )
+        self.ODL_RESCUE_ENABLED = os.getenv("ODL_RESCUE_ENABLED", "false").strip().lower() == "true"
+        self.ODL_SECONDARY_UID_ALLOWLIST = set(_parse_csv(os.getenv("ODL_SECONDARY_UID_ALLOWLIST", "")))
+        self.ODL_SECONDARY_BOOK_ALLOWLIST = set(_parse_csv(os.getenv("ODL_SECONDARY_BOOK_ALLOWLIST", "")))
+        self.ODL_RESCUE_MIN_RESULTS = int(os.getenv("ODL_RESCUE_MIN_RESULTS", "5"))
+        if self.ODL_RESCUE_MIN_RESULTS < 1:
+            self.ODL_RESCUE_MIN_RESULTS = 5
+        self.ODL_RESCUE_TOP1_SCORE_THRESHOLD = float(os.getenv("ODL_RESCUE_TOP1_SCORE_THRESHOLD", "0.0"))
+        if self.ODL_RESCUE_TOP1_SCORE_THRESHOLD < 0.0:
+            self.ODL_RESCUE_TOP1_SCORE_THRESHOLD = 0.0
+        self.ODL_RESCUE_TIMEOUT_MS = int(os.getenv("ODL_RESCUE_TIMEOUT_MS", "250"))
+        if self.ODL_RESCUE_TIMEOUT_MS < 50:
+            self.ODL_RESCUE_TIMEOUT_MS = 250
+        self.ODL_RESCUE_MAX_CANDIDATES = int(os.getenv("ODL_RESCUE_MAX_CANDIDATES", "8"))
+        if self.ODL_RESCUE_MAX_CANDIDATES < 1:
+            self.ODL_RESCUE_MAX_CANDIDATES = 8
+        self.ODL_RESCUE_MAX_RATIO = float(os.getenv("ODL_RESCUE_MAX_RATIO", "0.25"))
+        if self.ODL_RESCUE_MAX_RATIO <= 0.0:
+            self.ODL_RESCUE_MAX_RATIO = 0.25
+        if self.ODL_RESCUE_MAX_RATIO > 0.9:
+            self.ODL_RESCUE_MAX_RATIO = 0.9
+        self.ODL_EXTRACTOR_VERSION = os.getenv("ODL_EXTRACTOR_VERSION", "opendataloader-pdf")
+        self.ODL_POSTPROCESS_VERSION = os.getenv("ODL_POSTPROCESS_VERSION", "v1")
 
         # Chat scope policy (Phase: Chat-only rollout)
         scope_policy_default = "true" if self.ENVIRONMENT == "development" else "false"

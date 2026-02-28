@@ -79,6 +79,10 @@ class Phase4SmokeEndpointsTests(unittest.TestCase):
             tomehub_app,
             "get_index_freshness_state",
             return_value={"index_freshness_state": "READY", "foo": "bar"},
+        ), patch.object(
+            tomehub_app,
+            "_get_pdf_index_stats",
+            return_value={"effective_chunks": 12, "effective_embeddings": 12, "raw_chunks": 12},
         ):
             resp = self.client.get("/api/books/book-1/ingestion-status", params={"firebase_uid": "u1"})
 
