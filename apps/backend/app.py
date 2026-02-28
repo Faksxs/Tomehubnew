@@ -162,7 +162,8 @@ def _validate_cors_origins(origins: list[str]) -> list[str]:
     for origin in normalized:
         if origin.startswith("https://"):
             continue
-        if settings.ENVIRONMENT == "development" and origin.startswith(
+        # Allow localhost/127/0.0.0.0 regardless of environment — admin explicitly set these
+        if origin.startswith(
             ("http://localhost", "http://127.0.0.1", "http://0.0.0.0")
         ):
             continue
