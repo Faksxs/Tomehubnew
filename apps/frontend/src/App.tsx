@@ -56,7 +56,7 @@ interface LayoutProps {
 }
 
 const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
-  type PendingContentSyncMode = "HIGHLIGHTS" | "PERSONAL_NOTE";
+  type PendingContentSyncMode = "HIGHLIGHTS" | "PERSONAL_NOTE" | "ITEM";
   type PendingContentSyncEntry = {
     mode: PendingContentSyncMode;
     snapshot: LibraryItem;
@@ -131,11 +131,81 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     pendingContentSyncRef.current.set(snapshot.id, { mode, snapshot, timerId });
   }, [clearPendingContentSync]);
 
+  const normalizeMaybeText = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
+  const normalizeMaybeNumber = (value: unknown): number | null => {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim() !== "") {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+  };
+  const normalizeTagList = (tags: unknown): string[] =>
+    Array.isArray(tags)
+      ? tags.map((tag) => String(tag || "").trim()).filter(Boolean).sort()
+      : [];
+  const normalizeComparableHighlights = (highlights: Highlight[] = []) =>
+    highlights
+      .map((highlight) => ({
+        text: normalizeMaybeText(highlight.text),
+        type: String(highlight.type || "highlight").trim().toLowerCase(),
+        comment: normalizeMaybeText(highlight.comment),
+        pageNumber: normalizeMaybeNumber(highlight.pageNumber),
+        paragraphNumber: normalizeMaybeNumber(highlight.paragraphNumber),
+        chapterTitle: normalizeMaybeText(highlight.chapterTitle),
+        tags: normalizeTagList(highlight.tags),
+      }))
+      .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+
+  const isServerCaughtUpWithPending = useCallback((pending: PendingContentSyncEntry, serverItem: LibraryItem): boolean => {
+    if (pending.mode === "HIGHLIGHTS") {
+      return JSON.stringify(normalizeComparableHighlights(pending.snapshot.highlights || []))
+        === JSON.stringify(normalizeComparableHighlights(serverItem.highlights || []));
+    }
+
+    const sameCoreFields =
+      normalizeMaybeText(serverItem.title) === normalizeMaybeText(pending.snapshot.title) &&
+      normalizeMaybeText(serverItem.author) === normalizeMaybeText(pending.snapshot.author) &&
+      normalizeMaybeText(serverItem.translator) === normalizeMaybeText(pending.snapshot.translator) &&
+      normalizeMaybeText(serverItem.publisher) === normalizeMaybeText(pending.snapshot.publisher) &&
+      normalizeMaybeText(serverItem.publicationYear) === normalizeMaybeText(pending.snapshot.publicationYear) &&
+      normalizeMaybeText(serverItem.isbn) === normalizeMaybeText(pending.snapshot.isbn) &&
+      normalizeMaybeText(serverItem.url) === normalizeMaybeText(pending.snapshot.url) &&
+      normalizeMaybeText(serverItem.status) === normalizeMaybeText(pending.snapshot.status) &&
+      normalizeMaybeText(serverItem.readingStatus) === normalizeMaybeText(pending.snapshot.readingStatus) &&
+      JSON.stringify(normalizeTagList(serverItem.tags)) === JSON.stringify(normalizeTagList(pending.snapshot.tags)) &&
+      normalizeMaybeText(serverItem.generalNotes) === normalizeMaybeText(pending.snapshot.generalNotes) &&
+      normalizeMaybeText(serverItem.summaryText) === normalizeMaybeText(pending.snapshot.summaryText) &&
+      normalizeMaybeText(serverItem.coverUrl) === normalizeMaybeText(pending.snapshot.coverUrl) &&
+      normalizeMaybeNumber(serverItem.pageCount) === normalizeMaybeNumber(pending.snapshot.pageCount) &&
+      normalizeMaybeText(serverItem.contentLanguageMode) === normalizeMaybeText(pending.snapshot.contentLanguageMode) &&
+      normalizeMaybeText(serverItem.contentLanguageResolved) === normalizeMaybeText(pending.snapshot.contentLanguageResolved) &&
+      normalizeMaybeText(serverItem.sourceLanguageHint) === normalizeMaybeText(pending.snapshot.sourceLanguageHint) &&
+      normalizeMaybeText(serverItem.languageDecisionReason) === normalizeMaybeText(pending.snapshot.languageDecisionReason) &&
+      normalizeMaybeNumber(serverItem.languageDecisionConfidence) === normalizeMaybeNumber(pending.snapshot.languageDecisionConfidence);
+
+    if (pending.mode === "ITEM") {
+      return sameCoreFields;
+    }
+
+    return sameCoreFields &&
+      normalizeMaybeText(serverItem.personalNoteCategory) === normalizeMaybeText(pending.snapshot.personalNoteCategory) &&
+      normalizeMaybeText(serverItem.personalFolderId) === normalizeMaybeText(pending.snapshot.personalFolderId) &&
+      normalizeMaybeText(serverItem.folderPath) === normalizeMaybeText(pending.snapshot.folderPath);
+  }, []);
+
   const applyPendingContentSyncOverrides = useCallback((serverItems: LibraryItem[]): LibraryItem[] => {
     if (pendingContentSyncRef.current.size === 0) return serverItems;
-    return serverItems.map((serverItem) => {
+    const pendingResolvedIds: string[] = [];
+
+    const merged = serverItems.map((serverItem) => {
       const pending = pendingContentSyncRef.current.get(serverItem.id);
       if (!pending) return serverItem;
+
+      if (isServerCaughtUpWithPending(pending, serverItem)) {
+        pendingResolvedIds.push(serverItem.id);
+        return serverItem;
+      }
 
       if (pending.mode === "HIGHLIGHTS") {
         return {
@@ -144,19 +214,46 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
         };
       }
 
-      return {
+      const itemOverlay: LibraryItem = {
         ...serverItem,
         title: pending.snapshot.title,
         author: pending.snapshot.author,
+        translator: pending.snapshot.translator,
+        publisher: pending.snapshot.publisher,
+        publicationYear: pending.snapshot.publicationYear,
+        isbn: pending.snapshot.isbn,
+        url: pending.snapshot.url,
+        status: pending.snapshot.status,
+        readingStatus: pending.snapshot.readingStatus,
         tags: pending.snapshot.tags,
         generalNotes: pending.snapshot.generalNotes,
         summaryText: pending.snapshot.summaryText,
+        coverUrl: pending.snapshot.coverUrl,
+        pageCount: pending.snapshot.pageCount,
+        contentLanguageMode: pending.snapshot.contentLanguageMode,
+        contentLanguageResolved: pending.snapshot.contentLanguageResolved,
+        sourceLanguageHint: pending.snapshot.sourceLanguageHint,
+        languageDecisionReason: pending.snapshot.languageDecisionReason,
+        languageDecisionConfidence: pending.snapshot.languageDecisionConfidence,
+      };
+
+      if (pending.mode === "ITEM") {
+        return itemOverlay;
+      }
+
+      return {
+        ...itemOverlay,
         personalNoteCategory: pending.snapshot.personalNoteCategory,
         personalFolderId: pending.snapshot.personalFolderId,
         folderPath: pending.snapshot.folderPath,
       };
     });
-  }, []);
+
+    if (pendingResolvedIds.length > 0) {
+      pendingResolvedIds.forEach((id) => clearPendingContentSync(id));
+    }
+    return merged;
+  }, [clearPendingContentSync, isServerCaughtUpWithPending]);
 
   useEffect(() => {
     return () => {
@@ -580,10 +677,12 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     if (!editingBookId) return;
 
     let updatedItem: LibraryItem | null = null;
+    let previousItem: LibraryItem | null = null;
 
     setBooks((prev) =>
       prev.map((b) => {
         if (b.id === editingBookId) {
+          previousItem = b;
           updatedItem = { ...b, ...itemData };
           return updatedItem;
         }
@@ -596,20 +695,27 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
 
     if (updatedItem) {
       const isPendingPersonalNote = isPersonalNote(updatedItem);
-      if (isPendingPersonalNote) {
-        markPendingContentSync("PERSONAL_NOTE", updatedItem);
-      }
+      markPendingContentSync(isPendingPersonalNote ? "PERSONAL_NOTE" : "ITEM", updatedItem);
+
+      let metadataSaveSucceeded = false;
       try {
         await saveItemForUser(userId, updatedItem);
+        metadataSaveSucceeded = true;
       } catch (err) {
-        console.error("Failed to update item in Firestore:", err);
+        console.error("Failed to update item in Oracle:", err);
       }
+
+      let personalNoteSyncSucceeded = true;
       if (isPendingPersonalNote) {
-        try {
-          await syncPersonalNoteToBackend(updatedItem, false);
-        } finally {
-          clearPendingContentSync(updatedItem.id);
+        personalNoteSyncSucceeded = await syncPersonalNoteToBackend(updatedItem, false);
+      }
+
+      if (!metadataSaveSucceeded || !personalNoteSyncSucceeded) {
+        clearPendingContentSync(updatedItem.id);
+        if (previousItem) {
+          setBooks((prev) => prev.map((b) => (b.id === previousItem!.id ? previousItem! : b)));
         }
+        window.alert("Changes could not be saved. Previous version was restored.");
       }
     }
   }, [clearPendingContentSync, editingBookId, markPendingContentSync, syncPersonalNoteToBackend, userId]);
@@ -690,10 +796,12 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     if (!selectedBookId) return;
 
     let updatedItem: LibraryItem | null = null;
+    let previousHighlights: Highlight[] = [];
 
     setBooks((prev) =>
       prev.map((b) => {
         if (b.id === selectedBookId) {
+          previousHighlights = b.highlights || [];
           updatedItem = { ...b, highlights };
           return updatedItem;
         }
@@ -703,6 +811,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
 
     if (updatedItem) {
       markPendingContentSync("HIGHLIGHTS", updatedItem);
+      let syncSucceeded = false;
       try {
         // For highlights, Oracle content table is authoritative. Sync directly.
         await syncHighlights(
@@ -712,10 +821,17 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
           updatedItem.author,
           updatedItem.highlights || []
         );
+        syncSucceeded = true;
       } catch (err) {
         console.error("Failed to sync highlights to AI Backend:", err);
-      } finally {
+      }
+
+      if (!syncSucceeded) {
         clearPendingContentSync(updatedItem.id);
+        setBooks((prev) =>
+          prev.map((b) => (b.id === updatedItem!.id ? { ...b, highlights: previousHighlights } : b))
+        );
+        window.alert("Highlight changes could not be saved. Previous version was restored.");
       }
     }
   }
@@ -735,15 +851,25 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
       newBooks[bookIndex] = updatedBook;
       return newBooks;
     });
+    markPendingContentSync("ITEM", updatedBook);
 
     // 3. Update Firestore
     try {
       await saveItemForUser(userId, updatedBook);
     } catch (err) {
-      console.error("Failed to update favorite status in Firestore:", err);
-      // Optional: Revert state on failure
+      console.error("Failed to update favorite status in Oracle:", err);
+      clearPendingContentSync(updatedBook.id);
+      setBooks(prev => {
+        const newBooks = [...prev];
+        const idx = newBooks.findIndex((b) => b.id === id);
+        if (idx !== -1) {
+          newBooks[idx] = book;
+        }
+        return newBooks;
+      });
+      window.alert("Favorite update failed. Previous value was restored.");
     }
-  }, [books, userId]);
+  }, [books, clearPendingContentSync, markPendingContentSync, userId]);
 
   const handleToggleHighlightFavorite = useCallback(async (bookId: string, highlightId: string) => {
     // 1. Find and update the item

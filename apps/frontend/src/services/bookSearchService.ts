@@ -24,6 +24,11 @@ export interface CorrectedQuery {
 const searchCache = new Map<string, SearchResult>();
 const queryCache = new Map<string, CorrectedQuery>();
 
+function isIsbn(query: string): boolean {
+    const clean = query.replace(/[-\s]/g, '');
+    return (clean.length === 10 || clean.length === 13) && /^\d+X?$/i.test(clean);
+}
+
 function normalizeQuery(query: string): string {
     return query
         .trim()
@@ -190,8 +195,18 @@ function tokenOverlapScore(query: string, target: string): number {
 function rankResults(query: string, results: BookItem[]): BookItem[] {
     const queryNorm = normalizeQuery(query);
     const queryTokens = tokenize(query);
+    const queryIsIsbn = isIsbn(queryNorm);
 
     const scored = results.map((result) => {
+        // If it's an ISBN search, and the result's ISBN matches the query, give it a perfect score.
+        if (queryIsIsbn && result.isbn) {
+            const cleanQueryIsbn = queryNorm.replace(/[-\s]/g, '');
+            const cleanResultIsbn = result.isbn.replace(/[-\s]/g, '');
+            if (cleanResultIsbn.includes(cleanQueryIsbn) || cleanQueryIsbn.includes(cleanResultIsbn)) {
+                return { result, score: 1.0 };
+            }
+        }
+
         const title = result.title || '';
         const author = result.author || '';
 
@@ -235,7 +250,14 @@ function deduplicateResults(items: BookItem[]): BookItem[] {
 
 async function searchGoogleBooks(query: string): Promise<BookItem[]> {
     try {
-        const variants = buildQueryVariants(query).flatMap(generateCharacterVariants);
+        let variants: string[];
+        if (isIsbn(query)) {
+            const cleanIsbn = query.replace(/[-\s]/g, '');
+            variants = [`isbn:${cleanIsbn}`];
+        } else {
+            variants = buildQueryVariants(query).flatMap(generateCharacterVariants);
+        }
+
         const results: BookItem[] = [];
         let googleBooksWorked = false;
 
@@ -309,11 +331,21 @@ async function searchGoogleBooks(query: string): Promise<BookItem[]> {
 
 async function searchOpenLibrary(query: string): Promise<BookItem[]> {
     try {
-        const variants = buildQueryVariants(query).flatMap(generateCharacterVariants);
+        let variants: string[];
+        if (isIsbn(query)) {
+            const cleanIsbn = query.replace(/[-\s]/g, '');
+            variants = [cleanIsbn];
+        } else {
+            variants = buildQueryVariants(query).flatMap(generateCharacterVariants);
+        }
         const results: BookItem[] = [];
 
         for (const variant of variants) {
-            const apiUrl = `https://openlibrary.org/search.json?q=${encodeURIComponent(variant)}&limit=10`;
+            let apiUrl = `https://openlibrary.org/search.json?q=${encodeURIComponent(variant)}&limit=10`;
+            if (isIsbn(query)) {
+                apiUrl = `https://openlibrary.org/search.json?isbn=${encodeURIComponent(variant)}&limit=10`;
+            }
+
             const response = await fetch(apiUrl);
             if (!response.ok) continue;
 

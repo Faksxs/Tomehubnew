@@ -22,6 +22,7 @@ from utils.logger import get_logger
 logger = get_logger("firestore_sync_service")
 
 _sync_lock = threading.Lock()
+_FIRESTORE_DB_SYNC_ENABLED = str(os.getenv("FIRESTORE_DB_SYNC_ENABLED", "false")).strip().lower() in {"1", "true", "yes", "on"}
 _sync_status: Dict[str, Any] = {
     "running": False,
     "started_at": None,
@@ -425,6 +426,15 @@ def start_firestore_oracle_sync_async(
     embedding_rpm_cap: int = 30,
     embedding_unit_cost_usd: float = 0.00002,
 ) -> Dict[str, Any]:
+    if not _FIRESTORE_DB_SYNC_ENABLED:
+        _set_status(
+            running=False,
+            finished_at=_utc_now(),
+            errors=[*_sync_status.get("errors", []), "firestore_db_sync_disabled"][-100:],
+        )
+        logger.warning("firestore->oracle sync blocked: FIRESTORE_DB_SYNC_ENABLED is false")
+        return dict(_sync_status)
+
     with _sync_lock:
         if _sync_status.get("running"):
             return dict(_sync_status)

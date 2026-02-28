@@ -144,6 +144,7 @@ Return the COMPLETE updated JSON object.
 - Ensure 'summary' is detailed (at least 3 sentences).
 - Ensure 'tags' has at least 3 relevant genres/topics.
 - For 'translator' and 'pageCount', return 'null' if you are purely guessing.
+- NEVER invent or modify ISBN. Keep input ISBN exactly as-is, or null/empty if missing.
 
 INCLUDE a 'confidence_scores' object in your JSON response:
 {{
@@ -189,11 +190,12 @@ INSTRUCTIONS:
 1. Search your internal knowledge for the most accurate and specific bibliographic details.
 2. If the query is in Turkish or refers to Turkish works/authors, prioritize Turkish metadata (Turkish title, publisher, translator if applicable).
 3. For rare or older editions (e.g., from publishers like Birleşik Yayıncılık, Fecr, etc.), provide the exact details if possible.
-4. Return a JSON array of items. Each item must have:
+4. CRITICAL ANTI-HALLUCINATION RULE: If the query is just a numeric ISBN (10 or 13 digits), and you DO NOT confidently know the EXACT real book associated with that ISBN, you MUST return an empty array `[]`. DO NOT invent fake books and assign them the ISBN from the query.
+5. Return a JSON array of items. Each item must have:
    - title
    - author
    - publisher
-   - isbn (10 or 13, critical for discovery)
+   - isbn (optional, keep empty/null if unknown, never guess)
    - summary (brief 1-2 sentence description)
    - publishedDate (Format: YYYY or YYYY-MM-DD)
    - url (if website/article)
@@ -201,7 +203,6 @@ INSTRUCTIONS:
 
 Return ONLY valid JSON. No markdown formatting.
 """
-
 
 # Helper to clean JSON markdown
 def clean_json_response(text: str) -> str:
@@ -254,6 +255,30 @@ def _coerce_bool(value: Any) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "on"}
     return bool(value)
+
+
+def _safe_isbn_from_input(value: Any) -> Optional[str]:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    compact = "".join(ch for ch in raw if ch.isdigit() or ch.upper() == "X").upper()
+    if len(compact) == 10 or len(compact) == 13:
+        return compact
+    return None
+
+
+def _strip_isbn_from_ai_resource_results(payload: Any) -> List[Dict[str, Any]]:
+    if not isinstance(payload, list):
+        return []
+    cleaned: List[Dict[str, Any]] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        record = dict(item)
+        # ISBN must never come from LLM guesses in this architecture.
+        record["isbn"] = ""
+        cleaned.append(record)
+    return cleaned
 
 
 def _language_mismatch_details(enriched_data: Dict[str, Any], target_lang: str) -> Dict[str, Any]:
@@ -372,7 +397,10 @@ async def enrich_book_async(book_data: Dict[str, Any]) -> Dict[str, Any]:
                     f"[AI AIKIDO] Low confidence translator inferred for '{book_data.get('title')}': {enriched_data['translator']}"
                 )
 
+        trusted_isbn = _safe_isbn_from_input(book_data.get("isbn"))
         final = {**book_data, **enriched_data}
+        # Never accept ISBN produced/edited by LLM.
+        final["isbn"] = trusted_isbn
         final["content_language_resolved"] = target_lang
         final["language_decision_reason"] = language_policy.get("reason")
         final["language_decision_confidence"] = language_policy.get("confidence")
@@ -489,7 +517,8 @@ async def search_resources_async(query: str, resource_type: str) -> List[Dict[st
             timeout=30.0,
         )
         clean = clean_json_response(result.text)
-        return json.loads(clean)
+        parsed = json.loads(clean)
+        return _strip_isbn_from_ai_resource_results(parsed)
     except Exception as e:
         logger.error(f"Resource search failed: {e}")
         raise e

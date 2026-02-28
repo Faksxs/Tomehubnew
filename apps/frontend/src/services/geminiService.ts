@@ -92,7 +92,8 @@ export const mergeEnrichedDraftIntoItem = (
     tags: draft.tags && draft.tags.length > 0 ? draft.tags : item.tags,
     // Diğer alanlar da zenginleşmişse güncelle
     publisher: draft.publisher || item.publisher,
-    isbn: draft.isbn || item.isbn,
+    // ISBN must not be sourced from LLM enrichment output.
+    isbn: item.isbn,
     author: draft.author || item.author,
     translator: draft.translator || item.translator,
     publicationYear: draft.publishedDate
@@ -190,17 +191,6 @@ export const searchResourcesAI = async (
 
   // 3) Fallback: Gemini ile arama (Backend üzerinden)
   try {
-    // CRITICAL: Strict ISBN check to prevent LLM hallucination + reduce costs
-    const isIsbn = (q: string) => {
-      const clean = q.replace(/[-\s]/g, '');
-      return (clean.length === 10 || clean.length === 13) && /^\d+X?$/i.test(clean);
-    };
-
-    if (type === "BOOK" && isIsbn(trimmed)) {
-      console.log("✗ Skipping AI fallback for strict ISBN query");
-      return [];
-    }
-
     const idToken = await getAuthToken();
 
     const response = await fetch(`${API_BASE_URL}/api/ai/search-resources`, {
@@ -221,6 +211,8 @@ export const searchResourcesAI = async (
     // Backend returns { results: ItemDraft[] }
     return data.results.map((item: any) => ({
       ...item,
+      // ISBN must not be sourced from LLM search output.
+      isbn: "",
       coverUrl: null,
       sourceLanguageHint: normalizeLangHint(item.sourceLanguageHint || item.source_language_hint),
       contentLanguageResolved: normalizeLangHint(item.contentLanguageResolved || item.content_language_resolved),

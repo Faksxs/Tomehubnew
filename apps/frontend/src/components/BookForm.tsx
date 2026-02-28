@@ -183,7 +183,8 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
         summaryText: enriched.summary && enriched.summary.length > 0 ? enriched.summary : prev.summaryText,
         publisher: enriched.publisher || prev.publisher,
         publicationYear: enriched.publishedDate ? String(enriched.publishedDate) : prev.publicationYear,
-        isbn: enriched.isbn || prev.isbn,
+        // Keep ISBN unchanged; LLM enrichment must not write ISBN.
+        isbn: prev.isbn,
         pageCount: enriched.pageCount ? String(enriched.pageCount) : prev.pageCount,
         translator: enriched.translator || prev.translator,
         contentLanguageResolved:
