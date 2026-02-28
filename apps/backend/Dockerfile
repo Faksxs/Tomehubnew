@@ -12,11 +12,12 @@ ENV GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/firebase-admin.json
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies including Caddy and curl
+# Install system dependencies including Caddy, curl, and libzbar0 (for pyzbar barcode scanning)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     curl \
     gnupg \
+    libzbar0 \
     && curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg \
     && curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list \
     && apt-get update \
@@ -51,4 +52,3 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 
 # Use entrypoint script to discover IP, generate Caddyfile, and start services
 ENTRYPOINT ["/app/entrypoint.sh"]
-
