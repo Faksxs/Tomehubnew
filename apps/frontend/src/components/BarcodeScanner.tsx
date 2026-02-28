@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BrowserMultiFormatReader, DecodeHintType, BarcodeFormat, NotFoundException } from '@zxing/library';
 import { X, Camera, Loader2 } from 'lucide-react';
 
@@ -15,8 +15,20 @@ const SCAN_FORMATS = [
     BarcodeFormat.CODE_128,
 ];
 
+const NATIVE_DETECTOR_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'];
+
+type DetectedBarcodeLike = {
+    rawValue?: string;
+};
+
+type BarcodeDetectorLike = {
+    detect: (source: ImageBitmapSource) => Promise<DetectedBarcodeLike[]>;
+};
+
+type BarcodeDetectorConstructorLike = new (options?: { formats?: string[] }) => BarcodeDetectorLike;
+
 const normalizeDetectedCode = (raw: string): string => {
-    const compact = raw.replace(/[\s-]/g, '').trim();
+    const compact = String(raw || '').replace(/[\s-]/g, '').trim();
     const isbnCharsOnly = compact.replace(/[^0-9Xx]/g, '').toUpperCase();
 
     if (isbnCharsOnly.length === 13 || isbnCharsOnly.length === 10) {
@@ -34,31 +46,42 @@ const normalizeDetectedCode = (raw: string): string => {
 
 export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected, onClose }) => {
     const videoRef = useRef<HTMLVideoElement | null>(null);
+    const photoInputRef = useRef<HTMLInputElement | null>(null);
     const streamRef = useRef<MediaStream | null>(null);
     const readerRef = useRef<BrowserMultiFormatReader | null>(null);
+    const nativeLoopTimerRef = useRef<number | null>(null);
+    const nativeDetectorRef = useRef<BarcodeDetectorLike | null>(null);
     const hasDetected = useRef(false);
 
     const [error, setError] = useState<string | null>(null);
     const [isStarting, setIsStarting] = useState(true);
+    const [isDecodingPhoto, setIsDecodingPhoto] = useState(false);
     const [manualCode, setManualCode] = useState('');
 
     const onDetectedRef = useRef(onDetected);
     onDetectedRef.current = onDetected;
+
     const onCloseRef = useRef(onClose);
     onCloseRef.current = onClose;
 
     const cleanup = useCallback(() => {
+        if (nativeLoopTimerRef.current !== null) {
+            window.clearTimeout(nativeLoopTimerRef.current);
+            nativeLoopTimerRef.current = null;
+        }
+        nativeDetectorRef.current = null;
+
         if (readerRef.current) {
             try {
                 readerRef.current.reset();
             } catch {
-                // Already reset
+                // no-op
             }
             readerRef.current = null;
         }
 
         if (streamRef.current) {
-            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current.getTracks().forEach((track) => track.stop());
             streamRef.current = null;
         }
 
@@ -67,12 +90,57 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected, onCl
         }
     }, []);
 
+    const emitDetectedCode = useCallback((raw: string) => {
+        const normalized = normalizeDetectedCode(raw);
+        if (!normalized || hasDetected.current) return;
+
+        hasDetected.current = true;
+        cleanup();
+        onDetectedRef.current(normalized);
+    }, [cleanup]);
+
+    const decodeImageFile = useCallback(async (file: File): Promise<string | null> => {
+        const detectorCtor = (window as unknown as { BarcodeDetector?: BarcodeDetectorConstructorLike }).BarcodeDetector;
+
+        if (detectorCtor) {
+            let bitmap: ImageBitmap | null = null;
+            try {
+                const detector = new detectorCtor({ formats: NATIVE_DETECTOR_FORMATS });
+                bitmap = await createImageBitmap(file);
+                const nativeResults = await detector.detect(bitmap);
+                const nativeRaw = nativeResults?.find((entry) => !!entry?.rawValue)?.rawValue;
+                if (nativeRaw) return nativeRaw;
+            } catch {
+                // Fallback to ZXing decode below.
+            } finally {
+                if (bitmap) {
+                    bitmap.close();
+                }
+            }
+        }
+
+        const hints = new Map<DecodeHintType, unknown>();
+        hints.set(DecodeHintType.POSSIBLE_FORMATS, SCAN_FORMATS);
+        hints.set(DecodeHintType.TRY_HARDER, true);
+        const reader = new BrowserMultiFormatReader(hints, 200);
+
+        const objectUrl = URL.createObjectURL(file);
+        try {
+            const result = await reader.decodeFromImageUrl(objectUrl);
+            return result?.getText?.() || null;
+        } catch {
+            return null;
+        } finally {
+            reader.reset();
+            URL.revokeObjectURL(objectUrl);
+        }
+    }, []);
+
     useEffect(() => {
         let mounted = true;
 
         const startScanning = async () => {
             try {
-                // Step 1: Get camera stream directly — most reliable on iOS Safari
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: { ideal: 'environment' },
@@ -83,12 +151,11 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected, onCl
                 });
 
                 if (!mounted) {
-                    stream.getTracks().forEach(t => t.stop());
+                    stream.getTracks().forEach((t) => t.stop());
                     return;
                 }
 
                 streamRef.current = stream;
-
                 const video = videoRef.current;
                 if (!video) return;
 
@@ -98,41 +165,58 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected, onCl
                 video.muted = true;
 
                 await video.play();
-
                 if (!mounted) return;
                 setIsStarting(false);
 
-                // Step 2: Create ZXing reader with barcode-specific hints
+                const detectorCtor = (window as unknown as { BarcodeDetector?: BarcodeDetectorConstructorLike }).BarcodeDetector;
+                if (detectorCtor) {
+                    try {
+                        nativeDetectorRef.current = new detectorCtor({ formats: NATIVE_DETECTOR_FORMATS });
+
+                        const runNativeLoop = async () => {
+                            if (!mounted || hasDetected.current) return;
+                            const detector = nativeDetectorRef.current;
+                            if (!detector) return;
+
+                            try {
+                                const detected = await detector.detect(video);
+                                const firstRaw = detected?.find((entry) => !!entry?.rawValue)?.rawValue;
+                                if (firstRaw) {
+                                    emitDetectedCode(firstRaw);
+                                    return;
+                                }
+                            } catch {
+                                // Ignore frame-level errors.
+                            }
+
+                            nativeLoopTimerRef.current = window.setTimeout(runNativeLoop, 140);
+                        };
+
+                        void runNativeLoop();
+                    } catch {
+                        nativeDetectorRef.current = null;
+                    }
+                }
+
                 const hints = new Map<DecodeHintType, unknown>();
                 hints.set(DecodeHintType.POSSIBLE_FORMATS, SCAN_FORMATS);
                 hints.set(DecodeHintType.TRY_HARDER, true);
 
-                const reader = new BrowserMultiFormatReader(hints, 500);
+                const reader = new BrowserMultiFormatReader(hints, 180);
                 readerRef.current = reader;
 
-                // Step 3: Use continuous decode — ZXing will poll the video element
-                // and call our callback on each result (or error)
                 reader.decodeFromVideoElementContinuously(video, (result, err) => {
                     if (!mounted || hasDetected.current) return;
 
                     if (result) {
-                        const raw = result.getText();
-                        const normalized = normalizeDetectedCode(raw);
-
-                        if (normalized) {
-                            hasDetected.current = true;
-                            cleanup();
-                            onDetectedRef.current(normalized);
-                        }
+                        emitDetectedCode(result.getText());
                         return;
                     }
 
-                    // NotFoundException is expected on frames without a barcode — ignore it
                     if (err && !(err instanceof NotFoundException)) {
-                        // ChecksumException, FormatException etc. — just retry
+                        // Ignore transient frame decode errors and continue.
                     }
                 });
-
             } catch (err) {
                 if (!mounted) return;
                 const msg = err instanceof Error ? err.message : String(err);
@@ -149,13 +233,13 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected, onCl
             }
         };
 
-        startScanning();
+        void startScanning();
 
         return () => {
             mounted = false;
             cleanup();
         };
-    }, [cleanup]);
+    }, [cleanup, emitDetectedCode]);
 
     const handleClose = useCallback(() => {
         cleanup();
@@ -165,9 +249,32 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected, onCl
     const handleManualSubmit = useCallback(() => {
         const normalized = normalizeDetectedCode(manualCode);
         if (!normalized) return;
+
         cleanup();
         onDetectedRef.current(normalized);
     }, [manualCode, cleanup]);
+
+    const handlePhotoDecode = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        setError(null);
+        setIsDecodingPhoto(true);
+        try {
+            const decodedRaw = await decodeImageFile(file);
+            if (!decodedRaw) {
+                setError('Could not read barcode from photo. Try another angle or type ISBN manually.');
+                return;
+            }
+            emitDetectedCode(decodedRaw);
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            setError(`Photo decode failed: ${msg}`);
+        } finally {
+            setIsDecodingPhoto(false);
+            event.target.value = '';
+        }
+    }, [decodeImageFile, emitDetectedCode]);
 
     return (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
@@ -208,16 +315,13 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected, onCl
                                     muted
                                 />
 
-                                {/* Scan frame overlay */}
                                 <div className="absolute inset-0 pointer-events-none">
                                     <div className="absolute inset-0 flex items-center justify-center">
                                         <div className="w-[280px] h-[90px] relative">
-                                            {/* Corner markers */}
-                                            <div className="absolute top-0 left-0 w-8 h-8 border-l-3 border-t-3 border-white" />
-                                            <div className="absolute top-0 right-0 w-8 h-8 border-r-3 border-t-3 border-white" />
-                                            <div className="absolute bottom-0 left-0 w-8 h-8 border-l-3 border-b-3 border-white" />
-                                            <div className="absolute bottom-0 right-0 w-8 h-8 border-r-3 border-b-3 border-white" />
-                                            {/* Scanning line animation */}
+                                            <div className="absolute top-0 left-0 w-8 h-8 border-l-2 border-t-2 border-white" />
+                                            <div className="absolute top-0 right-0 w-8 h-8 border-r-2 border-t-2 border-white" />
+                                            <div className="absolute bottom-0 left-0 w-8 h-8 border-l-2 border-b-2 border-white" />
+                                            <div className="absolute bottom-0 right-0 w-8 h-8 border-r-2 border-b-2 border-white" />
                                             <div className="absolute top-1/2 left-2 right-2 h-0.5 bg-[#CC561E]/70 animate-pulse" />
                                         </div>
                                     </div>
@@ -230,9 +334,30 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected, onCl
                                     </div>
                                 )}
                             </div>
+
                             <p className="text-center text-xs text-slate-400 dark:text-slate-500 mt-3">
                                 Align the barcode in the frame and keep the phone steady.
                             </p>
+
+                            <div className="mt-3">
+                                <input
+                                    ref={photoInputRef}
+                                    type="file"
+                                    accept="image/*"
+                                    capture="environment"
+                                    onChange={handlePhotoDecode}
+                                    className="hidden"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => photoInputRef.current?.click()}
+                                    disabled={isDecodingPhoto}
+                                    className="w-full px-3 py-2 rounded-lg text-sm font-medium border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-[#CC561E]/50 hover:text-[#CC561E] disabled:opacity-60 transition-colors"
+                                >
+                                    {isDecodingPhoto ? 'Reading photo...' : 'Scan From Photo'}
+                                </button>
+                            </div>
+
                             <div className="mt-4 flex gap-2">
                                 <input
                                     value={manualCode}
