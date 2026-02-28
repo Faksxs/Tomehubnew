@@ -190,6 +190,17 @@ export const searchResourcesAI = async (
 
   // 3) Fallback: Gemini ile arama (Backend üzerinden)
   try {
+    // CRITICAL: Strict ISBN check to prevent LLM hallucination + reduce costs
+    const isIsbn = (q: string) => {
+      const clean = q.replace(/[-\s]/g, '');
+      return (clean.length === 10 || clean.length === 13) && /^\d+X?$/i.test(clean);
+    };
+
+    if (type === "BOOK" && isIsbn(trimmed)) {
+      console.log("✗ Skipping AI fallback for strict ISBN query");
+      return [];
+    }
+
     const idToken = await getAuthToken();
 
     const response = await fetch(`${API_BASE_URL}/api/ai/search-resources`, {
