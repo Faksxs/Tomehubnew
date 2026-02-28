@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { LibraryItem, PersonalNoteCategory, PhysicalStatus, ReadingStatus, ResourceType, ContentLanguageMode } from '../types';
-import { X, Loader2, Search, ChevronRight, Book as BookIcon, SkipForward, Image as ImageIcon, FileText, Globe, PenTool, Wand2, RefreshCw, Sparkles, Calendar, Upload, FilePlus, AlertCircle, CheckCircle } from 'lucide-react';
+import { X, Loader2, Search, ChevronRight, Book as BookIcon, SkipForward, Image as ImageIcon, FileText, Globe, PenTool, Wand2, RefreshCw, Sparkles, Calendar, Upload, FilePlus, AlertCircle, CheckCircle, Camera } from 'lucide-react';
+import { BarcodeScanner } from './BarcodeScanner';
 import { searchResourcesAI, ItemDraft, generateTagsForNote } from '../services/geminiService';
 import { useAuth } from '../contexts/AuthContext';
 import { ingestDocument, extractMetadata } from '../services/backendApiService';
@@ -36,6 +37,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
   const [isIngesting, setIsIngesting] = useState(false);
   const [isExtractingMetadata, setIsExtractingMetadata] = useState(false);
   const [selectedPdf, setSelectedPdf] = useState<File | null>(null);
+  const [showScanner, setShowScanner] = useState(false);
   const { user } = useAuth();
 
   // Form State
@@ -386,16 +388,45 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={initialType === 'ARTICLE' ? "Enter Title, DOI, Author..." : "Enter Title, ISBN, Author..."}
-                className="w-full pl-5 pr-14 py-4 text-lg border-2 border-slate-200 dark:border-slate-700 rounded-xl focus:border-[#CC561E] dark:focus:border-[#CC561E] focus:ring-4 focus:ring-[#CC561E]/10 outline-none transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                className="w-full pl-5 pr-28 py-4 text-lg border-2 border-slate-200 dark:border-slate-700 rounded-xl focus:border-[#CC561E] dark:focus:border-[#CC561E] focus:ring-4 focus:ring-[#CC561E]/10 outline-none transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
               />
-              <button
-                type="submit"
-                disabled={isSearching || !searchQuery.trim()}
-                className="absolute right-3 top-1/2 -translate-y-1/2 bg-[#CC561E] text-white p-2 rounded-lg hover:bg-[#b34b1a] disabled:opacity-50 disabled:hover:bg-[#CC561E] transition-colors"
-              >
-                {isSearching ? <Loader2 className="animate-spin" size={20} /> : <Search size={20} />}
-              </button>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                {initialType === 'BOOK' && (
+                  <button
+                    type="button"
+                    onClick={() => setShowScanner(true)}
+                    className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 p-2 rounded-lg hover:bg-[#CC561E]/10 hover:text-[#CC561E] dark:hover:bg-[#CC561E]/20 dark:hover:text-[#f3a47b] transition-colors"
+                    title="Scan ISBN barcode with camera"
+                  >
+                    <Camera size={20} />
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  disabled={isSearching || !searchQuery.trim()}
+                  className="bg-[#CC561E] text-white p-2 rounded-lg hover:bg-[#b34b1a] disabled:opacity-50 disabled:hover:bg-[#CC561E] transition-colors"
+                >
+                  {isSearching ? <Loader2 className="animate-spin" size={20} /> : <Search size={20} />}
+                </button>
+              </div>
             </form>
+
+            {showScanner && (
+              <BarcodeScanner
+                onDetected={(code) => {
+                  setShowScanner(false);
+                  setSearchQuery(code);
+                  // Auto-trigger search with the scanned ISBN
+                  setIsSearching(true);
+                  setSearchResults([]);
+                  searchResourcesAI(code, initialType)
+                    .then((results) => setSearchResults(results))
+                    .catch((err) => console.error('Barcode search failed:', err))
+                    .finally(() => setIsSearching(false));
+                }}
+                onClose={() => setShowScanner(false)}
+              />
+            )}
 
             <div className="space-y-3 flex-1 mt-6">
               {searchResults.length > 0 ? (
@@ -565,12 +596,31 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                   {initialType === 'BOOK' && (
                     <div>
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">ISBN</label>
-                      <input
-                        name="isbn"
-                        value={formData.isbn}
-                        onChange={handleChange}
-                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] font-mono bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
-                      />
+                      <div className="flex gap-1.5">
+                        <input
+                          name="isbn"
+                          value={formData.isbn}
+                          onChange={handleChange}
+                          className="flex-1 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] font-mono bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowScanner(true)}
+                          className="px-2.5 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-500 dark:text-slate-400 hover:text-[#CC561E] hover:border-[#CC561E]/50 dark:hover:text-[#f3a47b] dark:hover:border-[#CC561E]/50 transition-colors"
+                          title="Scan ISBN barcode"
+                        >
+                          <Camera size={18} />
+                        </button>
+                      </div>
+                      {showScanner && (
+                        <BarcodeScanner
+                          onDetected={(code) => {
+                            setShowScanner(false);
+                            setFormData(prev => ({ ...prev, isbn: code }));
+                          }}
+                          onClose={() => setShowScanner(false)}
+                        />
+                      )}
                     </div>
                   )}
 
