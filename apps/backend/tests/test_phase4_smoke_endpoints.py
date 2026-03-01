@@ -94,6 +94,46 @@ class Phase4SmokeEndpointsTests(unittest.TestCase):
         self.assertIn("item_index_state", data)
         self.assertEqual(data["item_index_state"]["index_freshness_state"], "READY")
 
+    def test_ingestion_status_self_heals_stale_failed_status_when_content_exists(self):
+        with patch.object(
+            tomehub_app,
+            "fetch_ingestion_status",
+            return_value={
+                "status": "FAILED",
+                "file_name": "x.pdf",
+                "chunk_count": 0,
+                "embedding_count": 0,
+                "updated_at": None,
+                "item_index_state": None,
+            },
+        ), patch.object(
+            tomehub_app,
+            "get_index_freshness_state",
+            return_value={"index_freshness_state": "READY"},
+        ), patch.object(
+            tomehub_app,
+            "_get_pdf_index_stats",
+            return_value={"effective_chunks": 47, "effective_embeddings": 45, "raw_chunks": 48},
+        ), patch.object(
+            tomehub_app,
+            "upsert_ingestion_status",
+        ) as mock_upsert:
+            resp = self.client.get("/api/books/book-1/ingestion-status", params={"firebase_uid": "u1"})
+
+        self.assertEqual(resp.status_code, 200, resp.text)
+        data = resp.json()
+        self.assertEqual(data["status"], "COMPLETED")
+        self.assertEqual(data["chunk_count"], 47)
+        self.assertEqual(data["embedding_count"], 45)
+        mock_upsert.assert_called_once_with(
+            book_id="book-1",
+            firebase_uid="u1",
+            status="COMPLETED",
+            file_name="x.pdf",
+            chunk_count=47,
+            embedding_count=45,
+        )
+
     def test_smart_search_phase4_filters_propagate(self):
         captured = {}
 

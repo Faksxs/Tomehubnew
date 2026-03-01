@@ -1959,13 +1959,26 @@ async def get_ingestion_status(
     if row:
         row_status = str(row.get("status") or "").upper()
         # Guard against stale/incorrect status rows by validating effective PDF-like chunks.
-        if row_status == "COMPLETED":
+        if row_status in {"COMPLETED", "FAILED"}:
             pdf_stats = _get_pdf_index_stats(effective_book_id, verified_firebase_uid)
-            if pdf_stats.get("effective_chunks", 0) <= 0:
+            effective_chunks = int(pdf_stats.get("effective_chunks", 0) or 0)
+            effective_embeddings = int(pdf_stats.get("effective_embeddings", 0) or 0)
+            if row_status == "COMPLETED" and effective_chunks <= 0:
                 row = None
-            else:
-                row["chunk_count"] = pdf_stats.get("effective_chunks")
-                row["embedding_count"] = pdf_stats.get("effective_embeddings")
+            elif effective_chunks > 0:
+                row["chunk_count"] = effective_chunks
+                row["embedding_count"] = effective_embeddings
+                if row_status == "FAILED":
+                    row["status"] = "COMPLETED"
+                    row["updated_at"] = datetime.now()
+                    upsert_ingestion_status(
+                        book_id=effective_book_id,
+                        firebase_uid=verified_firebase_uid,
+                        status="COMPLETED",
+                        file_name=row.get("file_name"),
+                        chunk_count=effective_chunks,
+                        embedding_count=effective_embeddings,
+                    )
         if row:
             item_index_state = row.get("item_index_state") or {}
             return {
