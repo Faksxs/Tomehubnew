@@ -80,7 +80,8 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
     setFormData({ ...h });
     setEntryType(normalizeHighlightType(h.type));
     // Initialize date and tags
-    setDateInput(new Date(h.createdAt).toISOString().split('T')[0]);
+    const initialDate = h.createdAt ? new Date(h.createdAt) : new Date();
+    setDateInput(initialDate.toISOString().split('T')[0]);
     setTagsInput(h.tags ? h.tags.join(', ') : '');
     setIsCameraOpen(false);
     setOcrError(null);

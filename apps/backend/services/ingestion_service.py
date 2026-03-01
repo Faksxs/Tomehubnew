@@ -1292,8 +1292,8 @@ def sync_highlights_for_item(
 
                 insert_sql = """
                     INSERT INTO TOMEHUB_CONTENT_V2
-                    (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, lemma_tokens, comment_text, tags_json)
-                    VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_lemmas, :p_comment, :p_tags)
+                    (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, lemma_tokens, comment_text, tags_json, created_at)
+                    VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_lemmas, :p_comment, :p_tags, :p_created_at)
                     RETURNING id INTO :p_out_id
                 """
 
@@ -1311,6 +1311,9 @@ def sync_highlights_for_item(
                     prepared_tags = prepare_labels(tags_json) if tags_json else []
 
                     embedding = embeddings[idx] if idx < len(embeddings) else None
+                    
+                    created_at_ms = h.get("createdAt")
+                    created_at_dt = datetime.fromtimestamp(created_at_ms / 1000.0) if created_at_ms else None
 
                     out_id = cursor.var(oracledb.NUMBER)
                     cursor.execute(
@@ -1329,6 +1332,7 @@ def sync_highlights_for_item(
                             "p_lemmas": json.dumps(get_lemmas(text), ensure_ascii=False),
                             "p_comment": comment,
                             "p_tags": tags_json,
+                            "p_created_at": created_at_dt,
                             "p_out_id": out_id,
                         },
                     )

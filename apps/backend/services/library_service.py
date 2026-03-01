@@ -84,6 +84,7 @@ def _content_table_shape(table_name: str) -> dict[str, Optional[str]]:
     page_col = "PAGE_NUMBER" if "PAGE_NUMBER" in cols else None
     chunk_idx_col = "CHUNK_INDEX" if "CHUNK_INDEX" in cols else None
     id_col = "ID" if "ID" in cols else None
+    created_at_col = "CREATED_AT" if "CREATED_AT" in cols else None
     return {
         "item_col": item_col,
         "type_col": type_col,
@@ -94,6 +95,7 @@ def _content_table_shape(table_name: str) -> dict[str, Optional[str]]:
         "page_col": page_col,
         "chunk_idx_col": chunk_idx_col,
         "id_col": id_col,
+        "created_at_col": created_at_col,
     }
 
 
@@ -389,12 +391,13 @@ def list_library_items(
                         phs.append(f":{k}")
                         b3[k] = iid
 
-                    # Build comment column safely
+                    # Build expressions safely
                     comment_expr = f'"{shape["comment_col"]}"' if shape["comment_col"] == "COMMENT" else (shape["comment_col"] or "NULL")
                     page_expr = shape["page_col"] or "NULL"
                     idx_expr = shape["chunk_idx_col"] or "NULL"
                     id_expr = shape["id_col"] or "NULL"
                     tags_expr = shape["tags_col"] or "NULL"
+                    created_at_expr = shape["created_at_col"] or "NULL"
                     sql_h = f"""
                         SELECT
                             {item_col} AS item_id,
@@ -404,7 +407,8 @@ def list_library_items(
                             {page_expr} AS page_number,
                             {idx_expr} AS chunk_index,
                             {comment_expr} AS comment_text,
-                            {tags_expr} AS tags_json
+                            {tags_expr} AS tags_json,
+                            {created_at_expr} AS created_at
                         FROM {content_table}
                         WHERE FIREBASE_UID = :p_uid
                           AND {item_col} IN ({', '.join(phs)})
@@ -434,7 +438,7 @@ def list_library_items(
                                     "type": h_type,
                                     "pageNumber": int(hr[4]) if hr[4] is not None else None,
                                     "comment": safe_read_clob(hr[6]) if hr[6] is not None else None,
-                                    "createdAt": None,
+                                    "createdAt": _ts_to_ms(hr[8]),
                                     "tags": _safe_json_list(hr[7]),
                                     "isFavorite": False,
                                 }
