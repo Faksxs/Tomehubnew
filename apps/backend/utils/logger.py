@@ -20,15 +20,28 @@ def get_logger(name):
     
     # Avoid adding handlers multiple times
     if not logger.handlers:
-        # File Handler
-        fh = logging.FileHandler('backend_error.log', encoding='utf-8')
-        fh.setFormatter(CustomJsonFormatter('%(timestamp)s %(level)s %(name)s %(message)s'))
-        logger.addHandler(fh)
+        # File Handler - Always UTF-8
+        try:
+            fh = logging.FileHandler('backend_error.log', encoding='utf-8')
+            fh.setFormatter(CustomJsonFormatter('%(timestamp)s %(level)s %(name)s %(message)s'))
+            logger.addHandler(fh)
+        except Exception as e:
+            print(f"Failed to initialize FileHandler: {e}")
         
-        # Stream Handler
-        sh = logging.StreamHandler(sys.stdout)
-        sh.setFormatter(CustomJsonFormatter('%(timestamp)s %(level)s %(name)s %(message)s'))
-        logger.addHandler(sh)
+        # Stream Handler - Robust against encoding errors on Windows
+        try:
+            # sys.stdout.reconfigure is Python 3.7+
+            if sys.platform == "win32" and hasattr(sys.stdout, 'reconfigure'):
+                try:
+                    sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace')
+                except Exception:
+                    pass
+            
+            sh = logging.StreamHandler(sys.stdout)
+            sh.setFormatter(CustomJsonFormatter('%(timestamp)s %(level)s %(name)s %(message)s'))
+            logger.addHandler(sh)
+        except Exception as e:
+            print(f"Failed to initialize StreamHandler: {e}")
         
         logger.setLevel(logging.INFO)
         logger.propagate = False

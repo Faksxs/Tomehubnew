@@ -98,22 +98,11 @@ from services.embedding_service import get_circuit_breaker_status
 # Configure Sentry - REPLACED BY LOKI (Standard Logging)
 # (Sentry code removed)
 
-# Configure Logging (Structured JSON)
-from pythonjsonlogger import jsonlogger
+# Configure Logging (Standardized)
+from utils.logger import get_logger
 
-logger = logging.getLogger("tomehub_api")
+logger = get_logger("tomehub_api")
 logger.setLevel(getattr(logging, settings.LOG_LEVEL, logging.INFO))
-
-# Console Handler (Stdout for Docker)
-logHandler = logging.StreamHandler()
-formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s %(message)s')
-logHandler.setFormatter(formatter)
-logger.addHandler(logHandler)
-logger.propagate = False
-
-# Remove default handlers to avoid duplicates
-logging.getLogger().handlers = []
-logging.getLogger().addHandler(logHandler)
 
 
 def _allow_dev_unverified_auth() -> bool:
