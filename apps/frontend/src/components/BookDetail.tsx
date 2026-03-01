@@ -216,10 +216,6 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
           String(status.resolved_book_id) !== String(book.id)
         );
         const shouldBeIngested = status.status === 'COMPLETED' && !matchedDifferentBook;
-        if (book.isIngested !== shouldBeIngested) {
-          const updated = { ...book, isIngested: shouldBeIngested };
-          onBookUpdated?.(updated);
-        }
         if (status.status === 'COMPLETED' && !matchedDifferentBook) {
           onIngestSuccess?.();
         }

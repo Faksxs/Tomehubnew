@@ -18,6 +18,7 @@ import SmartSearch from "./components/SmartSearch";
 import logo from './assets/logo_v9.png';
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { LandingPage } from "./components/auth/LandingPage";
 import {
   fetchItemsForUser,
   saveItemForUser,
@@ -94,6 +95,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   const realtimeInFlightRef = useRef(false);
   const pendingContentSyncRef = useRef<Map<string, PendingContentSyncEntry>>(new Map());
   const mutationInFlightCountRef = useRef(0);
+  const realtimePollingEnabled = import.meta.env.VITE_REALTIME_POLLING !== "false";
   const flowVisibleCategories = useMemo(() => {
     const normalizeTextKey = (value: string) => value.trim().toLocaleLowerCase('tr-TR');
     const categoryLookup = new Map<string, string>(
@@ -137,7 +139,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     clearPendingContentSync(snapshot.id);
     const timerId = window.setTimeout(() => {
       pendingContentSyncRef.current.delete(snapshot.id);
-    }, 45000);
+    }, 180000);
     pendingContentSyncRef.current.set(snapshot.id, { mode, snapshot, timerId });
   }, [clearPendingContentSync]);
 
@@ -313,6 +315,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   }, [userId]);
 
   useEffect(() => {
+    if (!realtimePollingEnabled) return;
     if (!userId) return;
 
     let cancelled = false;
@@ -402,7 +405,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
       }
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [applyPendingContentSyncOverrides, userId]);
+  }, [applyPendingContentSyncOverrides, realtimePollingEnabled, userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -720,67 +723,50 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     itemData: Omit<LibraryItem, "id" | "highlights">
   ) => {
     if (!editingBookId) return;
-
-    let updatedItem: LibraryItem | null = null;
-    let previousItem: LibraryItem | null = null;
-
-    setBooks((prev) =>
-      prev.map((b) => {
-        if (b.id === editingBookId) {
-          previousItem = b;
-          updatedItem = { ...b, ...itemData };
-          return updatedItem;
-        }
-        return b;
-      })
-    );
+    const previousItem = booksRef.current.find((b) => b.id === editingBookId);
+    if (!previousItem) return;
+    const updatedItem: LibraryItem = { ...previousItem, ...itemData };
 
     setIsFormOpen(false);
     setEditingBookId(null);
 
-    if (updatedItem) {
-      const isPendingPersonalNote = isPersonalNote(updatedItem);
-      markPendingContentSync(isPendingPersonalNote ? "PERSONAL_NOTE" : "ITEM", updatedItem);
+    const isPendingPersonalNote = isPersonalNote(updatedItem);
+    markPendingContentSync(isPendingPersonalNote ? "PERSONAL_NOTE" : "ITEM", updatedItem);
 
-      let metadataSaveSucceeded = false;
-      let metadataErrorMessage = "";
+    let metadataSaveSucceeded = false;
+    let metadataErrorMessage = "";
+    try {
+      await runWithMutationLock(async () => {
+        await saveItemForUser(userId, updatedItem);
+      });
+      metadataSaveSucceeded = true;
+    } catch (err) {
+      metadataErrorMessage = err instanceof Error ? err.message : String(err);
+      console.error("Failed to update item in Oracle:", err);
+    }
+
+    let personalNoteSyncSucceeded = true;
+    let noteSyncErrorMessage = "";
+    if (isPendingPersonalNote) {
       try {
-        await runWithMutationLock(async () => {
-          await saveItemForUser(userId, updatedItem);
-        });
-        metadataSaveSucceeded = true;
+        personalNoteSyncSucceeded = await runWithMutationLock(async () => syncPersonalNoteToBackend(updatedItem, false));
       } catch (err) {
-        metadataErrorMessage = err instanceof Error ? err.message : String(err);
-        console.error("Failed to update item in Oracle:", err);
+        personalNoteSyncSucceeded = false;
+        noteSyncErrorMessage = err instanceof Error ? err.message : String(err);
       }
+    }
 
-      let personalNoteSyncSucceeded = true;
-      let noteSyncErrorMessage = "";
-      if (isPendingPersonalNote) {
-        try {
-          personalNoteSyncSucceeded = await runWithMutationLock(async () => syncPersonalNoteToBackend(updatedItem!, false));
-        } catch (err) {
-          personalNoteSyncSucceeded = false;
-          noteSyncErrorMessage = err instanceof Error ? err.message : String(err);
-        }
-      }
+    if (!metadataSaveSucceeded || !personalNoteSyncSucceeded) {
+      clearPendingContentSync(updatedItem.id);
+      const details = [metadataErrorMessage, noteSyncErrorMessage].filter(Boolean).join(" | ");
+      window.alert(`Changes could not be saved.${details ? `\n${details}` : ""}`);
+      return;
+    }
 
-      if (metadataSaveSucceeded) {
-        try {
-          await refreshLibraryFromServer();
-        } catch (err) {
-          console.warn("Post-update refresh failed:", err);
-        }
-      }
-
-      if (!metadataSaveSucceeded || !personalNoteSyncSucceeded) {
-        clearPendingContentSync(updatedItem.id);
-        if (previousItem) {
-          setBooks((prev) => prev.map((b) => (b.id === previousItem!.id ? previousItem! : b)));
-        }
-        const details = [metadataErrorMessage, noteSyncErrorMessage].filter(Boolean).join(" | ");
-        window.alert(`Changes could not be saved. Previous version was restored.${details ? `\n${details}` : ""}`);
-      }
+    try {
+      await refreshLibraryFromServer();
+    } catch (err) {
+      console.warn("Post-update refresh failed:", err);
     }
   }, [clearPendingContentSync, editingBookId, markPendingContentSync, refreshLibraryFromServer, runWithMutationLock, syncPersonalNoteToBackend, userId]);
 
@@ -886,55 +872,40 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
 
   const handleUpdateHighlights = useCallback(async (highlights: Highlight[]) => {
     if (!selectedBookId) return;
+    const sourceItem = booksRef.current.find((b) => b.id === selectedBookId);
+    if (!sourceItem) return;
+    const updatedItem: LibraryItem = { ...sourceItem, highlights };
 
-    let updatedItem: LibraryItem | null = null;
-    let previousHighlights: Highlight[] = [];
-
-    setBooks((prev) =>
-      prev.map((b) => {
-        if (b.id === selectedBookId) {
-          previousHighlights = b.highlights || [];
-          updatedItem = { ...b, highlights };
-          return updatedItem;
-        }
-        return b;
-      })
-    );
-
-    if (updatedItem) {
-      markPendingContentSync("HIGHLIGHTS", updatedItem);
-      let syncSucceeded = false;
-      let syncErrorMessage = "";
-      try {
-        // For highlights, Oracle content table is authoritative. Sync directly.
-        await runWithMutationLock(async () => {
-          await syncHighlights(
-            userId,
-            updatedItem!.id,
-            updatedItem!.title,
-            updatedItem!.author,
-            updatedItem!.highlights || []
-          );
-        });
-        syncSucceeded = true;
-      } catch (err) {
-        syncErrorMessage = err instanceof Error ? err.message : String(err);
-        console.error("Failed to sync highlights to AI Backend:", err);
-      }
-
-      if (!syncSucceeded) {
-        clearPendingContentSync(updatedItem.id);
-        setBooks((prev) =>
-          prev.map((b) => (b.id === updatedItem!.id ? { ...b, highlights: previousHighlights } : b))
+    markPendingContentSync("HIGHLIGHTS", updatedItem);
+    let syncSucceeded = false;
+    let syncErrorMessage = "";
+    try {
+      // For highlights, Oracle content table is authoritative. Sync directly.
+      await runWithMutationLock(async () => {
+        await syncHighlights(
+          userId,
+          updatedItem.id,
+          updatedItem.title,
+          updatedItem.author,
+          updatedItem.highlights || []
         );
-        window.alert(`Highlight changes could not be saved. Previous version was restored.${syncErrorMessage ? `\n${syncErrorMessage}` : ""}`);
-      } else {
-        try {
-          await refreshLibraryFromServer();
-        } catch (err) {
-          console.warn("Post-highlight refresh failed:", err);
-        }
-      }
+      });
+      syncSucceeded = true;
+    } catch (err) {
+      syncErrorMessage = err instanceof Error ? err.message : String(err);
+      console.error("Failed to sync highlights to AI Backend:", err);
+    }
+
+    if (!syncSucceeded) {
+      clearPendingContentSync(updatedItem.id);
+      window.alert(`Highlight changes could not be saved.${syncErrorMessage ? `\n${syncErrorMessage}` : ""}`);
+      return;
+    }
+
+    try {
+      await refreshLibraryFromServer();
+    } catch (err) {
+      console.warn("Post-highlight refresh failed:", err);
     }
   }
     , [clearPendingContentSync, markPendingContentSync, refreshLibraryFromServer, runWithMutationLock, selectedBookId, userId]);
@@ -1027,7 +998,33 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   }, [books, refreshLibraryFromServer, runWithMutationLock, userId]);
 
   const handleUpdateBookForEnrichment = useCallback((updatedBook: LibraryItem) => {
-    setBooks(prev => prev.map(b => b.id === updatedBook.id ? updatedBook : b));
+    setBooks((prev) => prev.map((b) => {
+      if (b.id !== updatedBook.id) return b;
+      const patch: Partial<LibraryItem> = {};
+      const allowedKeys: (keyof LibraryItem)[] = [
+        "summaryText",
+        "tags",
+        "publisher",
+        "translator",
+        "publicationYear",
+        "isbn",
+        "coverUrl",
+        "pageCount",
+        "contentLanguageMode",
+        "contentLanguageResolved",
+        "sourceLanguageHint",
+        "languageDecisionReason",
+        "languageDecisionConfidence",
+        "isIngested",
+      ];
+      allowedKeys.forEach((key) => {
+        const nextValue = updatedBook[key];
+        if (nextValue !== undefined) {
+          (patch as any)[key] = nextValue;
+        }
+      });
+      return { ...b, ...patch };
+    }));
   }, []);
 
   const {
@@ -1542,30 +1539,7 @@ const AppContent: React.FC = () => {
   }
 
   if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F7F8FB] dark:bg-[#0b0e14] transition-colors duration-300
-">
-        <div className="bg-white dark:bg-slate-900 shadow-lg rounded-2xl px-8 py-10 flex flex-col items-center gap-4 border border-slate-100 dark:border-slate-800">
-          <div className="flex flex-col items-center gap-6 mb-12">
-            <img
-              src={logo}
-              alt="TomeHub Icon"
-              className="h-[156px] w-auto object-contain brightness-110 drop-shadow-xl"
-            />
-          </div>
-          <p className="text-sm text-slate-600 dark:text-slate-400 text-center max-w-xs">
-            Sign in with your Google account to access your library across all
-            devices.
-          </p>
-          <button
-            onClick={loginWithGoogle}
-            className="mt-2 bg-[#262D40]/40 hover:bg-[#262D40]/55 text-white px-5 py-2 rounded-lg text-sm font-medium shadow-md transition-colors"
-          >
-            Continue with Google
-          </button>
-        </div>
-      </div>
-    );
+    return <LandingPage onLogin={loginWithGoogle} />;
   }
 
   return (

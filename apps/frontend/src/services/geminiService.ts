@@ -172,11 +172,16 @@ export const searchResourcesAI = async (
 
   // 1) Hızlı yol: BOOK için optimized bookSearchService kullan
   if (type === "BOOK") {
-    const { searchBooks } = await import('./bookSearchService');
+    const { searchBooks, isIsbn } = await import('./bookSearchService');
     const result = await searchBooks(trimmed);
     if (result.results.length > 0) {
       console.log(`✓ Results from bookSearchService (${result.source}, cached: ${result.cached})`);
       return result.results;
+    }
+    // ISBN için LLM fallback'ini kapat (hallucinasyon riskini önle)
+    if (isIsbn(trimmed)) {
+      console.log("✗ ISBN not found in standard APIs. Skipping LLM fallback.");
+      return [];
     }
   }
 
@@ -340,7 +345,7 @@ const tryOpenLibraryCover = async (
   // Skip broad search if we are in parallel mode to reduce noise? 
   // No, let's race it.
   const query = author ? `${title} ${author}` : title;
-  const searchUrl = `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=1`;
+  const searchUrl = `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=11`;
   const response = await fetch(searchUrl, { signal });
 
   if (response.ok) {

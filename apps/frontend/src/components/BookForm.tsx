@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { LibraryItem, PersonalNoteCategory, PhysicalStatus, ReadingStatus, ResourceType, ContentLanguageMode } from '../types';
 import { X, Loader2, Search, ChevronRight, Book as BookIcon, SkipForward, Image as ImageIcon, FileText, Globe, PenTool, Wand2, RefreshCw, Sparkles, Calendar, Upload, FilePlus, AlertCircle, CheckCircle, Camera } from 'lucide-react';
 import { BarcodeScanner } from './BarcodeScanner';
@@ -38,6 +38,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
   const [isExtractingMetadata, setIsExtractingMetadata] = useState(false);
   const [selectedPdf, setSelectedPdf] = useState<File | null>(null);
   const [showScanner, setShowScanner] = useState(false);
+  const initKeyRef = useRef<string | null>(null);
   const { user } = useAuth();
 
   // Form State
@@ -69,6 +70,12 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
   });
 
   useEffect(() => {
+    const initKey = initialData
+      ? `edit:${initialData.id}`
+      : `new:${initialType}:${noteDefaults?.personalNoteCategory || ''}:${noteDefaults?.personalFolderId || ''}:${noteDefaults?.folderPath || ''}`;
+    if (initKeyRef.current === initKey) return;
+    initKeyRef.current = initKey;
+
     if (initialData) {
       setFormData({
         title: initialData.title,
@@ -96,8 +103,10 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
         personalFolderId: initialData.personalFolderId || '',
         folderPath: initialData.folderPath || ''
       });
-    } else if (initialType === 'PERSONAL_NOTE') {
-      // Defaults for personal notes
+      return;
+    }
+
+    if (initialType === 'PERSONAL_NOTE') {
       setFormData(prev => ({
         ...prev,
         author: 'Self',
@@ -108,7 +117,13 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
         folderPath: noteDefaults?.folderPath || ''
       }));
     }
-  }, [initialData, initialType, noteDefaults]);
+  }, [
+    initialData?.id,
+    initialType,
+    noteDefaults?.personalNoteCategory,
+    noteDefaults?.personalFolderId,
+    noteDefaults?.folderPath,
+  ]);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
