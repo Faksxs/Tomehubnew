@@ -531,7 +531,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     background: transparent;
                     position: relative;
                     padding: 24px;
-                    overflow: hidden;
+                    overflow-y: auto;
                 }
 
                 @media (max-width: 768px) {
