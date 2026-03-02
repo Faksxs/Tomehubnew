@@ -166,13 +166,14 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
                             </h3>
                             <p className="text-[10px] font-bold text-slate-500 uppercase">Knowledge Intake Frequency</p>
                         </div>
-                        <div className="p-6 rounded-3xl border border-slate-200 dark:border-white/5 bg-white dark:bg-slate-900/30 overflow-x-auto scrollbar-hide">
-                            <div className="flex gap-1 min-w-[700px]">
-                                {Array.from({ length: 52 }).map((_, weekIdx) => (
-                                    <div key={weekIdx} className="flex flex-col gap-1">
+                        <div className="p-6 rounded-3xl border border-slate-200 dark:border-white/5 bg-white dark:bg-slate-900/30">
+                            <div className="flex gap-1.5 justify-center">
+                                {Array.from({ length: 5 }).map((_, weekIdx) => (
+                                    <div key={weekIdx} className="flex flex-col gap-1.5">
                                         {Array.from({ length: 7 }).map((_, dayIdx) => {
                                             const date = new Date();
-                                            date.setDate(date.getDate() - (51 - weekIdx) * 7 - (6 - dayIdx));
+                                            // 5 weeks = 35 days. (4 - weekIdx) * 7 + (6 - dayIdx)
+                                            date.setDate(date.getDate() - (4 - weekIdx) * 7 - (6 - dayIdx));
                                             const dateStr = date.toISOString().split('T')[0];
                                             const count = stats.heatmapData[dateStr] || 0;
                                             const opacity = count === 0 ? 0.05 : Math.min(1, 0.2 + count * 0.2);
@@ -181,7 +182,7 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
                                                 <div
                                                     key={dayIdx}
                                                     title={`${dateStr}: ${count} actions`}
-                                                    className="w-3 h-3 rounded-[2px] transition-all hover:scale-125 hover:ring-2 hover:ring-primary/50 cursor-pointer"
+                                                    className="w-5 h-5 rounded-[4px] transition-all hover:scale-125 hover:ring-2 hover:ring-primary/50 cursor-pointer"
                                                     style={{ backgroundColor: `rgba(204, 86, 30, ${opacity})` }}
                                                 />
                                             );
@@ -189,9 +190,9 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
                                     </div>
                                 ))}
                             </div>
-                            <div className="flex justify-between mt-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest px-1">
-                                <span>12 Months Ago</span>
-                                <span>Recent Activity</span>
+                            <div className="flex justify-between mt-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest px-2 max-w-[200px] mx-auto">
+                                <span>30 Days Ago</span>
+                                <span>Today</span>
                             </div>
                         </div>
                     </div>
