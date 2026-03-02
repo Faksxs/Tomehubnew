@@ -644,16 +644,16 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     .flow-sidebar {
                         position: absolute;
                         top: 0;
-                        right: 0;
+                        left: 0;
                         bottom: 0;
                         width: 75%;
                         min-width: 280px;
                         max-width: 400px;
                         height: 100%;
                         background: #fff;
-                        transform: translateX(100%);
+                        transform: translateX(-100%);
                         transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-                        box-shadow: -10px 0 30px rgba(0, 0, 0, 0.1);
+                        box-shadow: 10px 0 30px rgba(0, 0, 0, 0.1);
                         z-index: 10000;
                         display: flex;
                         flex-direction: column;
