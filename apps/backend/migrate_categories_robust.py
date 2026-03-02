@@ -26,9 +26,9 @@ else:
     logger.error("GEMINI_API_KEY not found in environment!")
 
 CATEGORIES = [
-    "Felsefe", "Sosyoloji", "Politika", "Ekonomi", "Edebiyat", 
-    "Roman", "Bilim", "Tarih", "İnanç", "Sanat", 
-    "Psikoloji", "Kişisel Gelişim", "Aşk/İlişkiler", "Hukuk", "Eğitim"
+    "Felsefe", "Sosyoloji", "Psikoloji", "Siyaset ve Politika",
+    "Din ve İnanç", "Tarih ve Medeniyet", "Ekonomi ve Hukuk",
+    "Türk Edebiyatı", "Dünya Edebiyatı", "Kültür ve Sanat", "Diğer"
 ]
 
 PROMPT_CATEGORIZE = """

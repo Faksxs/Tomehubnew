@@ -3,9 +3,9 @@
 export const MIN_CATEGORY_BOOKS_VISIBLE = 4;
 
 export const CATEGORIES = [
-    'Felsefe', 'Sosyoloji', 'Psikoloji', 'Bilim ve Teknoloji',
-    'Din ve İnanç', 'Tarih', 'İnceleme ve Araştırma', 'Ekonomi ve Hukuk',
-    'Türk Edebiyatı', 'Dünya Edebiyatı', 'Sanat ve Kültür', 'Diğer'
+    'Felsefe', 'Sosyoloji', 'Psikoloji', 'Siyaset ve Politika',
+    'Din ve İnanç', 'Tarih ve Medeniyet', 'Ekonomi ve Hukuk',
+    'Türk Edebiyatı', 'Dünya Edebiyatı', 'Kültür ve Sanat', 'Diğer'
 ];
 
 interface CategorySelectorProps {

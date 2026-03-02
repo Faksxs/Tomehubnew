@@ -9,14 +9,13 @@ BOOK_CATEGORIES: List[str] = [
     'Felsefe',
     'Sosyoloji',
     'Psikoloji',
-    'Bilim ve Teknoloji',
+    'Siyaset ve Politika',
     'Din ve İnanç',
-    'Tarih',
-    'İnceleme ve Araştırma',
+    'Tarih ve Medeniyet',
     'Ekonomi ve Hukuk',
     'Türk Edebiyatı',
     'Dünya Edebiyatı',
-    'Sanat ve Kültür',
+    'Kültür ve Sanat',
     'Diğer',
 ]
 
@@ -44,11 +43,17 @@ _CANONICAL_BY_NORM = {_norm(x): x for x in BOOK_CATEGORIES}
 
 # Backward-compat aliases / historic labels.
 _ALIASES = {
-    _norm('Siyaset Bilimi'): 'İnceleme ve Araştırma',
+    _norm('Siyaset Bilimi'): 'Siyaset ve Politika',
+    _norm('Politika'): 'Siyaset ve Politika',
+    _norm('Siyaset'): 'Siyaset ve Politika',
+    _norm('Bilim ve Teknoloji'): 'Diğer',
+    _norm('İnceleme ve Araştırma'): 'Diğer',
+    _norm('Tarih'): 'Tarih ve Medeniyet',
+    _norm('Sanat ve Kültür'): 'Kültür ve Sanat',
+    _norm('Kultur ve Sanat'): 'Kültür ve Sanat',
     _norm('Din ve Inanc'): 'Din ve İnanç',
     _norm('Turk Edebiyati'): 'Türk Edebiyatı',
     _norm('Dunya Edebiyati'): 'Dünya Edebiyatı',
-    _norm('Sanat ve Kultur'): 'Sanat ve Kültür',
     _norm('Diger'): 'Diğer',
     # Mojibake variants observed in legacy UI/category tags
     _norm('Din ve Ä°nanÃ§'): 'Din ve İnanç',
@@ -56,7 +61,7 @@ _ALIASES = {
     _norm('DÃ¼nya EdebiyatÄ±'): 'Dünya Edebiyatı',
     _norm('Sanat ve KÃ¼ltÃ¼r'): 'Sanat ve Kültür',
     _norm('DiÄŸer'): 'Diğer',
-    _norm('Ä°nceleme ve AraÅŸtÄ±rma'): 'İnceleme ve Araştırma',
+    _norm('Ä°nceleme ve AraÅŸtÄ±rma'): 'Diğer',
 }
 
 
