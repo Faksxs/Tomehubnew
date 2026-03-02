@@ -40,7 +40,7 @@ const PulseChart = ({ data }: { data: any[] }) => {
                                 <p className="font-black text-primary mb-1 border-b border-white/5 pb-1">{d.label}</p>
                                 <div className="space-y-1">
                                     <p className="font-bold flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-primary" /> {d.books} Books</p>
-                                    <p className="font-bold flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-primary/40" /> {d.insights} Insights</p>
+                                    <p className="font-bold flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-primary/40" /> {d.insights} Highlights</p>
                                 </div>
                             </div>
 
@@ -77,7 +77,7 @@ const PulseChart = ({ data }: { data: any[] }) => {
                     </div>
                     <div className="flex items-center gap-1.5">
                         <div className="w-2 h-2 rounded-[2px] bg-primary/40" />
-                        <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider">Insights</span>
+                        <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider">Highlights</span>
                     </div>
                 </div>
                 <div className="flex items-center gap-8 text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 dark:bg-white/5 px-3 py-1 rounded-full border border-slate-200 dark:border-white/5">
@@ -283,7 +283,7 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
                                     <div className="w-1 h-1 rounded-full bg-slate-300 dark:bg-white/10" />
                                     <div className="flex items-baseline gap-1.5">
                                         <span className="text-lg font-black text-slate-700 dark:text-slate-200">{stats.last30DaysHighlights}</span>
-                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Insights</span>
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Highlights</span>
                                     </div>
                                 </div>
                             </div>
