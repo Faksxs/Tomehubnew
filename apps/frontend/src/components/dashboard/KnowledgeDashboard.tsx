@@ -94,55 +94,103 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
     const lostCount = books.filter(i => i.status === 'Lost').length;
     const onShelfCount = books.filter(i => i.status === 'On Shelf').length;
 
-    // --- DATA PROCESSING (LEVEL C) ---
-    const now = Date.now();
-    const weekMs = 7 * 24 * 60 * 60 * 1000;
-    const itemsWithAddedAt = items.map(item => ({
-        item,
-        addedAtMs: normalizeAddedAt(item.addedAt),
-    }));
-    const addedLast7 = itemsWithAddedAt.filter(i => i.addedAtMs >= now - weekMs).length;
-    const addedPrev7 = itemsWithAddedAt.filter(i => i.addedAtMs >= now - (2 * weekMs) && i.addedAtMs < now - weekMs).length;
-    const last7Delta = addedLast7 - addedPrev7;
+    // --- DATA PROCESSING (LEVEL C - ADVANCED) ---
+    const advancedStats = useMemo(() => {
+        const now = Date.now();
+        const twoWeeksMs = 14 * 24 * 60 * 60 * 1000;
+        const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
 
-    const itemsLast7 = itemsWithAddedAt.filter(i => i.addedAtMs >= now - weekMs).map(i => i.item);
-    const conceptBridgesLast7 = itemsLast7.reduce((sum, i) => sum + Math.max(0, (i.tags?.length || 0) - 1), 0);
+        // 1. Pulse (Activity in last 14 days)
+        const itemsWithTime = items.map(item => ({
+            item,
+            addedAtMs: normalizeAddedAt(item.addedAt),
+            lastHighlightMs: Math.max(...(item.highlights || []).map(h => normalizeAddedAt(h.createdAt)), 0)
+        }));
+        const recentActivity = itemsWithTime.filter(i => i.addedAtMs >= now - twoWeeksMs || i.lastHighlightMs >= now - twoWeeksMs).length;
+        const recentHighlights = items.flatMap(i => i.highlights || []).filter(h => normalizeAddedAt(h.createdAt) >= now - twoWeeksMs).length;
+        const pulseValue = recentActivity + recentHighlights;
 
-    const tagCounts = new Map<string, { label: string; count: number }>();
-    items.forEach(item => {
-        (item.tags || []).forEach(tag => {
-            const trimmed = tag.trim();
-            if (!trimmed) return;
-            const key = normalizeTextKey(trimmed);
-            const prev = tagCounts.get(key);
-            tagCounts.set(key, {
-                label: prev?.label || trimmed,
-                count: (prev?.count || 0) + 1
+        // 2. T-Profile (Focus vs Orphans)
+        const tagMap = new Map<string, number>();
+        items.forEach(item => (item.tags || []).forEach(t => {
+            const k = normalizeTextKey(t);
+            tagMap.set(k, (tagMap.get(k) || 0) + 1);
+        }));
+        const frequencies = Array.from(tagMap.values()).sort((a, b) => b - a);
+        const top10PercentCount = Math.max(1, Math.ceil(frequencies.length * 0.1));
+        const topSum = frequencies.slice(0, top10PercentCount).reduce((a, b) => a + b, 0);
+        const orphanCount = frequencies.filter(f => f <= 2).length;
+        const totalTagUses = frequencies.reduce((a, b) => a + b, 0);
+        const tScore = totalTagUses > 0 ? (topSum / Math.max(1, orphanCount)).toFixed(1) : '0.0';
+
+        // 3. Core Nexus (Co-occurrence & Density)
+        const pairs = new Map<string, number>();
+        items.forEach(item => {
+            const tags = Array.from(new Set((item.tags || []).map(normalizeTextKey)));
+            for (let i = 0; i < tags.length; i++) {
+                for (let j = i + 1; j < tags.length; j++) {
+                    const pair = [tags[i], tags[j]].sort().join(' & ');
+                    pairs.set(pair, (pairs.get(pair) || 0) + 1);
+                }
+            }
+        });
+        let strongestNexus = '—';
+        let maxBond = 0;
+        pairs.forEach((count, pair) => {
+            if (count > maxBond) {
+                maxBond = count;
+                strongestNexus = pair;
+            }
+        });
+        const density = frequencies.length > 0 ? (totalTagUses / frequencies.length).toFixed(1) : '0.0';
+
+        // 4. Rust Index (Inactivity)
+        const inactiveItems = itemsWithTime.filter(i =>
+            i.addedAtMs < now - ninetyDaysMs &&
+            i.lastHighlightMs < now - ninetyDaysMs &&
+            i.item.type !== 'PERSONAL_NOTE'
+        ).length;
+        const totalReadable = items.filter(i => i.type !== 'PERSONAL_NOTE').length;
+        const rustPercentage = totalReadable > 0 ? Math.round((inactiveItems / totalReadable) * 100) : 0;
+
+        // 5. Intellect Engine (AI Readiness)
+        const ingestedCount = items.filter(i => i.isIngested).length;
+        const ingestRatio = totalReadable > 0 ? Math.round((ingestedCount / totalReadable) * 100) : 0;
+
+        // 6. Discovery (Unexplored)
+        const unexplored = items.filter(i => i.type !== 'PERSONAL_NOTE' && (i.highlights?.length || 0) === 0).length;
+
+        return {
+            pulse: pulseValue,
+            tScore,
+            orphanCount,
+            nexus: strongestNexus,
+            density,
+            rust: rustPercentage,
+            activeNodes: totalReadable - inactiveItems,
+            ingestRatio,
+            ingestedCount,
+            totalReadable,
+            unexplored
+        };
+    }, [items]);
+
+    // --- DATA PROCESSING (LEVEL B - CATEGORIES) ---
+    const categoryLookup = useMemo(() => new Map<string, string>(
+        CATEGORIES.map(category => [normalizeTextKey(category), category])
+    ), []);
+
+    const categoryCounts = useMemo(() => {
+        const counts = new Map<string, number>();
+        books.forEach(book => {
+            (book.tags || []).forEach(tag => {
+                const canonical = categoryLookup.get(normalizeTextKey(tag));
+                if (!canonical) return;
+                counts.set(canonical, (counts.get(canonical) || 0) + 1);
             });
         });
-    });
-    let topTag = '';
-    let topTagCount = 0;
-    tagCounts.forEach((entry) => {
-        if (entry.count > topTagCount) {
-            topTag = entry.label;
-            topTagCount = entry.count;
-        }
-    });
-    const unexploredCount = readableItems.filter(i => (i.highlights?.length || 0) === 0).length;
-    const categoryLookup = new Map<string, string>(
-        CATEGORIES.map(category => [normalizeTextKey(category), category])
-    );
-    const categoryCounts = new Map<string, number>();
-    books.forEach(book => {
-        (book.tags || []).forEach(tag => {
-            const canonical = categoryLookup.get(normalizeTextKey(tag));
-            if (!canonical) return;
-            categoryCounts.set(canonical, (categoryCounts.get(canonical) || 0) + 1);
-        });
-    });
-
-
+        return counts;
+    }, [books, categoryLookup]);
 
     return (
         <div className="min-h-full w-full space-y-5 md:space-y-8 animate-in fade-in duration-700 relative">
@@ -159,7 +207,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                     </button>
                 </div>
 
-                {/* Dashboard Title (Right on mobile via justify-between, Left on Desktop via flex behavior) */}
+                {/* Dashboard Title */}
                 <div className="space-y-1">
                     <h2 className="text-xl md:text-3xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2.5 md:gap-3 flex-row-reverse md:flex-row">
                         <div className="relative group">
@@ -171,12 +219,11 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                         Dashboard
                     </h2>
                 </div>
-                {/* System version badge removed as per request */}
             </div>
 
             <div className="max-w-6xl mx-auto space-y-5 md:space-y-8 relative z-20">
 
-                {/* 🔸 Level A – Core Assets (Perfect Ratios) */}
+                {/* 🔸 Level A – Core Assets */}
                 <section className="space-y-2 md:space-y-4">
                     <div className="flex items-center gap-1.5 md:gap-2 px-1 text-xs md:text-sm font-bold uppercase tracking-[0.15em] md:tracking-[0.18em] text-slate-500 dark:text-slate-400">
                         <Activity size={11} className="text-primary/60 md:w-3 md:h-3" /> Level A • Core Stats
@@ -200,7 +247,6 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                     flex flex-col items-center p-2.5 md:p-4 gap-1.5 md:gap-3
                                 "
                             >
-                                {/* Top Row: Icon and Label (Centered) */}
                                 <div className="flex items-center justify-center gap-2 md:gap-2.5 w-full">
                                     <div className="relative shrink-0">
                                         <div className="absolute -inset-2 bg-orange-500/10 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
@@ -212,8 +258,6 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                         {stat.label}
                                     </div>
                                 </div>
-
-                                {/* Value Below (Centered) */}
                                 <div className="w-full text-center mt-auto">
                                     <div className="text-lg md:text-[26px] font-black tracking-tight text-white leading-none">
                                         {stat.value}
@@ -224,8 +268,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                     </div>
                 </section>
 
-
-
+                {/* 🔸 Level B – Structure */}
                 <section className="space-y-1 md:space-y-4">
                     <div className="flex items-center gap-1.5 md:gap-2 px-1 text-xs md:text-sm font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] text-slate-500 dark:text-slate-400">
                         <PieChart size={12} className="text-primary/60" /> Level B • Structure
@@ -238,20 +281,17 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                 p-3 md:p-8 lg:p-10
             ">
                         <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-12">
-
                             {/* Category Distribution */}
                             <div className="md:col-span-8 flex flex-col gap-2.5 md:gap-6">
                                 <div className="flex items-center gap-2 md:gap-3 border-b border-white/10 pb-2 md:pb-4">
                                     <SystemDistributionLogo size={16} className="text-primary md:w-5 md:h-5" />
                                     <h3 className="font-extrabold text-white tracking-tight uppercase text-sm">Category</h3>
                                 </div>
-
                                 <div className="grid grid-cols-2 lg:grid-cols-3 gap-y-1 md:gap-y-4 gap-x-2.5 md:gap-x-10">
                                     {CATEGORIES.map(category => {
                                         const count = categoryCounts.get(category) || 0;
                                         if (count < MIN_CATEGORY_BOOKS_VISIBLE) return null;
                                         const percentage = books.length > 0 ? (count / books.length) * 100 : 0;
-
                                         return (
                                             <div
                                                 key={category}
@@ -277,83 +317,61 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                 </div>
                             </div>
 
-                            {/* Right Column */}
+                            {/* Right Column (Progress & Inventory) */}
                             <div className="md:col-span-4 flex flex-col gap-3 md:gap-8">
-                                {/* Progress */}
                                 <div className="space-y-2 md:space-y-4">
                                     <div className="flex items-center gap-2 md:gap-3 border-b border-white/10 pb-2 md:pb-4">
                                         <ProgressLogo size={16} className="text-primary md:w-5 md:h-5" />
                                         <h3 className="font-extrabold text-white tracking-tight uppercase text-sm">Progress</h3>
                                     </div>
                                     <div className="space-y-1">
-                                        <div
-                                            onClick={() => onStatusSelect?.('Finished')}
-                                            className="flex items-center justify-between p-1.5 md:p-3 rounded-lg md:rounded-xl hover:bg-slate-800/20 dark:hover:bg-white/5 transition-all text-xs md:text-sm font-bold text-slate-400 cursor-pointer group"
-                                        >
+                                        <div onClick={() => onStatusSelect?.('Finished')} className="flex items-center justify-between p-1.5 md:p-3 rounded-lg md:rounded-xl hover:bg-slate-800/20 dark:hover:bg-white/5 transition-all text-xs md:text-sm font-bold text-slate-400 cursor-pointer group">
                                             <span className="flex items-center gap-1.5 md:gap-2 group-hover:text-[#22C55E] transition-colors"><CheckCircle size={12} className="text-[#22C55E] md:w-[14px] md:h-[14px]" /> Finished</span>
                                             <span className="text-white text-xs md:text-sm">{finishedCount}</span>
                                         </div>
-                                        <div
-                                            onClick={() => onStatusSelect?.('Reading')}
-                                            className="flex items-center justify-between p-1.5 md:p-3 rounded-lg md:rounded-xl hover:bg-slate-800/20 dark:hover:bg-white/5 transition-all text-xs md:text-sm font-bold text-slate-400 cursor-pointer group"
-                                        >
+                                        <div onClick={() => onStatusSelect?.('Reading')} className="flex items-center justify-between p-1.5 md:p-3 rounded-lg md:rounded-xl hover:bg-slate-800/20 dark:hover:bg-white/5 transition-all text-xs md:text-sm font-bold text-slate-400 cursor-pointer group">
                                             <span className="flex items-center gap-1.5 md:gap-2 group-hover:text-[#38BDF8] transition-colors"><PlayCircle size={12} className="text-[#38BDF8] md:w-[14px] md:h-[14px]" /> Reading</span>
                                             <span className="text-white text-xs md:text-sm">{readingCount}</span>
                                         </div>
-                                        <div
-                                            onClick={() => onStatusSelect?.('To Read')}
-                                            className="flex items-center justify-between p-1.5 md:p-3 rounded-lg md:rounded-xl hover:bg-slate-800/20 dark:hover:bg-white/5 transition-all text-xs md:text-sm font-bold text-white cursor-pointer group"
-                                        >
+                                        <div onClick={() => onStatusSelect?.('To Read')} className="flex items-center justify-between p-1.5 md:p-3 rounded-lg md:rounded-xl hover:bg-slate-800/20 dark:hover:bg-white/5 transition-all text-xs md:text-sm font-bold text-white cursor-pointer group">
                                             <span className="flex items-center gap-1.5 md:gap-2 group-hover:text-[#94A3B8] transition-colors"><Clock size={12} className="text-[#94A3B8] md:w-[14px] md:h-[14px]" /> To Read</span>
                                             <span className="text-white text-xs md:text-sm">{toReadCount}</span>
                                         </div>
                                     </div>
                                 </div>
-
-                                {/* Inventory */}
                                 <div className="space-y-2 md:space-y-4">
                                     <div className="flex items-center gap-2 md:gap-3 border-b border-white/10 pb-2 md:pb-4">
                                         <InventoryLogo size={16} className="text-primary md:w-5 md:h-5" />
                                         <h3 className="font-extrabold text-white tracking-tight uppercase text-xs">Inventory</h3>
                                     </div>
                                     <div className="flex gap-1.5 md:gap-3">
-                                        <div
-                                            onClick={() => onStatusSelect?.('On Shelf')}
-                                            className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-[#14B8A6]/85 text-center border border-[#14B8A6]/55 cursor-pointer hover:border-[#14B8A6]/70 transition-all font-bold group"
-                                        >
+                                        <div onClick={() => onStatusSelect?.('On Shelf')} className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-[#14B8A6]/85 text-center border border-[#14B8A6]/55 cursor-pointer hover:border-[#14B8A6]/70 transition-all font-bold group">
                                             <p className="text-[9px] md:text-[10px] uppercase font-black text-white mb-0.5 md:mb-1">Shelf</p>
                                             <p className="text-sm md:text-lg font-black text-white">{onShelfCount}</p>
                                         </div>
-                                        <div
-                                            onClick={() => onStatusSelect?.('Lent Out')}
-                                            className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-[#F59E0B]/85 text-center border border-[#F59E0B]/55 cursor-pointer hover:border-[#F59E0B]/70 transition-all font-bold group"
-                                        >
+                                        <div onClick={() => onStatusSelect?.('Lent Out')} className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-[#F59E0B]/85 text-center border border-[#F59E0B]/55 cursor-pointer hover:border-[#F59E0B]/70 transition-all font-bold group">
                                             <p className="text-[9px] md:text-[10px] uppercase font-black text-white mb-0.5 md:mb-1">Lent</p>
                                             <p className="text-sm md:text-lg font-black text-white">{lentCount}</p>
                                         </div>
-                                        <div
-                                            onClick={() => onStatusSelect?.('Lost')}
-                                            className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-[#F43F5E]/85 text-center border border-[#F43F5E]/55 cursor-pointer hover:border-[#F43F5E]/70 transition-all font-bold group"
-                                        >
+                                        <div onClick={() => onStatusSelect?.('Lost')} className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-[#F43F5E]/85 text-center border border-[#F43F5E]/55 cursor-pointer hover:border-[#F43F5E]/70 transition-all font-bold group">
                                             <p className="text-[9px] md:text-[10px] uppercase font-black text-white mb-0.5 md:mb-1">Lost</p>
                                             <p className="text-sm md:text-lg font-black text-white">{lostCount}</p>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-
                         </div>
                     </div>
                 </section>
 
-                {/* 🔸 Level C – AI Insights (Perfect Minimal Toggle) */}
+                {/* 🔸 Level C – Deep Analytics (6 Widget Redesign) */}
                 <section className="space-y-1 md:space-y-4">
                     <button
                         onClick={() => setShowLevelC(!showLevelC)}
                         className="w-full flex items-center gap-2 md:gap-4 px-1 py-0.5 md:py-2 group transition-all opacity-60 hover:opacity-100"
                     >
                         <div className="flex items-center gap-1 md:gap-2 text-xs md:text-sm font-black uppercase tracking-[0.12em] md:tracking-[0.18em] text-primary/80">
-                            <Sparkles size={10} className="text-primary animate-pulse md:w-[14px] md:h-[14px]" /> Level C Insights
+                            <Sparkles size={10} className="text-primary animate-pulse md:w-[14px] md:h-[14px]" /> Level C Deep Analytics
                         </div>
                         <div className="h-[1px] bg-slate-300 dark:bg-white/10 flex-1" />
                         <div className="text-slate-400 group-hover:text-primary transition-colors">
@@ -368,48 +386,86 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                 animate={{ opacity: 1, height: 'auto', y: 0 }}
                                 exit={{ opacity: 0, height: 0, y: 10 }}
                                 className="overflow-hidden"
+                                onClick={() => onNavigateToTab?.('INSIGHTS')}
                             >
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 md:gap-4 pt-0.5 md:pt-2">
 
+                                    {/* 1. Pulse */}
+                                    <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 backdrop-blur-xl flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-all cursor-pointer group">
+                                        <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
+                                            <Activity size={10} className="text-[#FF4D4D]" /> Pulse
+                                        </p>
+                                        <div className="flex flex-col">
+                                            <p className="text-xl md:text-2xl font-black text-white">+{advancedStats.pulse}</p>
+                                            <p className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase">14 Day Activity</p>
+                                        </div>
+                                    </div>
 
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 pt-0.5 md:pt-2">
-                                    <div className="p-2.5 md:p-5 rounded-lg md:rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 backdrop-blur-xl flex flex-col gap-1 md:gap-2 shadow-lg min-h-[70px] md:min-h-0">
-                                        <p className="text-[9px] md:text-[11px] font-black uppercase text-slate-300/80 flex items-center gap-1 md:gap-2">
-                                            <TrendingUp size={9} className="text-[#F63049] md:w-3 md:h-3" /> Momentum
+                                    {/* 2. T-Profile */}
+                                    <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 backdrop-blur-xl flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-all cursor-pointer group">
+                                        <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
+                                            <TrendingUp size={10} className="text-[#F63049]" /> T-Profile
                                         </p>
-                                        <p className="text-lg md:text-2xl font-black text-white leading-none">
-                                            {last7Delta > 0 ? `+${last7Delta}` : last7Delta}
-                                        </p>
+                                        <div className="flex flex-col">
+                                            <p className="text-xl md:text-2xl font-black text-white">{advancedStats.tScore}</p>
+                                            <p className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase">{advancedStats.orphanCount} Orphans</p>
+                                        </div>
                                     </div>
-                                    <div className="p-2.5 md:p-5 rounded-lg md:rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 backdrop-blur-xl flex flex-col gap-1 md:gap-2 shadow-lg min-h-[70px] md:min-h-0">
-                                        <p className="text-[9px] md:text-[11px] font-black uppercase text-slate-300/80 flex items-center gap-1 md:gap-2">
-                                            <GitBranch size={9} className="text-blue-500 md:w-3 md:h-3" /> Bridges
+
+                                    {/* 3. Core Nexus */}
+                                    <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 backdrop-blur-xl flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-all cursor-pointer group">
+                                        <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
+                                            <GitBranch size={10} className="text-blue-500" /> Core Nexus
                                         </p>
-                                        <p className="text-lg md:text-2xl font-black text-white leading-none">{conceptBridgesLast7}</p>
+                                        <div className="flex flex-col">
+                                            <p className="text-[11px] md:text-[13px] font-black text-white truncate leading-tight uppercase tracking-tight">{advancedStats.nexus}</p>
+                                            <p className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase">Density: {advancedStats.density}</p>
+                                        </div>
                                     </div>
-                                    <div className="p-2.5 md:p-5 rounded-lg md:rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 backdrop-blur-xl flex flex-col gap-1 md:gap-2 shadow-lg min-h-[70px] md:min-h-0">
-                                        <p className="text-[9px] md:text-[11px] font-black uppercase text-slate-300/80 flex items-center gap-1 md:gap-2">
-                                            <FocusLogo size={9} className="text-[#A5C89E] md:w-3 md:h-3" /> Focus
+
+                                    {/* 4. Forgetting Curve (Rust) */}
+                                    <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 backdrop-blur-xl flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-all cursor-pointer group">
+                                        <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
+                                            <Zap size={10} className="text-orange-400" /> Rust Index
                                         </p>
-                                        <p className="text-sm md:text-lg font-black text-white truncate leading-none">{topTag || '—'}</p>
+                                        <div className="flex flex-col">
+                                            <p className="text-xl md:text-2xl font-black text-white">{advancedStats.rust}%</p>
+                                            <p className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase">{advancedStats.activeNodes} Active Nodes</p>
+                                        </div>
                                     </div>
-                                    <div className="p-2.5 md:p-5 rounded-lg md:rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 backdrop-blur-xl flex flex-col gap-1 md:gap-2 shadow-lg min-h-[70px] md:min-h-0">
-                                        <p className="text-[9px] md:text-[11px] font-black uppercase text-slate-300/80 flex items-center gap-1 md:gap-2">
-                                            <Search size={9} className="text-indigo-500 md:w-3 md:h-3" /> Discovery
+
+                                    {/* 5. Intellect Engine */}
+                                    <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 backdrop-blur-xl flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-all cursor-pointer group">
+                                        <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
+                                            <Sparkles size={10} className="text-primary" /> Intellect
                                         </p>
-                                        <p className="text-lg md:text-2xl font-black text-white leading-none">{unexploredCount}</p>
+                                        <div className="flex flex-col">
+                                            <p className="text-xl md:text-2xl font-black text-white">{advancedStats.ingestRatio}%</p>
+                                            <p className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase">{advancedStats.ingestedCount} Ingested</p>
+                                        </div>
                                     </div>
+
+                                    {/* 6. Discovery */}
+                                    <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 backdrop-blur-xl flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-all cursor-pointer group">
+                                        <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
+                                            <Search size={10} className="text-indigo-500" /> Discovery
+                                        </p>
+                                        <div className="flex flex-col">
+                                            <p className="text-xl md:text-2xl font-black text-white">{advancedStats.unexplored}</p>
+                                            <p className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase">Unexplored Items</p>
+                                        </div>
+                                    </div>
+
+                                </div>
+                                <div className="mt-3 text-center">
+                                    <p className="text-[9px] md:text-[10px] font-bold text-slate-500 uppercase tracking-widest animate-pulse">Click any card for full network analysis</p>
                                 </div>
                             </motion.div>
                         )}
                     </AnimatePresence>
                 </section>
-
             </div>
 
-            {/* Footer Branding */}
-            <div className="max-w-6xl mx-auto pt-8 border-t border-slate-200/50 dark:border-white/5 text-center opacity-20">
-                <p className="text-[9px] font-black uppercase tracking-[0.5em] text-slate-500 dark:text-slate-400">TomeHub • Intellect Engine • v2.1.3_Balanced</p>
-            </div>
         </div>
     );
 };

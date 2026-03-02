@@ -16,8 +16,8 @@ import {
 } from './ui/FeatureLogos';
 
 interface SidebarProps {
-  activeTab: ResourceType | 'NOTES' | 'DASHBOARD' | 'PROFILE' | 'RAG_SEARCH' | 'INGEST' | 'SMART_SEARCH' | 'FLOW';
-  onTabChange: (tab: ResourceType | 'NOTES' | 'DASHBOARD' | 'PROFILE' | 'RAG_SEARCH' | 'INGEST' | 'SMART_SEARCH' | 'FLOW') => void;
+  activeTab: ResourceType | 'NOTES' | 'DASHBOARD' | 'PROFILE' | 'RAG_SEARCH' | 'INGEST' | 'SMART_SEARCH' | 'FLOW' | 'INSIGHTS';
+  onTabChange: (tab: ResourceType | 'NOTES' | 'DASHBOARD' | 'PROFILE' | 'RAG_SEARCH' | 'INGEST' | 'SMART_SEARCH' | 'FLOW' | 'INSIGHTS') => void;
   isOpen: boolean;
   onClose: () => void;
 }

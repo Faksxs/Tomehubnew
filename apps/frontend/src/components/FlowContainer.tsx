@@ -49,7 +49,6 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
     const [hasMore, setHasMore] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [flowStarted, setFlowStarted] = useState(false);
-    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isCategoryDrawerOpen, setIsCategoryDrawerOpen] = useState(false);
     const [pivotInfo, setPivotInfo] = useState<PivotInfo | null>(null);
     const [isJumping, setIsJumping] = useState(false);
@@ -303,8 +302,8 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     <div className="flow-container__header lg:hidden">
                         <div className="flow-container__title-section">
                             <div className="flow-container__mobile-actions relative flex items-center justify-between">
-                                {/* Left Group: Back + Kesif Alanlari */}
-                                <div className="lg:hidden flex items-center gap-2 z-10 w-1/3">
+                                {/* Left Group: Back + Unified Menu */}
+                                <div className="lg:hidden flex items-center gap-2 z-10 w-1/2">
                                     {onClose && (
                                         <button
                                             onClick={onClose}
@@ -318,33 +317,20 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                                     )}
                                     <button
                                         onClick={() => setIsCategoryDrawerOpen(true)}
-                                        className="flow-mobile-action-btn group flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-[#CC561E] transition-all duration-300"
+                                        className="flow-mobile-action-btn group flex items-center gap-3 text-slate-500 dark:text-slate-400 hover:text-[#CC561E] transition-all duration-300"
                                     >
-                                        <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
-                                            <Settings2 size={16} />
-                                        </div>
-                                        <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">Explore</span>
-                                    </button>
-                                </div>
-
-                                {/* Center Group: Flux Title (Absolute) */}
-                                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-0 pointer-events-none select-none">
-                                    <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#CC561E] bg-[#CC561E]/10 px-3 py-1 rounded-md">
-                                        FLUX
-                                    </span>
-                                </div>
-
-                                {/* Right Group: Filters & Horizon */}
-                                <div className="lg:hidden flex items-center justify-end gap-2 z-10 w-1/3">
-                                    <button
-                                        onClick={() => setIsSidebarOpen(true)}
-                                        className="flow-mobile-action-btn group flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-[#CC561E] transition-all duration-300"
-                                    >
-                                        <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">Filters</span>
                                         <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
                                             <SlidersHorizontal size={16} />
                                         </div>
+                                        <span className="text-[10px] font-bold uppercase tracking-wider">Explore & Filters</span>
                                     </button>
+                                </div>
+
+                                {/* Center/Right Group: Flux Title */}
+                                <div className="flex items-center justify-end z-0 w-1/2 select-none">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#CC561E] bg-[#CC561E]/10 px-3 py-1 rounded-md">
+                                        FLUX
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -446,7 +432,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     </div>
                 </div>
 
-                {/* Sidebar Drawer Container */}
+                {/* Unified Sidebar Drawer Container for Mobile */}
                 <div className={`flow-category-container ${isCategoryDrawerOpen ? 'is-open' : ''}`}>
                     <div
                         className="flow-sidebar-backdrop"
@@ -459,7 +445,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                                     <div className="p-2 rounded-xl bg-[rgba(204,86,30,0.1)] text-[#CC561E]">
                                         <Settings2 size={20} />
                                     </div>
-                                    <span className="font-bold text-slate-800 dark:text-white">Discovery Areas</span>
+                                    <span className="font-bold text-slate-800 dark:text-white">Flux Settings</span>
                                 </div>
                                 <button
                                     onClick={() => setIsCategoryDrawerOpen(false)}
@@ -469,58 +455,58 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                                 </button>
                             </div>
 
-                            {(activeFilter === 'ALL' || activeFilter === 'BOOK') && (
-                                <CategorySelector
-                                    activeCategory={activeCategory}
-                                    onCategoryChange={(cat) => {
-                                        handleCategoryChange(cat);
+                            {/* Mobile Filters Section (Moved here) */}
+                            <div className="lg:hidden flex flex-col gap-6 mb-8 mt-2">
+                                <SourceNavigator
+                                    activeFilter={activeFilter}
+                                    onFilterChange={handleFilterChange}
+                                />
+                                <HorizonSlider
+                                    value={horizon}
+                                    onChange={handleHorizonChange}
+                                    disabled={isLoading}
+                                />
+                                <button
+                                    className="flow-sidebar__pivot-button"
+                                    onClick={() => {
+                                        handleResetAnchor();
                                         setIsCategoryDrawerOpen(false);
                                     }}
-                                    categories={categoryOptions}
-                                />
-                            )}
+                                    disabled={isLoading}
+                                >
+                                    <span className="icon">🔄</span>
+                                    Change Topic
+                                </button>
+                                <div className="h-px bg-slate-100 dark:bg-slate-800 my-2" />
+                            </div>
+
+                            <CategorySelector
+                                activeCategory={activeCategory}
+                                onCategoryChange={(cat) => {
+                                    handleCategoryChange(cat);
+                                    setIsCategoryDrawerOpen(false);
+                                }}
+                                categories={categoryOptions}
+                            />
                         </div>
                     </aside>
                 </div>
 
-                <div className={`flow-sidebar-container ${isSidebarOpen ? 'is-open' : ''}`}>
-                    {/* Backdrop for mobile */}
-                    <div
-                        className="flow-sidebar-backdrop"
-                        onClick={() => setIsSidebarOpen(false)}
-                    />
-
+                {/* Right Sidebar (Desktop only since we merged it for mobile) */}
+                <div className={`flow-sidebar-container lg:block hidden`}>
                     <aside className="flow-sidebar">
                         <div className="flow-sidebar__sticky">
-                            {/* Mobile Drawer Header */}
-                            <div className="lg:hidden flex items-center justify-between mb-4 md:mb-0 pb-4 md:pb-0 border-bottom border-slate-100 dark:border-slate-800">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-xl bg-[rgba(204,86,30,0.1)] text-[#CC561E]">
-                                        <Settings2 size={20} />
-                                    </div>
-                                    <span className="font-bold text-slate-800 dark:text-white">Controls</span>
-                                </div>
-                                <button
-                                    onClick={() => setIsSidebarOpen(false)}
-                                    className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
-                                >
-                                    <X size={20} />
-                                </button>
-                            </div>
-
                             <SourceNavigator
                                 activeFilter={activeFilter}
                                 onFilterChange={handleFilterChange}
                             />
 
-                            {/* Horizon Slider */}
                             <HorizonSlider
                                 value={horizon}
                                 onChange={handleHorizonChange}
                                 disabled={isLoading}
                             />
 
-                            {/* Cards List */}
                             <button
                                 className="flow-sidebar__pivot-button"
                                 onClick={handleResetAnchor}
@@ -529,8 +515,6 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                                 <span className="icon">🔄</span>
                                 Change Topic
                             </button>
-
-
                         </div>
                     </aside>
                 </div>

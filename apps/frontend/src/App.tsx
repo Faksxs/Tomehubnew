@@ -15,6 +15,7 @@ import { BookDetail } from "./components/BookDetail";
 import { Sidebar } from "./components/Sidebar";
 import { ProfileView } from "./components/ProfileView";
 import SmartSearch from "./components/SmartSearch";
+import { InsightsView } from "./components/InsightsView";
 import logo from './assets/logo_v9.png';
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -74,7 +75,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<
-    ResourceType | "NOTES" | "DASHBOARD" | "PROFILE" | "RAG_SEARCH" | "SMART_SEARCH" | "FLOW"
+    ResourceType | "NOTES" | "DASHBOARD" | "PROFILE" | "RAG_SEARCH" | "SMART_SEARCH" | "FLOW" | "INSIGHTS" | "INGEST"
   >("DASHBOARD");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [itemsLoading, setItemsLoading] = useState(true);
@@ -1040,7 +1041,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
 
   const editingBook = books.find((b) => b.id === editingBookId);
 
-  const handleTabChange = useCallback((newTab: ResourceType | "NOTES" | "DASHBOARD" | "PROFILE" | "RAG_SEARCH" | "SMART_SEARCH" | "FLOW") => {
+  const handleTabChange = useCallback((newTab: ResourceType | "NOTES" | "DASHBOARD" | "PROFILE" | "RAG_SEARCH" | "SMART_SEARCH" | "FLOW" | "INSIGHTS" | "INGEST") => {
     setActiveTab(newTab);
     setView("list");
     setSelectedBookId(null);
@@ -1423,6 +1424,11 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
             anchorId="General Discovery" // Default anchor if user just clicks sidebar
             categoryOptions={flowVisibleCategories}
             onClose={() => handleTabChange("DASHBOARD")}
+          />
+        ) : activeTab === "INSIGHTS" ? (
+          <InsightsView
+            items={books}
+            onBack={() => handleTabChange("DASHBOARD")}
           />
         ) : view === "list" ? (
           <BookList
