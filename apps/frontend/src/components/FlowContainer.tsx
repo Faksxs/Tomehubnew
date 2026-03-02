@@ -602,8 +602,6 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                         left: 0;
                         z-index: 1000;
                         pointer-events: none;
-                        display: flex;
-                        justify-content: flex-end;
                     }
 
                     .flow-category-container {
@@ -614,8 +612,6 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                         left: 0;
                         z-index: 1000;
                         pointer-events: none;
-                        display: flex;
-                        justify-content: flex-start;
                     }
 
                     .flow-sidebar-container.is-open {
@@ -645,6 +641,10 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     }
 
                     .flow-sidebar {
+                        position: absolute;
+                        top: 0;
+                        right: 0;
+                        bottom: 0;
                         width: 55%;
                         min-width: 250px;
                         max-width: 400px;
@@ -661,6 +661,10 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     }
 
                     .flow-category-sidebar {
+                        position: absolute;
+                        top: 0;
+                        left: 0;
+                        bottom: 0;
                         width: 25%;
                         min-width: 150px;
                         max-width: 340px;
@@ -725,6 +729,9 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                         border-radius: 10px;
                         border: 1px solid rgba(148, 163, 184, 0.22);
                         background: rgba(255, 255, 255, 0.9);
+                        cursor: pointer;
+                        touch-action: manipulation;
+                        -webkit-tap-highlight-color: transparent;
                     }
 
                     .dark .flow-mobile-action-btn {
