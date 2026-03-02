@@ -15,7 +15,7 @@ import { BookDetail } from "./components/BookDetail";
 import { Sidebar } from "./components/Sidebar";
 import { ProfileView } from "./components/ProfileView";
 import SmartSearch from "./components/SmartSearch";
-import { InsightsView } from "./components/InsightsView";
+import InsightsView from "./components/InsightsView";
 import logo from './assets/logo_v9.png';
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
