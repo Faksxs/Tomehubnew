@@ -16,7 +16,6 @@ from services.llm_client import (
     get_model_for_tier,
     MODEL_TIER_FLASH,
     PROVIDER_QWEN,
-    ROUTE_MODE_EXPLORER_QWEN_PILOT,
 )
 
 logger = logging.getLogger("tomehub_api")
@@ -174,8 +173,6 @@ async def translate_chunk(
             False,     # allow_pro_fallback — NO Gemini fallback
             None,      # fallback_state
             PROVIDER_QWEN,  # provider_hint — force Qwen
-            ROUTE_MODE_EXPLORER_QWEN_PILOT,  # route_mode
-            False,     # allow_secondary_fallback — NO Gemini secondary
         ),
         timeout=35.0,
     )
