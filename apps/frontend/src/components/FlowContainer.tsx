@@ -547,6 +547,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     background: transparent;
                     position: relative;
                     padding: 24px;
+                    overflow: hidden;
                 }
 
                 @media (max-width: 768px) {
@@ -600,7 +601,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                         right: 0;
                         bottom: 0;
                         left: 0;
-                        z-index: 1000;
+                        z-index: 9999;
                         pointer-events: none;
                     }
 
@@ -610,7 +611,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                         right: 0;
                         bottom: 0;
                         left: 0;
-                        z-index: 1000;
+                        z-index: 9999;
                         pointer-events: none;
                     }
 
@@ -645,15 +646,17 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                         top: 0;
                         right: 0;
                         bottom: 0;
-                        width: 55%;
-                        min-width: 250px;
+                        width: 75%;
+                        min-width: 280px;
                         max-width: 400px;
                         height: 100%;
                         background: #fff;
                         transform: translateX(100%);
                         transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
                         box-shadow: -10px 0 30px rgba(0, 0, 0, 0.1);
-                        z-index: 1001;
+                        z-index: 10000;
+                        display: flex;
+                        flex-direction: column;
                     }
 
                     .dark .flow-sidebar {
@@ -665,15 +668,17 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                         top: 0;
                         left: 0;
                         bottom: 0;
-                        width: 25%;
-                        min-width: 150px;
+                        width: 75%;
+                        min-width: 280px;
                         max-width: 340px;
                         height: 100%;
                         background: #fff;
                         transform: translateX(-100%);
                         transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
                         box-shadow: 10px 0 30px rgba(0, 0, 0, 0.1);
-                        z-index: 1001;
+                        z-index: 10000;
+                        display: flex;
+                        flex-direction: column;
                     }
 
                     .dark .flow-category-sidebar {
@@ -700,7 +705,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                     .flow-container__mobile-actions {
                         position: sticky;
                         top: 0;
-                        z-index: 100;
+                        z-index: 50;
                         background: rgba(255, 255, 255, 0.85);
                         backdrop-filter: blur(16px);
                         margin: -20px -20px 20px -20px;
