@@ -240,14 +240,12 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
             <main className="flex-1 overflow-y-auto p-6 space-y-8">
 
                 {/* Top Statistics Row */}
-                <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                     {[
                         { label: 'Pulse', value: `+${stats.last30DaysBooks + stats.last30DaysHighlights}`, sub: '30 Day Activity', color: 'text-primary', icon: Activity },
                         { label: 'T-Profile', value: stats.tScore, sub: `${stats.orphanCount} Orphans`, color: 'text-[#F63049]', icon: TrendingUp },
-                        { label: 'Core Nexus', value: stats.pairs.length > 0 ? stats.pairs[0][0].split('::').join(' & ') : '—', sub: `Density: ${stats.sortedTags.length > 0 ? (items.length / stats.sortedTags.length).toFixed(1) : '0.0'}`, color: 'text-blue-500', icon: GitBranch },
                         { label: 'Rust Index', value: `${stats.rustPercent}%`, sub: `${stats.totalReadable - stats.coldItems.length} Active Nodes`, color: 'text-orange-500', icon: Zap },
                         { label: 'Intellect', value: `${stats.ingestRatio}%`, sub: `${items.filter(i => i.isIngested).length} Ingested`, color: 'text-indigo-500', icon: Sparkles },
-                        { label: 'Discovery', value: stats.unexplored, sub: 'Unexplored Items', color: 'text-indigo-400', icon: Search },
                     ].map((s, i) => (
                         <motion.div
                             key={i}
@@ -328,42 +326,8 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-                    {/* Core Nexus / Network (6/12 Span) */}
-                    <div className="lg:col-span-6 space-y-4">
-                        <div className="flex items-center justify-between px-2">
-                            <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                                <GitBranch size={14} className="text-blue-500" /> Core Nexus Connections
-                            </h3>
-                        </div>
-                        <div className="p-6 rounded-3xl border border-slate-200 dark:border-white/5 bg-white dark:bg-slate-900/30 overflow-hidden relative min-h-[300px]">
-                            <div className="space-y-4">
-                                {stats.pairs.slice(0, 8).map(([pair, count], idx) => {
-                                    const [p1, p2] = pair.split('::');
-                                    return (
-                                        <motion.div
-                                            key={idx}
-                                            initial={{ x: -20, opacity: 0 }}
-                                            animate={{ x: 0, opacity: 1 }}
-                                            transition={{ delay: idx * 0.05 }}
-                                            className="flex items-center gap-4 bg-slate-50 dark:bg-white/5 p-3 rounded-2xl border border-transparent hover:border-blue-500/20 transition-all"
-                                        >
-                                            <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center text-[10px] font-black text-blue-500">
-                                                {count}
-                                            </div>
-                                            <div className="flex-1 flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-300">
-                                                <span className="px-2 py-0.5 rounded bg-blue-500/10 uppercase tracking-tight">{p1}</span>
-                                                <span className="text-slate-400">↔</span>
-                                                <span className="px-2 py-0.5 rounded bg-blue-500/10 uppercase tracking-tight">{p2}</span>
-                                            </div>
-                                        </motion.div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Paslanma / Rust Index Details (6/12 Span) */}
-                    <div className="lg:col-span-6 space-y-4">
+                    {/* Paslanma / Rust Index Details (12/12 Span) */}
+                    <div className="lg:col-span-12 space-y-4">
                         <div className="flex items-center justify-between px-2">
                             <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
                                 <Clock size={14} className="text-orange-500" /> Stale Nodes (Forgotten Knowledge)

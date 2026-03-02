@@ -388,7 +388,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                 className="overflow-hidden"
                                 onClick={() => onNavigateToTab?.('INSIGHTS')}
                             >
-                                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-4 pt-0.5 md:pt-2">
+                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4 pt-0.5 md:pt-2">
 
                                     {/* 1. Pulse */}
                                     <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 backdrop-blur-xl flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-all cursor-pointer group">
@@ -412,18 +412,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                         </div>
                                     </div>
 
-                                    {/* 3. Core Nexus */}
-                                    <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 backdrop-blur-xl flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-all cursor-pointer group">
-                                        <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
-                                            <GitBranch size={10} className="text-blue-500" /> Core Nexus
-                                        </p>
-                                        <div className="flex flex-col">
-                                            <p className="text-[11px] md:text-[13px] font-black text-white truncate leading-tight uppercase tracking-tight">{advancedStats.nexus}</p>
-                                            <p className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase">Density: {advancedStats.density}</p>
-                                        </div>
-                                    </div>
-
-                                    {/* 4. Forgetting Curve (Rust) */}
+                                    {/* 3. Forgetting Curve (Rust) */}
                                     <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 backdrop-blur-xl flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-all cursor-pointer group">
                                         <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
                                             <Zap size={10} className="text-orange-400" /> Rust Index
@@ -434,7 +423,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                         </div>
                                     </div>
 
-                                    {/* 5. Intellect Engine */}
+                                    {/* 4. Intellect Engine */}
                                     <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 backdrop-blur-xl flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-all cursor-pointer group">
                                         <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
                                             <Sparkles size={10} className="text-primary" /> Intellect
@@ -442,17 +431,6 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                         <div className="flex flex-col">
                                             <p className="text-xl md:text-2xl font-black text-white">{advancedStats.ingestRatio}%</p>
                                             <p className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase">{advancedStats.ingestedCount} Ingested</p>
-                                        </div>
-                                    </div>
-
-                                    {/* 6. Discovery */}
-                                    <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 backdrop-blur-xl flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-all cursor-pointer group">
-                                        <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
-                                            <Search size={10} className="text-indigo-500" /> Discovery
-                                        </p>
-                                        <div className="flex flex-col">
-                                            <p className="text-xl md:text-2xl font-black text-white">{advancedStats.unexplored}</p>
-                                            <p className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase">Unexplored Items</p>
                                         </div>
                                     </div>
 
