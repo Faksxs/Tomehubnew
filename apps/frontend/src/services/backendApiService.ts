@@ -814,3 +814,44 @@ export async function scanIsbnFromPhoto(file: File): Promise<string> {
     const data = await response.json();
     return data.isbn as string;
 }
+
+// ---------------------------------------------------------------------------
+// Translation API
+// ---------------------------------------------------------------------------
+
+export interface TranslationResponse {
+    en: string;
+    nl: string;
+    etymology: unknown | null;
+    cached: boolean;
+}
+
+/**
+ * Translate a content chunk into English and Dutch.
+ * Returns cached translation if available, otherwise generates via LLM.
+ */
+export async function translateChunk(
+    chunkId: number,
+    sourceText?: string,
+    bookTitle?: string,
+    bookAuthor?: string,
+    tags?: string,
+): Promise<TranslationResponse> {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/ai/translate/${chunkId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            source_text: sourceText ?? '',
+            book_title: bookTitle ?? '',
+            book_author: bookAuthor ?? '',
+            tags: tags ?? '',
+        }),
+    });
+
+    if (!response.ok) {
+        const error: ApiError = await response.json().catch(() => ({ error: 'Translation failed' }));
+        throw new Error(error.details || error.error || 'Translation failed');
+    }
+
+    return response.json();
+}

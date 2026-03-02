@@ -180,3 +180,76 @@ async def scan_isbn_endpoint(
     return {"isbn": raw}
 
 
+@router.post("/api/ai/translate/{chunk_id}")
+@limiter.limit(settings.RATE_LIMIT_AI_ENRICH)
+async def translate_chunk_endpoint(
+    request: Request,
+    chunk_id: int,
+    user_id: str = Depends(verify_firebase_token),
+):
+    """
+    Translate a content chunk into English and Dutch.
+    Returns cached translation if available, otherwise generates via LLM.
+    """
+    from services.translation_service import translate_chunk
+    from infrastructure.db_manager import DatabaseManager
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    source_text = body.get("source_text", "")
+    book_title = body.get("book_title", "")
+    book_author = body.get("book_author", "")
+    tags = body.get("tags", "")
+
+    if not source_text:
+        # Fetch from DB if not provided in body
+        try:
+            with DatabaseManager.get_read_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT c.CONTENT_CHUNK, li.TITLE, li.AUTHOR
+                        FROM TOMEHUB_CONTENT_V2 c
+                        LEFT JOIN TOMEHUB_LIBRARY_ITEMS li
+                            ON c.ITEM_ID = li.ITEM_ID AND c.FIREBASE_UID = li.FIREBASE_UID
+                        WHERE c.ID = :cid AND c.FIREBASE_UID = :uid
+                        """,
+                        {"cid": chunk_id, "uid": user_id},
+                    )
+                    row = cur.fetchone()
+                    if not row:
+                        raise HTTPException(status_code=404, detail="Content chunk not found")
+
+                    chunk_val = row[0]
+                    if hasattr(chunk_val, "read"):
+                        chunk_val = chunk_val.read()
+                    source_text = str(chunk_val) if chunk_val else ""
+                    book_title = book_title or (str(row[1]) if row[1] else "")
+                    book_author = book_author or (str(row[2]) if row[2] else "")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to fetch chunk for translation: {e}")
+            raise HTTPException(status_code=500, detail="Failed to fetch content")
+
+    if not source_text.strip():
+        raise HTTPException(status_code=400, detail="No source text available for translation")
+
+    try:
+        result = await translate_chunk(
+            content_id=chunk_id,
+            firebase_uid=user_id,
+            source_text=source_text,
+            book_title=book_title,
+            book_author=book_author,
+            tags=tags if isinstance(tags, str) else ", ".join(tags),
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        logger.error(f"Translation failed for chunk_id={chunk_id}: {e}")
+        raise HTTPException(status_code=500, detail="Translation service error")
