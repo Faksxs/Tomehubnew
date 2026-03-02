@@ -21,6 +21,75 @@ interface InsightsViewProps {
     onBack: () => void;
 }
 
+const PulseChart = ({ data }: { data: any[] }) => {
+    // Max value is at least 1, and scaled to some sensible minimum
+    const maxVal = Math.max(...data.map(d => d.books + d.insights), 1);
+
+    return (
+        <div className="w-full h-44 flex flex-col justify-end gap-2 pt-4 group/chart">
+            <div className="flex-1 flex items-end justify-between px-1 gap-1 min-h-0">
+                {data.map((d, i) => {
+                    const total = d.books + d.insights;
+                    const bRatio = total > 0 ? (d.books / maxVal) : 0;
+                    const iRatio = total > 0 ? (d.insights / maxVal) : 0;
+
+                    return (
+                        <div key={i} className="flex-1 flex flex-col justify-end group/bar relative h-full">
+                            {/* Tooltip */}
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 bg-slate-900 dark:bg-slate-800 text-white text-[9px] py-1.5 px-2.5 rounded-lg opacity-0 group-hover/bar:opacity-100 transition-all z-50 shadow-[0_8px_30px_rgb(0,0,0,0.3)] border border-white/10 whitespace-nowrap pointer-events-none translate-y-2 group-hover/bar:translate-y-0">
+                                <p className="font-black text-primary mb-1 border-b border-white/5 pb-1">{d.label}</p>
+                                <div className="space-y-1">
+                                    <p className="font-bold flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-primary" /> {d.books} Books</p>
+                                    <p className="font-bold flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-primary/40" /> {d.insights} Insights</p>
+                                </div>
+                            </div>
+
+                            {/* Stacked Bar container */}
+                            <div className="w-full flex flex-col justify-end overflow-hidden rounded-t-[2px] bg-slate-100 dark:bg-white/5 h-full transition-colors group-hover/bar:bg-slate-200 dark:group-hover/bar:bg-white/10 relative">
+                                {/* Insights Bar (Top) */}
+                                {d.insights > 0 && (
+                                    <motion.div
+                                        initial={{ height: 0 }}
+                                        animate={{ height: `${iRatio * 100}%` }}
+                                        className="w-full bg-primary/30 relative z-10"
+                                    />
+                                )}
+                                {/* Books Bar (Bottom) */}
+                                {d.books > 0 && (
+                                    <motion.div
+                                        initial={{ height: 0 }}
+                                        animate={{ height: `${bRatio * 100}%` }}
+                                        className="w-full bg-primary relative z-20"
+                                    />
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+
+            {/* Legend & X-Axis */}
+            <div className="flex items-center justify-between px-1 mt-1 border-t border-slate-200 dark:border-white/5 pt-3">
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-[2px] bg-primary" />
+                        <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider">Books</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-[2px] bg-primary/40" />
+                        <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider">Insights</span>
+                    </div>
+                </div>
+                <div className="flex items-center gap-8 text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 dark:bg-white/5 px-3 py-1 rounded-full border border-slate-200 dark:border-white/5">
+                    <span>30 DAYS AGO</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary/20" />
+                    <span>TODAY</span>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
     const normalizeTextKey = (value: string) => value.trim().toLocaleLowerCase('tr-TR');
 
@@ -80,27 +149,46 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
             i.lastHighlightMs < now - ninetyDaysMs
         );
 
-        // Activity Heatmap
-        const heatmapData: Record<string, number> = {};
+        // Activity over last 30 days (Daily)
         let last30DaysBooks = 0;
         let last30DaysHighlights = 0;
         const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
+        const heatmapData: Record<string, number> = {};
 
-        itemsWithTime.forEach(i => {
-            const date = new Date(i.addedMs).toISOString().split('T')[0];
-            heatmapData[date] = (heatmapData[date] || 0) + 1;
-            if (i.addedMs >= thirtyDaysAgo) {
-                last30DaysBooks++;
+        const dailyActivity = (() => {
+            const data = [];
+            const nowTime = new Date();
+            for (let i = 29; i >= 0; i--) {
+                const d = new Date(nowTime);
+                d.setDate(d.getDate() - i);
+                const dateStr = d.toISOString().split('T')[0];
+                data.push({
+                    date: dateStr,
+                    books: 0,
+                    insights: 0,
+                    label: d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })
+                });
             }
-        });
-        items.flatMap(i => i.highlights || []).forEach(h => {
-            const ms = normalizeDate(h.createdAt);
-            const date = new Date(ms).toISOString().split('T')[0];
-            heatmapData[date] = (heatmapData[date] || 0) + 1;
-            if (ms >= thirtyDaysAgo) {
-                last30DaysHighlights++;
-            }
-        });
+
+            itemsWithTime.forEach(i => {
+                const date = new Date(i.addedMs).toISOString().split('T')[0];
+                heatmapData[date] = (heatmapData[date] || 0) + 1;
+                if (i.addedMs >= thirtyDaysAgo) last30DaysBooks++;
+                const entry = data.find(d => d.date === date);
+                if (entry) entry.books++;
+            });
+
+            items.flatMap(item => item.highlights || []).forEach(h => {
+                const ms = normalizeDate(h.createdAt);
+                const date = new Date(ms).toISOString().split('T')[0];
+                heatmapData[date] = (heatmapData[date] || 0) + 1;
+                if (ms >= thirtyDaysAgo) last30DaysHighlights++;
+                const entry = data.find(d => d.date === date);
+                if (entry) entry.insights++;
+            });
+
+            return data;
+        })();
 
         const totalReadable = items.filter(i => i.type !== 'PERSONAL_NOTE').length;
         const unexplored = items.filter(i => i.type !== 'PERSONAL_NOTE' && (i.highlights?.length || 0) === 0).length;
@@ -114,6 +202,7 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
             rustPercent: totalReadable > 0 ? Math.round((coldItems.length / totalReadable) * 100) : 0,
             last30DaysBooks,
             last30DaysHighlights,
+            dailyActivity,
             heatmapData,
             totalReadable,
             unexplored,
@@ -206,33 +295,7 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
                             </div>
                         </div>
                         <div className="p-6 rounded-3xl border border-slate-200 dark:border-white/5 bg-white dark:bg-slate-900/30">
-                            <div className="flex gap-1.5 justify-center">
-                                {Array.from({ length: 5 }).map((_, weekIdx) => (
-                                    <div key={weekIdx} className="flex flex-col gap-1.5">
-                                        {Array.from({ length: 7 }).map((_, dayIdx) => {
-                                            const date = new Date();
-                                            // 5 weeks = 35 days. (4 - weekIdx) * 7 + (6 - dayIdx)
-                                            date.setDate(date.getDate() - (4 - weekIdx) * 7 - (6 - dayIdx));
-                                            const dateStr = date.toISOString().split('T')[0];
-                                            const count = stats.heatmapData[dateStr] || 0;
-                                            const opacity = count === 0 ? 0.05 : Math.min(1, 0.2 + count * 0.2);
-
-                                            return (
-                                                <div
-                                                    key={dayIdx}
-                                                    title={`${dateStr}: ${count} actions`}
-                                                    className="w-5 h-5 rounded-[4px] transition-all hover:scale-125 hover:ring-2 hover:ring-primary/50 cursor-pointer"
-                                                    style={{ backgroundColor: `rgba(204, 86, 30, ${opacity})` }}
-                                                />
-                                            );
-                                        })}
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="flex justify-between mt-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest px-2 max-w-[200px] mx-auto">
-                                <span>30 Days Ago</span>
-                                <span>Today</span>
-                            </div>
+                            <PulseChart data={stats.dailyActivity} />
                         </div>
                     </div>
 
