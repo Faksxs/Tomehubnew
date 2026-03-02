@@ -80,15 +80,26 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
             i.lastHighlightMs < now - ninetyDaysMs
         );
 
-        // Activity Heatmap (Last 12 months)
+        // Activity Heatmap
         const heatmapData: Record<string, number> = {};
+        let last30DaysBooks = 0;
+        let last30DaysHighlights = 0;
+        const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
+
         itemsWithTime.forEach(i => {
             const date = new Date(i.addedMs).toISOString().split('T')[0];
             heatmapData[date] = (heatmapData[date] || 0) + 1;
+            if (i.addedMs >= thirtyDaysAgo) {
+                last30DaysBooks++;
+            }
         });
         items.flatMap(i => i.highlights || []).forEach(h => {
-            const date = new Date(normalizeDate(h.createdAt)).toISOString().split('T')[0];
+            const ms = normalizeDate(h.createdAt);
+            const date = new Date(ms).toISOString().split('T')[0];
             heatmapData[date] = (heatmapData[date] || 0) + 1;
+            if (ms >= thirtyDaysAgo) {
+                last30DaysHighlights++;
+            }
         });
 
         return {
@@ -98,6 +109,8 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
             tScore: sortedTags.length > 0 ? (sortedTags.slice(0, Math.ceil(sortedTags.length * 0.1)).reduce((s, t) => s + t.count, 0) / Math.max(1, orphanCount)).toFixed(1) : '0.0',
             coldItems: coldItems.sort((a, b) => a.lastHighlightMs - b.lastHighlightMs).slice(0, 5),
             rustPercent: items.length > 0 ? Math.round((coldItems.length / items.length) * 100) : 0,
+            last30DaysBooks,
+            last30DaysHighlights,
             heatmapData,
             pairs: Array.from(pairMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 15)
         };
@@ -161,10 +174,26 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
                     {/* Activity Heatmap (7/12 Span) */}
                     <div className="lg:col-span-8 space-y-4">
                         <div className="flex items-center justify-between px-2">
-                            <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                                <Activity size={14} className="text-primary" /> Learning Pulse
-                            </h3>
-                            <p className="text-[10px] font-bold text-slate-500 uppercase">Knowledge Intake Frequency</p>
+                            <div className="space-y-1">
+                                <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                                    <Activity size={14} className="text-primary" /> Learning Pulse
+                                </h3>
+                                <div className="flex items-center gap-4 mt-1">
+                                    <div className="flex items-baseline gap-1.5">
+                                        <span className="text-lg font-black text-slate-700 dark:text-slate-200">{stats.last30DaysBooks}</span>
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Books</span>
+                                    </div>
+                                    <div className="w-1 h-1 rounded-full bg-slate-300 dark:bg-white/10" />
+                                    <div className="flex items-baseline gap-1.5">
+                                        <span className="text-lg font-black text-slate-700 dark:text-slate-200">{stats.last30DaysHighlights}</span>
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Insights</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-[10px] font-bold text-slate-500 uppercase">Knowledge Intake Frequency</p>
+                                <p className="text-[9px] font-medium text-slate-400">Last 30 Days Activity</p>
+                            </div>
                         </div>
                         <div className="p-6 rounded-3xl border border-slate-200 dark:border-white/5 bg-white dark:bg-slate-900/30">
                             <div className="flex gap-1.5 justify-center">
