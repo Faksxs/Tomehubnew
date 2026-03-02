@@ -102,16 +102,22 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
             }
         });
 
+        const totalReadable = items.filter(i => i.type !== 'PERSONAL_NOTE').length;
+        const unexplored = items.filter(i => i.type !== 'PERSONAL_NOTE' && (i.highlights?.length || 0) === 0).length;
+
         return {
             topTags,
             sortedTags,
             orphanCount,
             tScore: sortedTags.length > 0 ? (sortedTags.slice(0, Math.ceil(sortedTags.length * 0.1)).reduce((s, t) => s + t.count, 0) / Math.max(1, orphanCount)).toFixed(1) : '0.0',
             coldItems: coldItems.sort((a, b) => a.lastHighlightMs - b.lastHighlightMs).slice(0, 5),
-            rustPercent: items.length > 0 ? Math.round((coldItems.length / items.length) * 100) : 0,
+            rustPercent: totalReadable > 0 ? Math.round((coldItems.length / totalReadable) * 100) : 0,
             last30DaysBooks,
             last30DaysHighlights,
             heatmapData,
+            totalReadable,
+            unexplored,
+            ingestRatio: totalReadable > 0 ? Math.round((items.filter(i => i.isIngested).length / totalReadable) * 100) : 0,
             pairs: Array.from(pairMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 15)
         };
     }, [items]);
@@ -145,26 +151,30 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
             <main className="flex-1 overflow-y-auto p-6 space-y-8">
 
                 {/* Top Statistics Row */}
-                <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                     {[
-                        { label: 'T-Profile Score', value: stats.tScore, sub: `${stats.orphanCount} Orphan Tags`, color: 'text-primary', icon: TrendingUp },
-                        { label: 'Rust Index', value: `${stats.rustPercent}%`, sub: 'Inactive Nodes', color: 'text-orange-500', icon: Zap },
-                        { label: 'Network Density', value: stats.sortedTags.length > 0 ? (items.length / stats.sortedTags.length).toFixed(1) : '0.0', sub: 'Node to Connection Ratio', color: 'text-blue-500', icon: Share2 },
-                        { label: 'AI Readiness', value: `${items.length > 0 ? Math.round((items.filter(i => i.isIngested).length / items.length) * 100) : 0}%`, sub: 'Vectorized Assets', color: 'text-indigo-500', icon: Database },
+                        { label: 'Pulse', value: `+${stats.last30DaysBooks + stats.last30DaysHighlights}`, sub: '30 Day Activity', color: 'text-primary', icon: Activity },
+                        { label: 'T-Profile', value: stats.tScore, sub: `${stats.orphanCount} Orphans`, color: 'text-[#F63049]', icon: TrendingUp },
+                        { label: 'Core Nexus', value: stats.pairs.length > 0 ? stats.pairs[0][0].split('::').join(' & ') : '—', sub: `Density: ${stats.sortedTags.length > 0 ? (items.length / stats.sortedTags.length).toFixed(1) : '0.0'}`, color: 'text-blue-500', icon: GitBranch },
+                        { label: 'Rust Index', value: `${stats.rustPercent}%`, sub: `${stats.totalReadable - stats.coldItems.length} Active Nodes`, color: 'text-orange-500', icon: Zap },
+                        { label: 'Intellect', value: `${stats.ingestRatio}%`, sub: `${items.filter(i => i.isIngested).length} Ingested`, color: 'text-indigo-500', icon: Sparkles },
+                        { label: 'Discovery', value: stats.unexplored, sub: 'Unexplored Items', color: 'text-indigo-400', icon: Search },
                     ].map((s, i) => (
                         <motion.div
                             key={i}
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: i * 0.1 }}
-                            className="p-5 rounded-2xl border border-slate-200 dark:border-white/5 bg-white dark:bg-slate-900/30 shadow-sm"
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ delay: i * 0.05 }}
+                            className="p-4 rounded-2xl border border-slate-200 dark:border-white/5 bg-white dark:bg-slate-900/30 shadow-sm flex flex-col justify-between"
                         >
                             <div className="flex justify-between items-start mb-2">
-                                <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">{s.label}</p>
-                                <s.icon size={14} className={s.color} />
+                                <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider truncate mr-1">{s.label}</p>
+                                <s.icon size={12} className={s.color} />
                             </div>
-                            <p className={`text-3xl font-black ${s.color}`}>{s.value}</p>
-                            <p className="text-[10px] font-bold text-slate-500 uppercase mt-1">{s.sub}</p>
+                            <div>
+                                <p className={`text-xl font-black truncate ${s.color}`}>{s.value}</p>
+                                <p className="text-[8px] font-bold text-slate-500 uppercase mt-0.5 truncate">{s.sub}</p>
+                            </div>
                         </motion.div>
                     ))}
                 </section>

@@ -97,17 +97,17 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
     // --- DATA PROCESSING (LEVEL C - ADVANCED) ---
     const advancedStats = useMemo(() => {
         const now = Date.now();
-        const twoWeeksMs = 14 * 24 * 60 * 60 * 1000;
+        const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
         const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
 
-        // 1. Pulse (Activity in last 14 days)
+        // 1. Pulse (Activity in last 30 days)
         const itemsWithTime = items.map(item => ({
             item,
             addedAtMs: normalizeAddedAt(item.addedAt),
             lastHighlightMs: Math.max(...(item.highlights || []).map(h => normalizeAddedAt(h.createdAt)), 0)
         }));
-        const recentActivity = itemsWithTime.filter(i => i.addedAtMs >= now - twoWeeksMs || i.lastHighlightMs >= now - twoWeeksMs).length;
-        const recentHighlights = items.flatMap(i => i.highlights || []).filter(h => normalizeAddedAt(h.createdAt) >= now - twoWeeksMs).length;
+        const recentActivity = itemsWithTime.filter(i => i.addedAtMs >= now - thirtyDaysMs || i.lastHighlightMs >= now - thirtyDaysMs).length;
+        const recentHighlights = items.flatMap(i => i.highlights || []).filter(h => normalizeAddedAt(h.createdAt) >= now - thirtyDaysMs).length;
         const pulseValue = recentActivity + recentHighlights;
 
         // 2. T-Profile (Focus vs Orphans)
@@ -142,7 +142,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                 strongestNexus = pair;
             }
         });
-        const density = frequencies.length > 0 ? (totalTagUses / frequencies.length).toFixed(1) : '0.0';
+        const density = frequencies.length > 0 ? (items.length / frequencies.length).toFixed(1) : '0.0';
 
         // 4. Rust Index (Inactivity)
         const inactiveItems = itemsWithTime.filter(i =>
@@ -397,7 +397,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                         </p>
                                         <div className="flex flex-col">
                                             <p className="text-xl md:text-2xl font-black text-white">+{advancedStats.pulse}</p>
-                                            <p className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase">14 Day Activity</p>
+                                            <p className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase">30 Day Activity</p>
                                         </div>
                                     </div>
 
