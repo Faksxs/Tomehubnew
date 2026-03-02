@@ -273,6 +273,9 @@ class NvidiaProvider:
         if choices:
             message = choices[0].get("message") or {}
             text = message.get("content") or ""
+            # Support for reasoning/thinking models that might use reasoning_content
+            if not text and "reasoning_content" in message:
+                text = str(message.get("reasoning_content") or "")
             if not isinstance(text, str):
                 text = str(text)
 

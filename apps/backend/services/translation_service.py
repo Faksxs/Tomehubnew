@@ -1,15 +1,17 @@
 # -*- coding: utf-8 -*-
 """
 Translation service for TomeHub.
-Translates content chunks into English and Dutch using Gemini LLM.
+Translates content chunks into English and Dutch using Qwen LLM.
 Caches results in TOMEHUB_TRANSLATIONS to avoid duplicate API calls.
 """
 
 import json
 import asyncio
 import logging
+import re
 from typing import Optional, Dict, Any
 
+from config import settings
 from infrastructure.db_manager import DatabaseManager
 from services.llm_client import (
     generate_text,
@@ -21,7 +23,7 @@ from services.llm_client import (
 logger = logging.getLogger("tomehub_api")
 
 # ---------------------------------------------------------------------------
-# Prompt — Genre-flexible, context-aware dual translation (EN + NL)
+# Prompt — Professional and direct
 # ---------------------------------------------------------------------------
 
 TRANSLATION_SYSTEM_PROMPT = """You are an expert translator who faithfully translates texts 
@@ -47,7 +49,7 @@ CONTEXT (use this to guide your translation choices):
 SOURCE TEXT:
 {source_text}
 
-Return ONLY valid JSON in this exact format (no markdown, no explanation):
+Return ONLY valid JSON in this exact format:
 {{"en": "English translation here", "nl": "Dutch translation here"}}"""
 
 
@@ -96,13 +98,13 @@ def _save_translation(content_id: int, firebase_uid: str, en: str, nl: str) -> N
             cur.execute(
                 """
                 MERGE INTO TOMEHUB_TRANSLATIONS t
-                USING (SELECT :cid AS CONTENT_ID FROM DUAL) s
-                ON (t.CONTENT_ID = s.CONTENT_ID)
+                USING (SELECT :cid AS CID_VAL, :fuid AS UID_VAL, :en AS EN_VAL, :nl AS NL_VAL FROM DUAL) s
+                ON (t.CONTENT_ID = s.CID_VAL)
                 WHEN NOT MATCHED THEN
                     INSERT (CONTENT_ID, FIREBASE_UID, LANG_EN, LANG_NL)
-                    VALUES (:cid, :uid, :en, :nl)
+                    VALUES (s.CID_VAL, s.UID_VAL, s.EN_VAL, s.NL_VAL)
                 """,
-                {"cid": content_id, "uid": firebase_uid, "en": en, "nl": nl},
+                {"cid": content_id, "fuid": firebase_uid, "en": en, "nl": nl},
             )
             conn.commit()
     logger.info(f"Translation saved for content_id={content_id}")
@@ -157,7 +159,8 @@ async def translate_chunk(
     )
 
     # 3. Call LLM
-    model = get_model_for_tier(MODEL_TIER_FLASH)
+    # Use the non-thinking version of Qwen for translation performance.
+    model = settings.LLM_EXPLORER_PRIMARY_MODEL.replace("-thinking", "-instruct")
     
     result = await asyncio.wait_for(
         asyncio.to_thread(
@@ -166,31 +169,29 @@ async def translate_chunk(
             prompt,
             "translate_chunk",
             MODEL_TIER_FLASH,
-            0.3,       # temperature: low for faithful translation
-            2000,      # max_output_tokens
-            "application/json",  # response_mime_type
+            0.2,       # temperature: low for faithful translation
+            1200,      # max_output_tokens: sufficient for dual translation
+            "application/json",  # Supported by instruct model
             30.0,      # timeout
-            False,     # allow_pro_fallback — NO Gemini fallback
+            False,     # allow_pro_fallback
             None,      # fallback_state
-            PROVIDER_QWEN,  # provider_hint — force Qwen
+            PROVIDER_QWEN,
         ),
         timeout=35.0,
     )
 
     # 4. Parse response
     raw = result.text.strip()
-    # Clean markdown fences if present
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[-1]
-        if raw.endswith("```"):
-            raw = raw[:-3]
-        raw = raw.strip()
-
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError:
-        logger.error(f"Translation LLM returned invalid JSON: {raw[:200]}")
-        raise ValueError("Translation failed: invalid LLM response")
+        # Fallback to robust extraction just in case
+        match = re.search(r'(\{.*?\})', raw, re.DOTALL)
+        if match:
+            parsed = json.loads(match.group(1))
+        else:
+            logger.error(f"Translation LLM returned invalid JSON: {raw[:300]}")
+            raise ValueError(f"Translation failed: invalid LLM response")
 
     en_text = parsed.get("en", "")
     nl_text = parsed.get("nl", "")
