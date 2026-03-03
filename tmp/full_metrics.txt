@@ -1,0 +1,1444 @@
+﻿
+# HELP python_gc_objects_c
+ollected_total Objects 
+collected during gc
+# TYPE python_gc_objects_c
+ollected_total counter
+python_gc_objects_collecte
+d_total{generation="0"} 
+1254.0
+python_gc_objects_collecte
+d_total{generation="1"} 
+291.0
+python_gc_objects_collecte
+d_total{generation="2"} 
+36.0
+# HELP python_gc_objects_u
+ncollectable_total 
+Uncollectable objects 
+found during GC
+# TYPE python_gc_objects_u
+ncollectable_total counter
+python_gc_objects_uncollec
+table_total{generation="0"
+} 0.0
+python_gc_objects_uncollec
+table_total{generation="1"
+} 0.0
+python_gc_objects_uncollec
+table_total{generation="2"
+} 0.0
+# HELP python_gc_collectio
+ns_total Number of times 
+this generation was 
+collected
+# TYPE python_gc_collectio
+ns_total counter
+python_gc_collections_tota
+l{generation="0"} 1013.0
+python_gc_collections_tota
+l{generation="1"} 92.0
+python_gc_collections_tota
+l{generation="2"} 7.0
+# HELP python_info Python 
+platform information
+# TYPE python_info gauge
+python_info{implementation
+="CPython",major="3",minor
+="11",patchlevel="14",vers
+ion="3.11.14"} 1.0
+# HELP process_virtual_mem
+ory_bytes Virtual memory 
+size in bytes.
+# TYPE process_virtual_mem
+ory_bytes gauge
+process_virtual_memory_byt
+es 9.44910336e+08
+# HELP process_resident_me
+mory_bytes Resident 
+memory size in bytes.
+# TYPE process_resident_me
+mory_bytes gauge
+process_resident_memory_by
+tes 2.85016064e+08
+# HELP process_start_time_
+seconds Start time of the 
+process since unix epoch 
+in seconds.
+# TYPE process_start_time_
+seconds gauge
+process_start_time_seconds
+ 1.77249362341e+09
+# HELP 
+process_cpu_seconds_total 
+Total user and system CPU 
+time spent in seconds.
+# TYPE 
+process_cpu_seconds_total 
+counter
+process_cpu_seconds_total 
+19.3
+# HELP process_open_fds 
+Number of open file 
+descriptors.
+# TYPE process_open_fds 
+gauge
+process_open_fds 38.0
+# HELP process_max_fds 
+Maximum number of open 
+file descriptors.
+# TYPE process_max_fds 
+gauge
+process_max_fds 1024.0
+# HELP 
+tomehub_judge_score 
+Quality score assigned by 
+Judge AI (0.0 to 1.0)
+# TYPE 
+tomehub_judge_score 
+histogram
+# HELP tomehub_graph_bridg
+es_found Number of 
+semantic bridges found 
+via GraphRAG per query
+# TYPE tomehub_graph_bridg
+es_found histogram
+tomehub_graph_bridges_foun
+d_bucket{le="0.0"} 0.0
+tomehub_graph_bridges_foun
+d_bucket{le="1.0"} 0.0
+tomehub_graph_bridges_foun
+d_bucket{le="3.0"} 0.0
+tomehub_graph_bridges_foun
+d_bucket{le="5.0"} 0.0
+tomehub_graph_bridges_foun
+d_bucket{le="10.0"} 0.0
+tomehub_graph_bridges_foun
+d_bucket{le="20.0"} 0.0
+tomehub_graph_bridges_foun
+d_bucket{le="+Inf"} 0.0
+tomehub_graph_bridges_foun
+d_count 0.0
+tomehub_graph_bridges_foun
+d_sum 0.0
+# HELP tomehub_graph_bridg
+es_found_created Number 
+of semantic bridges found 
+via GraphRAG per query
+# TYPE tomehub_graph_bridg
+es_found_created gauge
+tomehub_graph_bridges_foun
+d_created 
+1.7724936249423141e+09
+# HELP tomehub_search_dive
+rsity_source_count Number 
+of unique sources (books) 
+in the final top results
+# TYPE tomehub_search_dive
+rsity_source_count 
+histogram
+tomehub_search_diversity_s
+ource_count_bucket{le="1.0
+"} 0.0
+tomehub_search_diversity_s
+ource_count_bucket{le="2.0
+"} 0.0
+tomehub_search_diversity_s
+ource_count_bucket{le="3.0
+"} 0.0
+tomehub_search_diversity_s
+ource_count_bucket{le="5.0
+"} 0.0
+tomehub_search_diversity_s
+ource_count_bucket{le="8.0
+"} 0.0
+tomehub_search_diversity_s
+ource_count_bucket{le="10.
+0"} 0.0
+tomehub_search_diversity_s
+ource_count_bucket{le="15.
+0"} 0.0
+tomehub_search_diversity_s
+ource_count_bucket{le="+In
+f"} 0.0
+tomehub_search_diversity_s
+ource_count_count 0.0
+tomehub_search_diversity_s
+ource_count_sum 0.0
+# HELP tomehub_search_dive
+rsity_source_count_created
+ Number of unique sources 
+(books) in the final top 
+results
+# TYPE tomehub_search_dive
+rsity_source_count_created
+ gauge
+tomehub_search_diversity_s
+ource_count_created 
+1.7724936249423645e+09
+# HELP tomehub_search_resu
+lt_count Total number of 
+chunks retrieved before 
+filtering
+# TYPE tomehub_search_resu
+lt_count histogram
+tomehub_search_result_coun
+t_bucket{le="0.0"} 0.0
+tomehub_search_result_coun
+t_bucket{le="5.0"} 0.0
+tomehub_search_result_coun
+t_bucket{le="10.0"} 0.0
+tomehub_search_result_coun
+t_bucket{le="30.0"} 0.0
+tomehub_search_result_coun
+t_bucket{le="50.0"} 0.0
+tomehub_search_result_coun
+t_bucket{le="100.0"} 0.0
+tomehub_search_result_coun
+t_bucket{le="+Inf"} 0.0
+tomehub_search_result_coun
+t_count 0.0
+tomehub_search_result_coun
+t_sum 0.0
+# HELP tomehub_search_resu
+lt_count_created Total 
+number of chunks 
+retrieved before filtering
+# TYPE tomehub_search_resu
+lt_count_created gauge
+tomehub_search_result_coun
+t_created 
+1.7724936249423897e+09
+# HELP tomehub_search_fusi
+on_mode_total Count of 
+retrieval fusion mode 
+usage
+# TYPE tomehub_search_fusi
+on_mode_total counter
+# HELP tomehub_odl_shadow_
+jobs_total ODL shadow 
+ingestion jobs by status
+# TYPE tomehub_odl_shadow_
+jobs_total counter
+# HELP tomehub_odl_shadow_
+job_duration_seconds ODL 
+shadow ingestion job 
+duration in seconds
+# TYPE tomehub_odl_shadow_
+job_duration_seconds 
+histogram
+# HELP tomehub_odl_shadow_
+ready_count Latest READY 
+chunk count for ODL 
+shadow by user and item
+# TYPE tomehub_odl_shadow_
+ready_count gauge
+# HELP tomehub_odl_rescue_
+calls_total ODL rescue 
+calls by trigger reason
+# TYPE tomehub_odl_rescue_
+calls_total counter
+# HELP tomehub_odl_rescue_
+timeout_total ODL rescue 
+timeout count
+# TYPE tomehub_odl_rescue_
+timeout_total counter
+tomehub_odl_rescue_timeout
+_total 0.0
+# HELP tomehub_odl_rescue_
+timeout_created ODL 
+rescue timeout count
+# TYPE tomehub_odl_rescue_
+timeout_created gauge
+tomehub_odl_rescue_timeout
+_created 
+1.7724936249424672e+09
+# HELP tomehub_odl_rescue_
+candidate_contribution_rat
+io ODL candidate share 
+inside top-k response
+# TYPE tomehub_odl_rescue_
+candidate_contribution_rat
+io histogram
+tomehub_odl_rescue_candida
+te_contribution_ratio_buck
+et{le="0.0"} 0.0
+tomehub_odl_rescue_candida
+te_contribution_ratio_buck
+et{le="0.05"} 0.0
+tomehub_odl_rescue_candida
+te_contribution_ratio_buck
+et{le="0.1"} 0.0
+tomehub_odl_rescue_candida
+te_contribution_ratio_buck
+et{le="0.2"} 0.0
+tomehub_odl_rescue_candida
+te_contribution_ratio_buck
+et{le="0.3"} 0.0
+tomehub_odl_rescue_candida
+te_contribution_ratio_buck
+et{le="0.4"} 0.0
+tomehub_odl_rescue_candida
+te_contribution_ratio_buck
+et{le="0.5"} 0.0
+tomehub_odl_rescue_candida
+te_contribution_ratio_buck
+et{le="0.75"} 0.0
+tomehub_odl_rescue_candida
+te_contribution_ratio_buck
+et{le="1.0"} 0.0
+tomehub_odl_rescue_candida
+te_contribution_ratio_buck
+et{le="+Inf"} 0.0
+tomehub_odl_rescue_candida
+te_contribution_ratio_coun
+t 0.0
+tomehub_odl_rescue_candida
+te_contribution_ratio_sum 
+0.0
+# HELP tomehub_odl_rescue_
+candidate_contribution_rat
+io_created ODL candidate 
+share inside top-k 
+response
+# TYPE tomehub_odl_rescue_
+candidate_contribution_rat
+io_created gauge
+tomehub_odl_rescue_candida
+te_contribution_ratio_crea
+ted 1.7724936249424763e+09
+# HELP tomehub_odl_rescue_
+latency_delta_ms 
+Additional ODL rescue 
+latency in milliseconds
+# TYPE tomehub_odl_rescue_
+latency_delta_ms histogram
+tomehub_odl_rescue_latency
+_delta_ms_bucket{le="1.0"}
+ 0.0
+tomehub_odl_rescue_latency
+_delta_ms_bucket{le="5.0"}
+ 0.0
+tomehub_odl_rescue_latency
+_delta_ms_bucket{le="10.0"
+} 0.0
+tomehub_odl_rescue_latency
+_delta_ms_bucket{le="20.0"
+} 0.0
+tomehub_odl_rescue_latency
+_delta_ms_bucket{le="40.0"
+} 0.0
+tomehub_odl_rescue_latency
+_delta_ms_bucket{le="80.0"
+} 0.0
+tomehub_odl_rescue_latency
+_delta_ms_bucket{le="120.0
+"} 0.0
+tomehub_odl_rescue_latency
+_delta_ms_bucket{le="200.0
+"} 0.0
+tomehub_odl_rescue_latency
+_delta_ms_bucket{le="300.0
+"} 0.0
+tomehub_odl_rescue_latency
+_delta_ms_bucket{le="500.0
+"} 0.0
+tomehub_odl_rescue_latency
+_delta_ms_bucket{le="1000.
+0"} 0.0
+tomehub_odl_rescue_latency
+_delta_ms_bucket{le="+Inf"
+} 0.0
+tomehub_odl_rescue_latency
+_delta_ms_count 0.0
+tomehub_odl_rescue_latency
+_delta_ms_sum 0.0
+# HELP tomehub_odl_rescue_
+latency_delta_ms_created 
+Additional ODL rescue 
+latency in milliseconds
+# TYPE tomehub_odl_rescue_
+latency_delta_ms_created 
+gauge
+tomehub_odl_rescue_latency
+_delta_ms_created 
+1.7724936249425035e+09
+# HELP tomehub_graph_enric
+h_jobs_total Graph 
+enrichment jobs by status 
+and reason
+# TYPE tomehub_graph_enric
+h_jobs_total counter
+# HELP tomehub_graph_enric
+h_chunks_total Graph 
+enrichment chunk outcomes
+# TYPE tomehub_graph_enric
+h_chunks_total counter
+# HELP tomehub_graph_enric
+h_duration_seconds Graph 
+enrichment job duration 
+in seconds
+# TYPE tomehub_graph_enric
+h_duration_seconds 
+histogram
+# HELP tomehub_db_pool_uti
+lization Database 
+connection pool statistics
+# TYPE tomehub_db_pool_uti
+lization gauge
+tomehub_db_pool_utilizatio
+n{metric_type="active",poo
+l_type="read"} 0.0
+tomehub_db_pool_utilizatio
+n{metric_type="opened",poo
+l_type="read"} 2.0
+tomehub_db_pool_utilizatio
+n{metric_type="max",pool_t
+ype="read"} 30.0
+tomehub_db_pool_utilizatio
+n{metric_type="active",poo
+l_type="write"} 0.0
+tomehub_db_pool_utilizatio
+n{metric_type="opened",poo
+l_type="write"} 1.0
+tomehub_db_pool_utilizatio
+n{metric_type="max",pool_t
+ype="write"} 10.0
+# HELP tomehub_ingestion_d
+uration_seconds Latency 
+of document ingestion in 
+seconds
+# TYPE tomehub_ingestion_d
+uration_seconds histogram
+# HELP tomehub_ai_service_
+duration_seconds Latency 
+of external AI service 
+calls
+# TYPE tomehub_ai_service_
+duration_seconds histogram
+tomehub_ai_service_duratio
+n_seconds_bucket{le="0.1",
+operation="generate",servi
+ce="nvidia_qwen"} 0.0
+tomehub_ai_service_duratio
+n_seconds_bucket{le="0.5",
+operation="generate",servi
+ce="nvidia_qwen"} 0.0
+tomehub_ai_service_duratio
+n_seconds_bucket{le="1.0",
+operation="generate",servi
+ce="nvidia_qwen"} 0.0
+tomehub_ai_service_duratio
+n_seconds_bucket{le="2.0",
+operation="generate",servi
+ce="nvidia_qwen"} 6.0
+tomehub_ai_service_duratio
+n_seconds_bucket{le="5.0",
+operation="generate",servi
+ce="nvidia_qwen"} 6.0
+tomehub_ai_service_duratio
+n_seconds_bucket{le="10.0"
+,operation="generate",serv
+ice="nvidia_qwen"} 8.0
+tomehub_ai_service_duratio
+n_seconds_bucket{le="20.0"
+,operation="generate",serv
+ice="nvidia_qwen"} 8.0
+tomehub_ai_service_duratio
+n_seconds_bucket{le="+Inf"
+,operation="generate",serv
+ice="nvidia_qwen"} 8.0
+tomehub_ai_service_duratio
+n_seconds_count{operation=
+"generate",service="nvidia
+_qwen"} 8.0
+tomehub_ai_service_duratio
+n_seconds_sum{operation="g
+enerate",service="nvidia_q
+wen"} 21.704764375113882
+# HELP tomehub_ai_service_
+duration_seconds_created 
+Latency of external AI 
+service calls
+# TYPE tomehub_ai_service_
+duration_seconds_created 
+gauge
+tomehub_ai_service_duratio
+n_seconds_created{operatio
+n="generate",service="nvid
+ia_qwen"} 
+1.7724937287330685e+09
+# HELP 
+tomehub_llm_calls_total 
+Total number of LLM calls
+# TYPE 
+tomehub_llm_calls_total 
+counter
+tomehub_llm_calls_total{mo
+del_tier="flash",status="s
+uccess",task="translate_ch
+unk"} 8.0
+# HELP 
+tomehub_llm_calls_created 
+Total number of LLM calls
+# TYPE 
+tomehub_llm_calls_created 
+gauge
+tomehub_llm_calls_created{
+model_tier="flash",status=
+"success",task="translate_
+chunk"} 
+1.7724937301885076e+09
+# HELP tomehub_llm_provide
+r_calls_total Total 
+number of LLM calls by 
+provider
+# TYPE tomehub_llm_provide
+r_calls_total counter
+tomehub_llm_provider_calls
+_total{provider="qwen",sta
+tus="success",task="transl
+ate_chunk"} 8.0
+# HELP tomehub_llm_provide
+r_calls_created Total 
+number of LLM calls by 
+provider
+# TYPE tomehub_llm_provide
+r_calls_created gauge
+tomehub_llm_provider_calls
+_created{provider="qwen",s
+tatus="success",task="tran
+slate_chunk"} 
+1.7724937301885228e+09
+# HELP tomehub_llm_fallbac
+k_total Total number of 
+model/provider fallback 
+events
+# TYPE tomehub_llm_fallbac
+k_total counter
+# HELP 
+tomehub_llm_tokens_total 
+Total number of LLM 
+tokens by direction
+# TYPE 
+tomehub_llm_tokens_total 
+counter
+tomehub_llm_tokens_total{d
+irection="prompt",model_ti
+er="flash",task="translate
+_chunk"} 2443.0
+tomehub_llm_tokens_total{d
+irection="output",model_ti
+er="flash",task="translate
+_chunk"} 1298.0
+tomehub_llm_tokens_total{d
+irection="total",model_tie
+r="flash",task="translate_
+chunk"} 3741.0
+# HELP tomehub_llm_tokens_
+created Total number of 
+LLM tokens by direction
+# TYPE tomehub_llm_tokens_
+created gauge
+tomehub_llm_tokens_created
+{direction="prompt",model_
+tier="flash",task="transla
+te_chunk"} 
+1.7724937301885374e+09
+tomehub_llm_tokens_created
+{direction="output",model_
+tier="flash",task="transla
+te_chunk"} 
+1.7724937301885457e+09
+tomehub_llm_tokens_created
+{direction="total",model_t
+ier="flash",task="translat
+e_chunk"} 
+1.772493730188554e+09
+# HELP tomehub_llm_paralle
+l_race_total Explorer 
+parallel NVIDIA race 
+outcomes and winners
+# TYPE tomehub_llm_paralle
+l_race_total counter
+# HELP tomehub_llm_paralle
+l_race_loser_total 
+Explorer parallel NVIDIA 
+race loser outcomes
+# TYPE tomehub_llm_paralle
+l_race_loser_total counter
+# HELP tomehub_llm_rpm_gua
+rd_total Rate-limit guard 
+slot reservation 
+decisions for Qwen/NVIDIA 
+route
+# TYPE tomehub_llm_rpm_gua
+rd_total counter
+# HELP 
+tomehub_redis_available 
+Whether Redis-backed L2 
+cache is available 
+(1=yes, 0=no)
+# TYPE 
+tomehub_redis_available 
+gauge
+tomehub_redis_available{la
+yer="l2_cache"} 1.0
+# HELP tomehub_data_cleane
+r_ai_applied_total Number 
+of ingestion chunks sent 
+to AI data cleaner
+# TYPE tomehub_data_cleane
+r_ai_applied_total counter
+tomehub_data_cleaner_ai_ap
+plied_total 0.0
+# HELP tomehub_data_cleane
+r_ai_applied_created 
+Number of ingestion 
+chunks sent to AI data 
+cleaner
+# TYPE tomehub_data_cleane
+r_ai_applied_created gauge
+tomehub_data_cleaner_ai_ap
+plied_created 
+1.7724936249426546e+09
+# HELP tomehub_data_cleane
+r_ai_skipped_total Number 
+of ingestion chunks 
+skipped from AI data 
+cleaner
+# TYPE tomehub_data_cleane
+r_ai_skipped_total counter
+# HELP tomehub_data_cleane
+r_noise_score Heuristic 
+noise score of chunks 
+before AI cleaning
+# TYPE tomehub_data_cleane
+r_noise_score histogram
+tomehub_data_cleaner_noise
+_score_bucket{le="0.0"} 
+0.0
+tomehub_data_cleaner_noise
+_score_bucket{le="1.0"} 
+0.0
+tomehub_data_cleaner_noise
+_score_bucket{le="2.0"} 
+0.0
+tomehub_data_cleaner_noise
+_score_bucket{le="3.0"} 
+0.0
+tomehub_data_cleaner_noise
+_score_bucket{le="4.0"} 
+0.0
+tomehub_data_cleaner_noise
+_score_bucket{le="5.0"} 
+0.0
+tomehub_data_cleaner_noise
+_score_bucket{le="7.0"} 
+0.0
+tomehub_data_cleaner_noise
+_score_bucket{le="10.0"} 
+0.0
+tomehub_data_cleaner_noise
+_score_bucket{le="15.0"} 
+0.0
+tomehub_data_cleaner_noise
+_score_bucket{le="20.0"} 
+0.0
+tomehub_data_cleaner_noise
+_score_bucket{le="+Inf"} 
+0.0
+tomehub_data_cleaner_noise
+_score_count 0.0
+tomehub_data_cleaner_noise
+_score_sum 0.0
+# HELP tomehub_data_cleane
+r_noise_score_created 
+Heuristic noise score of 
+chunks before AI cleaning
+# TYPE tomehub_data_cleane
+r_noise_score_created 
+gauge
+tomehub_data_cleaner_noise
+_score_created 
+1.7724936249426715e+09
+# HELP tomehub_l3_perf_gua
+rd_applied_total Total 
+number of Layer-3 
+performance guard 
+applications
+# TYPE tomehub_l3_perf_gua
+rd_applied_total counter
+# HELP tomehub_l3_phase_la
+tency_seconds Layer-3 
+phase latency in seconds
+# TYPE tomehub_l3_phase_la
+tency_seconds histogram
+# HELP tomehub_flow_text_r
+epair_applied_total 
+Number of flow card texts 
+repaired successfully
+# TYPE tomehub_flow_text_r
+epair_applied_total 
+counter
+# HELP tomehub_flow_text_r
+epair_skipped_total 
+Number of flow card texts 
+skipped from repair
+# TYPE tomehub_flow_text_r
+epair_skipped_total 
+counter
+tomehub_flow_text_repair_s
+kipped_total{reason="sourc
+e_not_allowed",source_type
+="HIGHLIGHT"} 224.0
+tomehub_flow_text_repair_s
+kipped_total{reason="sourc
+e_not_allowed",source_type
+="INSIGHT"} 1.0
+# HELP tomehub_flow_text_r
+epair_skipped_created 
+Number of flow card texts 
+skipped from repair
+# TYPE tomehub_flow_text_r
+epair_skipped_created 
+gauge
+tomehub_flow_text_repair_s
+kipped_created{reason="sou
+rce_not_allowed",source_ty
+pe="HIGHLIGHT"} 
+1.7724937226403491e+09
+tomehub_flow_text_repair_s
+kipped_created{reason="sou
+rce_not_allowed",source_ty
+pe="INSIGHT"} 
+1.7724937231513455e+09
+# HELP tomehub_flow_text_r
+epair_high_delta_reject_to
+tal Number of flow card 
+texts rejected due to 
+high delta ratio
+# TYPE tomehub_flow_text_r
+epair_high_delta_reject_to
+tal counter
+# HELP tomehub_flow_text_r
+epair_latency_seconds 
+Latency of flow text 
+repair execution in 
+seconds
+# TYPE tomehub_flow_text_r
+epair_latency_seconds 
+histogram
+# HELP tomehub_circuit_bre
+aker_state Current state 
+of the embedding API 
+circuit breaker
+# TYPE tomehub_circuit_bre
+aker_state gauge
+tomehub_circuit_breaker_st
+ate{service="embedding"} 
+0.0
+# HELP tomehub_embedding_b
+ackfill_total_calls_total 
+Total embedding calls 
+performed by 
+firestore->oracle 
+backfill worker
+# TYPE tomehub_embedding_b
+ackfill_total_calls_total 
+counter
+tomehub_embedding_backfill
+_total_calls_total 0.0
+# HELP tomehub_embedding_b
+ackfill_total_calls_create
+d Total embedding calls 
+performed by 
+firestore->oracle 
+backfill worker
+# TYPE tomehub_embedding_b
+ackfill_total_calls_create
+d gauge
+tomehub_embedding_backfill
+_total_calls_created 
+1.7724936249427598e+09
+# HELP tomehub_embedding_b
+ackfill_queue_depth 
+Approximate number of 
+pending firestore items 
+in active backfill queue
+# TYPE tomehub_embedding_b
+ackfill_queue_depth gauge
+tomehub_embedding_backfill
+_queue_depth 0.0
+# HELP tomehub_embedding_b
+ackfill_cost_estimate_usd 
+Estimated embedding 
+backfill cost in USD
+# TYPE tomehub_embedding_b
+ackfill_cost_estimate_usd 
+gauge
+tomehub_embedding_backfill
+_cost_estimate_usd 0.0
+# HELP 
+http_requests_total Total 
+number of requests by 
+method, status and 
+handler.
+# TYPE 
+http_requests_total 
+counter
+http_requests_total{handle
+r="/metrics",method="GET",
+status="2xx"} 949.0
+http_requests_total{handle
+r="/",method="GET",status=
+"2xx"} 303.0
+http_requests_total{handle
+r="none",method="OPTIONS",
+status="2xx"} 633.0
+http_requests_total{handle
+r="/api/library/items",met
+hod="GET",status="2xx"} 
+3.0
+http_requests_total{handle
+r="/api/flow/start",method
+="POST",status="2xx"} 3.0
+http_requests_total{handle
+r="/api/realtime/poll",met
+hod="GET",status="2xx"} 
+612.0
+http_requests_total{handle
+r="/api/ai/translate/{chun
+k_id}",method="POST",statu
+s="2xx"} 10.0
+http_requests_total{handle
+r="/api/flow/next",method=
+"POST",status="2xx"} 2.0
+http_requests_total{handle
+r="/api/books/{book_id}/in
+gestion-status",method="GE
+T",status="2xx"} 3.0
+# HELP 
+http_requests_created 
+Total number of requests 
+by method, status and 
+handler.
+# TYPE 
+http_requests_created 
+gauge
+http_requests_created{hand
+ler="/metrics",method="GET
+",status="2xx"} 
+1.7724936309497998e+09
+http_requests_created{hand
+ler="/",method="GET",statu
+s="2xx"} 
+1.7724936582729971e+09
+http_requests_created{hand
+ler="none",method="OPTIONS
+",status="2xx"} 
+1.7724937223740618e+09
+http_requests_created{hand
+ler="/api/library/items",m
+ethod="GET",status="2xx"} 
+1.7724937230951917e+09
+http_requests_created{hand
+ler="/api/flow/start",meth
+od="POST",status="2xx"} 
+1.772493723346435e+09
+http_requests_created{hand
+ler="/api/realtime/poll",m
+ethod="GET",status="2xx"} 
+1.7724937269960675e+09
+http_requests_created{hand
+ler="/api/ai/translate/{ch
+unk_id}",method="POST",sta
+tus="2xx"} 
+1.7724937304047503e+09
+http_requests_created{hand
+ler="/api/flow/next",metho
+d="POST",status="2xx"} 
+1.7724939966322424e+09
+http_requests_created{hand
+ler="/api/books/{book_id}/
+ingestion-status",method="
+GET",status="2xx"} 
+1.7725003714410617e+09
+# HELP 
+http_request_size_bytes 
+Content length of 
+incoming requests by 
+handler. Only value of 
+header is respected. 
+Otherwise ignored. No 
+percentile calculated. 
+# TYPE 
+http_request_size_bytes 
+summary
+http_request_size_bytes_co
+unt{handler="/metrics"} 
+949.0
+http_request_size_bytes_su
+m{handler="/metrics"} 0.0
+http_request_size_bytes_co
+unt{handler="/"} 303.0
+http_request_size_bytes_su
+m{handler="/"} 0.0
+http_request_size_bytes_co
+unt{handler="none"} 633.0
+http_request_size_bytes_su
+m{handler="none"} 0.0
+http_request_size_bytes_co
+unt{handler="/api/library/
+items"} 3.0
+http_request_size_bytes_su
+m{handler="/api/library/it
+ems"} 0.0
+http_request_size_bytes_co
+unt{handler="/api/flow/sta
+rt"} 3.0
+http_request_size_bytes_su
+m{handler="/api/flow/start
+"} 495.0
+http_request_size_bytes_co
+unt{handler="/api/realtime
+/poll"} 612.0
+http_request_size_bytes_su
+m{handler="/api/realtime/p
+oll"} 0.0
+http_request_size_bytes_co
+unt{handler="/api/ai/trans
+late/{chunk_id}"} 10.0
+http_request_size_bytes_su
+m{handler="/api/ai/transla
+te/{chunk_id}"} 3864.0
+http_request_size_bytes_co
+unt{handler="/api/flow/nex
+t"} 2.0
+http_request_size_bytes_su
+m{handler="/api/flow/next"
+} 228.0
+http_request_size_bytes_co
+unt{handler="/api/books/{b
+ook_id}/ingestion-status"}
+ 3.0
+http_request_size_bytes_su
+m{handler="/api/books/{boo
+k_id}/ingestion-status"} 
+0.0
+# HELP http_request_size_b
+ytes_created Content 
+length of incoming 
+requests by handler. Only 
+value of header is 
+respected. Otherwise 
+ignored. No percentile 
+calculated. 
+# TYPE http_request_size_b
+ytes_created gauge
+http_request_size_bytes_cr
+eated{handler="/metrics"} 
+1.7724936309498212e+09
+http_request_size_bytes_cr
+eated{handler="/"} 
+1.7724936582730184e+09
+http_request_size_bytes_cr
+eated{handler="none"} 
+1.7724937223740819e+09
+http_request_size_bytes_cr
+eated{handler="/api/librar
+y/items"} 
+1.772493723095216e+09
+http_request_size_bytes_cr
+eated{handler="/api/flow/s
+tart"} 
+1.7724937233464553e+09
+http_request_size_bytes_cr
+eated{handler="/api/realti
+me/poll"} 
+1.7724937269960878e+09
+http_request_size_bytes_cr
+eated{handler="/api/ai/tra
+nslate/{chunk_id}"} 
+1.772493730404772e+09
+http_request_size_bytes_cr
+eated{handler="/api/flow/n
+ext"} 
+1.7724939966322653e+09
+http_request_size_bytes_cr
+eated{handler="/api/books/
+{book_id}/ingestion-status
+"} 1.772500371441083e+09
+# HELP 
+http_response_size_bytes 
+Content length of 
+outgoing responses by 
+handler. Only value of 
+header is respected. 
+Otherwise ignored. No 
+percentile calculated. 
+# TYPE 
+http_response_size_bytes 
+summary
+http_response_size_bytes_c
+ount{handler="/metrics"} 
+949.0
+http_response_size_bytes_s
+um{handler="/metrics"} 
+2.8383889e+07
+http_response_size_bytes_c
+ount{handler="/"} 303.0
+http_response_size_bytes_s
+um{handler="/"} 28482.0
+http_response_size_bytes_c
+ount{handler="none"} 633.0
+http_response_size_bytes_s
+um{handler="none"} 1266.0
+http_response_size_bytes_c
+ount{handler="/api/library
+/items"} 3.0
+http_response_size_bytes_s
+um{handler="/api/library/i
+tems"} 2.485554e+06
+http_response_size_bytes_c
+ount{handler="/api/flow/st
+art"} 3.0
+http_response_size_bytes_s
+um{handler="/api/flow/star
+t"} 7954.0
+http_response_size_bytes_c
+ount{handler="/api/realtim
+e/poll"} 612.0
+http_response_size_bytes_s
+um{handler="/api/realtime/
+poll"} 106488.0
+http_response_size_bytes_c
+ount{handler="/api/ai/tran
+slate/{chunk_id}"} 10.0
+http_response_size_bytes_s
+um{handler="/api/ai/transl
+ate/{chunk_id}"} 5760.0
+http_response_size_bytes_c
+ount{handler="/api/flow/ne
+xt"} 2.0
+http_response_size_bytes_s
+um{handler="/api/flow/next
+"} 5591.0
+http_response_size_bytes_c
+ount{handler="/api/books/{
+book_id}/ingestion-status"
+} 3.0
+http_response_size_bytes_s
+um{handler="/api/books/{bo
+ok_id}/ingestion-status"} 
+1938.0
+# HELP http_response_size_
+bytes_created Content 
+length of outgoing 
+responses by handler. 
+Only value of header is 
+respected. Otherwise 
+ignored. No percentile 
+calculated. 
+# TYPE http_response_size_
+bytes_created gauge
+http_response_size_bytes_c
+reated{handler="/metrics"}
+ 1.7724936309498453e+09
+http_response_size_bytes_c
+reated{handler="/"} 
+1.7724936582730412e+09
+http_response_size_bytes_c
+reated{handler="none"} 
+1.7724937223741028e+09
+http_response_size_bytes_c
+reated{handler="/api/libra
+ry/items"} 
+1.772493723095239e+09
+http_response_size_bytes_c
+reated{handler="/api/flow/
+start"} 
+1.7724937233464775e+09
+http_response_size_bytes_c
+reated{handler="/api/realt
+ime/poll"} 
+1.7724937269961076e+09
+http_response_size_bytes_c
+reated{handler="/api/ai/tr
+anslate/{chunk_id}"} 
+1.77249373040479e+09
+http_response_size_bytes_c
+reated{handler="/api/flow/
+next"} 
+1.772493996632306e+09
+http_response_size_bytes_c
+reated{handler="/api/books
+/{book_id}/ingestion-statu
+s"} 1.7725003714411023e+09
+# HELP http_request_durati
+on_highr_seconds Latency 
+with many buckets but no 
+API specific labels. Made 
+for more accurate 
+percentile calculations. 
+# TYPE http_request_durati
+on_highr_seconds histogram
+http_request_duration_high
+r_seconds_bucket{le="0.01"
+} 1887.0
+http_request_duration_high
+r_seconds_bucket{le="0.025
+"} 1887.0
+http_request_duration_high
+r_seconds_bucket{le="0.05"
+} 1887.0
+http_request_duration_high
+r_seconds_bucket{le="0.075
+"} 2355.0
+http_request_duration_high
+r_seconds_bucket{le="0.1"}
+ 2495.0
+http_request_duration_high
+r_seconds_bucket{le="0.25"
+} 2504.0
+http_request_duration_high
+r_seconds_bucket{le="0.5"}
+ 2508.0
+http_request_duration_high
+r_seconds_bucket{le="0.75"
+} 2509.0
+http_request_duration_high
+r_seconds_bucket{le="1.0"}
+ 2510.0
+http_request_duration_high
+r_seconds_bucket{le="1.5"}
+ 2512.0
+http_request_duration_high
+r_seconds_bucket{le="2.0"}
+ 2516.0
+http_request_duration_high
+r_seconds_bucket{le="2.5"}
+ 2516.0
+http_request_duration_high
+r_seconds_bucket{le="3.0"}
+ 2516.0
+http_request_duration_high
+r_seconds_bucket{le="3.5"}
+ 2516.0
+http_request_duration_high
+r_seconds_bucket{le="4.0"}
+ 2516.0
+http_request_duration_high
+r_seconds_bucket{le="4.5"}
+ 2516.0
+http_request_duration_high
+r_seconds_bucket{le="5.0"}
+ 2516.0
+http_request_duration_high
+r_seconds_bucket{le="7.5"}
+ 2517.0
+http_request_duration_high
+r_seconds_bucket{le="10.0"
+} 2518.0
+http_request_duration_high
+r_seconds_bucket{le="30.0"
+} 2518.0
+http_request_duration_high
+r_seconds_bucket{le="60.0"
+} 2518.0
+http_request_duration_high
+r_seconds_bucket{le="+Inf"
+} 2518.0
+http_request_duration_high
+r_seconds_count 2518.0
+http_request_duration_high
+r_seconds_sum 
+74.9391438846942
+# HELP http_request_durati
+on_highr_seconds_created 
+Latency with many buckets 
+but no API specific 
+labels. Made for more 
+accurate percentile 
+calculations. 
+# TYPE http_request_durati
+on_highr_seconds_created 
+gauge
+http_request_duration_high
+r_seconds_created 
+1.7724936281330698e+09
+# HELP http_request_durati
+on_seconds Latency with 
+only few buckets by 
+handler. Made to be only 
+used if aggregation by 
+handler is important. 
+# TYPE http_request_durati
+on_seconds histogram
+http_request_duration_seco
+nds_bucket{handler="/metri
+cs",le="0.1",method="GET"}
+ 949.0
+http_request_duration_seco
+nds_bucket{handler="/metri
+cs",le="0.5",method="GET"}
+ 949.0
+http_request_duration_seco
+nds_bucket{handler="/metri
+cs",le="1.0",method="GET"}
+ 949.0
+http_request_duration_seco
+nds_bucket{handler="/metri
+cs",le="+Inf",method="GET"
+} 949.0
+http_request_duration_seco
+nds_count{handler="/metric
+s",method="GET"} 949.0
+http_request_duration_seco
+nds_sum{handler="/metrics"
+,method="GET"} 
+3.18173150497023
+http_request_duration_seco
+nds_bucket{handler="/",le=
+"0.1",method="GET"} 303.0
+http_request_duration_seco
+nds_bucket{handler="/",le=
+"0.5",method="GET"} 303.0
+http_request_duration_seco
+nds_bucket{handler="/",le=
+"1.0",method="GET"} 303.0
+http_request_duration_seco
+nds_bucket{handler="/",le=
+"+Inf",method="GET"} 303.0
+http_request_duration_seco
+nds_count{handler="/",meth
+od="GET"} 303.0
+http_request_duration_seco
+nds_sum{handler="/",method
+="GET"} 
+0.13313847268000245
+http_request_duration_seco
+nds_bucket{handler="none",
+le="0.1",method="OPTIONS"}
+ 633.0
+http_request_duration_seco
+nds_bucket{handler="none",
+le="0.5",method="OPTIONS"}
+ 633.0
+http_request_duration_seco
+nds_bucket{handler="none",
+le="1.0",method="OPTIONS"}
+ 633.0
+http_request_duration_seco
+nds_bucket{handler="none",
+le="+Inf",method="OPTIONS"
+} 633.0
+http_request_duration_seco
+nds_count{handler="none",m
+ethod="OPTIONS"} 633.0
+http_request_duration_seco
+nds_sum{handler="none",met
+hod="OPTIONS"} 
+0.2622983418405056
+http_request_duration_seco
+nds_bucket{handler="/api/l
+ibrary/items",le="0.1",met
+hod="GET"} 0.0
+http_request_duration_seco
+nds_bucket{handler="/api/l
+ibrary/items",le="0.5",met
+hod="GET"} 3.0
+http_request_duration_seco
+nds_bucket{handler="/api/l
+ibrary/items",le="1.0",met
+hod="GET"} 3.0
+http_request_duration_seco
+nds_bucket{handler="/api/l
+ibrary/items",le="+Inf",me
+thod="GET"} 3.0
+http_request_duration_seco
+nds_count{handler="/api/li
+brary/items",method="GET"}
+ 3.0
+http_request_duration_seco
+nds_sum{handler="/api/libr
+ary/items",method="GET"} 
+0.7820273881079629
+http_request_duration_seco
+nds_bucket{handler="/api/f
+low/start",le="0.1",method
+="POST"} 0.0
+http_request_duration_seco
+nds_bucket{handler="/api/f
+low/start",le="0.5",method
+="POST"} 1.0
+http_request_duration_seco
+nds_bucket{handler="/api/f
+low/start",le="1.0",method
+="POST"} 3.0
+http_request_duration_seco
+nds_bucket{handler="/api/f
+low/start",le="+Inf",metho
+d="POST"} 3.0
+http_request_duration_seco
+nds_count{handler="/api/fl
+ow/start",method="POST"} 
+3.0
+http_request_duration_seco
+nds_sum{handler="/api/flow
+/start",method="POST"} 
+2.1902286232216284
+http_request_duration_seco
+nds_bucket{handler="/api/r
+ealtime/poll",le="0.1",met
+hod="GET"} 605.0
+http_request_duration_seco
+nds_bucket{handler="/api/r
+ealtime/poll",le="0.5",met
+hod="GET"} 612.0
+http_request_duration_seco
+nds_bucket{handler="/api/r
+ealtime/poll",le="1.0",met
+hod="GET"} 612.0
+http_request_duration_seco
+nds_bucket{handler="/api/r
+ealtime/poll",le="+Inf",me
+thod="GET"} 612.0
+http_request_duration_seco
+nds_count{handler="/api/re
+altime/poll",method="GET"}
+ 612.0
+http_request_duration_seco
+nds_sum{handler="/api/real
+time/poll",method="GET"} 
+44.34012344875373
+http_request_duration_seco
+nds_bucket{handler="/api/a
+i/translate/{chunk_id}",le
+="0.1",method="POST"} 2.0
+http_request_duration_seco
+nds_bucket{handler="/api/a
+i/translate/{chunk_id}",le
+="0.5",method="POST"} 2.0
+http_request_duration_seco
+nds_bucket{handler="/api/a
+i/translate/{chunk_id}",le
+="1.0",method="POST"} 2.0
+http_request_duration_seco
+nds_bucket{handler="/api/a
+i/translate/{chunk_id}",le
+="+Inf",method="POST"} 
+10.0
+http_request_duration_seco
+nds_count{handler="/api/ai
+/translate/{chunk_id}",met
+hod="POST"} 10.0
+http_request_duration_seco
+nds_sum{handler="/api/ai/t
+ranslate/{chunk_id}",metho
+d="POST"} 
+23.025508913211524
+http_request_duration_seco
+nds_bucket{handler="/api/f
+low/next",le="0.1",method=
+"POST"} 0.0
+http_request_duration_seco
+nds_bucket{handler="/api/f
+low/next",le="0.5",method=
+"POST"} 2.0
+http_request_duration_seco
+nds_bucket{handler="/api/f
+low/next",le="1.0",method=
+"POST"} 2.0
+http_request_duration_seco
+nds_bucket{handler="/api/f
+low/next",le="+Inf",method
+="POST"} 2.0
+http_request_duration_seco
+nds_count{handler="/api/fl
+ow/next",method="POST"} 
+2.0
+http_request_duration_seco
+nds_sum{handler="/api/flow
+/next",method="POST"} 
+0.7741305760573596
+http_request_duration_seco
+nds_bucket{handler="/api/b
+ooks/{book_id}/ingestion-s
+tatus",le="0.1",method="GE
+T"} 3.0
+http_request_duration_seco
+nds_bucket{handler="/api/b
+ooks/{book_id}/ingestion-s
+tatus",le="0.5",method="GE
+T"} 3.0
+http_request_duration_seco
+nds_bucket{handler="/api/b
+ooks/{book_id}/ingestion-s
+tatus",le="1.0",method="GE
+T"} 3.0
+http_request_duration_seco
+nds_bucket{handler="/api/b
+ooks/{book_id}/ingestion-s
+tatus",le="+Inf",method="G
+ET"} 3.0
+http_request_duration_seco
+nds_count{handler="/api/bo
+oks/{book_id}/ingestion-st
+atus",method="GET"} 3.0
+http_request_duration_seco
+nds_sum{handler="/api/book
+s/{book_id}/ingestion-stat
+us",method="GET"} 
+0.24995661585126072
+# HELP http_request_durati
+on_seconds_created 
+Latency with only few 
+buckets by handler. Made 
+to be only used if 
+aggregation by handler is 
+important. 
+# TYPE http_request_durati
+on_seconds_created gauge
+http_request_duration_seco
+nds_created{handler="/metr
+ics",method="GET"} 
+1.7724936309498732e+09
+http_request_duration_seco
+nds_created{handler="/",me
+thod="GET"} 
+1.7724936582730722e+09
+http_request_duration_seco
+nds_created{handler="none"
+,method="OPTIONS"} 
+1.7724937223741314e+09
+http_request_duration_seco
+nds_created{handler="/api/
+library/items",method="GET
+"} 1.7724937230952697e+09
+http_request_duration_seco
+nds_created{handler="/api/
+flow/start",method="POST"}
+ 1.772493723346508e+09
+http_request_duration_seco
+nds_created{handler="/api/
+realtime/poll",method="GET
+"} 1.7724937269961357e+09
+http_request_duration_seco
+nds_created{handler="/api/
+ai/translate/{chunk_id}",m
+ethod="POST"} 
+1.7724937304048207e+09
+http_request_duration_seco
+nds_created{handler="/api/
+flow/next",method="POST"} 
+1.7724939966323369e+09
+http_request_duration_seco
+nds_created{handler="/api/
+books/{book_id}/ingestion-
+status",method="GET"} 
+1.772500371441133e+09
+
+
+
+

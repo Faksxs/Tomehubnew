@@ -265,6 +265,18 @@ def _extract_personal_note_semantic_text(raw_content: Optional[str]) -> str:
     text = re.sub(r"^[ \t]*\d+\.\s+", "", text, flags=re.MULTILINE)
     text = re.sub(r"^[ \t]*>\s?", "", text, flags=re.MULTILINE)
 
+    if bool(getattr(settings, "PERSONAL_NOTE_WIKI_TOKEN_CLEANUP_ENABLED", False)):
+        def _replace_wiki_token(match: re.Match[str]) -> str:
+            inner = str(match.group(1) or "").strip()
+            if not inner:
+                return " "
+            if "|" in inner:
+                label = inner.split("|", 1)[0].strip()
+                return f" {label} " if label else " "
+            return f" {inner} "
+
+        text = re.sub(r"\[\[([^\[\]\n]+)\]\]", _replace_wiki_token, text)
+
     text = text.replace("\r\n", "\n")
     text = re.sub(r"[ \t]+\n", "\n", text)
     text = re.sub(r"\n{3,}", "\n\n", text)

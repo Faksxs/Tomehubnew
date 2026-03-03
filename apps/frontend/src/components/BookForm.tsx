@@ -7,6 +7,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { ingestDocument, extractMetadata } from '../services/backendApiService';
 import { PersonalNoteEditor } from './PersonalNoteEditor';
 import { extractPersonalNoteText, hasMeaningfulPersonalNoteContent } from '../lib/personalNoteRender';
+import { PERSONAL_NOTE_TEMPLATES, findPersonalNoteTemplate } from '../lib/personalNoteTemplates';
+import { canonicalizeWikiLinks, createWikiResolver, NoteLinkTarget } from '../lib/personalNoteWiki';
 
 interface BookFormProps {
   initialData?: LibraryItem;
@@ -16,11 +18,13 @@ interface BookFormProps {
     personalFolderId?: string;
     folderPath?: string;
   };
+  noteLinkTargets?: NoteLinkTarget[];
+  wikiTemplatesEnabled?: boolean;
   onSave: (item: Omit<LibraryItem, 'highlights'>) => void;
   onCancel: () => void;
 }
 
-export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, noteDefaults, onSave, onCancel }) => {
+export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, noteDefaults, noteLinkTargets = [], wikiTemplatesEnabled = false, onSave, onCancel }) => {
   // 'search' mode is for finding the item first. 'edit' mode is the actual form.
   // Websites and Personal Notes default directly to 'edit'.
   const [mode, setMode] = useState<'search' | 'edit'>(
@@ -38,6 +42,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
   const [isExtractingMetadata, setIsExtractingMetadata] = useState(false);
   const [selectedPdf, setSelectedPdf] = useState<File | null>(null);
   const [showScanner, setShowScanner] = useState(false);
+  const [categoryManuallyEdited, setCategoryManuallyEdited] = useState(false);
   const initKeyRef = useRef<string | null>(null);
   const { user } = useAuth();
 
@@ -77,6 +82,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
     initKeyRef.current = initKey;
 
     if (initialData) {
+      setCategoryManuallyEdited(false);
       setFormData({
         title: initialData.title,
         author: initialData.author,
@@ -107,6 +113,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
     }
 
     if (initialType === 'PERSONAL_NOTE') {
+      setCategoryManuallyEdited(false);
       setFormData(prev => ({
         ...prev,
         author: 'Self',
@@ -248,12 +255,54 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
+    if (name === 'personalNoteCategory') {
+      setCategoryManuallyEdited(true);
+    }
     setFormData(prev => {
       if (name === 'contentLanguageMode') {
         return { ...prev, [name]: value as ContentLanguageMode, contentLanguageResolved: '' };
       }
       return { ...prev, [name]: value };
     });
+  };
+
+  const applyTemplateById = (templateId: string) => {
+    if (!isNote || !wikiTemplatesEnabled || !templateId) return;
+    const template = findPersonalNoteTemplate(templateId);
+    if (!template) return;
+
+    setFormData(prev => {
+      const mergedTags = new Set([
+        ...prev.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
+        ...template.defaultTags,
+      ]);
+      const nextCategory = (!categoryManuallyEdited && !initialData)
+        ? template.defaultCategory
+        : prev.personalNoteCategory;
+
+      return {
+        ...prev,
+        title: prev.title.trim() ? prev.title : template.suggestedTitle,
+        tags: Array.from(mergedTags).join(', '),
+        generalNotes: prev.generalNotes.trim()
+          ? `${prev.generalNotes}<p></p>${template.htmlContent}`
+          : template.htmlContent,
+        personalNoteCategory: nextCategory,
+      };
+    });
+  };
+
+  const insertLinkedNoteTokenById = (noteId: string) => {
+    if (!isNote || !wikiTemplatesEnabled || !noteId) return;
+    const selected = noteLinkTargets.find((note) => note.id === noteId);
+    if (!selected) return;
+    const token = `[[${selected.title}|${selected.id}]]`;
+    setFormData(prev => ({
+      ...prev,
+      generalNotes: prev.generalNotes.trim()
+        ? `${prev.generalNotes}<p>${token}</p>`
+        : `<p>${token}</p>`,
+    }));
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -291,6 +340,79 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
     }
   };
 
+  const isNote = initialType === 'PERSONAL_NOTE';
+  const noteLabelClass = isNote ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300';
+  const noteSubLabelClass = isNote ? 'text-slate-800 dark:text-slate-200' : 'text-slate-700 dark:text-slate-300';
+  const noteHelperClass = isNote ? 'text-slate-700 dark:text-slate-400' : 'text-slate-500 dark:text-slate-400';
+  const availableLinkTargets = noteLinkTargets.filter((note) => note.id !== (initialData?.id || ''));
+
+  const normalizeForSearch = (value: string): string =>
+    String(value || '')
+      .toLocaleLowerCase('tr-TR')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim();
+
+  const findTemplateByQuery = (query?: string) => {
+    const normalizedQuery = normalizeForSearch(query || '');
+    if (!normalizedQuery) return null;
+    const exactMatches = PERSONAL_NOTE_TEMPLATES.filter((template) => {
+      const candidates = [template.id, template.name, template.suggestedTitle];
+      return candidates.some((value) => normalizeForSearch(value) === normalizedQuery);
+    });
+    if (exactMatches.length === 1) return exactMatches[0];
+    if (exactMatches.length > 1) return null;
+
+    const partialMatches = PERSONAL_NOTE_TEMPLATES.filter((template) => {
+      const candidates = [template.id, template.name, template.suggestedTitle];
+      return candidates.some((value) => normalizeForSearch(value).includes(normalizedQuery));
+    });
+    if (partialMatches.length === 1) return partialMatches[0];
+    return null;
+  };
+
+  const findLinkedNoteByQuery = (query?: string) => {
+    const normalizedQuery = normalizeForSearch(query || '');
+    if (!normalizedQuery) return null;
+    const exactMatches = availableLinkTargets.filter((target) => normalizeForSearch(target.title) === normalizedQuery);
+    if (exactMatches.length === 1) return exactMatches[0];
+    if (exactMatches.length > 1) return null;
+    const partialMatches = availableLinkTargets.filter((target) =>
+      normalizeForSearch(target.title).includes(normalizedQuery)
+    );
+    if (partialMatches.length === 1) return partialMatches[0];
+    return null;
+  };
+
+  const handleSlashCommand = ({ command, query, selectedId }: { command: 'template' | 'link'; query?: string; selectedId?: string }) => {
+    if (!isNote || !wikiTemplatesEnabled) return;
+    if (command === 'template') {
+      if (selectedId) {
+        applyTemplateById(selectedId);
+        return;
+      }
+      const templateFromQuery = findTemplateByQuery(query);
+      if (templateFromQuery) {
+        applyTemplateById(templateFromQuery.id);
+        return;
+      }
+      window.alert('Taslak eklemek icin /taslak <taslak-adi> yaz. Ornek: /taslak alisveris');
+      return;
+    }
+
+    if (selectedId) {
+      insertLinkedNoteTokenById(selectedId);
+      return;
+    }
+
+    const linkedNoteFromQuery = findLinkedNoteByQuery(query);
+    if (linkedNoteFromQuery) {
+      insertLinkedNoteTokenById(linkedNoteFromQuery.id);
+      return;
+    }
+    window.alert('Link eklemek icin /link <not-basligi> yaz. Ornek: /link toplanti');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -315,6 +437,21 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
 
     // Parse addedAt date from input, or fallback to now
     const addedAtTimestamp = formData.addedAt ? new Date(formData.addedAt).getTime() : Date.now();
+    let preparedGeneralNotes = formData.generalNotes;
+
+    if (isNote && wikiTemplatesEnabled && preparedGeneralNotes.includes('[[') && noteLinkTargets.length > 0) {
+      const resolver = createWikiResolver(noteLinkTargets.filter((note) => note.id !== newBookId));
+      const canonicalized = canonicalizeWikiLinks(preparedGeneralNotes, resolver);
+      if (canonicalized.convertedCount > 0) {
+        const confirmMessage = [
+          `${canonicalized.convertedCount} wiki link canonical formata cevrilecek.`,
+          'Onayliyor musun?',
+        ].join('\n');
+        if (window.confirm(confirmMessage)) {
+          preparedGeneralNotes = canonicalized.content;
+        }
+      }
+    }
 
     onSave({
       id: newBookId, // Pass the ID we used for ingestion
@@ -331,7 +468,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
       status: formData.status as PhysicalStatus,
       readingStatus: formData.readingStatus as ReadingStatus,
       tags: formData.tags.split(',').map(t => t.trim()).filter(t => t.length > 0),
-      generalNotes: isNote ? formData.generalNotes : '',
+      generalNotes: isNote ? preparedGeneralNotes : '',
       summaryText: isNote ? '' : formData.summaryText,
       contentLanguageMode: formData.contentLanguageMode,
       contentLanguageResolved: (formData.contentLanguageResolved || undefined) as 'tr' | 'en' | undefined,
@@ -347,11 +484,12 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
   };
 
   const getIcon = () => {
+    const size = isNote ? 20 : 24;
     switch (initialType) {
-      case 'ARTICLE': return <FileText className="text-[#CC561E]" size={24} />;
-      case 'WEBSITE': return <Globe className="text-[#CC561E]" size={24} />;
-      case 'PERSONAL_NOTE': return <PenTool className="text-[#CC561E]" size={24} />;
-      default: return <BookIcon className="text-[#CC561E]" size={24} />;
+      case 'ARTICLE': return <FileText className="text-[#CC561E]" size={size} />;
+      case 'WEBSITE': return <Globe className="text-[#CC561E]" size={size} />;
+      case 'PERSONAL_NOTE': return <PenTool className="text-[#CC561E]" size={size} />;
+      default: return <BookIcon className="text-[#CC561E]" size={size} />;
     }
   }
 
@@ -365,18 +503,13 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
     }
   }
 
-  const isNote = initialType === 'PERSONAL_NOTE';
-  const noteLabelClass = isNote ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300';
-  const noteSubLabelClass = isNote ? 'text-slate-800 dark:text-slate-200' : 'text-slate-700 dark:text-slate-300';
-  const noteHelperClass = isNote ? 'text-slate-700 dark:text-slate-400' : 'text-slate-500 dark:text-slate-400';
-
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
       <div className={`bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full overflow-hidden flex flex-col ${isNote ? 'max-w-3xl max-h-[94vh]' : 'max-w-2xl max-h-[90vh]'}`}>
 
         {/* Header */}
-        <div className={`${isNote ? 'p-4' : 'p-5'} border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-900 z-10`}>
-          <h2 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
+        <div className={`${isNote ? 'p-3 md:p-4' : 'p-5'} border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-900 z-10`}>
+          <h2 className={`${isNote ? 'text-lg' : 'text-xl'} font-bold text-slate-800 dark:text-white flex items-center gap-2`}>
             {mode === 'search' ? (
               <>
                 <Search className="text-[#CC561E]" size={24} />
@@ -390,7 +523,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
             )}
           </h2>
           <button onClick={onCancel} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
-            <X size={24} />
+            <X size={isNote ? 20 : 24} />
           </button>
         </div>
 
@@ -491,18 +624,18 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
 
         {/* Mode: Edit Form */}
         {mode === 'edit' && (
-          <form onSubmit={handleSubmit} className={`${isNote ? 'p-4 md:p-5' : 'p-6'} overflow-y-auto flex-1`}>
+          <form onSubmit={handleSubmit} className={`${isNote ? 'p-3 md:p-5' : 'p-6'} overflow-y-auto flex-1`}>
             {/* Basic Info */}
-            <div className={isNote ? 'space-y-3' : 'space-y-5'}>
-              <div className={`grid grid-cols-1 md:grid-cols-2 ${isNote ? 'gap-3' : 'gap-4'}`}>
-                <div className={isNote ? "md:col-span-2" : "md:col-span-2"}>
-                  <label className={`block text-sm font-medium mb-1 ${noteLabelClass}`}>Title *</label>
+            <div className={isNote ? 'space-y-2' : 'space-y-5'}>
+              <div className={`grid grid-cols-1 md:grid-cols-2 ${isNote ? 'gap-2' : 'gap-4'}`}>
+                <div className="md:col-span-2">
+                  <label className={`block text-[12px] font-medium mb-0.5 ${noteLabelClass}`}>Title *</label>
                   <input
                     required
                     name="title"
                     value={formData.title}
                     onChange={handleChange}
-                    className={`w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 ${isNote ? 'py-1.5 text-sm' : 'py-2'} focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white`}
+                    className={`w-full border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 ${isNote ? 'py-1.5 text-sm' : 'py-2'} focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white`}
                     placeholder={isNote ? "Note Title" : (initialType === 'WEBSITE' ? 'Page Title or Site Name' : 'e.g. The Stranger')}
                   />
                 </div>
@@ -524,10 +657,10 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                 )}
 
                 {isNote && (
-                  <>
+                  <div className="md:col-span-2 grid grid-cols-2 gap-3">
                     <div>
-                      <label className={`block text-[13px] font-medium mb-1 flex items-center gap-1 ${noteSubLabelClass}`}>
-                        <Calendar size={14} className="text-slate-400" />
+                      <label className={`block text-[12px] font-medium mb-0.5 flex items-center gap-1 ${noteSubLabelClass}`}>
+                        <Calendar size={12} className="text-slate-400" />
                         Date
                       </label>
                       <input
@@ -535,28 +668,28 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                         name="addedAt"
                         value={formData.addedAt}
                         onChange={handleChange}
-                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-sm focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                       />
                     </div>
                     <div>
-                      <label className={`block text-[13px] font-medium mb-1 ${noteSubLabelClass}`}>
+                      <label className={`block text-[12px] font-medium mb-0.5 ${noteSubLabelClass}`}>
                         Category
                       </label>
                       <select
                         name="personalNoteCategory"
                         value={formData.personalNoteCategory}
                         onChange={handleChange}
-                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-sm focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                       >
                         <option value="PRIVATE">Private</option>
                         <option value="DAILY">Daily</option>
                         <option value="IDEAS">Ideas</option>
                       </select>
-                      <p className={`mt-0.5 text-[10px] leading-tight ${noteHelperClass}`}>
-                        Private/Daily sadece local aramada kalir. Ideas AI aramalara da katilir.
-                      </p>
                     </div>
-                  </>
+                    <p className={`col-span-2 text-[10px] leading-tight ${noteHelperClass}`}>
+                      Private/Daily sadece local aramada kalir. Ideas AI aramalara da katilir.
+                    </p>
+                  </div>
                 )}
 
                 {initialType === 'BOOK' && (
@@ -698,14 +831,14 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
 
               {isNote && (
                 <div>
-                  <label className={`block text-sm font-medium mb-1 ${noteLabelClass}`}>
+                  <label className={`block text-[12px] font-medium mb-0.5 ${noteLabelClass}`}>
                     Sub-file (optional)
                   </label>
                   <input
                     name="folderPath"
                     value={formData.folderPath}
                     onChange={handleChange}
-                    className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                    className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-sm focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
                     placeholder="e.g. Sermon Ideas or Journal-2026-Week1"
                   />
                 </div>
@@ -826,9 +959,13 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                   value={formData.generalNotes}
                   onChange={(next) => setFormData(prev => ({ ...prev, generalNotes: next }))}
                   minHeight={420}
+                  onSlashCommand={wikiTemplatesEnabled ? handleSlashCommand : undefined}
+                  slashTemplateItems={wikiTemplatesEnabled ? PERSONAL_NOTE_TEMPLATES.map((template) => ({ id: template.id, label: template.name })) : undefined}
+                  slashLinkItems={wikiTemplatesEnabled ? availableLinkTargets.map((target) => ({ id: target.id, label: target.title })) : undefined}
                 />
                 <p className={`mt-1 text-[10px] ${noteHelperClass}`}>
                   Toolbar supports heading, bold, underline, bullet list, numbered list and checklist.
+                  {wikiTemplatesEnabled ? ' Wiki link token formati: [[Not Basligi|note_id]]. Slash: /taslak <ad> ve /link <not basligi>.' : ''}
                 </p>
               </div>
             )}

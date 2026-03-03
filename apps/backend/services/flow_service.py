@@ -949,13 +949,32 @@ class FlowService:
         return cards
 
     def _fetch_seed_recency(self, uid: str, sid: str, r_type: Optional[str], category: Optional[str], limit: int) -> List[FlowCard]:
-        """Fetch recently added content (Highlights/Notes)."""
+        """Fetch least-globally-seen content first (fairness-first ordering).
+
+        Previously sorted by id DESC which caused recently-added books to dominate
+        every session. Now uses global seen_count ASC so content that has never
+        appeared in any Flow session surfaces first.
+        """
         sql = """
-            SELECT id, content_chunk, title, content_type AS source_type, page_number
-            FROM TOMEHUB_CONTENT_V2
-            WHERE firebase_uid = :p_uid
-            AND DBMS_LOB.GETLENGTH(content_chunk) > 12
-            AND NOT EXISTS (SELECT 1 FROM TOMEHUB_FLOW_SEEN fs WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND fs.session_id = :p_sid)
+            SELECT
+                t.id,
+                t.content_chunk,
+                t.title,
+                t.content_type AS source_type,
+                t.page_number
+            FROM TOMEHUB_CONTENT_V2 t
+            LEFT JOIN (
+                SELECT chunk_id, COUNT(*) AS global_seen
+                FROM TOMEHUB_FLOW_SEEN
+                WHERE firebase_uid = :p_uid
+                GROUP BY chunk_id
+            ) gs ON TO_CHAR(gs.chunk_id) = TO_CHAR(t.id)
+            WHERE t.firebase_uid = :p_uid
+            AND DBMS_LOB.GETLENGTH(t.content_chunk) > 12
+            AND NOT EXISTS (
+                SELECT 1 FROM TOMEHUB_FLOW_SEEN fs
+                WHERE fs.chunk_id = t.id AND fs.session_id = :p_sid
+            )
         """
         params = {"p_uid": uid, "p_sid": sid, "p_limit": limit}
         
@@ -973,10 +992,12 @@ class FlowService:
 
         # Apply Category Filter
         sql, params = self._apply_category_filter(sql, params, category)
-             
-        sql += " ORDER BY id DESC FETCH FIRST :p_limit ROWS ONLY "
-        
-        # Recency = Zone 2 (High priority but below strong semantic matches)
+
+        # Least globally seen first — zero-seen items float to top.
+        # Random tiebreaker prevents the same never-seen items from always clustering.
+        sql += " ORDER BY NVL(gs.global_seen, 0) ASC, DBMS_RANDOM.VALUE FETCH FIRST :p_limit ROWS ONLY "
+
+        # Fairness seed: label kept as Recent but semantics are now equity-driven
         return self._execute_simple_fetch(sql, params, "✨ Recent", zone=2)
 
     def _fetch_seed_serendipity(self, uid: str, sid: str, r_type: Optional[str], category: Optional[str], limit: int) -> List[FlowCard]:

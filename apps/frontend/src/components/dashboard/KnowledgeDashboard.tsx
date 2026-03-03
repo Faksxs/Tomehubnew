@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, animate } from 'framer-motion';
 import {
     Book,
     BookOpen,
@@ -46,6 +46,34 @@ interface KnowledgeDashboardProps {
     onNavigateToTab?: (tab: string) => void;
     onMobileMenuClick?: () => void;
 }
+
+const CountUp = ({ value, prefix = '', suffix = '' }: { value: number | string, prefix?: string, suffix?: string }) => {
+    const nodeRef = React.useRef<HTMLSpanElement>(null);
+    useEffect(() => {
+        if (!nodeRef.current) return;
+        const numericValue = typeof value === 'string' ? parseFloat(value) : value;
+        if (isNaN(numericValue)) {
+            nodeRef.current.textContent = `${prefix}${value}${suffix}`;
+            return;
+        }
+
+        const isInt = Number.isInteger(numericValue) && !value.toString().includes('.');
+
+        const controls = animate(0, numericValue, {
+            duration: 1.5,
+            ease: "easeOut",
+            onUpdate(v) {
+                if (nodeRef.current) {
+                    const formatted = isInt ? Math.round(v).toString() : v.toFixed(1);
+                    nodeRef.current.textContent = `${prefix}${formatted}${suffix}`;
+                }
+            }
+        });
+        return () => controls.stop();
+    }, [value, prefix, suffix]);
+
+    return <span ref={nodeRef}>{typeof value === 'string' && isNaN(parseFloat(value)) ? value : `${prefix}0${suffix}`}</span>;
+};
 
 export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
     items,
@@ -94,7 +122,16 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
     const lostCount = books.filter(i => i.status === 'Lost').length;
     const onShelfCount = books.filter(i => i.status === 'On Shelf').length;
 
-    // --- DATA PROCESSING (LEVEL C - ADVANCED) ---
+    // --- DATA PROCESSING (TODAY'S PICK) ---
+    const todaysPickItem = useMemo(() => {
+        const toReadItems = items.filter(i => i.readingStatus === 'To Read' && i.type !== 'PERSONAL_NOTE');
+        if (toReadItems.length === 0) return null;
+
+        const dayOfYear = Math.floor(Date.now() / 86400000);
+        const index = dayOfYear % toReadItems.length;
+        const sorted = [...toReadItems].sort((a, b) => normalizeAddedAt(a.addedAt) - normalizeAddedAt(b.addedAt));
+        return sorted[index];
+    }, [items]);
     const advancedStats = useMemo(() => {
         const now = Date.now();
         const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
@@ -212,8 +249,8 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                     <h2 className="text-xl md:text-3xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2.5 md:gap-3 flex-row-reverse md:flex-row">
                         <div className="relative group">
                             <div className="absolute -inset-2 bg-primary/20 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                            <div className="relative p-1.5 md:p-2 bg-primary/10 dark:bg-primary/20 rounded-xl border border-primary/30 dark:border-primary/40 shadow-[0_0_15px_rgba(204,86,30,0.2)]">
-                                <KnowledgeBaseLogo size={24} className="text-primary dark:text-primary drop-shadow-[0_0_8px_rgba(204,86,30,0.8)] md:w-7 md:h-7" />
+                            <div className="relative p-2 md:p-2.5 bg-primary/10 dark:bg-primary/20 rounded-xl border border-primary/30 dark:border-primary/40 shadow-[0_0_15px_rgba(204,86,30,0.2)]">
+                                <KnowledgeBaseLogo size={28} className="text-primary dark:text-primary drop-shadow-[0_0_8px_rgba(204,86,30,0.8)] md:w-8 md:h-8" />
                             </div>
                         </div>
                         Dashboard
@@ -222,6 +259,8 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
             </div>
 
             <div className="max-w-6xl mx-auto space-y-5 md:space-y-8 relative z-20">
+
+
 
                 {/* 🔸 Level A – Core Assets */}
                 <section className="space-y-2 md:space-y-4">
@@ -260,7 +299,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                 </div>
                                 <div className="w-full text-center mt-auto">
                                     <div className="text-lg md:text-[26px] font-black tracking-tight text-white leading-none">
-                                        {stat.value}
+                                        <CountUp value={stat.value} />
                                     </div>
                                 </div>
                             </motion.div>
@@ -315,6 +354,37 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                         );
                                     })}
                                 </div>
+
+                                {/* 🔹 TODAY'S PICK (Relocated to balance whitespace) 🔹 */}
+                                {todaysPickItem && (
+                                    <div className="mt-auto pt-6 border-t border-slate-200/10 dark:border-white/5 animate-in fade-in duration-500">
+                                        <div className="flex flex-col gap-2">
+                                            <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-[#CC561E] dark:text-[#f3a47b]">
+                                                <Sparkles size={11} /> Today's Pick
+                                            </div>
+                                            <div
+                                                onClick={() => onStatusSelect?.('To Read')}
+                                                className="group cursor-pointer relative overflow-hidden rounded-2xl border border-orange-500/30 bg-orange-500/10 hover:bg-orange-500/20 p-3 md:p-4 transition-all shadow-lg hover:shadow-orange-500/10 flex items-center justify-between"
+                                                title={todaysPickItem.title}
+                                            >
+                                                <div className="absolute top-0 left-0 w-1 h-full bg-orange-500 rounded-l-full" />
+                                                <div className="pl-1.5 flex items-center justify-between w-full gap-3">
+                                                    <div className="flex flex-col gap-0.5 overflow-hidden">
+                                                        <span className="text-xs md:text-sm font-bold text-white truncate group-hover:text-primary transition-colors">
+                                                            {todaysPickItem.title}
+                                                        </span>
+                                                        <span className="text-[9px] md:text-[10px] text-slate-400 font-medium uppercase tracking-wider">
+                                                            Waiting in To-Read
+                                                        </span>
+                                                    </div>
+                                                    <div className="p-1.5 shrink-0 bg-white/10 dark:bg-black/20 rounded-lg border border-white/10 group-hover:scale-110 transition-transform">
+                                                        {todaysPickItem.type === 'ARTICLE' ? <FileText size={12} className="text-white" /> : (todaysPickItem.type === 'WEBSITE' ? <Globe size={12} className="text-white" /> : <Book size={12} className="text-white" />)}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Right Column (Progress & Inventory) */}
@@ -347,18 +417,19 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                     <div className="flex gap-1.5 md:gap-3">
                                         <div onClick={() => onStatusSelect?.('On Shelf')} className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-[#14B8A6]/85 text-center border border-[#14B8A6]/55 cursor-pointer hover:border-[#14B8A6]/70 transition-all font-bold group">
                                             <p className="text-[9px] md:text-[10px] uppercase font-black text-white mb-0.5 md:mb-1">Shelf</p>
-                                            <p className="text-sm md:text-lg font-black text-white">{onShelfCount}</p>
+                                            <p className="text-sm md:text-lg font-black text-white"><CountUp value={onShelfCount} /></p>
                                         </div>
                                         <div onClick={() => onStatusSelect?.('Lent Out')} className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-[#F59E0B]/85 text-center border border-[#F59E0B]/55 cursor-pointer hover:border-[#F59E0B]/70 transition-all font-bold group">
                                             <p className="text-[9px] md:text-[10px] uppercase font-black text-white mb-0.5 md:mb-1">Lent</p>
-                                            <p className="text-sm md:text-lg font-black text-white">{lentCount}</p>
+                                            <p className="text-sm md:text-lg font-black text-white"><CountUp value={lentCount} /></p>
                                         </div>
                                         <div onClick={() => onStatusSelect?.('Lost')} className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-[#F43F5E]/85 text-center border border-[#F43F5E]/55 cursor-pointer hover:border-[#F43F5E]/70 transition-all font-bold group">
                                             <p className="text-[9px] md:text-[10px] uppercase font-black text-white mb-0.5 md:mb-1">Lost</p>
-                                            <p className="text-sm md:text-lg font-black text-white">{lostCount}</p>
+                                            <p className="text-sm md:text-lg font-black text-white"><CountUp value={lostCount} /></p>
                                         </div>
                                     </div>
                                 </div>
+
                             </div>
                         </div>
                     </div>
@@ -396,7 +467,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                             <Activity size={10} className="text-[#FF4D4D]" /> Pulse
                                         </p>
                                         <div className="flex flex-col">
-                                            <p className="text-xl md:text-2xl font-black text-white">+{advancedStats.pulse}</p>
+                                            <p className="text-xl md:text-2xl font-black text-white"><CountUp prefix="+" value={advancedStats.pulse} /></p>
                                             <p className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase">30 Day Activity</p>
                                         </div>
                                     </div>
@@ -407,7 +478,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                             <TrendingUp size={10} className="text-[#F63049]" /> T-Profile
                                         </p>
                                         <div className="flex flex-col">
-                                            <p className="text-xl md:text-2xl font-black text-white">{advancedStats.tScore}</p>
+                                            <p className="text-xl md:text-2xl font-black text-white"><CountUp value={advancedStats.tScore} /></p>
                                             <p className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase">{advancedStats.orphanCount} Orphans</p>
                                         </div>
                                     </div>
@@ -418,7 +489,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                             <Zap size={10} className="text-orange-400" /> Rust Index
                                         </p>
                                         <div className="flex flex-col">
-                                            <p className="text-xl md:text-2xl font-black text-white">{advancedStats.rust}%</p>
+                                            <p className="text-xl md:text-2xl font-black text-white"><CountUp value={advancedStats.rust} suffix="%" /></p>
                                             <p className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase">{advancedStats.activeNodes} Active Nodes</p>
                                         </div>
                                     </div>
@@ -429,7 +500,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                             <Sparkles size={10} className="text-primary" /> Intellect
                                         </p>
                                         <div className="flex flex-col">
-                                            <p className="text-xl md:text-2xl font-black text-white">{advancedStats.ingestRatio}%</p>
+                                            <p className="text-xl md:text-2xl font-black text-white"><CountUp value={advancedStats.ingestRatio} suffix="%" /></p>
                                             <p className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase">{advancedStats.ingestedCount} Ingested</p>
                                         </div>
                                     </div>
@@ -441,10 +512,10 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                             </motion.div>
                         )}
                     </AnimatePresence>
-                </section>
-            </div>
+                </section >
+            </div >
 
-        </div>
+        </div >
     );
 };
 

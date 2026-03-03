@@ -164,13 +164,13 @@ export const FlowCard: React.FC<FlowCardProps> = ({
                                     className={`translation-tab ${activeLang === 'en' ? 'active' : ''}`}
                                     onClick={() => setActiveLang('en')}
                                 >
-                                    🇬🇧 English
+                                    English
                                 </button>
                                 <button
                                     className={`translation-tab ${activeLang === 'nl' ? 'active' : ''}`}
                                     onClick={() => setActiveLang('nl')}
                                 >
-                                    🇳🇱 Nederlands
+                                    Nederlands
                                 </button>
                                 {translation.cached && (
                                     <span className="translation-cached-badge" title="From cache">⚡</span>

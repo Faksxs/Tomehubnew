@@ -311,3 +311,27 @@
   pointer-events: none;
   height: 0;
 }
+
+.personal-note-render .wiki-link-resolved {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.personal-note-render .wiki-link-resolved:hover {
+  color: #b34b1a;
+}
+
+.personal-note-render .wiki-link-ambiguous,
+.personal-note-render .wiki-link-unresolved {
+  cursor: help;
+}
+
+.dark .personal-note-render .wiki-link-ambiguous {
+  color: #fbbf24;
+  border-bottom-color: #f59e0b;
+}
+
+.dark .personal-note-render .wiki-link-unresolved {
+  color: #94a3b8;
+  border-bottom-color: #64748b;
+}

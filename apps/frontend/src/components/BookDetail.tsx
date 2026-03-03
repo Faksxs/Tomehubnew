@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { LibraryItem, PhysicalStatus, ReadingStatus, Highlight } from '../types';
 import { ArrowLeft, Edit2, Trash2, BookOpen, FileText, Globe, StickyNote, Sparkles, Hash, Calendar, Link as LinkIcon, PenTool, CheckCircle, Clock, Library, AlertTriangle, Archive, Upload, Loader2, AlertCircle, FilePlus } from 'lucide-react';
 import { HighlightSection } from './HighlightSection';
@@ -7,7 +7,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { getIngestionStatus, ingestDocument, IngestResponse, IngestionStatusResponse } from '../services/backendApiService';
 import { patchItemForUser } from '../services/oracleLibraryService';
 import { getPersonalNoteCategory } from '../lib/personalNotePolicy';
-import { toPersonalNotePreviewHtml } from '../lib/personalNoteRender';
+import { toPersonalNotePreviewHtml, toPersonalNotePreviewHtmlWithWiki, WikiLinkResolver } from '../lib/personalNoteRender';
+import { BacklinkItem } from '../lib/personalNoteWiki';
 
 interface BookDetailProps {
   book: LibraryItem;
@@ -19,9 +20,13 @@ interface BookDetailProps {
   autoEditHighlightId?: string; // Optional: highlight ID to auto-edit
   onIngestSuccess?: () => void;
   onBookUpdated?: (book: LibraryItem) => void;
+  wikiEnabled?: boolean;
+  resolveWikiLink?: WikiLinkResolver;
+  onNavigateToNote?: (noteId: string) => void;
+  linkedFrom?: BacklinkItem[];
 }
 
-export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack, onEdit, onDelete, onUpdateHighlights, initialTab = 'info', autoEditHighlightId, onIngestSuccess, onBookUpdated }) => {
+export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack, onEdit, onDelete, onUpdateHighlights, initialTab = 'info', autoEditHighlightId, onIngestSuccess, onBookUpdated, wikiEnabled = false, resolveWikiLink, onNavigateToNote, linkedFrom = [] }) => {
   const [activeTab, setActiveTab] = useState<'info' | 'highlights'>(initialTab);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -183,6 +188,27 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
   const pdfFailed = pdfStatus?.status === 'FAILED';
   const pdfDisableUpload = pdfIndexed || pdfProcessing || isIngesting;
   const processingProgress = Math.min(95, Math.max(12, 12 + (pdfPollAttempts * 3)));
+
+  const noteRender = useMemo(() => {
+    if (!isNote) {
+      return { html: "", warnings: [] as Array<{ label: string; state: "ambiguous" | "unresolved"; candidateCount?: number }> };
+    }
+    if (!wikiEnabled || !resolveWikiLink) {
+      return { html: toPersonalNotePreviewHtml(book.generalNotes), warnings: [] as Array<{ label: string; state: "ambiguous" | "unresolved"; candidateCount?: number }> };
+    }
+    return toPersonalNotePreviewHtmlWithWiki(book.generalNotes, resolveWikiLink);
+  }, [book.generalNotes, isNote, resolveWikiLink, wikiEnabled]);
+
+  const handleNoteClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!wikiEnabled || !onNavigateToNote) return;
+    const target = event.target as HTMLElement | null;
+    const link = target?.closest("a[data-note-id]") as HTMLAnchorElement | null;
+    if (!link) return;
+    const noteId = String(link.getAttribute("data-note-id") || "").trim();
+    if (!noteId) return;
+    event.preventDefault();
+    onNavigateToNote(noteId);
+  };
 
   const triggerStatusRefresh = React.useCallback(() => {
     setPdfStatusRefresh((v) => v + 1);
@@ -559,13 +585,43 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                     isNote ? (
                       <div
                         className="personal-note-render text-slate-700 dark:text-slate-300 leading-relaxed text-sm md:text-base max-w-none"
-                        dangerouslySetInnerHTML={{ __html: toPersonalNotePreviewHtml(book.generalNotes) }}
+                        onClick={handleNoteClick}
+                        dangerouslySetInnerHTML={{ __html: noteRender.html }}
                       />
                     ) : (
                       <p className="text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed text-sm md:text-lg">{book.summaryText || book.generalNotes}</p>
                     )
                   ) : (
                     <p className="text-slate-400 dark:text-slate-500 italic text-sm">No content added.</p>
+                  )}
+                  {isNote && noteRender.warnings.length > 0 && (
+                    <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/70 dark:border-amber-900/50 dark:bg-amber-950/30 p-2.5">
+                      <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 mb-1">Wiki link warnings</p>
+                      <ul className="text-xs text-amber-700 dark:text-amber-200 space-y-1 list-disc pl-4">
+                        {noteRender.warnings.slice(0, 6).map((warning, index) => (
+                          <li key={`${warning.label}-${index}`}>
+                            {warning.label} - {warning.state === 'ambiguous' ? `birden fazla eslesme (${warning.candidateCount || 0})` : 'eslesme yok'}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {isNote && linkedFrom.length > 0 && (
+                    <div className="mt-3 rounded-lg border border-[#E6EAF2] dark:border-slate-700 bg-white/80 dark:bg-slate-900/40 p-2.5">
+                      <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Linked from</p>
+                      <div className="flex flex-wrap gap-2">
+                        {linkedFrom.slice(0, 12).map((item) => (
+                          <button
+                            key={item.sourceId}
+                            type="button"
+                            onClick={() => onNavigateToNote?.(item.sourceId)}
+                            className="text-xs px-2 py-1 rounded border border-[#E6EAF2] dark:border-slate-700 hover:border-[#CC561E]/40 hover:text-[#CC561E] transition-colors"
+                          >
+                            {item.sourceTitle}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   )}
                   {enrichError && (
                     <p className="text-xs text-red-600 dark:text-red-400 mt-2 flex items-center gap-1">

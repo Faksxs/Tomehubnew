@@ -1,0 +1,10 @@
+﻿tomehub_llm_calls_total{model_tier="flash",status="success",task="translate_chunk"} 8.0
+tomehub_llm_calls_created{model_tier="flash",status="success",task="translate_chunk"} 1.7724937301885076e+09
+tomehub_llm_provider_calls_total{provider="qwen",status="success",task="translate_chunk"} 8.0
+tomehub_llm_provider_calls_created{provider="qwen",status="success",task="translate_chunk"} 1.7724937301885228e+09
+tomehub_llm_tokens_total{direction="prompt",model_tier="flash",task="translate_chunk"} 2443.0
+tomehub_llm_tokens_total{direction="output",model_tier="flash",task="translate_chunk"} 1298.0
+tomehub_llm_tokens_total{direction="total",model_tier="flash",task="translate_chunk"} 3741.0
+tomehub_llm_tokens_created{direction="prompt",model_tier="flash",task="translate_chunk"} 1.7724937301885374e+09
+tomehub_llm_tokens_created{direction="output",model_tier="flash",task="translate_chunk"} 1.7724937301885457e+09
+tomehub_llm_tokens_created{direction="total",model_tier="flash",task="translate_chunk"} 1.772493730188554e+09

@@ -252,6 +252,11 @@ class Settings:
             uid.strip() for uid in os.getenv("SEARCH_SCOPE_POLICY_CANARY_UIDS", "").split(",") if uid.strip()
         }
 
+        # Personal note wiki-link cleanup (temporary rollout toggle).
+        self.PERSONAL_NOTE_WIKI_TOKEN_CLEANUP_ENABLED = (
+            os.getenv("PERSONAL_NOTE_WIKI_TOKEN_CLEANUP_ENABLED", "false").strip().lower() == "true"
+        )
+
         # Compare policy rollout controls (non-breaking, canary-first).
         self.SEARCH_COMPARE_POLICY_ENABLED = (
             os.getenv("SEARCH_COMPARE_POLICY_ENABLED", "false").strip().lower() == "true"
