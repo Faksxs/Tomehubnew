@@ -8,7 +8,7 @@ import { ingestDocument, extractMetadata } from '../services/backendApiService';
 import { PersonalNoteEditor } from './PersonalNoteEditor';
 import { extractPersonalNoteText, hasMeaningfulPersonalNoteContent } from '../lib/personalNoteRender';
 import { PERSONAL_NOTE_TEMPLATES, findPersonalNoteTemplate } from '../lib/personalNoteTemplates';
-import { canonicalizeWikiLinks, createWikiResolver, NoteLinkTarget } from '../lib/personalNoteWiki';
+
 
 interface BookFormProps {
   initialData?: LibraryItem;
@@ -18,13 +18,11 @@ interface BookFormProps {
     personalFolderId?: string;
     folderPath?: string;
   };
-  noteLinkTargets?: NoteLinkTarget[];
-  wikiTemplatesEnabled?: boolean;
   onSave: (item: Omit<LibraryItem, 'highlights'>) => void;
   onCancel: () => void;
 }
 
-export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, noteDefaults, noteLinkTargets = [], wikiTemplatesEnabled = false, onSave, onCancel }) => {
+export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, noteDefaults, onSave, onCancel }) => {
   // 'search' mode is for finding the item first. 'edit' mode is the actual form.
   // Websites and Personal Notes default directly to 'edit'.
   const [mode, setMode] = useState<'search' | 'edit'>(
@@ -267,7 +265,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
   };
 
   const applyTemplateById = (templateId: string) => {
-    if (!isNote || !wikiTemplatesEnabled || !templateId) return;
+    if (!isNote || !templateId) return;
     const template = findPersonalNoteTemplate(templateId);
     if (!template) return;
 
@@ -292,17 +290,8 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
     });
   };
 
-  const insertLinkedNoteTokenById = (noteId: string) => {
-    if (!isNote || !wikiTemplatesEnabled || !noteId) return;
-    const selected = noteLinkTargets.find((note) => note.id === noteId);
-    if (!selected) return;
-    const token = `[[${selected.title}|${selected.id}]]`;
-    setFormData(prev => ({
-      ...prev,
-      generalNotes: prev.generalNotes.trim()
-        ? `${prev.generalNotes}<p>${token}</p>`
-        : `<p>${token}</p>`,
-    }));
+  const insertLinkedNoteTokenById = (_noteId: string) => {
+    // wiki link feature removed
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -344,7 +333,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
   const noteLabelClass = isNote ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300';
   const noteSubLabelClass = isNote ? 'text-slate-800 dark:text-slate-200' : 'text-slate-700 dark:text-slate-300';
   const noteHelperClass = isNote ? 'text-slate-700 dark:text-slate-400' : 'text-slate-500 dark:text-slate-400';
-  const availableLinkTargets = noteLinkTargets.filter((note) => note.id !== (initialData?.id || ''));
+
 
   const normalizeForSearch = (value: string): string =>
     String(value || '')
@@ -352,6 +341,12 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .trim();
+
+  const resolveSlashCommand = (token: string): 'template' | null => {
+    const raw = token.toLocaleLowerCase('tr-TR');
+    if (raw === '/task' || raw === '/template') return 'template';
+    return null;
+  };
 
   const findTemplateByQuery = (query?: string) => {
     const normalizedQuery = normalizeForSearch(query || '');
@@ -371,21 +366,10 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
     return null;
   };
 
-  const findLinkedNoteByQuery = (query?: string) => {
-    const normalizedQuery = normalizeForSearch(query || '');
-    if (!normalizedQuery) return null;
-    const exactMatches = availableLinkTargets.filter((target) => normalizeForSearch(target.title) === normalizedQuery);
-    if (exactMatches.length === 1) return exactMatches[0];
-    if (exactMatches.length > 1) return null;
-    const partialMatches = availableLinkTargets.filter((target) =>
-      normalizeForSearch(target.title).includes(normalizedQuery)
-    );
-    if (partialMatches.length === 1) return partialMatches[0];
-    return null;
-  };
+
 
   const handleSlashCommand = ({ command, query, selectedId }: { command: 'template' | 'link'; query?: string; selectedId?: string }) => {
-    if (!isNote || !wikiTemplatesEnabled) return;
+    if (!isNote) return;
     if (command === 'template') {
       if (selectedId) {
         applyTemplateById(selectedId);
@@ -396,21 +380,9 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
         applyTemplateById(templateFromQuery.id);
         return;
       }
-      window.alert('Taslak eklemek icin /taslak <taslak-adi> yaz. Ornek: /taslak alisveris');
+      window.alert('Şablon eklemek için /task <şablon-adı> yaz. Örnek: /task kitap');
       return;
     }
-
-    if (selectedId) {
-      insertLinkedNoteTokenById(selectedId);
-      return;
-    }
-
-    const linkedNoteFromQuery = findLinkedNoteByQuery(query);
-    if (linkedNoteFromQuery) {
-      insertLinkedNoteTokenById(linkedNoteFromQuery.id);
-      return;
-    }
-    window.alert('Link eklemek icin /link <not-basligi> yaz. Ornek: /link toplanti');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -438,20 +410,6 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
     // Parse addedAt date from input, or fallback to now
     const addedAtTimestamp = formData.addedAt ? new Date(formData.addedAt).getTime() : Date.now();
     let preparedGeneralNotes = formData.generalNotes;
-
-    if (isNote && wikiTemplatesEnabled && preparedGeneralNotes.includes('[[') && noteLinkTargets.length > 0) {
-      const resolver = createWikiResolver(noteLinkTargets.filter((note) => note.id !== newBookId));
-      const canonicalized = canonicalizeWikiLinks(preparedGeneralNotes, resolver);
-      if (canonicalized.convertedCount > 0) {
-        const confirmMessage = [
-          `${canonicalized.convertedCount} wiki link canonical formata cevrilecek.`,
-          'Onayliyor musun?',
-        ].join('\n');
-        if (window.confirm(confirmMessage)) {
-          preparedGeneralNotes = canonicalized.content;
-        }
-      }
-    }
 
     onSave({
       id: newBookId, // Pass the ID we used for ingestion
@@ -959,13 +917,12 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                   value={formData.generalNotes}
                   onChange={(next) => setFormData(prev => ({ ...prev, generalNotes: next }))}
                   minHeight={420}
-                  onSlashCommand={wikiTemplatesEnabled ? handleSlashCommand : undefined}
-                  slashTemplateItems={wikiTemplatesEnabled ? PERSONAL_NOTE_TEMPLATES.map((template) => ({ id: template.id, label: template.name })) : undefined}
-                  slashLinkItems={wikiTemplatesEnabled ? availableLinkTargets.map((target) => ({ id: target.id, label: target.title })) : undefined}
+                  onSlashCommand={handleSlashCommand}
+                  slashTemplateItems={PERSONAL_NOTE_TEMPLATES.map((template) => ({ id: template.id, label: template.name }))}
                 />
                 <p className={`mt-1 text-[10px] ${noteHelperClass}`}>
                   Toolbar supports heading, bold, underline, bullet list, numbered list and checklist.
-                  {wikiTemplatesEnabled ? ' Wiki link token formati: [[Not Basligi|note_id]]. Slash: /taslak <ad> ve /link <not basligi>.' : ''}
+                  Hızlı şablon için: /task &lt;şablon-adı&gt; (örn: /task kitap)
                 </p>
               </div>
             )}

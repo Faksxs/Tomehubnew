@@ -1,5 +1,3 @@
-import { parseWikiTokens, ResolvedWikiToken } from './personalNoteWiki';
-
 const HTML_TAG_RE = /<\/?[a-z][\s\S]*>/i;
 
 const looksLikeHtml = (raw: string): boolean => HTML_TAG_RE.test(raw);
@@ -11,13 +9,6 @@ const escapeHtml = (text: string): string =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
-
-const escapeAttr = (text: string): string =>
-  String(text || '')
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
 
 const applyInlineFormatting = (text: string): string => {
   return text
@@ -78,7 +69,7 @@ export const extractPersonalNoteText = (raw: string): string => {
 
   return raw
     .replace(/^#{1,6}\s+/gm, '')
-    .replace(/^\s*-\s\[(?: |x|X)\]\s+/gm, '')
+    .replace(/^\s*-\s\[( |x|X)\]\s+/gm, '')
     .replace(/^\s*[-*+]\s+/gm, '')
     .replace(/^\s*\d+\.\s+/gm, '')
     .replace(/^\s*>\s?/gm, '')
@@ -178,90 +169,4 @@ export const toPersonalNotePreviewHtml = (raw: string): string => {
 
   closeList();
   return html;
-};
-
-export type WikiLinkResolver = (label: string, noteId?: string) => ResolvedWikiToken;
-
-export interface WikiRenderWarning {
-  label: string;
-  state: 'ambiguous' | 'unresolved';
-  candidateCount?: number;
-}
-
-export const toPersonalNotePreviewHtmlWithWiki = (
-  raw: string,
-  resolver?: WikiLinkResolver
-): { html: string; warnings: WikiRenderWarning[] } => {
-  const baseHtml = toPersonalNotePreviewHtml(raw);
-  if (!resolver || !baseHtml.includes('[[')) {
-    return { html: baseHtml, warnings: [] };
-  }
-  if (typeof window === 'undefined') {
-    return { html: baseHtml, warnings: [] };
-  }
-
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(baseHtml, 'text/html');
-  const warnings: WikiRenderWarning[] = [];
-  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
-  const nodes: Text[] = [];
-  let current = walker.nextNode();
-  while (current) {
-    nodes.push(current as Text);
-    current = walker.nextNode();
-  }
-
-  for (const textNode of nodes) {
-    const value = textNode.nodeValue || '';
-    if (!value.includes('[[')) continue;
-    const tokens = parseWikiTokens(value);
-    if (tokens.length === 0) continue;
-
-    const fragments: string[] = [];
-    let cursor = 0;
-    for (const token of tokens) {
-      const plain = value.slice(cursor, token.start);
-      if (plain) {
-        fragments.push(escapeHtml(plain));
-      }
-
-      const resolved = resolver(token.label, token.noteId);
-      if (resolved.state === 'resolved' && resolved.noteId) {
-        const label = escapeHtml(token.label);
-        const noteId = escapeAttr(resolved.noteId);
-        fragments.push(
-          `<a href="#" data-note-id="${noteId}" class="wiki-link-resolved text-[#CC561E] underline decoration-dotted">${label}</a>`
-        );
-      } else if (resolved.state === 'ambiguous') {
-        warnings.push({
-          label: token.label,
-          state: 'ambiguous',
-          candidateCount: resolved.candidates?.length || 0,
-        });
-        fragments.push(
-          `<span class="wiki-link-ambiguous border-b border-dashed border-amber-400 text-amber-600" title="Ayni baslikta birden fazla not var.">${escapeHtml(token.label)}</span>`
-        );
-      } else {
-        warnings.push({
-          label: token.label,
-          state: 'unresolved',
-        });
-        fragments.push(
-          `<span class="wiki-link-unresolved border-b border-dashed border-slate-400 text-slate-500" title="Link cozulemedi.">${escapeHtml(token.label)}</span>`
-        );
-      }
-      cursor = token.end;
-    }
-
-    const tail = value.slice(cursor);
-    if (tail) {
-      fragments.push(escapeHtml(tail));
-    }
-
-    const span = doc.createElement('span');
-    span.innerHTML = fragments.join('');
-    textNode.parentNode?.replaceChild(span, textNode);
-  }
-
-  return { html: doc.body.innerHTML, warnings };
 };

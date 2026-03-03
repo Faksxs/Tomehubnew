@@ -47,7 +47,7 @@ import { CATEGORIES, MIN_CATEGORY_BOOKS_VISIBLE } from "./components/CategorySel
 import { prewarmFlowStartSession } from "./services/flowService";
 import { addTextItem, syncHighlights, syncPersonalNote, purgeResourceContent, pollRealtimeEvents } from "./services/backendApiService";
 import { getPersonalNoteBackendType, getPersonalNoteCategory, isPersonalNote } from "./lib/personalNotePolicy";
-import { buildBacklinks, buildNoteLinkTargets, createWikiResolver } from "./lib/personalNoteWiki";
+
 
 // ----------------- LAYOUT (ANA UYGULAMA) -----------------
 
@@ -98,19 +98,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   const pendingContentSyncRef = useRef<Map<string, PendingContentSyncEntry>>(new Map());
   const mutationInFlightCountRef = useRef(0);
   const realtimePollingEnabled = import.meta.env.VITE_REALTIME_POLLING !== "false";
-  const personalNotesWikiTemplatesEnabled = import.meta.env.VITE_PERSONAL_NOTE_WIKI_TEMPLATES === "true";
-  const personalNoteLinkTargets = useMemo(
-    () => personalNotesWikiTemplatesEnabled ? buildNoteLinkTargets(books) : [],
-    [books, personalNotesWikiTemplatesEnabled]
-  );
-  const wikiResolver = useMemo(
-    () => personalNotesWikiTemplatesEnabled ? createWikiResolver(personalNoteLinkTargets) : null,
-    [personalNoteLinkTargets, personalNotesWikiTemplatesEnabled]
-  );
-  const personalNoteBacklinks = useMemo(
-    () => (personalNotesWikiTemplatesEnabled && wikiResolver) ? buildBacklinks(books, wikiResolver) : new Map(),
-    [books, personalNotesWikiTemplatesEnabled, wikiResolver]
-  );
+
   const flowVisibleCategories = useMemo(() => {
     const normalizeTextKey = (value: string) => value.trim().toLocaleLowerCase('tr-TR');
     const categoryLookup = new Map<string, string>(
@@ -1052,10 +1040,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
 
   const selectedBookRaw = books.find((b) => b.id === selectedBookId);
   const selectedBook = selectedBookRaw || undefined;
-  const selectedBookLinkedFrom = useMemo(
-    () => (selectedBook ? (personalNoteBacklinks.get(selectedBook.id) || []) : []),
-    [personalNoteBacklinks, selectedBook]
-  );
+
 
   const editingBook = books.find((b) => b.id === editingBookId);
 
@@ -1528,10 +1513,6 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
               onDelete={() => handleDeleteBook(selectedBook.id)}
               onUpdateHighlights={handleUpdateHighlights}
               onBookUpdated={handleUpdateBookForEnrichment}
-              wikiEnabled={personalNotesWikiTemplatesEnabled}
-              resolveWikiLink={wikiResolver || undefined}
-              linkedFrom={selectedBookLinkedFrom}
-              onNavigateToNote={handleNavigateToLinkedNote}
             />
           )
         )}
@@ -1550,8 +1531,6 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
           noteDefaults={!editingBook && (activeTab === "PERSONAL_NOTE")
             ? personalNoteDraftDefaults
             : undefined}
-          noteLinkTargets={personalNoteLinkTargets}
-          wikiTemplatesEnabled={personalNotesWikiTemplatesEnabled}
           onSave={editingBookId ? handleUpdateBook : handleAddBook}
           onCancel={() => {
             setIsFormOpen(false);

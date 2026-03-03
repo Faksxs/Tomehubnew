@@ -364,10 +364,10 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                             </div>
                                             <div
                                                 onClick={() => onStatusSelect?.('To Read')}
-                                                className="group cursor-pointer relative overflow-hidden rounded-2xl border border-orange-500/30 bg-orange-500/10 hover:bg-orange-500/20 p-3 md:p-4 transition-all shadow-lg hover:shadow-orange-500/10 flex items-center justify-between"
+                                                className="group cursor-pointer relative overflow-hidden rounded-2xl border border-white/20 bg-transparent hover:bg-white/5 p-3 md:p-4 transition-all flex items-center justify-between"
                                                 title={todaysPickItem.title}
                                             >
-                                                <div className="absolute top-0 left-0 w-1 h-full bg-orange-500 rounded-l-full" />
+                                                <div className="absolute top-0 left-0 w-1 h-full bg-orange-500/80 rounded-l-full" />
                                                 <div className="pl-1.5 flex items-center justify-between w-full gap-3">
                                                     <div className="flex flex-col gap-0.5 overflow-hidden">
                                                         <span className="text-xs md:text-sm font-bold text-white truncate group-hover:text-primary transition-colors">

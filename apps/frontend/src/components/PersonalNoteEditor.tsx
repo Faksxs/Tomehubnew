@@ -14,7 +14,7 @@ import TableHeader from '@tiptap/extension-table-header';
 import TableCell from '@tiptap/extension-table-cell';
 import { toPersonalNotePreviewHtml } from '../lib/personalNoteRender';
 
-type SlashCommandType = 'template' | 'link';
+type SlashCommandType = 'template';
 
 interface SlashItem {
   id: string;
@@ -29,7 +29,6 @@ interface PersonalNoteEditorProps {
   minHeight?: number;
   onSlashCommand?: (payload: { command: SlashCommandType; query?: string; selectedId?: string }) => void;
   slashTemplateItems?: SlashItem[];
-  slashLinkItems?: SlashItem[];
   maxSlashSuggestions?: number;
 }
 
@@ -84,11 +83,10 @@ export const PersonalNoteEditor: React.FC<PersonalNoteEditorProps> = ({
   value,
   onChange,
   autoFocus = false,
-  placeholder = "Start writing... Use toolbar for lists, checklist, headings, and emphasis.",
+  placeholder = "Start writing... Use /task to insert a template.",
   minHeight = 220,
   onSlashCommand,
   slashTemplateItems = [],
-  slashLinkItems = [],
   maxSlashSuggestions = 8,
 }) => {
   const normalizeForSearch = (input: string): string =>
@@ -99,8 +97,7 @@ export const PersonalNoteEditor: React.FC<PersonalNoteEditorProps> = ({
       .trim();
   const resolveSlashCommand = (token: string): SlashCommandType | null => {
     const raw = token.toLocaleLowerCase('tr-TR');
-    if (raw === '/taslak' || raw === '/template') return 'template';
-    if (raw === '/link' || raw === '/baglanti') return 'link';
+    if (raw === '/task' || raw === '/template') return 'template';
     return null;
   };
   const [selectedColor, setSelectedColor] = useState('#0f172a');
@@ -115,9 +112,8 @@ export const PersonalNoteEditor: React.FC<PersonalNoteEditorProps> = ({
   const slashMenuRef = useRef<typeof slashMenu>(null);
   const onSlashCommandRef = useRef(onSlashCommand);
   const slashTemplateItemsRef = useRef(slashTemplateItems);
-  const slashLinkItemsRef = useRef(slashLinkItems);
   const maxSlashSuggestionsRef = useRef(maxSlashSuggestions);
-  const updateSlashMenuFromEditorRef = useRef<(currentEditor: any) => void>(() => {});
+  const updateSlashMenuFromEditorRef = useRef<(currentEditor: any) => void>(() => { });
   const editorHeightStyle = { ['--note-editor-min-height' as string]: `${minHeight}px` } as React.CSSProperties;
 
   useEffect(() => {
@@ -131,10 +127,6 @@ export const PersonalNoteEditor: React.FC<PersonalNoteEditorProps> = ({
   useEffect(() => {
     slashTemplateItemsRef.current = slashTemplateItems;
   }, [slashTemplateItems]);
-
-  useEffect(() => {
-    slashLinkItemsRef.current = slashLinkItems;
-  }, [slashLinkItems]);
 
   useEffect(() => {
     maxSlashSuggestionsRef.current = maxSlashSuggestions;
@@ -168,7 +160,7 @@ export const PersonalNoteEditor: React.FC<PersonalNoteEditorProps> = ({
     }
 
     const query = (match[2] || '').trim();
-    const sourceItems = command === 'template' ? slashTemplateItemsRef.current : slashLinkItemsRef.current;
+    const sourceItems = slashTemplateItemsRef.current;
     const normalizedQuery = normalizeForSearch(query);
     const filtered = sourceItems.filter((item) => {
       if (!normalizedQuery) return true;
@@ -355,7 +347,7 @@ export const PersonalNoteEditor: React.FC<PersonalNoteEditorProps> = ({
         {slashMenu && (
           <div className="absolute left-3 top-3 z-20 w-[min(420px,calc(100%-1.5rem))] rounded-lg border border-[#E6EAF2] dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl">
             <div className="px-3 py-2 border-b border-[#E6EAF2] dark:border-slate-700 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-              {slashMenu.command === 'template' ? 'Taslak Sec' : 'Not Linki Sec'} {slashMenu.query ? `- "${slashMenu.query}"` : ''}
+              Şablon Seç {slashMenu.query ? `— "${slashMenu.query}"` : ''}
             </div>
             {slashMenu.items.length === 0 ? (
               <div className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400">
@@ -380,11 +372,10 @@ export const PersonalNoteEditor: React.FC<PersonalNoteEditorProps> = ({
                       setSlashMenu(null);
                       editor.commands.focus();
                     }}
-                    className={`w-full text-left px-3 py-2 text-sm ${
-                      index === slashMenu.selectedIndex
-                        ? 'bg-[#CC561E]/10 text-[#CC561E]'
-                        : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
-                    }`}
+                    className={`w-full text-left px-3 py-2 text-sm ${index === slashMenu.selectedIndex
+                      ? 'bg-[#CC561E]/10 text-[#CC561E]'
+                      : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      }`}
                   >
                     {item.label}
                   </button>

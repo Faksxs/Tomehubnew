@@ -11,76 +11,68 @@ export interface PersonalNoteTemplate {
 
 export const PERSONAL_NOTE_TEMPLATES: PersonalNoteTemplate[] = [
   {
-    id: "shopping_list",
-    name: "Alisveris Listesi",
-    suggestedTitle: "Alisveris Listesi",
+    id: "daily_plan",
+    name: "Günlük Plan",
+    suggestedTitle: "Günlük Plan",
     defaultCategory: "DAILY",
-    defaultTags: ["alisveris", "ev", "plan"],
-    htmlContent:
-      "<h2>Alinacaklar</h2><ul data-type=\"taskList\"><li data-checked=\"false\"><label><input type=\"checkbox\"></label><div><p>Market</p></div></li><li data-checked=\"false\"><label><input type=\"checkbox\"></label><div><p>Mutfak</p></div></li></ul><h2>Notlar</h2><p></p>",
-  },
-  {
-    id: "word_translation",
-    name: "Kelime-Anlam-Ceviri",
-    suggestedTitle: "Kelime Notu",
-    defaultCategory: "IDEAS",
-    defaultTags: ["kelime", "ceviri", "dil"],
-    htmlContent:
-      "<h2>Kelime</h2><p></p><h2>Anlam</h2><p></p><h2>Ornek Cumle</h2><p></p><h2>Ceviri</h2><p></p>",
-  },
-  {
-    id: "movie_note",
-    name: "Film Notu",
-    suggestedTitle: "Film Notu",
-    defaultCategory: "IDEAS",
-    defaultTags: ["film", "inceleme", "izleme"],
-    htmlContent:
-      "<h2>Film Bilgisi</h2><ul><li>Ad:</li><li>Yonetmen:</li><li>Tur:</li></ul><h2>Ozet</h2><p></p><h2>Degerlendirme</h2><ul><li>Artılar:</li><li>Eksiler:</li></ul><h2>Puan</h2><p>/10</p>",
-  },
-  {
-    id: "series_tracker",
-    name: "Dizi Takip",
-    suggestedTitle: "Dizi Takip Notu",
-    defaultCategory: "DAILY",
-    defaultTags: ["dizi", "takip", "izleme"],
-    htmlContent:
-      "<h2>Genel Bilgi</h2><ul><li>Dizi:</li><li>Sezon:</li><li>Bolum:</li></ul><h2>Takip Listesi</h2><ul data-type=\"taskList\"><li data-checked=\"false\"><label><input type=\"checkbox\"></label><div><p>Yeni bolumu izle</p></div></li><li data-checked=\"false\"><label><input type=\"checkbox\"></label><div><p>Kisa not al</p></div></li></ul>",
+    defaultTags: ["günlük", "plan", "öncelik"],
+    htmlContent: `<h2>🎯 Bugünün 3 Önceliği</h2><ol><li><p></p></li><li><p></p></li><li><p></p></li></ol><h2>✅ Yapılacaklar</h2><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p>Sabah</p></div></li><li data-checked="false"><label><input type="checkbox"></label><div><p>Öğle</p></div></li><li data-checked="false"><label><input type="checkbox"></label><div><p>Akşam</p></div></li></ul><h2>💭 Günün Notu</h2><p></p>`,
   },
   {
     id: "book_note",
     name: "Kitap Notu",
     suggestedTitle: "Kitap Notu",
     defaultCategory: "IDEAS",
-    defaultTags: ["kitap", "okuma", "ozet"],
-    htmlContent:
-      "<h2>Kitap Bilgisi</h2><ul><li>Baslik:</li><li>Yazar:</li></ul><h2>Ana Fikir</h2><p></p><h2>Alintilar</h2><ul><li></li></ul><h2>Uygulanabilir Notlar</h2><ul data-type=\"taskList\"><li data-checked=\"false\"><label><input type=\"checkbox\"></label><div><p>Bir aksiyon yaz</p></div></li></ul>",
+    defaultTags: ["kitap", "okuma", "özet"],
+    htmlContent: `<h2>📖 Kitap Bilgisi</h2><ul><li>Başlık: </li><li>Yazar: </li><li>Tür: </li></ul><h2>🔑 Ana Fikir</h2><p></p><h2>💡 Önemli Alıntılar</h2><ul><li><p></p></li><li><p></p></li></ul><h2>🚀 Uygulanabilir Çıkarımlar</h2><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li></ul><h2>⭐ Puan</h2><p> / 10</p>`,
   },
   {
     id: "article_note",
-    name: "Makale Ozeti",
-    suggestedTitle: "Makale Ozeti",
+    name: "Makale Özeti",
+    suggestedTitle: "Makale Özeti",
     defaultCategory: "IDEAS",
-    defaultTags: ["makale", "arastirma", "ozet"],
-    htmlContent:
-      "<h2>Kaynak</h2><p>Baslik / Yazar / Link</p><h2>Temel Arguman</h2><p></p><h2>Kritik Bulgular</h2><ol><li></li></ol><h2>Sende Uyandirdigi Sorular</h2><ul><li></li></ul>",
+    defaultTags: ["makale", "araştırma", "özet"],
+    htmlContent: `<h2>📄 Kaynak</h2><p>Başlık: </p><p>Yazar / Tarih: </p><p>Link: </p><h2>🎯 Temel Argüman</h2><p></p><h2>📊 Kritik Bulgular</h2><ol><li><p></p></li><li><p></p></li><li><p></p></li></ol><h2>❓ Aklıma Düşen Sorular</h2><ul><li><p></p></li></ul><h2>🔗 Bağlantılı Fikirler</h2><p></p>`,
   },
   {
     id: "meeting_note",
-    name: "Toplanti Notu",
-    suggestedTitle: "Toplanti Notu",
+    name: "Toplantı Notu",
+    suggestedTitle: "Toplantı Notu",
     defaultCategory: "DAILY",
-    defaultTags: ["toplanti", "aksiyon", "is"],
-    htmlContent:
-      "<h2>Toplanti Bilgisi</h2><ul><li>Tarih:</li><li>Katilimcilar:</li></ul><h2>Kararlar</h2><ul><li></li></ul><h2>Aksiyonlar</h2><ul data-type=\"taskList\"><li data-checked=\"false\"><label><input type=\"checkbox\"></label><div><p>Aksiyon sahibi - tarih</p></div></li></ul>",
+    defaultTags: ["toplantı", "aksiyon", "iş"],
+    htmlContent: `<h2>📅 Toplantı Bilgisi</h2><ul><li>Tarih: </li><li>Katılımcılar: </li><li>Konu: </li></ul><h2>📝 Notlar</h2><p></p><h2>✅ Kararlar ve Aksiyonlar</h2><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p> — sorumlu: , tarih: </p></div></li></ul><h2>📌 Sonraki Adım</h2><p></p>`,
   },
   {
-    id: "daily_plan",
-    name: "Gunluk Plan",
-    suggestedTitle: "Gunluk Plan",
+    id: "idea_capture",
+    name: "Fikir Kaydı",
+    suggestedTitle: "Fikir",
+    defaultCategory: "IDEAS",
+    defaultTags: ["fikir", "brainstorm", "proje"],
+    htmlContent: `<h2>💡 Fikir</h2><p></p><h2>🤔 Neden Önemli?</h2><p></p><h2>🛠️ Nasıl Hayata Geçirilebilir?</h2><ol><li><p></p></li><li><p></p></li></ol><h2>⚡ Hızlı Aksiyon</h2><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li></ul>`,
+  },
+  {
+    id: "word_translation",
+    name: "Kelime Notu",
+    suggestedTitle: "Kelime Notu",
+    defaultCategory: "IDEAS",
+    defaultTags: ["kelime", "çeviri", "dil"],
+    htmlContent: `<h2>📝 Kelime</h2><p></p><h2>🌍 Dil / Kaynak</h2><p></p><h2>📖 Anlam</h2><p></p><h2>📌 Örnek Cümle</h2><ul><li><p></p></li><li><p></p></li></ul><h2>🔗 İlişkili Kelimeler</h2><p></p>`,
+  },
+  {
+    id: "movie_note",
+    name: "Film / Dizi Notu",
+    suggestedTitle: "Film Notu",
+    defaultCategory: "IDEAS",
+    defaultTags: ["film", "dizi", "inceleme"],
+    htmlContent: `<h2>🎬 Bilgi</h2><ul><li>Ad: </li><li>Yönetmen / Yapımcı: </li><li>Tür: </li><li>Yıl: </li></ul><h2>📖 Özet (spoilersız)</h2><p></p><h2>💬 En Beğendiğim Sahne / Diyalog</h2><p></p><h2>🌟 Değerlendirme</h2><ul><li>Artılar: </li><li>Eksiler: </li><li>Puan: /10</li></ul>`,
+  },
+  {
+    id: "shopping_list",
+    name: "Alışveriş Listesi",
+    suggestedTitle: "Alışveriş",
     defaultCategory: "DAILY",
-    defaultTags: ["gunluk", "plan", "oncelik"],
-    htmlContent:
-      "<h2>Oncelikler</h2><ol><li></li></ol><h2>Yapilacaklar</h2><ul data-type=\"taskList\"><li data-checked=\"false\"><label><input type=\"checkbox\"></label><div><p>Sabah</p></div></li><li data-checked=\"false\"><label><input type=\"checkbox\"></label><div><p>Ogle</p></div></li><li data-checked=\"false\"><label><input type=\"checkbox\"></label><div><p>Aksam</p></div></li></ul><h2>Kisa Not</h2><p></p>",
+    defaultTags: ["alışveriş", "liste", "ev"],
+    htmlContent: `<h2>🛒 Market</h2><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li></ul><h2>🏠 Ev / Diğer</h2><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li></ul><h2>📌 Notlar</h2><p></p>`,
   },
 ];
 
