@@ -46,7 +46,7 @@
       "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "sum(rate(tomehub_llm_calls_total{model_tier!=\"embedding\"}[5m]) * 3600) or vector(0)"
+          "expr": "sum(sum_over_time(increase(tomehub_llm_calls_total{model_tier!=\"embedding\"}[1m])[1h:1m])) or vector(0)"
         }
       ],
       "fieldConfig": {
@@ -83,7 +83,7 @@
       "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "sum(rate(tomehub_llm_calls_total{model_tier=\"embedding\"}[5m]) * 3600) or vector(0)"
+          "expr": "sum(sum_over_time(increase(tomehub_llm_calls_total{model_tier=\"embedding\"}[1m])[1h:1m])) or vector(0)"
         }
       ],
       "fieldConfig": {
@@ -160,7 +160,7 @@
       "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "sum by (provider) (rate(tomehub_llm_provider_calls_total{provider=~\"$provider\",status=\"success\"}[5m]) * 3600)"
+          "expr": "sum by (provider) (sum_over_time(increase(tomehub_llm_provider_calls_total{provider=~\"$provider\",status=\"success\"}[1m])[1h:1m]))"
         }
       ],
       "options": {
@@ -188,7 +188,7 @@
       "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "sum by (from_provider, to_provider, reason) (rate(tomehub_llm_fallback_total[5m]) * 3600) or vector(0)"
+          "expr": "sum by (from_provider, to_provider, reason) (sum_over_time(increase(tomehub_llm_fallback_total[1m])[1h:1m])) or vector(0)"
         }
       ],
       "options": {
@@ -253,7 +253,7 @@
       "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "sum by (task, direction) (rate(tomehub_llm_tokens_total{task=~\"$task\",model_tier=~\"$model_tier\"}[5m]) * 3600)"
+          "expr": "sum by (task, direction) (sum_over_time(increase(tomehub_llm_tokens_total{task=~\"$task\",model_tier=~\"$model_tier\"}[1m])[1h:1m]))"
         }
       ],
       "options": {
@@ -274,7 +274,7 @@
       "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "sum(rate(tomehub_llm_tokens_total{direction=\"total\",task=~\"$task\",model_tier=~\"$model_tier\",model_tier!=\"embedding\"}[5m]) * 3600) / clamp_min(sum(rate(tomehub_llm_calls_total{status=\"success\",task=~\"$task\",model_tier!=\"embedding\"}[5m]) * 3600), 1)"
+          "expr": "sum(sum_over_time(increase(tomehub_llm_tokens_total{direction=\"total\",task=~\"$task\",model_tier=~\"$model_tier\",model_tier!=\"embedding\"}[1m])[1h:1m])) / clamp_min(sum(sum_over_time(increase(tomehub_llm_calls_total{status=\"success\",task=~\"$task\",model_tier!=\"embedding\"}[1m])[1h:1m])), 1)"
         }
       ],
       "fieldConfig": {
@@ -436,7 +436,7 @@
       "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "sum by (fusion_mode) (rate(tomehub_search_fusion_mode_total[5m]) * 3600) or vector(0)"
+          "expr": "sum by (fusion_mode) (sum_over_time(increase(tomehub_search_fusion_mode_total[1m])[1h:1m])) or vector(0)"
         }
       ],
       "options": {
