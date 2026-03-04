@@ -114,15 +114,28 @@ const reconcileItemsWithPrevious = (
 ): LibraryItem[] => {
     if (previousItems.length === 0) return nextItems;
 
+    // If the same item set arrives with the same content but different order,
+    // keep previous reference to prevent needless render churn/flicker.
+    if (previousItems.length === nextItems.length) {
+        const nextById = new Map(nextItems.map((item) => [item.id, item]));
+        let allEquivalent = true;
+        for (let i = 0; i < previousItems.length; i += 1) {
+            const previousItem = previousItems[i];
+            const nextItem = nextById.get(previousItem.id);
+            if (!nextItem || !areItemsEquivalent(previousItem, nextItem)) {
+                allEquivalent = false;
+                break;
+            }
+        }
+        if (allEquivalent) {
+            return previousItems;
+        }
+    }
+
     const previousById = new Map(previousItems.map((item) => [item.id, item]));
     let changed = previousItems.length !== nextItems.length;
 
-    const reconciled = nextItems.map((nextItem, index) => {
-        const previousAtIndex = previousItems[index];
-        if (!changed && previousAtIndex?.id !== nextItem.id) {
-            changed = true;
-        }
-
+    const reconciled = nextItems.map((nextItem) => {
         const previousItem = previousById.get(nextItem.id);
         if (!previousItem) {
             changed = true;
@@ -137,7 +150,11 @@ const reconcileItemsWithPrevious = (
         return nextItem;
     });
 
-    return changed ? reconciled : previousItems;
+    if (!changed) {
+        return previousItems;
+    }
+
+    return reconciled;
 };
 
 const areFoldersEquivalent = (a: PersonalNoteFolder, b: PersonalNoteFolder): boolean =>
@@ -153,15 +170,35 @@ const reconcileFoldersWithPrevious = (
     nextFolders: PersonalNoteFolder[]
 ): PersonalNoteFolder[] => {
     if (previousFolders.length === 0) return nextFolders;
-    if (previousFolders.length !== nextFolders.length) return nextFolders;
-    for (let i = 0; i < nextFolders.length; i += 1) {
-        const previousFolder = previousFolders[i];
-        const nextFolder = nextFolders[i];
-        if (!previousFolder || !areFoldersEquivalent(previousFolder, nextFolder)) {
-            return nextFolders;
+
+    if (previousFolders.length === nextFolders.length) {
+        const nextById = new Map(nextFolders.map((folder) => [folder.id, folder]));
+        let allEquivalent = true;
+        for (let i = 0; i < previousFolders.length; i += 1) {
+            const previousFolder = previousFolders[i];
+            const nextFolder = nextById.get(previousFolder.id);
+            if (!nextFolder || !areFoldersEquivalent(previousFolder, nextFolder)) {
+                allEquivalent = false;
+                break;
+            }
+        }
+        if (allEquivalent) {
+            return previousFolders;
         }
     }
-    return previousFolders;
+
+    if (previousFolders.length !== nextFolders.length) {
+        return nextFolders;
+    }
+
+    let changed = false;
+    for (let i = 0; i < nextFolders.length; i += 1) {
+        if (!areFoldersEquivalent(previousFolders[i], nextFolders[i])) {
+            changed = true;
+            break;
+        }
+    }
+    return changed ? nextFolders : previousFolders;
 };
 
 // ---------------------------------------------------------------------------

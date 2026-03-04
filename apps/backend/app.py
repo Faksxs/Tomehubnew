@@ -2150,6 +2150,13 @@ async def media_search_endpoint(
 
     if not bool(getattr(settings, "MEDIA_TMDB_SYNC_ENABLED", True)):
         return {"success": True, "results": [], "source": "manual_only"}
+    if not str(getattr(settings, "TMDB_API_KEY", "") or "").strip():
+        return {
+            "success": True,
+            "results": [],
+            "source": "tmdb_unconfigured",
+            "message": "TMDb API key is not configured on server",
+        }
 
     text = str(query or "").strip()
     if not text:
@@ -2171,6 +2178,8 @@ async def media_details_endpoint(
 
     if not bool(getattr(settings, "MEDIA_TMDB_SYNC_ENABLED", True)):
         raise HTTPException(status_code=503, detail="TMDb sync is disabled")
+    if not str(getattr(settings, "TMDB_API_KEY", "") or "").strip():
+        raise HTTPException(status_code=503, detail="TMDb API key is not configured on server")
 
     details = get_tmdb_media_details(kind, tmdb_id)
     if details is None:

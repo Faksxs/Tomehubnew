@@ -1,5 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { motion, AnimatePresence, animate } from 'framer-motion';
+﻿import React, { useMemo, useState } from 'react';
 import {
     Book,
     BookOpen,
@@ -48,31 +47,14 @@ interface KnowledgeDashboardProps {
 }
 
 const CountUp = ({ value, prefix = '', suffix = '' }: { value: number | string, prefix?: string, suffix?: string }) => {
-    const nodeRef = React.useRef<HTMLSpanElement>(null);
-    useEffect(() => {
-        if (!nodeRef.current) return;
-        const numericValue = typeof value === 'string' ? parseFloat(value) : value;
-        if (isNaN(numericValue)) {
-            nodeRef.current.textContent = `${prefix}${value}${suffix}`;
-            return;
-        }
-
-        const isInt = Number.isInteger(numericValue) && !value.toString().includes('.');
-
-        const controls = animate(0, numericValue, {
-            duration: 1.5,
-            ease: "easeOut",
-            onUpdate(v) {
-                if (nodeRef.current) {
-                    const formatted = isInt ? Math.round(v).toString() : v.toFixed(1);
-                    nodeRef.current.textContent = `${prefix}${formatted}${suffix}`;
-                }
-            }
-        });
-        return () => controls.stop();
-    }, [value, prefix, suffix]);
-
-    return <span ref={nodeRef}>{typeof value === 'string' && isNaN(parseFloat(value)) ? value : `${prefix}0${suffix}`}</span>;
+    const numericValue = typeof value === 'string' ? Number(value) : value;
+    if (typeof value === 'string' && !Number.isFinite(numericValue)) {
+        return <span>{`${prefix}${value}${suffix}`}</span>;
+    }
+    const stableValue = Number.isFinite(numericValue)
+        ? (Number.isInteger(numericValue) ? String(Math.round(numericValue)) : numericValue.toFixed(1))
+        : '0';
+    return <span>{`${prefix}${stableValue}${suffix}`}</span>;
 };
 
 export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
@@ -171,7 +153,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                 }
             }
         });
-        let strongestNexus = '—';
+        let strongestNexus = '-';
         let maxBond = 0;
         pairs.forEach((count, pair) => {
             if (count > maxBond) {
@@ -248,9 +230,8 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                 <div className="space-y-1">
                     <h2 className="text-xl md:text-3xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2.5 md:gap-3 flex-row-reverse md:flex-row">
                         <div className="relative group">
-                            <div className="absolute -inset-2 bg-primary/20 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                             <div className="relative p-2 md:p-2.5 bg-primary/10 dark:bg-primary/20 rounded-xl border border-primary/30 dark:border-primary/40 shadow-[0_0_15px_rgba(204,86,30,0.2)]">
-                                <KnowledgeBaseLogo size={28} className="text-primary dark:text-primary drop-shadow-[0_0_8px_rgba(204,86,30,0.8)] md:w-8 md:h-8" />
+                                <KnowledgeBaseLogo size={28} className="text-primary dark:text-primary md:w-8 md:h-8" />
                             </div>
                         </div>
                         Dashboard
@@ -262,35 +243,31 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
 
 
 
-                {/* 🔸 Level A – Core Assets */}
+                {/* Level A - Core Assets */}
                 <section className="space-y-2 md:space-y-4">
                     <div className="flex items-center gap-1.5 md:gap-2 px-1 text-xs md:text-sm font-bold uppercase tracking-[0.15em] md:tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                        <Activity size={11} className="text-primary/60 md:w-3 md:h-3" /> Level A • Core Stats
+                        <Activity size={11} className="text-primary/60 md:w-3 md:h-3" /> Level A - Core Stats
                     </div>
                     <div className="grid grid-cols-2 min-[560px]:grid-cols-3 lg:grid-cols-5 gap-2.5 md:gap-4">
-                        {statsA.map((stat, idx) => (
-                            <motion.div
+                        {statsA.map((stat) => (
+                            <div
                                 key={stat.label}
-                                initial={{ opacity: 0, scale: 0.98, y: 10 }}
-                                animate={{ opacity: 1, scale: 1, y: 0 }}
-                                transition={{ delay: idx * 0.04 }}
                                 onClick={() => onNavigateToTab?.(stat.tab)}
                                 className="
                                     relative overflow-hidden
                                     group cursor-pointer
                                     rounded-2xl border border-slate-800/20 dark:border-white/10
                                     bg-card dark:bg-slate-900/50
-                                    backdrop-blur-xl shadow-lg lg:shadow-md
-                                    hover:shadow-2xl hover:border-primary/40 dark:hover:border-primary/40 hover:-translate-y-1
-                                    transition-all duration-300
+                                    shadow-lg lg:shadow-md
+                                    hover:shadow-xl hover:border-primary/40 dark:hover:border-primary/40
+                                    transition-colors duration-200
                                     flex flex-col items-center p-2.5 md:p-4 gap-1.5 md:gap-3
                                 "
                             >
                                 <div className="flex items-center justify-center gap-2 md:gap-2.5 w-full">
                                     <div className="relative shrink-0">
-                                        <div className="absolute -inset-2 bg-orange-500/10 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                                         <div className="relative p-1 md:p-1.5 bg-orange-500/5 dark:bg-orange-500/10 rounded-lg md:rounded-xl border border-orange-500/10 dark:border-orange-500/20 transition-colors group-hover:border-orange-500/40">
-                                            <stat.icon className="w-3.5 h-3.5 md:w-4.5 md:h-4.5 text-[#CC561E] dark:text-[#f3a47b] drop-shadow-[0_0_5px_rgba(204,86,30,0.4)] group-hover:drop-shadow-[0_0_10px_rgba(204,86,30,0.8)] transition-all" />
+                                            <stat.icon className="w-3.5 h-3.5 md:w-4.5 md:h-4.5 text-[#CC561E] dark:text-[#f3a47b]" />
                                         </div>
                                     </div>
                                     <div className="text-[8.5px] md:text-[11px] font-bold uppercase tracking-[0.05em] md:tracking-widest text-slate-400 group-hover:text-slate-300 transition-colors leading-tight">
@@ -302,21 +279,21 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                         <CountUp value={stat.value} />
                                     </div>
                                 </div>
-                            </motion.div>
+                            </div>
                         ))}
                     </div>
                 </section>
 
-                {/* 🔸 Level B – Structure */}
+                {/* Level B - Structure */}
                 <section className="space-y-1 md:space-y-4">
                     <div className="flex items-center gap-1.5 md:gap-2 px-1 text-xs md:text-sm font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] text-slate-500 dark:text-slate-400">
-                        <PieChart size={12} className="text-primary/60" /> Level B • Structure
+                        <PieChart size={12} className="text-primary/60" /> Level B - Structure
                     </div>
 
                     <div className="
                 rounded-3xl md:rounded-[2rem] border border-slate-800/10 dark:border-white/10
                 bg-card dark:bg-slate-900/50
-                backdrop-blur-2xl shadow-xl
+                shadow-xl
                 p-3 md:p-8 lg:p-10
             ">
                         <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-12">
@@ -344,9 +321,8 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                                     <span className="text-xs md:text-sm font-black text-white shrink-0">{count}</span>
                                                 </div>
                                                 <div className="w-full h-1 md:h-2 bg-slate-200 dark:bg-slate-700/30 rounded-full overflow-hidden shadow-inner">
-                                                    <motion.div
-                                                        initial={{ width: 0 }}
-                                                        animate={{ width: `${percentage}%` }}
+                                                    <div
+                                                        style={{ width: `${percentage}%` }}
                                                         className="h-full bg-primary group-hover:bg-primary transition-colors"
                                                     />
                                                 </div>
@@ -355,7 +331,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                     })}
                                 </div>
 
-                                {/* 🔹 TODAY'S PICK (Relocated to balance whitespace) 🔹 */}
+                                {/* TODAY'S PICK (Relocated to balance whitespace) */}
                                 {todaysPickItem && (
                                     <div className="mt-auto pt-6 border-t border-slate-200/10 dark:border-white/5 animate-in fade-in duration-500">
                                         <div className="flex flex-col gap-2">
@@ -435,7 +411,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                     </div>
                 </section>
 
-                {/* 🔸 Level C – Deep Analytics (6 Widget Redesign) */}
+                {/* Level C - Deep Analytics (6 Widget Redesign) */}
                 <section className="space-y-1 md:space-y-4">
                     <button
                         onClick={() => setShowLevelC(!showLevelC)}
@@ -450,19 +426,15 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                         </div>
                     </button>
 
-                    <AnimatePresence>
-                        {showLevelC && (
-                            <motion.div
-                                initial={{ opacity: 0, height: 0, y: 10 }}
-                                animate={{ opacity: 1, height: 'auto', y: 0 }}
-                                exit={{ opacity: 0, height: 0, y: 10 }}
-                                className="overflow-hidden"
+                    {showLevelC && (
+                            <div
+                                className="overflow-hidden animate-in fade-in duration-200"
                                 onClick={() => onNavigateToTab?.('INSIGHTS')}
                             >
                                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4 pt-0.5 md:pt-2">
 
                                     {/* 1. Pulse */}
-                                    <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 backdrop-blur-xl flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-all cursor-pointer group">
+                                    <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-colors cursor-pointer group">
                                         <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
                                             <Activity size={10} className="text-[#FF4D4D]" /> Pulse
                                         </p>
@@ -473,7 +445,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                     </div>
 
                                     {/* 2. T-Profile */}
-                                    <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 backdrop-blur-xl flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-all cursor-pointer group">
+                                    <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-colors cursor-pointer group">
                                         <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
                                             <TrendingUp size={10} className="text-[#F63049]" /> T-Profile
                                         </p>
@@ -484,7 +456,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                     </div>
 
                                     {/* 3. Forgetting Curve (Rust) */}
-                                    <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 backdrop-blur-xl flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-all cursor-pointer group">
+                                    <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-colors cursor-pointer group">
                                         <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
                                             <Zap size={10} className="text-orange-400" /> Rust Index
                                         </p>
@@ -495,7 +467,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                     </div>
 
                                     {/* 4. Intellect Engine */}
-                                    <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 backdrop-blur-xl flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-all cursor-pointer group">
+                                    <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-colors cursor-pointer group">
                                         <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
                                             <Sparkles size={10} className="text-primary" /> Intellect
                                         </p>
@@ -509,15 +481,16 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                 <div className="mt-3 text-center">
                                     <p className="text-[9px] md:text-[10px] font-bold text-slate-500 uppercase tracking-widest animate-pulse">Click any card for full network analysis</p>
                                 </div>
-                            </motion.div>
+                            </div>
                         )}
-                    </AnimatePresence>
                 </section >
             </div >
 
         </div >
     );
 };
+
+
 
 
 

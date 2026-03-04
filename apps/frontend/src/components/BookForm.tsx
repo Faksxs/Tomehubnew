@@ -187,7 +187,16 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
     } catch (error) {
       console.error("Search failed:", error);
       if (isMedia && mediaLibraryEnabled) {
-        setMediaPickerError(error instanceof Error ? error.message : 'Media search failed');
+        const message = error instanceof Error ? error.message : 'Media search failed';
+        setMediaPickerError(message);
+        const lower = message.toLowerCase();
+        if (lower.includes('not configured') || lower.includes('disabled')) {
+          setFormData(prev => ({
+            ...prev,
+            title: prev.title || searchQuery.trim(),
+          }));
+          setMode('edit');
+        }
       }
     } finally {
       setIsSearching(false);

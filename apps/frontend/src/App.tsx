@@ -47,7 +47,7 @@ import { RAGSearch } from "./components/RAGSearch";
 import { FlowContainer } from "./components/FlowContainer";
 import { CATEGORIES, MIN_CATEGORY_BOOKS_VISIBLE } from "./components/CategorySelector";
 import { prewarmFlowStartSession } from "./services/flowService";
-import { addTextItem, syncHighlights, syncPersonalNote, purgeResourceContent } from "./services/backendApiService";
+import { addTextItem, syncHighlights, syncPersonalNote, purgeResourceContent, searchMedia } from "./services/backendApiService";
 import { getPersonalNoteBackendType, getPersonalNoteCategory, isPersonalNote } from "./lib/personalNotePolicy";
 
 
@@ -99,7 +99,9 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   const [didRunLegacyFolderMigration, setDidRunLegacyFolderMigration] = useState(false);
   const flowPrewarmStartedRef = useRef(false);
   const realtimePollingEnabled = import.meta.env.VITE_REALTIME_POLLING !== "false";
-  const mediaLibraryEnabled = import.meta.env.VITE_MEDIA_LIBRARY_ENABLED === "true";
+  const mediaLibraryFlagEnabled = import.meta.env.VITE_MEDIA_LIBRARY_ENABLED === "true";
+  const [mediaBackendEnabled, setMediaBackendEnabled] = useState(true);
+  const mediaLibraryEnabled = mediaLibraryFlagEnabled && mediaBackendEnabled;
 
   // Convenience wrapper: refreshLibraryFromServer bound to local setters
   const refreshLibraryFromServer = useCallback(async () => {
@@ -176,6 +178,33 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     return start(setBooks, setPersonalNoteFolders, setLastDoc, setHasMore);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [realtimePollingEnabled, userId]);
+
+  useEffect(() => {
+    if (!mediaLibraryFlagEnabled || !userId) {
+      setMediaBackendEnabled(true);
+      return;
+    }
+
+    let active = true;
+    (async () => {
+      try {
+        await searchMedia("", "multi", 1);
+        if (active) setMediaBackendEnabled(true);
+      } catch (err) {
+        const message = err instanceof Error ? err.message.toLowerCase() : "";
+        const disabledOnServer =
+          message.includes("media library is disabled") ||
+          message.includes("disabled on backend");
+        if (active) {
+          setMediaBackendEnabled(!disabledOnServer);
+        }
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [mediaLibraryFlagEnabled, userId]);
 
   useEffect(() => {
     if (!userId) return;

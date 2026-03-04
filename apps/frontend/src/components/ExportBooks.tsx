@@ -38,8 +38,7 @@ export const ExportBooks: React.FC<ExportBooksProps> = ({ books }) => {
                 translator: book.translator,
                 code: book.code,
                 url: book.url,
-                lentTo: book.lentTo,
-                lentDate: book.lentDate,
+                lentInfo: book.lentInfo,
             }));
 
             // Convert to JSON with pretty formatting

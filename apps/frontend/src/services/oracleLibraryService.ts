@@ -11,8 +11,26 @@ const normalizeTimestamp = (value: unknown, fallback: number): number => {
     if (typeof value === "string") {
         const parsed = Date.parse(value);
         if (Number.isFinite(parsed)) return parsed;
+        const numeric = Number(value);
+        if (Number.isFinite(numeric) && numeric > 0) return numeric;
     }
     return fallback;
+};
+
+const stableStringHash = (input: string): string => {
+    let hash = 0;
+    for (let i = 0; i < input.length; i += 1) {
+        hash = (hash * 31 + input.charCodeAt(i)) | 0;
+    }
+    return Math.abs(hash).toString(36);
+};
+
+const deriveAddedAtFallback = (item: Partial<LibraryItem>): number => {
+    const idMaybeNumeric = Number(item.id);
+    if (Number.isFinite(idMaybeNumeric) && idMaybeNumeric > 0) {
+        return idMaybeNumeric;
+    }
+    return 0;
 };
 
 const normalizeContentLanguageMode = (value: unknown): "AUTO" | "TR" | "EN" => {
@@ -28,9 +46,19 @@ const normalizeContentLanguageResolved = (value: unknown): "tr" | "en" | undefin
 };
 
 const normalizeHighlight = (highlight: Partial<Highlight>, index: number): Highlight => {
-    const createdAt = normalizeTimestamp(highlight.createdAt, Date.now());
+    const createdAt = normalizeTimestamp(highlight.createdAt, 0);
+    const stableIdentity = [
+        normalizeHighlightType(highlight.type),
+        String(highlight.text || "").trim(),
+        String(highlight.comment || "").trim(),
+        String(highlight.pageNumber ?? ""),
+        String(highlight.paragraphNumber ?? ""),
+        String(highlight.chapterTitle || "").trim(),
+        ...(Array.isArray(highlight.tags) ? highlight.tags.map((t) => String(t || "").trim()).sort() : []),
+    ].join("|");
+    const fallbackId = `hl-${stableStringHash(stableIdentity)}-${index}`;
     return {
-        id: typeof highlight.id === "string" && highlight.id.trim() ? highlight.id : `${createdAt}-${index}`,
+        id: typeof highlight.id === "string" && highlight.id.trim() ? highlight.id : fallbackId,
         text: highlight.text || "",
         type: normalizeHighlightType(highlight.type),
         pageNumber: highlight.pageNumber,
@@ -45,7 +73,7 @@ const normalizeHighlight = (highlight: Partial<Highlight>, index: number): Highl
 
 const normalizeItemShape = (item: LibraryItem): LibraryItem => ({
     ...item,
-    addedAt: normalizeTimestamp(item.addedAt, Date.now()),
+    addedAt: normalizeTimestamp(item.addedAt, deriveAddedAtFallback(item)),
     tags: Array.isArray(item.tags) ? item.tags : [],
     contentLanguageMode: normalizeContentLanguageMode(item.contentLanguageMode),
     contentLanguageResolved: normalizeContentLanguageResolved(item.contentLanguageResolved),
@@ -77,8 +105,8 @@ const normalizeFolderShape = (folder: PersonalNoteFolder): PersonalNoteFolder =>
     category: normalizePersonalNoteCategory(folder.category),
     name: (folder.name || "").trim(),
     order: Number.isFinite(folder.order) ? folder.order : 0,
-    createdAt: normalizeTimestamp(folder.createdAt, Date.now()),
-    updatedAt: normalizeTimestamp(folder.updatedAt, Date.now()),
+    createdAt: normalizeTimestamp(folder.createdAt, 0),
+    updatedAt: normalizeTimestamp(folder.updatedAt, 0),
 });
 
 function asOracleCursorDoc(cursor?: string | null): OracleCursorDoc | null {

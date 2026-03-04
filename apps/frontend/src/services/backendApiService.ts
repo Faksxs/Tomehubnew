@@ -648,6 +648,13 @@ export async function searchMedia(
         throw new Error(message);
     }
     const payload = await response.json();
+    const source = String(payload?.source || '').trim().toLowerCase();
+    if (source === 'tmdb_unconfigured') {
+        throw new Error('Cinema search is not configured on live backend yet. You can still add movie/series manually.');
+    }
+    if (source === 'manual_only') {
+        throw new Error('Cinema search is disabled on backend. You can still add movie/series manually.');
+    }
     return Array.isArray(payload?.results) ? payload.results as MediaSearchItem[] : [];
 }
 
