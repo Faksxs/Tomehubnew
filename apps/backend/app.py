@@ -552,7 +552,9 @@ async def realtime_poll(
                 for row in cursor.fetchall():
                     source_type = str(row[1] or "").upper()
                     ts = row[2]
-                    ts_ms = int(ts.timestamp() * 1000) if ts else int(datetime.now().timestamp() * 1000)
+                    if not ts:
+                        continue
+                    ts_ms = int(ts.timestamp() * 1000)
                     if ts_ms <= cutoff_ms:
                         continue
                     event_type = "highlight.synced" if source_type in {"HIGHLIGHT", "INSIGHT"} else "note.synced"
