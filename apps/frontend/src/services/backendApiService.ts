@@ -1,5 +1,5 @@
 import { normalizeHighlightType } from '../lib/highlightType';
-import { API_BASE_URL, fetchWithAuth } from './apiClient';
+import { API_BASE_URL, fetchWithAuth, parseApiErrorMessage } from './apiClient';
 /**
  * TomeHub Backend API Service
  * Connects React frontend to Flask backend for RAG search and document ingestion
@@ -13,13 +13,15 @@ const normalizeSourceTypeForBackend = (type: string): string => {
     return normalized || 'PERSONAL_NOTE';
 };
 
+export type BackendResourceType = 'BOOK' | 'ARTICLE' | 'WEBSITE' | 'PERSONAL_NOTE' | 'MOVIE' | 'SERIES';
+
 export interface SearchRequest {
     question: string;
     firebase_uid: string;
     mode?: 'STANDARD' | 'EXPLORER';
     book_id?: string;
     context_book_id?: string;
-    resource_type?: 'BOOK' | 'ARTICLE' | 'WEBSITE' | 'PERSONAL_NOTE' | 'ALL_NOTES' | null;
+    resource_type?: BackendResourceType | 'ALL_NOTES' | null;
     scope_mode?: 'AUTO' | 'BOOK_FIRST' | 'HIGHLIGHT_FIRST' | 'GLOBAL';
 }
 
@@ -99,7 +101,7 @@ export interface ChatRequest {
     session_id?: number | null;
     book_id?: string | null;
     context_book_id?: string | null;
-    resource_type?: 'BOOK' | 'ARTICLE' | 'WEBSITE' | 'PERSONAL_NOTE' | 'ALL_NOTES' | null;
+    resource_type?: BackendResourceType | 'ALL_NOTES' | null;
     scope_mode?: 'AUTO' | 'BOOK_FIRST' | 'HIGHLIGHT_FIRST' | 'GLOBAL';
     mode?: 'STANDARD' | 'EXPLORER';
     limit?: number;
@@ -272,7 +274,7 @@ export async function sendChatMessage(
     firebaseUid: string,
     sessionId: number | null = null,
     mode: 'STANDARD' | 'EXPLORER' = 'EXPLORER',
-    resourceType: 'BOOK' | 'ARTICLE' | 'WEBSITE' | 'PERSONAL_NOTE' | null = null,
+    resourceType: BackendResourceType | null = null,
     limit: number = 20,
     scopeMode: 'AUTO' | 'BOOK_FIRST' | 'HIGHLIGHT_FIRST' | 'GLOBAL' = 'AUTO',
     bookId: string | null = null,
@@ -549,7 +551,16 @@ export async function syncHighlights(
     bookId: string,
     title: string,
     author: string,
-    highlights: Array<{
+    resourceTypeOrHighlights: BackendResourceType | Array<{
+        id?: string;
+        text: string;
+        type?: 'highlight' | 'insight' | 'note';
+        comment?: string;
+        pageNumber?: number;
+        tags?: string[];
+        createdAt?: number;
+    }>,
+    maybeHighlights?: Array<{
         id?: string;
         text: string;
         type?: 'highlight' | 'insight' | 'note';
@@ -559,17 +570,28 @@ export async function syncHighlights(
         createdAt?: number;
     }>
 ): Promise<{ success: boolean; deleted: number; inserted: number }> {
+    const resourceType: BackendResourceType = Array.isArray(resourceTypeOrHighlights)
+        ? 'BOOK'
+        : resourceTypeOrHighlights;
+    const highlights = Array.isArray(resourceTypeOrHighlights)
+        ? resourceTypeOrHighlights
+        : (maybeHighlights || []);
     const normalizedHighlights = highlights.map((highlight) => ({
         ...highlight,
         type: normalizeHighlightType(highlight.type),
     }));
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/books/${encodeURIComponent(bookId)}/sync-highlights`, {
+    const useGenericItemEndpoint = resourceType === 'MOVIE' || resourceType === 'SERIES';
+    const syncPath = useGenericItemEndpoint
+        ? `/api/items/${encodeURIComponent(bookId)}/sync-highlights`
+        : `/api/books/${encodeURIComponent(bookId)}/sync-highlights`;
+    const response = await fetchWithAuth(`${API_BASE_URL}${syncPath}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             firebase_uid: firebaseUid,
             title,
             author,
+            resource_type: resourceType,
             highlights: normalizedHighlights
         })
     });
@@ -579,6 +601,72 @@ export async function syncHighlights(
         throw new Error(detail || 'Failed to sync highlights');
     }
     return response.json();
+}
+
+export interface MediaSearchItem {
+    type: 'MOVIE' | 'SERIES';
+    tmdbId: number;
+    tmdbKind: 'movie' | 'tv';
+    title: string;
+    year?: string | null;
+    summary?: string | null;
+    coverUrl?: string | null;
+    tmdbToken: string;
+}
+
+export interface MediaDetails {
+    type: 'MOVIE' | 'SERIES';
+    tmdbId: number;
+    tmdbKind: 'movie' | 'tv';
+    tmdbToken: string;
+    title?: string | null;
+    author?: string | null;
+    publicationYear?: string | null;
+    summaryText?: string | null;
+    coverUrl?: string | null;
+    url?: string | null;
+    castTop?: string[];
+    tags?: string[];
+    deleted?: boolean;
+}
+
+export async function searchMedia(
+    query: string,
+    kind: 'multi' | 'movie' | 'tv' = 'multi',
+    page: number = 1
+): Promise<MediaSearchItem[]> {
+    const url = new URL(`${API_BASE_URL}/api/media/search`);
+    url.searchParams.set('query', query);
+    url.searchParams.set('kind', kind);
+    url.searchParams.set('page', String(Math.max(1, Math.floor(page || 1))));
+
+    const response = await fetchWithAuth(url.toString(), {
+        headers: { 'Content-Type': 'application/json' }
+    });
+    if (!response.ok) {
+        const message = await parseApiErrorMessage(response, 'Media search failed');
+        throw new Error(message);
+    }
+    const payload = await response.json();
+    return Array.isArray(payload?.results) ? payload.results as MediaSearchItem[] : [];
+}
+
+export async function getMediaDetails(
+    kind: 'movie' | 'tv',
+    tmdbId: number
+): Promise<MediaDetails | null> {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/media/details/${kind}/${encodeURIComponent(String(tmdbId))}`, {
+        headers: { 'Content-Type': 'application/json' }
+    });
+    if (response.status === 404) {
+        return null;
+    }
+    if (!response.ok) {
+        const message = await parseApiErrorMessage(response, 'Media details failed');
+        throw new Error(message);
+    }
+    const payload = await response.json();
+    return (payload?.details || null) as MediaDetails | null;
 }
 
 export interface SyncPersonalNoteRequest {

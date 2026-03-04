@@ -98,6 +98,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   const pendingContentSyncRef = useRef<Map<string, PendingContentSyncEntry>>(new Map());
   const mutationInFlightCountRef = useRef(0);
   const realtimePollingEnabled = import.meta.env.VITE_REALTIME_POLLING !== "false";
+  const mediaLibraryEnabled = import.meta.env.VITE_MEDIA_LIBRARY_ENABLED === "true";
 
   const flowVisibleCategories = useMemo(() => {
     const normalizeTextKey = (value: string) => value.trim().toLocaleLowerCase('tr-TR');
@@ -159,6 +160,10 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     Array.isArray(tags)
       ? tags.map((tag) => String(tag || "").trim()).filter(Boolean).sort()
       : [];
+  const normalizeStringList = (values: unknown): string[] =>
+    Array.isArray(values)
+      ? values.map((v) => String(v || "").trim()).filter(Boolean).sort()
+      : [];
   const normalizeComparableHighlights = (highlights: Highlight[] = []) =>
     highlights
       .map((highlight) => ({
@@ -189,6 +194,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
       normalizeMaybeText(serverItem.status) === normalizeMaybeText(pending.snapshot.status) &&
       normalizeMaybeText(serverItem.readingStatus) === normalizeMaybeText(pending.snapshot.readingStatus) &&
       JSON.stringify(normalizeTagList(serverItem.tags)) === JSON.stringify(normalizeTagList(pending.snapshot.tags)) &&
+      JSON.stringify(normalizeStringList(serverItem.castTop)) === JSON.stringify(normalizeStringList(pending.snapshot.castTop)) &&
       normalizeMaybeText(serverItem.generalNotes) === normalizeMaybeText(pending.snapshot.generalNotes) &&
       normalizeMaybeText(serverItem.summaryText) === normalizeMaybeText(pending.snapshot.summaryText) &&
       normalizeMaybeText(serverItem.coverUrl) === normalizeMaybeText(pending.snapshot.coverUrl) &&
@@ -241,6 +247,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
         status: pending.snapshot.status,
         readingStatus: pending.snapshot.readingStatus,
         tags: pending.snapshot.tags,
+        castTop: pending.snapshot.castTop,
         generalNotes: pending.snapshot.generalNotes,
         summaryText: pending.snapshot.summaryText,
         coverUrl: pending.snapshot.coverUrl,
@@ -538,6 +545,8 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
         addedAt: itemData.addedAt || Date.now(),
         highlights: [],
       };
+      const optimisticItemId = newItem.id;
+      let canonicalItemId = optimisticItemId;
 
       // 2) Önce UI'da göster (kullanıcı beklemesin)
       setBooks((prev) => [newItem, ...prev]);
@@ -549,7 +558,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
       let saveErrorMessage = "";
       try {
         await runWithMutationLock(async () => {
-          await saveItemForUser(userId, newItem);
+          canonicalItemId = await saveItemForUser(userId, newItem);
         });
         saveSucceeded = true;
       } catch (err) {
@@ -562,6 +571,13 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
         window.alert(`Item kaydedilemedi: ${saveErrorMessage || "Bilinmeyen hata"}`);
         return;
       }
+      const itemForPostSave: LibraryItem = canonicalItemId !== optimisticItemId
+        ? { ...newItem, id: canonicalItemId }
+        : newItem;
+      const wasDedupedByToken = canonicalItemId !== optimisticItemId;
+      if (wasDedupedByToken) {
+        setBooks((prev) => prev.filter((item) => item.id !== optimisticItemId));
+      }
 
       try {
         await refreshLibraryFromServer();
@@ -573,25 +589,26 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
       // We do this immediately so the item is searchable
       (async () => {
         try {
-          if (isPersonalNote(newItem)) {
-            await syncPersonalNoteToBackend(newItem, false);
+          if (isPersonalNote(itemForPostSave)) {
+            await syncPersonalNoteToBackend(itemForPostSave, false);
             return;
           }
 
           const textParts = [];
-          textParts.push(`Title: ${newItem.title}`);
-          textParts.push(`Author: ${newItem.author}`);
-          if (isPersonalNote(newItem) && newItem.personalNoteCategory) {
-            textParts.push(`Category: ${newItem.personalNoteCategory}`);
+          textParts.push(`Title: ${itemForPostSave.title}`);
+          textParts.push(`Author: ${itemForPostSave.author}`);
+          if (isPersonalNote(itemForPostSave) && itemForPostSave.personalNoteCategory) {
+            textParts.push(`Category: ${itemForPostSave.personalNoteCategory}`);
           }
-          if (isPersonalNote(newItem) && newItem.folderPath) {
-            textParts.push(`SubFile: ${newItem.folderPath}`);
+          if (isPersonalNote(itemForPostSave) && itemForPostSave.folderPath) {
+            textParts.push(`SubFile: ${itemForPostSave.folderPath}`);
           }
-          if (newItem.publisher) textParts.push(`Publisher: ${newItem.publisher}`);
-          if (newItem.tags && newItem.tags.length > 0) textParts.push(`Tags: ${newItem.tags.join(', ')}`);
-          const itemBodyText = isPersonalNote(newItem)
-            ? newItem.generalNotes
-            : (newItem.summaryText || newItem.generalNotes);
+          if (itemForPostSave.publisher) textParts.push(`Publisher: ${itemForPostSave.publisher}`);
+          if (itemForPostSave.castTop && itemForPostSave.castTop.length > 0) textParts.push(`Cast: ${itemForPostSave.castTop.join(', ')}`);
+          if (itemForPostSave.tags && itemForPostSave.tags.length > 0) textParts.push(`Tags: ${itemForPostSave.tags.join(', ')}`);
+          const itemBodyText = isPersonalNote(itemForPostSave)
+            ? itemForPostSave.generalNotes
+            : (itemForPostSave.summaryText || itemForPostSave.generalNotes);
           if (itemBodyText) textParts.push(`\nContent/Notes:\n${itemBodyText}`);
 
           const fullText = textParts.join('\n');
@@ -600,16 +617,16 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
           if (fullText.length > 20) {
             await addTextItem(
               fullText,
-              newItem.title,
-              newItem.author,
-              isPersonalNote(newItem) ? getPersonalNoteBackendType(newItem) : newItem.type,
+              itemForPostSave.title,
+              itemForPostSave.author,
+              isPersonalNote(itemForPostSave) ? getPersonalNoteBackendType(itemForPostSave) : itemForPostSave.type,
               userId,
               {
-                book_id: newItem.id,
-                tags: newItem.tags || [],
+                book_id: itemForPostSave.id,
+                tags: itemForPostSave.tags || [],
               }
             );
-            console.log("Synced new item to AI Backend:", newItem.title);
+            console.log("Synced new item to AI Backend:", itemForPostSave.title);
           }
         } catch (err) {
           console.error("Failed to sync item to AI Backend:", err);
@@ -619,22 +636,22 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
 
       // 4) Arka planda AI enrichment (UI'yı bloklamadan)
       // SKIP AI enrichment for Personal Notes - preserve user's original content
-      if (itemData.type !== 'PERSONAL_NOTE') {
+      if (!wasDedupedByToken && (itemForPostSave.type === 'BOOK' || itemForPostSave.type === 'ARTICLE' || itemForPostSave.type === 'WEBSITE')) {
         (async () => {
           try {
             // LibraryItem -> ItemDraft dönüşümü (senin helper'ın)
-            const draft = libraryItemToDraft(newItem);
+            const draft = libraryItemToDraft(itemForPostSave);
 
             // Vercel backend üzerinden Gemini çağrısı
             const enrichedDraft = await enrichBookWithAI(draft);
 
             // ItemDraft -> LibraryItem'e geri merge et (senin helper'ın)
             const enrichedItem = mergeEnrichedDraftIntoItem(
-              newItem,
+              itemForPostSave,
               enrichedDraft
             );
 
-            const latestItem = booksRef.current.find((b) => b.id === newItem.id);
+            const latestItem = booksRef.current.find((b) => b.id === itemForPostSave.id);
             if (!latestItem) return; // Item may have been deleted by user.
 
             const arraysEqual = (a?: string[], b?: string[]) =>
@@ -643,7 +660,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
             // Apply AI fields only if the user has not modified that field since the initial create.
             const aiPatch: Partial<LibraryItem> = {};
             const maybePatchScalar = <K extends keyof LibraryItem>(key: K) => {
-              const baseVal = newItem[key];
+              const baseVal = itemForPostSave[key];
               const latestVal = latestItem[key];
               const enrichedVal = enrichedItem[key];
               if (enrichedVal === undefined) return;
@@ -652,7 +669,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
               aiPatch[key] = enrichedVal;
             };
             const maybePatchTags = () => {
-              const baseTags = newItem.tags || [];
+              const baseTags = itemForPostSave.tags || [];
               const latestTags = latestItem.tags || [];
               const enrichedTags = enrichedItem.tags || [];
               if (arraysEqual(enrichedTags, baseTags)) return;
@@ -678,12 +695,12 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
 
             // 5) State'i güncelle (yalnızca güvenli AI alanlarını patch et)
             setBooks((prev) =>
-              prev.map((b) => (b.id === newItem.id ? { ...b, ...aiPatch } : b))
+              prev.map((b) => (b.id === itemForPostSave.id ? { ...b, ...aiPatch } : b))
             );
 
             // 6) Oracle canonical kayda da güvenli patch uygula (stale full PUT yok)
             try {
-              await patchItemForUser(userId, newItem.id, aiPatch);
+              await patchItemForUser(userId, itemForPostSave.id, aiPatch);
             } catch (err) {
               console.error("Failed to patch enriched item in Oracle:", err);
             }
@@ -890,6 +907,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
           updatedItem.id,
           updatedItem.title,
           updatedItem.author,
+          updatedItem.type,
           updatedItem.highlights || []
         );
       });
@@ -981,6 +999,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
           updatedBook.id,
           updatedBook.title,
           updatedBook.author,
+          updatedBook.type,
           updatedBook.highlights || []
         );
       });
@@ -999,6 +1018,13 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
       window.alert(`Highlight favorite update failed. Previous value was restored.\n${msg}`);
     }
   }, [books, refreshLibraryFromServer, runWithMutationLock, userId]);
+
+  useEffect(() => {
+    if (mediaLibraryEnabled) return;
+    if (activeTab === "MOVIE" || activeTab === "SERIES") {
+      setActiveTab("DASHBOARD");
+    }
+  }, [activeTab, mediaLibraryEnabled]);
 
   const handleUpdateBookForEnrichment = useCallback((updatedBook: LibraryItem) => {
     setBooks((prev) => prev.map((b) => {
@@ -1406,6 +1432,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
       <Sidebar
         activeTab={activeTab}
         onTabChange={handleTabChange}
+        mediaLibraryEnabled={mediaLibraryEnabled}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
       />
@@ -1446,6 +1473,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
           <BookList
             books={books}
             activeTab={activeTab}
+            mediaLibraryEnabled={mediaLibraryEnabled}
             userId={userId}
             categoryFilter={activeCategoryFilter}
             onCategoryFilterChange={setActiveCategoryFilter}

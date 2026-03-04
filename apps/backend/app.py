@@ -51,6 +51,7 @@ from services.library_service import (
     patch_personal_note_folder,
     delete_personal_note_folder,
 )
+from services.tmdb_service import search_tmdb_media, get_tmdb_media_details
 from services.index_freshness_service import get_index_freshness_state, maybe_trigger_graph_enrichment_async
 from services.external_kb_service import (
     get_external_kb_backfill_status,
@@ -133,11 +134,22 @@ def get_verified_uid(request: Request, uid_from_jwt: Optional[str]) -> str:
             auth_header = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
             if auth_header and len(auth_header) < 128:
                 uid = auth_header
-        
+
         if uid:
             return uid
 
     raise HTTPException(status_code=401, detail="Authentication required")
+
+
+def _ensure_media_library_enabled() -> None:
+    if not bool(getattr(settings, "MEDIA_LIBRARY_ENABLED", False)):
+        raise HTTPException(status_code=404, detail="Media library is disabled")
+
+
+def _ensure_media_resource_type_allowed(resource_type: Optional[str]) -> None:
+    rt = str(resource_type or "").strip().upper()
+    if rt in {"MOVIE", "SERIES"}:
+        _ensure_media_library_enabled()
 
 
 
@@ -603,6 +615,7 @@ async def search(
         "Search started", 
         extra={"uid": firebase_uid, "question": search_request.question}
     )
+    _ensure_media_resource_type_allowed(search_request.resource_type)
     
     try:
         import asyncio
@@ -802,6 +815,7 @@ async def chat_endpoint(
         "Chat started",
         extra={"session_id": chat_request.session_id, "uid": firebase_uid}
     )
+    _ensure_media_resource_type_allowed(chat_request.resource_type)
     
     try:
         import asyncio
@@ -2107,6 +2121,7 @@ async def list_library_items_endpoint(
             limit=limit,
             cursor=cursor,
             types=parsed_types,
+            include_media=bool(getattr(settings, "MEDIA_LIBRARY_ENABLED", False)),
         )
         duration = time.time() - start_time
         logger.info(f"library list completed in {duration:.4f}s for user {verified_uid}")
@@ -2119,6 +2134,48 @@ async def list_library_items_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/media/search")
+async def media_search_endpoint(
+    request: Request,
+    query: str,
+    kind: str = "multi",
+    page: int = 1,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+):
+    _ensure_media_library_enabled()
+    # Enforce same auth policy as other library endpoints.
+    _ = get_verified_uid(request, firebase_uid_from_jwt)
+
+    if not bool(getattr(settings, "MEDIA_TMDB_SYNC_ENABLED", True)):
+        return {"success": True, "results": [], "source": "manual_only"}
+
+    text = str(query or "").strip()
+    if not text:
+        return {"success": True, "results": [], "source": "tmdb"}
+
+    results = search_tmdb_media(text, kind=kind, page=page, max_results=10)
+    return {"success": True, "results": results, "source": "tmdb"}
+
+
+@app.get("/api/media/details/{kind}/{tmdb_id}")
+async def media_details_endpoint(
+    request: Request,
+    kind: str,
+    tmdb_id: int,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+):
+    _ensure_media_library_enabled()
+    _ = get_verified_uid(request, firebase_uid_from_jwt)
+
+    if not bool(getattr(settings, "MEDIA_TMDB_SYNC_ENABLED", True)):
+        raise HTTPException(status_code=503, detail="TMDb sync is disabled")
+
+    details = get_tmdb_media_details(kind, tmdb_id)
+    if details is None:
+        raise HTTPException(status_code=404, detail="Media details not found")
+    return {"success": True, "details": details}
+
+
 @app.put("/api/library/items/{item_id}")
 async def upsert_library_item_endpoint(
     item_id: str,
@@ -2128,6 +2185,7 @@ async def upsert_library_item_endpoint(
 ):
     try:
         verified_uid = get_verified_uid(request, firebase_uid_from_jwt)
+        _ensure_media_resource_type_allowed(payload.type)
         result = upsert_library_item(verified_uid, item_id, payload.model_dump())
         return {"success": True, **result}
     except HTTPException:
@@ -2330,6 +2388,7 @@ async def sync_highlights_endpoint(
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
     try:
+        _ensure_media_resource_type_allowed(request.resource_type)
         if firebase_uid_from_jwt:
             verified_firebase_uid = firebase_uid_from_jwt
         else:
@@ -2376,6 +2435,20 @@ async def sync_highlights_endpoint(
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/items/{item_id}/sync-highlights")
+async def sync_highlights_for_item_endpoint(
+    item_id: str,
+    request: HighlightSyncRequest,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+):
+    # Backward-compatible generic alias for non-book resources (movie/series etc.).
+    return await sync_highlights_endpoint(
+        book_id=item_id,
+        request=request,
+        firebase_uid_from_jwt=firebase_uid_from_jwt,
+    )
 
 
 @app.post("/api/notes/{book_id}/sync-personal-note")

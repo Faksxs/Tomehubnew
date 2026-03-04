@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { LibraryItem, PhysicalStatus, ReadingStatus, Highlight } from '../types';
-import { ArrowLeft, Edit2, Trash2, BookOpen, FileText, Globe, StickyNote, Sparkles, Hash, Calendar, Link as LinkIcon, PenTool, CheckCircle, Clock, Library, AlertTriangle, Archive, Upload, Loader2, AlertCircle, FilePlus } from 'lucide-react';
+import { ArrowLeft, Edit2, Trash2, BookOpen, FileText, Globe, StickyNote, Sparkles, Hash, Calendar, Link as LinkIcon, PenTool, CheckCircle, Clock, Library, AlertTriangle, Archive, Upload, Loader2, AlertCircle, FilePlus, Film, Tv } from 'lucide-react';
+import StarRating from './StarRating';
 import { HighlightSection } from './HighlightSection';
 import { analyzeHighlightsAI, enrichBookWithAI, libraryItemToDraft, mergeEnrichedDraftIntoItem } from '../services/geminiService';
 import { useAuth } from '../contexts/AuthContext';
@@ -40,6 +41,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
   const pollTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isNote = book.type === 'PERSONAL_NOTE';
+  const isMedia = book.type === 'MOVIE' || book.type === 'SERIES';
 
   // Helper for Turkish character normalization only
   const normalize = (str: any) => {
@@ -124,6 +126,10 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
     }
   }
 
+  const readingStatusLabel = isMedia
+    ? (book.readingStatus === 'To Read' ? 'Watchlist' : (book.readingStatus === 'Reading' ? 'Watching' : 'Watched'))
+    : book.readingStatus;
+
   const handleAnalyze = async () => {
     if (book.highlights.length === 0) return;
     setIsAnalyzing(true);
@@ -194,7 +200,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
   }, []);
 
   React.useEffect(() => {
-    if (!user?.uid || !book?.id || isNote) {
+    if (!user?.uid || !book?.id || isNote || isMedia) {
       setPdfStatus(null);
       setPdfStatusError(null);
       setPdfPollAttempts(0);
@@ -256,7 +262,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
         pollTimeoutRef.current = null;
       }
     };
-  }, [book.id, user?.uid, isNote, pdfStatusRefresh]);
+  }, [book.id, user?.uid, isNote, isMedia, pdfStatusRefresh]);
 
   // Helper to render status cards compactly
   const renderStatusCard = (config: any, label: string, value: string) => (
@@ -358,12 +364,13 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
               <div className="flex gap-4 md:block md:shrink-0">
                 {/* Cover Placeholder */}
                 <div className="w-20 h-32 md:w-34 md:h-52 bg-slate-200 dark:bg-slate-800 rounded-lg shadow-inner flex-shrink-0 flex items-center justify-center text-slate-400 dark:text-slate-600 self-center md:self-start overflow-hidden relative border border-[#E6EAF2] dark:border-slate-700">
-                  {book.type === 'BOOK' && book.coverUrl ? (
+                  {(book.type === 'BOOK' || isMedia) && book.coverUrl ? (
                     <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover" />
                   ) : (
                     book.type === 'BOOK' ? <BookOpen size={32} className="md:w-12 md:h-12" /> :
-                      book.type === 'ARTICLE' ? <FileText size={32} className="md:w-12 md:h-12" /> :
-                        <Globe size={32} className="md:w-12 md:h-12" />
+                      isMedia ? ((book.type === 'SERIES') ? <Tv size={32} className="md:w-12 md:h-12" /> : <Film size={32} className="md:w-12 md:h-12" />) :
+                        book.type === 'ARTICLE' ? <FileText size={32} className="md:w-12 md:h-12" /> :
+                          <Globe size={32} className="md:w-12 md:h-12" />
                   )}
                 </div>
 
@@ -385,7 +392,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                     {readingConfig && (
                       <div className={`px-2 py-0.5 rounded-md border text-[10px] font-bold flex items-center gap-1.5 shadow-sm whitespace-nowrap ${readingConfig.bg} ${readingConfig.border} ${readingConfig.color}`}>
                         <readingConfig.icon size={10} />
-                        <span>{book.readingStatus}</span>
+                        <span>{readingStatusLabel}</span>
                       </div>
                     )}
                     {physicalConfig && book.type === 'BOOK' && (
@@ -440,7 +447,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                   {/* Reading Status */}
                   {readingConfig && (
                     <div className={(!physicalConfig || book.type !== 'BOOK') ? "col-span-2 md:col-span-1" : "col-span-1"}>
-                      {renderStatusCard(readingConfig, 'Status', book.readingStatus)}
+                      {renderStatusCard(readingConfig, isMedia ? 'Watch' : 'Status', readingStatusLabel)}
                     </div>
                   )}
 
@@ -453,24 +460,28 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                 </div>
 
                 {/* Action Buttons */}
-                <div className="grid grid-cols-3 gap-2 mt-1 md:mt-2">
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    className="hidden"
-                    accept=".pdf"
-                    onChange={handlePdfUpload}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={pdfDisableUpload}
-                    className="flex items-center justify-center gap-2 px-2 py-2 bg-white dark:bg-slate-900 border border-[#E6EAF2] dark:border-slate-700 hover:border-[#262D40]/18 dark:hover:border-[#262D40]/30 hover:text-[#262D40] dark:hover:text-[#262D40]/82 rounded-lg text-slate-600 dark:text-slate-400 transition-colors text-xs font-medium disabled:opacity-50"
-                    title={pdfIndexed ? `PDF already indexed: ${pdfStatus?.file_name || ''}` : "Upload PDF"}
-                  >
-                    {isIngesting ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                    <span className="hidden lg:inline">PDF</span>
-                  </button>
+                <div className={`grid ${isMedia ? 'grid-cols-2' : 'grid-cols-3'} gap-2 mt-1 md:mt-2`}>
+                  {!isMedia && (
+                    <>
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        className="hidden"
+                        accept=".pdf"
+                        onChange={handlePdfUpload}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={pdfDisableUpload}
+                        className="flex items-center justify-center gap-2 px-2 py-2 bg-white dark:bg-slate-900 border border-[#E6EAF2] dark:border-slate-700 hover:border-[#262D40]/18 dark:hover:border-[#262D40]/30 hover:text-[#262D40] dark:hover:text-[#262D40]/82 rounded-lg text-slate-600 dark:text-slate-400 transition-colors text-xs font-medium disabled:opacity-50"
+                        title={pdfIndexed ? `PDF already indexed: ${pdfStatus?.file_name || ''}` : "Upload PDF"}
+                      >
+                        {isIngesting ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                        <span className="hidden lg:inline">PDF</span>
+                      </button>
+                    </>
+                  )}
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); onEdit(); }}
@@ -488,7 +499,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                 </div>
 
                 {/* Status Messages */}
-                {(ingestResult || pdfIndexed) && (
+                {!isMedia && (ingestResult || pdfIndexed) && (
                   <div className="mt-2 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1 animate-in fade-in slide-in-from-top-1">
                     <CheckCircle size={10} />
                     {pdfStatus?.chunk_count != null
@@ -496,17 +507,17 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                       : 'PDF indexlendi'}
                   </div>
                 )}
-                {pdfMatchedDifferentBook && (
+                {!isMedia && pdfMatchedDifferentBook && (
                   <div className="mt-2 text-[10px] text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1 animate-in fade-in slide-in-from-top-1">
                     <AlertTriangle size={10} /> Ayni baslikta baska bir kaydin PDF'i bulundu; bu kayit icin indexli sayilmadi.
                   </div>
                 )}
-                {ingestError && (
+                {!isMedia && ingestError && (
                   <div className="mt-2 text-[10px] text-red-600 dark:text-red-400 font-medium flex items-center gap-1 animate-in fade-in slide-in-from-top-1">
                     <AlertCircle size={10} /> {ingestError}
                   </div>
                 )}
-                {pdfFailed && (
+                {!isMedia && pdfFailed && (
                   <div className="mt-2 text-[10px] text-red-600 dark:text-red-400 font-medium flex items-center gap-1 animate-in fade-in slide-in-from-top-1">
                     <AlertTriangle size={10} /> PDF islenemedi. Lutfen farkli bir PDF ile tekrar deneyin.
                   </div>
@@ -543,7 +554,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
               <div className={isNote ? "md:col-span-3" : "md:col-span-2 space-y-6"}>
                 {/* Summary / Content */}
                 <div className={`bg-white dark:bg-slate-900 p-4 md:p-6 rounded-xl border border-[#E6EAF2] dark:border-slate-800 shadow-sm ${isNote ? 'min-h-[300px]' : ''}`}>
-                  {!isNote && (
+                  {!isNote && !isMedia && (
                     <div className="flex items-start justify-between gap-3 mb-3 md:mb-4">
                       <div className="flex items-center gap-2">
                         <StickyNote size={18} className="text-[#262D40]/90 dark:text-[#262D40]/82 md:w-5 md:h-5" />
@@ -586,7 +597,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                   <div className="bg-white dark:bg-slate-900 p-4 md:p-6 rounded-xl border border-[#E6EAF2] dark:border-slate-800 shadow-sm space-y-4">
                     <h3 className="text-xs md:text-sm font-semibold text-slate-900 dark:text-white uppercase tracking-wider mb-2 md:mb-4">Information</h3>
 
-                    {(book.publisher) && (
+                    {book.publisher && !isMedia && (
                       <div className="flex flex-col gap-0.5 md:gap-1">
                         <span className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400">{book.type === 'ARTICLE' ? 'Journal' : 'Publisher'}</span>
                         <span className="text-sm font-medium text-slate-800 dark:text-slate-200">{book.publisher}</span>
@@ -600,28 +611,67 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                       </div>
                     )}
 
-                    {book.translator && (
+                    {!isMedia && book.translator && (
                       <div className="flex flex-col gap-0.5 md:gap-1">
                         <span className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400">Translator</span>
                         <span className="text-sm font-medium text-slate-800 dark:text-slate-200">{book.translator}</span>
                       </div>
                     )}
 
-                    {book.isbn && (
+                    {!isMedia && book.isbn && (
                       <div className="flex flex-col gap-0.5 md:gap-1">
                         <span className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400">ISBN</span>
                         <span className="text-sm font-medium text-slate-800 dark:text-slate-200 font-mono">{book.isbn}</span>
                       </div>
                     )}
 
-                    {book.pageCount && (
+                    {!isMedia && book.pageCount && (
                       <div className="flex flex-col gap-0.5 md:gap-1">
                         <span className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400">Page Count</span>
                         <span className="text-sm font-medium text-slate-800 dark:text-slate-200">{book.pageCount} pages</span>
                       </div>
                     )}
 
-                    {pdfStatus && pdfStatus.status !== 'NOT_FOUND' && !pdfMatchedDifferentBook && (
+                    {isMedia && book.castTop && book.castTop.length > 0 && (
+                      <div className="flex flex-col gap-0.5 md:gap-1">
+                        <span className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400">Top Cast</span>
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-200">{book.castTop.join(', ')}</span>
+                      </div>
+                    )}
+
+                    {/* Star Rating */}
+                    {!isNote && (
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400">Rating</span>
+                        <StarRating
+                          value={book.rating}
+                          size={18}
+                          onChange={async (newRating) => {
+                            if (!user) return;
+                            try {
+                              await patchItemForUser(user.uid, book.id, { rating: newRating > 0 ? newRating : null });
+                              onBookUpdated?.({ ...book, rating: newRating > 0 ? newRating : undefined });
+                            } catch (e) {
+                              console.error('Failed to save rating', e);
+                            }
+                          }}
+                        />
+                        {book.rating && book.rating > 0 && (
+                          <button
+                            className="text-[10px] text-slate-400 hover:text-red-400 text-left transition-colors"
+                            onClick={async () => {
+                              if (!user) return;
+                              await patchItemForUser(user.uid, book.id, { rating: null });
+                              onBookUpdated?.({ ...book, rating: undefined });
+                            }}
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {!isMedia && pdfStatus && pdfStatus.status !== 'NOT_FOUND' && !pdfMatchedDifferentBook && (
                       <div className="flex flex-col gap-0.5 md:gap-1">
                         <span className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400">PDF</span>
                         <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
@@ -722,6 +772,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                 highlights={book.highlights}
                 onUpdate={onUpdateHighlights}
                 autoEditHighlightId={autoEditHighlightId}
+                isMedia={isMedia}
               />
             </div>
           )}

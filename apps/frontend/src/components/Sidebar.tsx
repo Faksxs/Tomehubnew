@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, User, Moon, Sun } from 'lucide-react';
+import { X, User, Moon, Sun, Film } from 'lucide-react';
 import logo from '../assets/logo_v9.png';
 import { ResourceType } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
@@ -18,11 +18,12 @@ import {
 interface SidebarProps {
   activeTab: ResourceType | 'NOTES' | 'DASHBOARD' | 'PROFILE' | 'RAG_SEARCH' | 'INGEST' | 'SMART_SEARCH' | 'FLOW' | 'INSIGHTS';
   onTabChange: (tab: ResourceType | 'NOTES' | 'DASHBOARD' | 'PROFILE' | 'RAG_SEARCH' | 'INGEST' | 'SMART_SEARCH' | 'FLOW' | 'INSIGHTS') => void;
+  mediaLibraryEnabled?: boolean;
   isOpen: boolean;
   onClose: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen, onClose }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, mediaLibraryEnabled = false, isOpen, onClose }) => {
   const { theme, toggleTheme } = useTheme();
 
   const menuItems = [
@@ -31,6 +32,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen
     { id: 'RAG_SEARCH', label: 'LogosChat (Layer 3)', icon: DeepChatbotLogo },
     { id: 'FLOW', label: 'Flux (Layer 4)', icon: FluxLogo },
     { id: 'BOOK', label: 'Books', icon: BooksLogo },
+    ...(mediaLibraryEnabled ? [{ id: 'MOVIE', label: 'Cinema', icon: Film }] : []),
     { id: 'ARTICLE', label: 'Articles', icon: ArticlesLogo },
     { id: 'WEBSITE', label: 'Websites', icon: WebsitesLogo },
     { id: 'PERSONAL_NOTE', label: 'Personal Notes', icon: NotesLogo },
@@ -84,8 +86,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen
                   }`}
               >
                 <Icon
-                  className={`w-[18px] h-[18px] lg:w-5 lg:h-5 transition-colors ${isActive ? 'text-[#CC561E]' : 'text-white/60 group-hover:text-white'
-                    }`}
+                  className={`w-[18px] h-[18px] lg:w-5 lg:h-5 transition-colors ${
+                    item.id === 'MOVIE'
+                      ? 'text-[#CC561E]'
+                      : (isActive ? 'text-[#CC561E]' : 'text-white/60 group-hover:text-white')
+                  }`}
                 />
                 {item.label}
               </button>

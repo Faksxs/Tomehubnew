@@ -19,7 +19,7 @@ logger = get_logger("library_service")
 
 _TABLE_COLUMNS_CACHE: dict[str, set[str]] = {}
 
-_ITEM_TYPES = {"BOOK", "ARTICLE", "WEBSITE", "PERSONAL_NOTE"}
+_ITEM_TYPES = {"BOOK", "ARTICLE", "WEBSITE", "PERSONAL_NOTE", "MOVIE", "SERIES"}
 _CONTENT_TYPE_CANDIDATES = ("CONTENT_TYPE", "SOURCE_TYPE")
 _ITEM_ID_CANDIDATES = ("ITEM_ID", "BOOK_ID")
 _LIBRARY_TABLE = "TOMEHUB_LIBRARY_ITEMS"
@@ -135,6 +135,22 @@ def _safe_json_list(value: Any) -> list[str]:
     return []
 
 
+def _normalize_tmdb_token(value: Any) -> Optional[str]:
+    text = str(value or "").strip().lower()
+    if not text.startswith("tmdb:"):
+        return None
+    parts = text.split(":")
+    if len(parts) != 3:
+        return None
+    kind = parts[1].strip()
+    raw_id = parts[2].strip()
+    if kind not in {"movie", "tv"}:
+        return None
+    if not raw_id.isdigit():
+        return None
+    return f"tmdb:{kind}:{int(raw_id)}"
+
+
 def _normalize_item_tags(raw_tags: Any) -> list[str]:
     if isinstance(raw_tags, list):
         source = raw_tags
@@ -164,6 +180,17 @@ def _to_int_or_none(value: Any) -> Optional[int]:
         return None
 
 
+def _is_blank_text(value: Any) -> bool:
+    return not str(value or "").strip()
+
+
+def _is_blank_clob(value: Any) -> bool:
+    if value is None:
+        return True
+    raw = safe_read_clob(value) if not isinstance(value, str) else value
+    return not str(raw or "").strip()
+
+
 def _decode_cursor(cursor: Optional[str]) -> Optional[tuple[int, str]]:
     if not cursor:
         return None
@@ -182,6 +209,46 @@ def _decode_cursor(cursor: Optional[str]) -> Optional[tuple[int, str]]:
 def _encode_cursor(updated_at_ms: int, item_id: str) -> str:
     payload = json.dumps({"updatedAtMs": int(updated_at_ms), "itemId": item_id}, separators=(",", ":"))
     return base64.urlsafe_b64encode(payload.encode("utf-8")).decode("utf-8")
+
+
+def ensure_library_rating_column() -> None:
+    """Add/migrate RATING column in library table for half-star support (idempotent)."""
+    cols = _library_cols()
+    if "RATING" in cols:
+        # Column already exists — try to widen to NUMBER(3,1) for half-stars (no-op if already correct).
+        try:
+            with DatabaseManager.get_write_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"ALTER TABLE {_LIBRARY_TABLE} MODIFY (RATING NUMBER(3,1))"
+                    )
+                conn.commit()
+            _TABLE_COLUMNS_CACHE.pop(_LIBRARY_TABLE, None)
+        except Exception:
+            pass  # Already correct type or unsupported; non-fatal.
+        return
+    try:
+        with DatabaseManager.get_write_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"ALTER TABLE {_LIBRARY_TABLE} ADD (RATING NUMBER(3,1) CHECK (RATING BETWEEN 0.5 AND 5))"
+                )
+            conn.commit()
+        _TABLE_COLUMNS_CACHE.pop(_LIBRARY_TABLE, None)
+        logger.info("Added RATING column to %s", _LIBRARY_TABLE)
+    except Exception as e:
+        msg = str(e).lower()
+        if "already" in msg or "ora-01430" in msg or "ora-00955" in msg:
+            _TABLE_COLUMNS_CACHE.pop(_LIBRARY_TABLE, None)
+            return
+        logger.warning("Could not add RATING column: %s", e)
+
+
+# Eagerly add RATING column on service import — safe to call multiple times.
+try:
+    ensure_library_rating_column()
+except Exception:
+    pass  # Non-fatal: will gracefully return NULL from _lib_select_expr until fixed.
 
 
 def ensure_personal_note_folders_table() -> None:
@@ -243,11 +310,17 @@ def list_library_items(
     limit: int = 1000,
     cursor: Optional[str] = None,
     types: Optional[list[str]] = None,
+    include_media: bool = True,
 ) -> dict:
     limit = max(1, min(int(limit or 1000), 2000))
     decoded_cursor = _decode_cursor(cursor)
-    item_types = [_canonical_item_type(t) for t in (types or []) if str(t or "").strip()]
+    requested_types = [_canonical_item_type(t) for t in (types or []) if str(t or "").strip()]
+    item_types = list(requested_types)
     item_types = [t for t in item_types if t in _ITEM_TYPES]
+    if not include_media:
+        item_types = [t for t in item_types if t not in {"MOVIE", "SERIES"}]
+    if requested_types and not item_types:
+        return {"items": [], "next_cursor": None}
 
     rows: list[dict[str, Any]] = []
     next_cursor: Optional[str] = None
@@ -262,6 +335,8 @@ def list_library_items(
             binds[k] = t
             type_placeholders.append(f":{k}")
         where_parts.append(f"li.ITEM_TYPE IN ({', '.join(type_placeholders)})")
+    elif not include_media:
+        where_parts.append("li.ITEM_TYPE NOT IN ('MOVIE', 'SERIES')")
 
     if decoded_cursor:
         ts_ms, item_id = decoded_cursor
@@ -296,10 +371,12 @@ def list_library_items(
             {_lib_select_expr('PERSONAL_FOLDER_ID')},
             {_lib_select_expr('FOLDER_PATH')},
             {_lib_select_expr('COVER_URL')},
+            {_lib_select_expr('CAST_TOP_JSON')},
             {_lib_select_expr('CREATED_AT')},
             {_lib_select_expr('IS_FAVORITE')},
             {_lib_select_expr('PAGE_COUNT')},
-            {_lib_select_expr('UPDATED_AT')}
+            {_lib_select_expr('UPDATED_AT')},
+            {_lib_select_expr('RATING')}
         FROM {_LIBRARY_TABLE} li
         WHERE {' AND '.join(where_parts)}
         ORDER BY li.UPDATED_AT DESC, li.ITEM_ID DESC
@@ -317,7 +394,7 @@ def list_library_items(
             item_ids: list[str] = []
             for r in visible:
                 item_id = str(r[0])
-                updated_ms = _ts_to_ms(r[25] or r[22])
+                updated_ms = _ts_to_ms(r[26] or r[23])
                 item = {
                     "id": item_id,
                     "type": _canonical_item_type(r[1]),
@@ -343,9 +420,11 @@ def list_library_items(
                     "personalFolderId": str(r[19] or "").strip() or None,
                     "folderPath": safe_read_clob(r[20]) if r[20] is not None else None,
                     "coverUrl": str(r[21] or "").strip() or None,
-                    "addedAt": _ts_to_ms(r[22]),
-                    "isFavorite": bool(int(r[23])) if r[23] is not None else False,
-                    "pageCount": int(r[24]) if r[24] is not None else None,
+                    "castTop": _safe_json_list(r[22]),
+                    "addedAt": _ts_to_ms(r[23]),
+                    "isFavorite": bool(int(r[24])) if r[24] is not None else False,
+                    "pageCount": int(r[25]) if r[25] is not None else None,
+                    "rating": float(r[27]) if r[27] is not None else None,
                     "highlights": [],
                     "isIngested": False,
                     "_updatedAtMs": updated_ms,
@@ -645,15 +724,28 @@ def upsert_library_item(firebase_uid: str, item_id: str, payload: dict[str, Any]
 
     normalized_tags = _normalize_item_tags(payload.get("tags") or [])
     category_json_value = json.dumps(extract_book_categories_from_tags(normalized_tags), ensure_ascii=False)
+    tmdb_token = _normalize_tmdb_token(payload.get("isbn"))
+    normalized_cast_top: list[str] = []
+    for entry in payload.get("castTop") or []:
+        name = str(entry or "").strip()
+        if not name:
+            continue
+        if name in normalized_cast_top:
+            continue
+        normalized_cast_top.append(name)
+        if len(normalized_cast_top) >= 6:
+            break
+    cast_top_json_value = json.dumps(normalized_cast_top, ensure_ascii=False)
+    effective_item_id = item_id
 
     field_map: list[tuple[str, Any, str]] = [
         ("ITEM_TYPE", item_type, "scalar"),
         ("TITLE", title, "scalar"),
         ("AUTHOR", author, "scalar"),
         ("TRANSLATOR", payload.get("translator"), "scalar"),
-        ("PUBLISHER", payload.get("publisher"), "scalar"),
+        ("PUBLISHER", None if item_type in {"MOVIE", "SERIES"} else payload.get("publisher"), "scalar"),
         ("PUBLICATION_YEAR", _to_int_or_none(payload.get("publicationYear")), "scalar"),
-        ("ISBN", payload.get("isbn"), "scalar"),
+        ("ISBN", tmdb_token or payload.get("isbn"), "scalar"),
         ("SOURCE_URL", payload.get("url"), "scalar"),
         ("PAGE_COUNT", _to_int_or_none(payload.get("pageCount")), "scalar"),
         ("COVER_URL", payload.get("coverUrl"), "scalar"),
@@ -664,6 +756,7 @@ def upsert_library_item(firebase_uid: str, item_id: str, payload: dict[str, Any]
         ("PERSONAL_NOTE_CATEGORY", payload.get("personalNoteCategory"), "scalar"),
         ("PERSONAL_FOLDER_ID", payload.get("personalFolderId"), "scalar"),
         ("FOLDER_PATH", payload.get("folderPath"), "clob"),
+        ("CAST_TOP_JSON", cast_top_json_value, "clob"),
         ("CONTENT_LANGUAGE_MODE", payload.get("contentLanguageMode"), "scalar"),
         ("CONTENT_LANGUAGE_RESOLVED", payload.get("contentLanguageResolved"), "scalar"),
         ("SOURCE_LANGUAGE_HINT", payload.get("sourceLanguageHint"), "scalar"),
@@ -671,6 +764,7 @@ def upsert_library_item(firebase_uid: str, item_id: str, payload: dict[str, Any]
         ("LANGUAGE_DECISION_CONFIDENCE", payload.get("languageDecisionConfidence"), "scalar"),
         ("TAGS_JSON", json.dumps(normalized_tags, ensure_ascii=False), "clob"),
         ("CATEGORY_JSON", category_json_value, "clob"),
+        ("RATING", _to_int_or_none(payload.get("rating")), "scalar"),
     ]
 
     binds: dict[str, Any] = {"p_id": item_id, "p_uid": firebase_uid}
@@ -713,21 +807,147 @@ def upsert_library_item(firebase_uid: str, item_id: str, payload: dict[str, Any]
 
     with DatabaseManager.get_write_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                f"""
-                MERGE INTO {_LIBRARY_TABLE} li
-                USING (SELECT :p_id AS item_id, :p_uid AS firebase_uid FROM DUAL) src
-                ON (li.ITEM_ID = src.item_id AND li.FIREBASE_UID = src.firebase_uid)
-                WHEN MATCHED THEN
-                  UPDATE SET {', '.join(update_sets)}
-                WHEN NOT MATCHED THEN
-                  INSERT ({', '.join(insert_cols)})
-                  VALUES ({', '.join(insert_vals)})
-                """,
-                binds,
-            )
+            # Media dedupe strategy: only dedupe via canonical TMDb token, never by title.
+            dedupe_matched_existing = False
+            if (
+                item_type in {"MOVIE", "SERIES"}
+                and tmdb_token
+                and "ISBN" in lib_cols
+                and "ITEM_TYPE" in lib_cols
+                and "ITEM_ID" in lib_cols
+                and "FIREBASE_UID" in lib_cols
+            ):
+                token_binds: dict[str, Any] = {
+                    "p_uid": firebase_uid,
+                    "p_type": item_type,
+                    "p_token": tmdb_token,
+                    "p_item": item_id,
+                }
+                where_deleted = " AND NVL(li.IS_DELETED, 0) = 0" if "IS_DELETED" in lib_cols else ""
+                order_by_clause = "li.UPDATED_AT DESC NULLS LAST" if "UPDATED_AT" in lib_cols else "li.ITEM_ID DESC"
+                cur.execute(
+                    f"""
+                    SELECT li.ITEM_ID
+                    FROM {_LIBRARY_TABLE} li
+                    WHERE li.FIREBASE_UID = :p_uid
+                      AND li.ITEM_TYPE = :p_type
+                      AND LOWER(TRIM(li.ISBN)) = :p_token
+                      AND li.ITEM_ID <> :p_item
+                      {where_deleted}
+                    ORDER BY {order_by_clause}
+                    FETCH FIRST 1 ROWS ONLY
+                    """,
+                    token_binds,
+                )
+                matched = cur.fetchone()
+                if matched and matched[0]:
+                    effective_item_id = str(matched[0])
+                    binds["p_id"] = effective_item_id
+                    dedupe_matched_existing = effective_item_id != item_id
+
+            if dedupe_matched_existing:
+                # Safe merge for TMDb dedupe collisions: do not overwrite user-owned fields.
+                select_cols = []
+                for col in ("TITLE", "AUTHOR", "PUBLICATION_YEAR", "ISBN", "SOURCE_URL", "COVER_URL", "SUMMARY_TEXT", "CAST_TOP_JSON"):
+                    if col in lib_cols:
+                        select_cols.append(col)
+                existing_row: tuple[Any, ...] | None = None
+                if select_cols:
+                    cur.execute(
+                        f"""
+                        SELECT {', '.join(select_cols)}
+                        FROM {_LIBRARY_TABLE}
+                        WHERE FIREBASE_UID = :p_uid
+                          AND ITEM_ID = :p_item
+                        FETCH FIRST 1 ROWS ONLY
+                        """,
+                        {"p_uid": firebase_uid, "p_item": effective_item_id},
+                    )
+                    existing_row = cur.fetchone()
+                existing_map: dict[str, Any] = {}
+                if existing_row:
+                    for idx, col in enumerate(select_cols):
+                        existing_map[col] = existing_row[idx]
+
+                safe_sets: list[str] = []
+                safe_binds: dict[str, Any] = {"p_uid": firebase_uid, "p_item": effective_item_id}
+
+                def _append_scalar_if_blank(col: str, value: Any) -> None:
+                    if col not in lib_cols:
+                        return
+                    if value is None:
+                        return
+                    if isinstance(value, str) and not value.strip():
+                        return
+                    if not _is_blank_text(existing_map.get(col)):
+                        return
+                    b = f"p_safe_{len(safe_binds)}"
+                    safe_binds[b] = value
+                    safe_sets.append(f"{col} = :{b}")
+
+                def _append_clob_if_blank(col: str, value: Any) -> None:
+                    if col not in lib_cols:
+                        return
+                    if value is None:
+                        return
+                    text = str(value)
+                    if not text.strip():
+                        return
+                    if not _is_blank_clob(existing_map.get(col)):
+                        return
+                    b = f"p_safe_{len(safe_binds)}"
+                    safe_binds[b] = text
+                    safe_sets.append(f"{col} = TO_CLOB(:{b})")
+
+                _append_scalar_if_blank("TITLE", title)
+                _append_scalar_if_blank("AUTHOR", author)
+                _append_scalar_if_blank("PUBLICATION_YEAR", _to_int_or_none(payload.get("publicationYear")))
+                _append_scalar_if_blank("ISBN", tmdb_token or payload.get("isbn"))
+                _append_scalar_if_blank("SOURCE_URL", payload.get("url"))
+                _append_scalar_if_blank("COVER_URL", payload.get("coverUrl"))
+                _append_clob_if_blank("SUMMARY_TEXT", summary_value)
+                if normalized_cast_top:
+                    existing_cast = _safe_json_list(existing_map.get("CAST_TOP_JSON"))
+                    if not existing_cast and "CAST_TOP_JSON" in lib_cols:
+                        b = f"p_safe_{len(safe_binds)}"
+                        safe_binds[b] = cast_top_json_value
+                        safe_sets.append(f"CAST_TOP_JSON = TO_CLOB(:{b})")
+
+                if "UPDATED_AT" in lib_cols:
+                    safe_sets.append("UPDATED_AT = CURRENT_TIMESTAMP")
+                if "IS_DELETED" in lib_cols:
+                    safe_sets.append("IS_DELETED = 0")
+                if "DELETED_AT" in lib_cols:
+                    safe_sets.append("DELETED_AT = NULL")
+                if "ROW_VERSION" in lib_cols:
+                    safe_sets.append("ROW_VERSION = NVL(ROW_VERSION, 0) + 1")
+
+                if safe_sets:
+                    cur.execute(
+                        f"""
+                        UPDATE {_LIBRARY_TABLE}
+                        SET {', '.join(safe_sets)}
+                        WHERE FIREBASE_UID = :p_uid
+                          AND ITEM_ID = :p_item
+                        """,
+                        safe_binds,
+                    )
+            else:
+                cur.execute(
+                    f"""
+                    MERGE INTO {_LIBRARY_TABLE} li
+                    USING (SELECT :p_id AS item_id, :p_uid AS firebase_uid FROM DUAL) src
+                    ON (li.ITEM_ID = src.item_id AND li.FIREBASE_UID = src.firebase_uid)
+                    WHEN MATCHED THEN
+                      UPDATE SET {', '.join(update_sets)}
+                    WHEN NOT MATCHED THEN
+                      INSERT ({', '.join(insert_cols)})
+                      VALUES ({', '.join(insert_vals)})
+                    """,
+                    binds,
+                )
         conn.commit()
-    return {"success": True, "item_id": item_id}
+    return {"success": True, "item_id": effective_item_id}
 
 
 def patch_library_item(firebase_uid: str, item_id: str, patch: dict[str, Any]) -> dict:
@@ -755,6 +975,8 @@ def patch_library_item(firebase_uid: str, item_id: str, patch: dict[str, Any]) -
         "coverUrl": ("COVER_URL", "str"),
         "pageCount": ("PAGE_COUNT", "int"),
         "tags": ("TAGS_JSON", "json"),
+        "castTop": ("CAST_TOP_JSON", "json"),
+        "rating": ("RATING", "int"),
     }
     sets = ["UPDATED_AT = CURRENT_TIMESTAMP"] if "UPDATED_AT" in lib_cols else []
     binds: Dict[str, Any] = {"p_uid": firebase_uid, "p_item": item_id}

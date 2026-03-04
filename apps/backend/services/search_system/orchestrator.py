@@ -732,7 +732,7 @@ class SearchOrchestrator:
                 allowed_source_types = {
                     "PDF", "EPUB", "PDF_CHUNK", "BOOK",
                     "HIGHLIGHT", "INSIGHT",
-                    "PERSONAL_NOTE", "ARTICLE", "WEBSITE", "GRAPH_RELATION"
+                    "PERSONAL_NOTE", "ARTICLE", "WEBSITE", "MOVIE", "SERIES", "GRAPH_RELATION"
                 }
                 if source_type and source_type not in allowed_source_types:
                     return False

@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { LibraryItem, ReadingStatus, ResourceType, PhysicalStatus, PersonalNoteCategory, PersonalNoteFolder } from '../types';
-import { Search, Plus, Book as BookIcon, Filter, FileText, Globe, ExternalLink, StickyNote, Quote, ArrowRight, PenTool, BarChart2, AlertTriangle, Library, ArrowUpDown, Calendar, Clock3, Hash, Menu, Trash2, ChevronDown, ChevronLeft, ChevronRight, Loader2, Star, CheckCircle, Zap, X, Folder, ListFilter, GripVertical, Pencil, FolderPlus } from 'lucide-react';
+import { Search, Plus, Book as BookIcon, Filter, FileText, Globe, ExternalLink, StickyNote, Quote, ArrowRight, PenTool, BarChart2, AlertTriangle, Library, ArrowUpDown, Calendar, Clock3, Hash, Menu, Trash2, ChevronDown, ChevronLeft, ChevronRight, Loader2, Star, CheckCircle, Zap, X, Folder, ListFilter, GripVertical, Pencil, FolderPlus, Film, Tv } from 'lucide-react';
 import {
     DndContext,
     DragOverlay,
@@ -86,6 +86,7 @@ interface BookListProps {
     onSelectBook: (book: LibraryItem) => void;
     onSelectBookWithTab?: (book: LibraryItem, tab: 'info' | 'highlights', highlightId?: string) => void; // Optional: select book with specific tab and highlight
     activeTab: ResourceType | 'NOTES' | 'DASHBOARD' | 'INSIGHTS' | 'INGEST' | 'FLOW' | 'RAG_SEARCH' | 'SMART_SEARCH' | 'PROFILE';
+    mediaLibraryEnabled?: boolean;
     onMobileMenuClick: () => void;
     userId: string;
     categoryFilter?: string | null;
@@ -110,7 +111,7 @@ interface BookListProps {
     onTabChange?: (tab: ResourceType | 'NOTES' | 'DASHBOARD' | 'INSIGHTS' | 'INGEST' | 'FLOW' | 'RAG_SEARCH' | 'SMART_SEARCH' | 'PROFILE') => void;
 }
 
-export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNoteFolders = [], onAddBook, onAddPersonalNote, onQuickCreatePersonalNote, onCreatePersonalFolder, onRenamePersonalFolder, onDeletePersonalFolder, onMovePersonalNote, onMovePersonalFolder, onSelectBook, onSelectBookWithTab, activeTab, onMobileMenuClick, onDeleteBook, onDeleteMultiple, onToggleFavorite, onToggleHighlightFavorite, userId, categoryFilter, onCategoryFilterChange, onCategoryNavigate, onStatusNavigate, currentPage, onPageChange, searchQuery, onSearchChange, statusFilter, onStatusFilterChange, sortOption, onSortOptionChange, publisherFilter, onPublisherFilterChange, onTabChange }) => {
+export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNoteFolders = [], onAddBook, onAddPersonalNote, onQuickCreatePersonalNote, onCreatePersonalFolder, onRenamePersonalFolder, onDeletePersonalFolder, onMovePersonalNote, onMovePersonalFolder, onSelectBook, onSelectBookWithTab, activeTab, mediaLibraryEnabled = false, onMobileMenuClick, onDeleteBook, onDeleteMultiple, onToggleFavorite, onToggleHighlightFavorite, userId, categoryFilter, onCategoryFilterChange, onCategoryNavigate, onStatusNavigate, currentPage, onPageChange, searchQuery, onSearchChange, statusFilter, onStatusFilterChange, sortOption, onSortOptionChange, publisherFilter, onPublisherFilterChange, onTabChange }) => {
     // UI State (Moved to App.tsx for persistence)
     const [isTyping, setIsTyping] = useState(false); // Visual feedback
 
@@ -125,9 +126,11 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
     const isStats = activeTab === 'DASHBOARD';
     const isNotesTab = activeTab === 'NOTES';
     const isPersonalNotes = activeTab === 'PERSONAL_NOTE';
+    const isMediaTab = mediaLibraryEnabled && activeTab === 'MOVIE';
     const [noteCategoryFilter, setNoteCategoryFilter] = useState<'ALL' | PersonalNoteCategory>('ALL');
     const [noteFolderFilter, setNoteFolderFilter] = useState<'ALL' | '__ROOT__' | string>('ALL');
     const [noteSmartFilter, setNoteSmartFilter] = useState<NoteSmartFilter>('NONE');
+    const [mediaTypeFilter, setMediaTypeFilter] = useState<'ALL' | 'MOVIE' | 'SERIES'>('ALL');
     const [noteTagFilter, setNoteTagFilter] = useState<string | null>(null);
     const [isTopTagsOpen, setIsTopTagsOpen] = useState(false);
     const [collapsedFolderCategories, setCollapsedFolderCategories] = useState<Record<PersonalNoteCategory, boolean>>({
@@ -163,6 +166,12 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
             setIsPersonalPanelOpen(false);
         }
     }, [isPersonalNotes]);
+
+    useEffect(() => {
+        if (!isMediaTab) {
+            setMediaTypeFilter('ALL');
+        }
+    }, [isMediaTab]);
 
     useEffect(() => {
         if (noteTagFilter) {
@@ -240,6 +249,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
     const itemsPerPage = useMemo(() => {
         switch (activeTab) {
             case 'BOOK': return 24;
+            case 'MOVIE': return 24;
             case 'ARTICLE': return 24;
             case 'WEBSITE': return 24;
             case 'PERSONAL_NOTE': return 30;
@@ -291,7 +301,13 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
             : null;
 
         const result = books.filter(book => {
-            if (book.type !== activeTab) return false;
+            const matchesTabType = isMediaTab
+                ? (book.type === 'MOVIE' || book.type === 'SERIES')
+                : (book.type === activeTab);
+            if (!matchesTabType) return false;
+            if (isMediaTab && mediaTypeFilter !== 'ALL' && book.type !== mediaTypeFilter) {
+                return false;
+            }
             if (isPersonalNotes) {
                 const noteCategory = getPersonalNoteCategory(book);
                 if (noteCategoryFilter === 'ALL' && noteCategory === 'PRIVATE') {
@@ -348,7 +364,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
             if (!matchesStatus) return false;
 
             // 3. Publisher Filter
-            if (publisherFilter && activeTab !== 'BOOK') {
+            if (publisherFilter && activeTab === 'ARTICLE') {
                 if (!includesNormalized(book.publisher || '', normalizeSearchText(publisherFilter))) {
                     return false;
                 }
@@ -370,6 +386,13 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                 if (includesNormalized(book.code || '', term)) return true;
                 // Books tab should stay strict: do not match by notes/tags.
                 return false;
+            }
+
+            if (isMediaTab) {
+                if (includesNormalized(book.publicationYear || '', term)) return true;
+                if (includesNormalized(book.summaryText || '', term)) return true;
+                if ((book.castTop || []).some((name) => includesNormalized(name, term))) return true;
+                if (includesNormalized(book.url || '', term)) return true;
             }
 
             // Deep search (Notes, Tags) - only if primary fields failed
@@ -401,7 +424,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
             return b.addedAt - a.addedAt;
         });
 
-    }, [books, searchQuery, statusFilter, publisherFilter, sortOption, activeTab, isNotesTab, isStats, categoryFilter, isPersonalNotes, noteCategoryFilter, noteFolderFilter, noteSmartFilter, noteTagFilter, folderById, legacyFolderLookup]);
+    }, [books, searchQuery, statusFilter, publisherFilter, sortOption, activeTab, isNotesTab, isStats, categoryFilter, isPersonalNotes, isMediaTab, mediaTypeFilter, noteCategoryFilter, noteFolderFilter, noteSmartFilter, noteTagFilter, folderById, legacyFolderLookup]);
 
     const allPersonalNotes = useMemo(
         () => books.filter((book) => book.type === 'PERSONAL_NOTE'),
@@ -551,6 +574,8 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
     const getTabLabel = (type: ResourceType | 'NOTES' | 'DASHBOARD' | 'INSIGHTS' | 'INGEST' | 'FLOW' | 'RAG_SEARCH' | 'SMART_SEARCH' | 'PROFILE') => {
         switch (type) {
             case 'BOOK': return 'Books';
+            case 'MOVIE': return 'Cinema';
+            case 'SERIES': return 'Series';
             case 'ARTICLE': return 'Articles';
             case 'WEBSITE': return 'Websites';
             case 'PERSONAL_NOTE': return 'Personal Notes';
@@ -568,6 +593,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
     const getSearchPlaceholder = () => {
         if (isNotesTab) return "Search quotes...";
         if (activeTab === 'PERSONAL_NOTE') return "Search notes...";
+        if (isMediaTab) return "Search title, director, cast...";
         if (activeTab === 'ARTICLE') return "Search title, author...";
         if (activeTab === 'WEBSITE') return "Search site, URL...";
         return "Search title, author, ISBN...";
@@ -945,6 +971,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                 <div className="text-center py-12 md:py-20 bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700">
                     <div className="bg-[#F3F5FA] dark:bg-slate-800 w-12 h-12 md:w-16 md:h-16 rounded-full flex items-center justify-center mx-auto mb-3 md:mb-4">
                         {activeTab === 'BOOK' ? <BookIcon size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" /> :
+                            activeTab === 'MOVIE' ? <Film size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" /> :
                             activeTab === 'ARTICLE' ? <FileText size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" /> :
                                 (activeTab as any) === 'PERSONAL_NOTE' ? <PenTool size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" /> :
                                     <Globe size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" />}
@@ -1441,6 +1468,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                             <div className="absolute inset-0 bg-[#262D40]/20 blur-2xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                                             <div className="relative p-4 rounded-full">
                                                 {book.type === 'BOOK' ? <BooksLogo size={48} className="text-[#262D40] dark:text-white/80 drop-shadow-[0_0_8px_rgba(38,45,64,0.35)]" /> :
+                                                    (book.type === 'MOVIE' || book.type === 'SERIES') ? <Film size={48} className="text-[#262D40] dark:text-white/80 drop-shadow-[0_0_8px_rgba(38,45,64,0.35)]" /> :
                                                     book.type === 'ARTICLE' ? <ArticlesLogo size={48} className="text-[#262D40] dark:text-white/80 drop-shadow-[0_0_8px_rgba(38,45,64,0.35)]" /> :
                                                         <WebsitesLogo size={48} className="text-[#262D40] dark:text-white/80 drop-shadow-[0_0_8px_rgba(38,45,64,0.35)]" />}
                                             </div>
@@ -1448,7 +1476,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                     </div>
 
                                     {/* Cover Image with Lazy Loading */}
-                                    {book.type === 'BOOK' && book.coverUrl && (
+                                    {(book.type === 'BOOK' || book.type === 'MOVIE' || book.type === 'SERIES') && book.coverUrl && (
                                         <>
                                             <img
                                                 src={book.coverUrl}
@@ -1473,7 +1501,9 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                     <div className="relative z-30 p-1.5 md:p-4 w-full flex justify-between items-end">
                                         <div className={`text-[8px] md:text-xs font-bold px-1 md:px-2 py-0.5 md:py-1 rounded shadow-sm backdrop-blur-md ${(book.type === 'BOOK' && book.coverUrl) || book.type !== 'BOOK' ? 'bg-white/90 dark:bg-slate-900/90 text-slate-900 dark:text-white border border-white/50 dark:border-slate-700' : statusColors[book.readingStatus]
                                             }`}>
-                                            {book.readingStatus}
+                                            {isMediaTab
+                                                ? (book.readingStatus === 'To Read' ? 'Watchlist' : (book.readingStatus === 'Reading' ? 'Watching' : 'Watched'))
+                                                : book.readingStatus}
                                         </div>
 
                                         <div className="flex gap-0.5 md:gap-1">
@@ -1501,6 +1531,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                     <div className="mt-auto pt-2 md:pt-4 border-t border-slate-50 dark:border-slate-800 flex justify-between items-center text-[10px] md:text-xs text-slate-400 dark:text-slate-500">
                                         <span className="truncate max-w-[70%]">
                                             {book.type === 'BOOK' ? (book.publisher || '') :
+                                                (book.type === 'MOVIE' || book.type === 'SERIES') ? (book.castTop?.slice(0, 2).join(', ') || 'Media') :
                                                 book.type === 'ARTICLE' ? (book.publisher || 'Journal') :
                                                     (() => {
                                                         try {
@@ -1511,6 +1542,11 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                                     })()}
                                         </span>
                                         {book.type === 'ARTICLE' && book.publicationYear && (
+                                            <span className="bg-[#F3F5FA] dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-500 dark:text-slate-400 font-mono">
+                                                {book.publicationYear}
+                                            </span>
+                                        )}
+                                        {(book.type === 'MOVIE' || book.type === 'SERIES') && book.publicationYear && (
                                             <span className="bg-[#F3F5FA] dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-500 dark:text-slate-400 font-mono">
                                                 {book.publicationYear}
                                             </span>
@@ -1538,6 +1574,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
             case 'DASHBOARD': return KnowledgeBaseLogo;
             case 'NOTES': return HighlightsLogo;
             case 'BOOK': return BooksLogo;
+            case 'MOVIE': return BooksLogo;
             case 'ARTICLE': return ArticlesLogo;
             case 'WEBSITE': return WebsitesLogo;
             case 'PERSONAL_NOTE': return NotesLogo;
@@ -1599,7 +1636,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                         >
                             <Plus size={14} className="md:w-5 md:h-5" />
                             <span className="text-[10px] md:text-base">
-                                Add {activeTab === 'ARTICLE' ? 'Article' : (activeTab === 'WEBSITE' ? 'Web' : (activeTab === 'PERSONAL_NOTE' ? 'Note' : 'Book'))}
+                                Add {activeTab === 'ARTICLE' ? 'Article' : (activeTab === 'WEBSITE' ? 'Web' : (activeTab === 'PERSONAL_NOTE' ? 'Note' : (isMediaTab ? 'Media' : 'Book')))}
                             </span>
                         </button>
                     </div>
@@ -1674,9 +1711,9 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                     <option value="FAVORITES">Favorites</option>
                                     <option value="HIGHLIGHTS">Highlight</option>
                                     <optgroup label="Status">
-                                        <option value="To Read">To Read</option>
-                                        <option value="Reading">Reading</option>
-                                        <option value="Finished">Finished</option>
+                                    <option value="To Read">{isMediaTab ? 'Watchlist' : 'To Read'}</option>
+                                    <option value="Reading">{isMediaTab ? 'Watching' : 'Reading'}</option>
+                                    <option value="Finished">{isMediaTab ? 'Watched' : 'Finished'}</option>
                                     </optgroup>
                                     {activeTab === 'BOOK' && (
                                         <optgroup label="Inventory">
@@ -1732,6 +1769,23 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                     }}
                                     className="hidden md:block px-4 py-2 border border-[#E6EAF2] dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-[#CC561E] text-sm min-w-[140px] bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500"
                                 />
+                            )}
+                            {isMediaTab && (
+                                <div className="relative min-w-[140px] md:min-w-[180px]">
+                                    <ListFilter className="absolute left-2 md:left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 w-3.5 h-3.5 md:w-4 md:h-4" />
+                                    <select
+                                        value={mediaTypeFilter}
+                                        onChange={(e) => {
+                                            setMediaTypeFilter(e.target.value as 'ALL' | 'MOVIE' | 'SERIES');
+                                            onPageChange(1);
+                                        }}
+                                        className="w-full pl-7 md:pl-9 pr-6 md:pr-8 py-1.5 md:py-2 border border-[#E6EAF2] dark:border-slate-700 rounded-lg appearance-none bg-white dark:bg-slate-800 focus:ring-2 focus:ring-[#CC561E] text-xs md:text-sm font-medium text-slate-700 dark:text-slate-200 cursor-pointer hover:border-slate-300 dark:hover:border-slate-600"
+                                    >
+                                        <option value="ALL">All Media</option>
+                                        <option value="MOVIE">Movies</option>
+                                        <option value="SERIES">Series</option>
+                                    </select>
+                                </div>
                             )}
                         </div>
                     )}

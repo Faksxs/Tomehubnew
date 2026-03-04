@@ -67,6 +67,9 @@ const normalizeItemShape = (item: LibraryItem): LibraryItem => ({
     author: (item.author || "Unknown Author").trim() || "Unknown Author",
     title: (item.title || "Untitled").trim() || "Untitled",
     summaryText: typeof item.summaryText === "string" ? item.summaryText : undefined,
+    castTop: Array.isArray(item.castTop)
+        ? item.castTop.map((name) => String(name || "").trim()).filter(Boolean).slice(0, 6)
+        : undefined,
 });
 
 const normalizeFolderShape = (folder: PersonalNoteFolder): PersonalNoteFolder => ({
@@ -114,7 +117,7 @@ export const fetchItemsForUser = async (
 export const saveItemForUser = async (
     userId: string,
     item: LibraryItem
-): Promise<void> => {
+): Promise<string> => {
     void userId; // UID comes from JWT on backend.
     const normalizedItem = normalizeItemShape(item);
     const response = await fetchWithAuth(`${API_BASE_URL}/api/library/items/${encodeURIComponent(normalizedItem.id)}`, {
@@ -125,6 +128,11 @@ export const saveItemForUser = async (
     if (!response.ok) {
         throw new Error(await parseApiErrorMessage(response, "Failed to save library item to Oracle"));
     }
+    const payload = await response.json().catch(() => ({}));
+    const resolvedId = typeof payload?.item_id === "string" && payload.item_id.trim()
+        ? payload.item_id.trim()
+        : normalizedItem.id;
+    return resolvedId;
 };
 
 export const patchItemForUser = async (

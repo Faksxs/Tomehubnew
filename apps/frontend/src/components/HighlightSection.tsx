@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Highlight } from '../types';
 import { Plus, Trash2, Quote, MapPin, FileText, Edit2, Save, X, StickyNote, Calendar, Sparkles, Loader2, Hash, Camera } from 'lucide-react';
 import { generateTagsForNote } from '../services/geminiService';
@@ -10,9 +10,10 @@ interface HighlightSectionProps {
   highlights: Highlight[];
   onUpdate: (highlights: Highlight[]) => void;
   autoEditHighlightId?: string; // Optional: auto-open edit for this highlight
+  isMedia?: boolean;
 }
 
-export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, onUpdate, autoEditHighlightId }) => {
+export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, onUpdate, autoEditHighlightId, isMedia = false }) => {
   // State for managing the form
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -167,6 +168,16 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
     }
   };
 
+  const formatTimestamp = (seconds?: number): string => {
+    const raw = Number(seconds);
+    if (!Number.isFinite(raw) || raw < 0) return '';
+    const total = Math.floor(raw);
+    const hh = Math.floor(total / 3600).toString().padStart(2, '0');
+    const mm = Math.floor((total % 3600) / 60).toString().padStart(2, '0');
+    const ss = Math.floor(total % 60).toString().padStart(2, '0');
+    return `${hh}:${mm}:${ss}`;
+  };
+
   return (
     <div className="space-y-4 md:space-y-6">
       {/* Add Button - Hidden when form is open */}
@@ -278,8 +289,8 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
               )}
             </div>
 
-            {/* Comment input only for Highlights */}
-            {entryType === 'highlight' && (
+            {/* Comment input only for highlights in non-media mode */}
+            {entryType === 'highlight' && !isMedia && (
               <div>
                 <label className="block text-[10px] md:text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5 uppercase">Comment</label>
                 <input
@@ -292,9 +303,11 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
               </div>
             )}
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-4">
+            <div className={`grid ${isMedia ? 'grid-cols-1' : 'grid-cols-2 md:grid-cols-3'} gap-2 md:gap-4`}>
               <div>
-                <label className="block text-[10px] md:text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5 uppercase">Page #</label>
+                <label className="block text-[10px] md:text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5 uppercase">
+                  {isMedia ? 'Timestamp (seconds)' : 'Page #'}
+                </label>
                 <input
                   type="number"
                   className="w-full border border-[#E6EAF2] dark:border-white/10 rounded-lg py-1.5 px-2 text-xs md:text-sm bg-white dark:bg-slate-800/50 text-slate-800 dark:text-white focus:ring-2 focus:ring-orange-500/30"
@@ -302,25 +315,29 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
                   onChange={e => setFormData(prev => ({ ...prev, pageNumber: parseInt(e.target.value) || undefined }))}
                 />
               </div>
-              <div>
-                <label className="block text-[10px] md:text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5 uppercase">Paragraph #</label>
-                <input
-                  type="number"
-                  className="w-full border border-[#E6EAF2] dark:border-white/10 rounded-lg py-1.5 px-2 text-xs md:text-sm bg-white dark:bg-slate-800/50 text-slate-800 dark:text-white focus:ring-2 focus:ring-orange-500/30"
-                  value={formData.paragraphNumber || ''}
-                  onChange={e => setFormData(prev => ({ ...prev, paragraphNumber: parseInt(e.target.value) || undefined }))}
-                />
-              </div>
-              <div className="col-span-2 md:col-span-1">
-                <label className="block text-[10px] md:text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5 uppercase">Chapter</label>
-                <input
-                  type="text"
-                  className="w-full border border-[#E6EAF2] dark:border-white/10 rounded-lg py-1.5 px-2 text-xs md:text-sm bg-white dark:bg-slate-800/50 text-slate-800 dark:text-white focus:ring-2 focus:ring-orange-500/30"
-                  placeholder="Title or No."
-                  value={formData.chapterTitle || ''}
-                  onChange={e => setFormData(prev => ({ ...prev, chapterTitle: e.target.value }))}
-                />
-              </div>
+              {!isMedia && (
+                <div>
+                  <label className="block text-[10px] md:text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5 uppercase">Paragraph #</label>
+                  <input
+                    type="number"
+                    className="w-full border border-[#E6EAF2] dark:border-white/10 rounded-lg py-1.5 px-2 text-xs md:text-sm bg-white dark:bg-slate-800/50 text-slate-800 dark:text-white focus:ring-2 focus:ring-orange-500/30"
+                    value={formData.paragraphNumber || ''}
+                    onChange={e => setFormData(prev => ({ ...prev, paragraphNumber: parseInt(e.target.value) || undefined }))}
+                  />
+                </div>
+              )}
+              {!isMedia && (
+                <div className="col-span-2 md:col-span-1">
+                  <label className="block text-[10px] md:text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5 uppercase">Chapter</label>
+                  <input
+                    type="text"
+                    className="w-full border border-[#E6EAF2] dark:border-white/10 rounded-lg py-1.5 px-2 text-xs md:text-sm bg-white dark:bg-slate-800/50 text-slate-800 dark:text-white focus:ring-2 focus:ring-orange-500/30"
+                    placeholder="Title or No."
+                    value={formData.chapterTitle || ''}
+                    onChange={e => setFormData(prev => ({ ...prev, chapterTitle: e.target.value }))}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Date & Tags Section */}
@@ -426,16 +443,22 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
                   </p>
 
                   <div className="flex flex-wrap items-center gap-2 md:gap-3 text-[10px] md:text-xs text-slate-500 dark:text-slate-400 mb-2">
-                    {(h.pageNumber || h.paragraphNumber) && (
+                    {(h.pageNumber !== undefined && h.pageNumber !== null) || (!isMedia && h.paragraphNumber) ? (
                       <div className="flex items-center gap-1 px-1.5 py-0.5 md:px-2 md:py-1 rounded border bg-[#F3F5FA] dark:bg-white/5 border-[#E6EAF2] dark:border-white/10 text-slate-600 dark:text-slate-400">
                         <MapPin size={10} className="md:w-3 md:h-3" />
-                        {h.pageNumber && <span>Pg {h.pageNumber}</span>}
-                        {h.pageNumber && h.paragraphNumber && <span>•</span>}
-                        {h.paragraphNumber && <span>Para {h.paragraphNumber}</span>}
+                        {isMedia ? (
+                          <span>{formatTimestamp(h.pageNumber)}</span>
+                        ) : (
+                          <>
+                            {h.pageNumber && <span>Pg {h.pageNumber}</span>}
+                            {h.pageNumber && h.paragraphNumber && <span>•</span>}
+                            {h.paragraphNumber && <span>Para {h.paragraphNumber}</span>}
+                          </>
+                        )}
                       </div>
-                    )}
+                    ) : null}
 
-                    {h.chapterTitle && (
+                    {!isMedia && h.chapterTitle && (
                       <div className="flex items-center gap-1">
                         <FileText size={10} className="md:w-3 md:h-3" />
                         <span>{h.chapterTitle}</span>
@@ -459,7 +482,7 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
                     </div>
                   )}
 
-                  {h.comment && (
+                  {!isMedia && h.comment && (
                     <div className="mt-2 md:mt-3 pl-3 md:pl-4 border-l-2 border-[#E6EAF2] dark:border-white/10 py-0.5 md:py-1">
                       <p className="text-xs md:text-sm text-slate-600 dark:text-slate-400 italic">{h.comment}</p>
                     </div>
@@ -488,3 +511,5 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
     </div>
   );
 };
+
+

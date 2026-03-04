@@ -257,6 +257,19 @@ class Settings:
             os.getenv("PERSONAL_NOTE_WIKI_TOKEN_CLEANUP_ENABLED", "false").strip().lower() == "true"
         )
 
+        # Media library rollout controls (films & series).
+        self.MEDIA_LIBRARY_ENABLED = (
+            os.getenv("MEDIA_LIBRARY_ENABLED", "false").strip().lower() == "true"
+        )
+        self.MEDIA_TMDB_SYNC_ENABLED = (
+            os.getenv("MEDIA_TMDB_SYNC_ENABLED", "true").strip().lower() == "true"
+        )
+        self.TMDB_API_KEY = os.getenv("TMDB_API_KEY", "").strip()
+        self.TMDB_BASE_URL = os.getenv("TMDB_BASE_URL", "https://api.themoviedb.org/3").strip().rstrip("/")
+        self.TMDB_TIMEOUT_SEC = float(os.getenv("TMDB_TIMEOUT_SEC", "8"))
+        if self.TMDB_TIMEOUT_SEC <= 0:
+            self.TMDB_TIMEOUT_SEC = 8.0
+
         # Compare policy rollout controls (non-breaking, canary-first).
         self.SEARCH_COMPARE_POLICY_ENABLED = (
             os.getenv("SEARCH_COMPARE_POLICY_ENABLED", "false").strip().lower() == "true"

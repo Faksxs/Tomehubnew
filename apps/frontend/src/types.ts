@@ -3,7 +3,7 @@ export type PhysicalStatus = 'On Shelf' | 'Lent Out' | 'Lost';
 export type ReadingStatus = 'To Read' | 'Reading' | 'Finished';
 export type PersonalNoteCategory = 'PRIVATE' | 'DAILY' | 'IDEAS';
 
-export type ResourceType = 'BOOK' | 'ARTICLE' | 'WEBSITE' | 'PERSONAL_NOTE';
+export type ResourceType = 'BOOK' | 'ARTICLE' | 'WEBSITE' | 'PERSONAL_NOTE' | 'MOVIE' | 'SERIES';
 export type ContentLanguageMode = 'AUTO' | 'TR' | 'EN';
 export type ContentLanguageResolved = 'tr' | 'en';
 
@@ -57,6 +57,8 @@ export interface LibraryItem {
   isFavorite?: boolean; // Favorite status
   isIngested?: boolean; // AI library status
   pageCount?: number;
+  castTop?: string[];
+  rating?: number; // 0.5-5 half-star rating
 }
 
 export interface PersonalNoteFolder {

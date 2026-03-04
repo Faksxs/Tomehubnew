@@ -7,6 +7,7 @@ _TEXT_MAX = 2000
 _NOTE_MAX = 20000
 _TAG_MAX = 64
 _TARGET_BOOKS_MAX = 20
+_CAST_TOP_MAX = 6
 
 
 class SearchRequest(BaseModel):
@@ -105,6 +106,14 @@ class SearchRequest(BaseModel):
     @field_validator("content_type", "ingestion_type", mode="before")
     @classmethod
     def normalize_optional_upper_enum(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        text = str(value).strip().upper()
+        return text or None
+
+    @field_validator("resource_type", mode="before")
+    @classmethod
+    def normalize_resource_type(cls, value: Optional[str]) -> Optional[str]:
         if value is None:
             return None
         text = str(value).strip().upper()
@@ -270,6 +279,14 @@ class HighlightSyncRequest(BaseModel):
     resource_type: Optional[str] = Field(default=None, max_length=64)
     highlights: List[HighlightItem] = Field(default_factory=list, max_length=1000)
 
+    @field_validator("resource_type", mode="before")
+    @classmethod
+    def normalize_resource_type(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        text = str(value).strip().upper()
+        return text or None
+
 
 class PersonalNoteSyncRequest(BaseModel):
     firebase_uid: str = Field(..., min_length=1, max_length=_UID_MAX)
@@ -326,11 +343,28 @@ class LibraryItemUpsertRequest(BaseModel):
     folderPath: Optional[str] = Field(default=None, max_length=2000)
     coverUrl: Optional[str] = Field(default=None, max_length=2000)
     pageCount: Optional[int] = Field(default=None, ge=0, le=100000)
+    castTop: Optional[List[str]] = None
     isFavorite: Optional[bool] = False
     addedAt: Optional[int] = None
     highlights: Optional[list[dict]] = None
+    rating: Optional[float] = Field(default=None, ge=0.5, le=5)
 
     model_config = {"extra": "allow"}
+
+    @field_validator("castTop", mode="before")
+    @classmethod
+    def normalize_cast_top(cls, value: Optional[List[str]]) -> Optional[List[str]]:
+        if value is None:
+            return None
+        out: List[str] = []
+        for item in value:
+            text = str(item or "").strip()
+            if not text:
+                continue
+            out.append(text[:128])
+            if len(out) >= _CAST_TOP_MAX:
+                break
+        return out or None
 
 
 class LibraryItemPatchRequest(BaseModel):
@@ -438,6 +472,14 @@ class ChatRequest(BaseModel):
             if len(normalized) >= _TARGET_BOOKS_MAX:
                 break
         return normalized or None
+
+    @field_validator("resource_type", mode="before")
+    @classmethod
+    def normalize_chat_resource_type(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        text = str(value).strip().upper()
+        return text or None
 
 
 class ChatResponse(BaseModel):

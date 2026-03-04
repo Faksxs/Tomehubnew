@@ -131,12 +131,12 @@ def _categories_json_from_raw(raw_categories: Optional[str]) -> Optional[str]:
 def normalize_source_type(source_type: Optional[str]) -> str:
     """
     Normalize incoming source types to canonical values.
-    Canonical set: PDF, EPUB, PDF_CHUNK, BOOK, ARTICLE, WEBSITE, PERSONAL_NOTE, HIGHLIGHT, INSIGHT
+    Canonical set: PDF, EPUB, PDF_CHUNK, BOOK, ARTICLE, WEBSITE, PERSONAL_NOTE, HIGHLIGHT, INSIGHT, MOVIE, SERIES
     """
     if not source_type:
         return "PERSONAL_NOTE"
     st = str(source_type).strip().upper()
-    if st in {"PDF", "EPUB", "PDF_CHUNK", "BOOK", "ARTICLE", "WEBSITE", "PERSONAL_NOTE", "HIGHLIGHT", "INSIGHT"}:
+    if st in {"PDF", "EPUB", "PDF_CHUNK", "BOOK", "ARTICLE", "WEBSITE", "PERSONAL_NOTE", "HIGHLIGHT", "INSIGHT", "MOVIE", "SERIES"}:
         return st
     if st in {"NOTE", "PERSONAL"}:
         return "PERSONAL_NOTE"

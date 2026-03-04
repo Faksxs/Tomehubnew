@@ -206,6 +206,21 @@ def _apply_resource_type_filter(sql: str, params: Dict[str, Any], resource_type:
             sql += " AND c.content_type IN ('HIGHLIGHT', 'INSIGHT') "
     elif rt == "PERSONAL_NOTE":
         sql += f" AND {field} = 'PERSONAL_NOTE' "
+    elif rt in {"MOVIE", "SERIES"}:
+        params["p_item_type"] = rt
+        if " l." in sql or " l " in sql:
+            sql += " AND l.ITEM_TYPE = :p_item_type "
+        else:
+            item_id_expr = "c.item_id" if uses_v2_alias else "book_id"
+            uid_expr = "c.firebase_uid" if uses_v2_alias else "firebase_uid"
+            sql += (
+                " AND EXISTS ("
+                " SELECT 1 FROM TOMEHUB_LIBRARY_ITEMS li2"
+                f" WHERE li2.FIREBASE_UID = {uid_expr}"
+                f"   AND li2.ITEM_ID = {item_id_expr}"
+                "   AND li2.ITEM_TYPE = :p_item_type"
+                " ) "
+            )
     elif rt in {"ARTICLE", "WEBSITE"}:
         sql += f" AND {field} = :p_res_type "
         params["p_res_type"] = rt
@@ -273,7 +288,7 @@ def _should_exclude_pdf_in_first_pass(resource_type: Optional[str], book_id: Opt
         return True
 
     # Explicit scopes already constrain source_type; no extra PDF exclusion needed.
-    if rt in {"BOOK", "ALL_NOTES", "PERSONAL_NOTE", "ARTICLE", "WEBSITE", "PDF", "EPUB", "PDF_CHUNK"}:
+    if rt in {"BOOK", "ALL_NOTES", "PERSONAL_NOTE", "ARTICLE", "WEBSITE", "MOVIE", "SERIES", "PDF", "EPUB", "PDF_CHUNK"}:
         return False
     return False
 
