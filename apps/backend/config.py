@@ -259,7 +259,7 @@ class Settings:
 
         # Media library rollout controls (films & series).
         self.MEDIA_LIBRARY_ENABLED = (
-            os.getenv("MEDIA_LIBRARY_ENABLED", "false").strip().lower() == "true"
+            os.getenv("MEDIA_LIBRARY_ENABLED", "true").strip().lower() == "true"
         )
         self.MEDIA_TMDB_SYNC_ENABLED = (
             os.getenv("MEDIA_TMDB_SYNC_ENABLED", "true").strip().lower() == "true"
