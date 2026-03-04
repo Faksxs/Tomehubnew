@@ -740,23 +740,23 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                         />
                       </div>
                       {isMedia && (
-                        <div className="flex gap-4">
-                          <div className="flex-1">
-                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Watch Status *</label>
+                        <div className="flex gap-2 sm:gap-3">
+                          <div className="w-[125px] sm:w-[140px] flex-shrink-0">
+                            <label className="block text-[13px] sm:text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 whitespace-nowrap">Watch Status *</label>
                             <select
                               name="readingStatus"
                               value={formData.readingStatus}
                               onChange={handleChange}
-                              className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white flex items-center h-[42px]"
+                              className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-2 sm:px-3 py-2 text-sm focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white flex items-center h-[42px]"
                             >
                               <option value="To Read">Watchlist</option>
                               <option value="Reading">Watching</option>
                               <option value="Finished">Watched</option>
                             </select>
                           </div>
-                          <div className="flex-1">
-                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Rating</label>
-                            <div className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 bg-white dark:bg-slate-950 flex items-center justify-between h-[42px]">
+                          <div className="flex-1 min-w-[140px]">
+                            <label className="block text-[13px] sm:text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Rating</label>
+                            <div className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-2 sm:px-3 py-2 bg-white dark:bg-slate-950 flex items-center justify-between h-[42px]">
                               <StarRating
                                 value={formData.rating || undefined}
                                 onChange={(rating) => setFormData(prev => ({ ...prev, rating }))}

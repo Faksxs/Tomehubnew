@@ -180,6 +180,15 @@ def _to_int_or_none(value: Any) -> Optional[int]:
         return None
 
 
+def _to_float_or_none(value: Any) -> Optional[float]:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
 def _is_blank_text(value: Any) -> bool:
     return not str(value or "").strip()
 
@@ -764,7 +773,7 @@ def upsert_library_item(firebase_uid: str, item_id: str, payload: dict[str, Any]
         ("LANGUAGE_DECISION_CONFIDENCE", payload.get("languageDecisionConfidence"), "scalar"),
         ("TAGS_JSON", json.dumps(normalized_tags, ensure_ascii=False), "clob"),
         ("CATEGORY_JSON", category_json_value, "clob"),
-        ("RATING", _to_int_or_none(payload.get("rating")), "scalar"),
+        ("RATING", _to_float_or_none(payload.get("rating")), "scalar"),
     ]
 
     binds: dict[str, Any] = {"p_id": item_id, "p_uid": firebase_uid}
