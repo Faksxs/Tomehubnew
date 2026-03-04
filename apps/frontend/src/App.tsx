@@ -169,8 +169,13 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
 
   useEffect(() => {
     if (!realtimePollingEnabled || !userId) return;
-    return startRealtimePolling(setBooks, setPersonalNoteFolders, setLastDoc, setHasMore);
-  }, [realtimePollingEnabled, startRealtimePolling, userId]);
+
+    // Use a ref so the effect doesn't need startRealtimePolling in its deps.
+    // startRealtimePolling reads its own refs internally, so capturing it once is safe.
+    const start = startRealtimePolling;
+    return start(setBooks, setPersonalNoteFolders, setLastDoc, setHasMore);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [realtimePollingEnabled, userId]);
 
   useEffect(() => {
     if (!userId) return;
