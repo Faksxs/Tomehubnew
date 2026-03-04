@@ -40,12 +40,13 @@ import {
   mergeEnrichedDraftIntoItem,
 } from "./services/geminiService";
 import { useBatchEnrichment } from "./hooks/useBatchEnrichment";
+import { useLibrarySync } from "./hooks/useLibrarySync";
 
 import { RAGSearch } from "./components/RAGSearch";
 import { FlowContainer } from "./components/FlowContainer";
 import { CATEGORIES, MIN_CATEGORY_BOOKS_VISIBLE } from "./components/CategorySelector";
 import { prewarmFlowStartSession } from "./services/flowService";
-import { addTextItem, syncHighlights, syncPersonalNote, purgeResourceContent, pollRealtimeEvents } from "./services/backendApiService";
+import { addTextItem, syncHighlights, syncPersonalNote, purgeResourceContent } from "./services/backendApiService";
 import { getPersonalNoteBackendType, getPersonalNoteCategory, isPersonalNote } from "./lib/personalNotePolicy";
 
 
@@ -59,12 +60,16 @@ interface LayoutProps {
 }
 
 const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
-  type PendingContentSyncMode = "HIGHLIGHTS" | "PERSONAL_NOTE" | "ITEM";
-  type PendingContentSyncEntry = {
-    mode: PendingContentSyncMode;
-    snapshot: LibraryItem;
-    timerId: number;
-  };
+  // --- Sync logic extracted to useLibrarySync hook ---
+  const {
+    markPendingContentSync,
+    clearPendingContentSync,
+    runWithMutationLock,
+    markRecentlyDeleted,
+    unmarkRecentlyDeleted,
+    refreshLibraryFromServer: refreshLibrary,
+    startRealtimePolling,
+  } = useLibrarySync(userId);
 
   const [books, setBooks] = useState<LibraryItem[]>([]);
   const booksRef = useRef<LibraryItem[]>([]);
@@ -92,13 +97,13 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   const [personalNoteFolders, setPersonalNoteFolders] = useState<PersonalNoteFolder[]>([]);
   const [didRunLegacyFolderMigration, setDidRunLegacyFolderMigration] = useState(false);
   const flowPrewarmStartedRef = useRef(false);
-  const realtimeCursorRef = useRef<number>(0);
-  const recentlyDeletedIdsRef = useRef<Set<string>>(new Set());
-  const realtimeInFlightRef = useRef(false);
-  const pendingContentSyncRef = useRef<Map<string, PendingContentSyncEntry>>(new Map());
-  const mutationInFlightCountRef = useRef(0);
   const realtimePollingEnabled = import.meta.env.VITE_REALTIME_POLLING !== "false";
   const mediaLibraryEnabled = import.meta.env.VITE_MEDIA_LIBRARY_ENABLED === "true";
+
+  // Convenience wrapper: refreshLibraryFromServer bound to local setters
+  const refreshLibraryFromServer = useCallback(async () => {
+    await refreshLibrary(setBooks, setPersonalNoteFolders, setLastDoc, setHasMore);
+  }, [refreshLibrary]);
 
   const flowVisibleCategories = useMemo(() => {
     const normalizeTextKey = (value: string) => value.trim().toLocaleLowerCase('tr-TR');
@@ -122,169 +127,6 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   useEffect(() => {
     booksRef.current = books;
   }, [books]);
-
-  const clearPendingContentSync = useCallback((itemId: string) => {
-    const pending = pendingContentSyncRef.current.get(itemId);
-    if (!pending) return;
-    window.clearTimeout(pending.timerId);
-    pendingContentSyncRef.current.delete(itemId);
-  }, []);
-
-  const runWithMutationLock = useCallback(async <T,>(task: () => Promise<T>): Promise<T> => {
-    mutationInFlightCountRef.current += 1;
-    try {
-      return await task();
-    } finally {
-      mutationInFlightCountRef.current = Math.max(0, mutationInFlightCountRef.current - 1);
-    }
-  }, []);
-
-  const markPendingContentSync = useCallback((mode: PendingContentSyncMode, snapshot: LibraryItem) => {
-    clearPendingContentSync(snapshot.id);
-    const timerId = window.setTimeout(() => {
-      pendingContentSyncRef.current.delete(snapshot.id);
-    }, 180000);
-    pendingContentSyncRef.current.set(snapshot.id, { mode, snapshot, timerId });
-  }, [clearPendingContentSync]);
-
-  const normalizeMaybeText = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
-  const normalizeMaybeNumber = (value: unknown): number | null => {
-    if (typeof value === "number" && Number.isFinite(value)) return value;
-    if (typeof value === "string" && value.trim() !== "") {
-      const parsed = Number(value);
-      return Number.isFinite(parsed) ? parsed : null;
-    }
-    return null;
-  };
-  const normalizeTagList = (tags: unknown): string[] =>
-    Array.isArray(tags)
-      ? tags.map((tag) => String(tag || "").trim()).filter(Boolean).sort()
-      : [];
-  const normalizeStringList = (values: unknown): string[] =>
-    Array.isArray(values)
-      ? values.map((v) => String(v || "").trim()).filter(Boolean).sort()
-      : [];
-  const normalizeComparableHighlights = (highlights: Highlight[] = []) =>
-    highlights
-      .map((highlight) => ({
-        text: normalizeMaybeText(highlight.text),
-        type: String(highlight.type || "highlight").trim().toLowerCase(),
-        comment: normalizeMaybeText(highlight.comment),
-        pageNumber: normalizeMaybeNumber(highlight.pageNumber),
-        paragraphNumber: normalizeMaybeNumber(highlight.paragraphNumber),
-        chapterTitle: normalizeMaybeText(highlight.chapterTitle),
-        tags: normalizeTagList(highlight.tags),
-      }))
-      .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
-
-  const isServerCaughtUpWithPending = useCallback((pending: PendingContentSyncEntry, serverItem: LibraryItem): boolean => {
-    if (pending.mode === "HIGHLIGHTS") {
-      return JSON.stringify(normalizeComparableHighlights(pending.snapshot.highlights || []))
-        === JSON.stringify(normalizeComparableHighlights(serverItem.highlights || []));
-    }
-
-    const sameCoreFields =
-      normalizeMaybeText(serverItem.title) === normalizeMaybeText(pending.snapshot.title) &&
-      normalizeMaybeText(serverItem.author) === normalizeMaybeText(pending.snapshot.author) &&
-      normalizeMaybeText(serverItem.translator) === normalizeMaybeText(pending.snapshot.translator) &&
-      normalizeMaybeText(serverItem.publisher) === normalizeMaybeText(pending.snapshot.publisher) &&
-      normalizeMaybeText(serverItem.publicationYear) === normalizeMaybeText(pending.snapshot.publicationYear) &&
-      normalizeMaybeText(serverItem.isbn) === normalizeMaybeText(pending.snapshot.isbn) &&
-      normalizeMaybeText(serverItem.url) === normalizeMaybeText(pending.snapshot.url) &&
-      normalizeMaybeText(serverItem.status) === normalizeMaybeText(pending.snapshot.status) &&
-      normalizeMaybeText(serverItem.readingStatus) === normalizeMaybeText(pending.snapshot.readingStatus) &&
-      JSON.stringify(normalizeTagList(serverItem.tags)) === JSON.stringify(normalizeTagList(pending.snapshot.tags)) &&
-      JSON.stringify(normalizeStringList(serverItem.castTop)) === JSON.stringify(normalizeStringList(pending.snapshot.castTop)) &&
-      normalizeMaybeText(serverItem.generalNotes) === normalizeMaybeText(pending.snapshot.generalNotes) &&
-      normalizeMaybeText(serverItem.summaryText) === normalizeMaybeText(pending.snapshot.summaryText) &&
-      normalizeMaybeText(serverItem.coverUrl) === normalizeMaybeText(pending.snapshot.coverUrl) &&
-      normalizeMaybeNumber(serverItem.pageCount) === normalizeMaybeNumber(pending.snapshot.pageCount) &&
-      normalizeMaybeText(serverItem.contentLanguageMode) === normalizeMaybeText(pending.snapshot.contentLanguageMode) &&
-      normalizeMaybeText(serverItem.contentLanguageResolved) === normalizeMaybeText(pending.snapshot.contentLanguageResolved) &&
-      normalizeMaybeText(serverItem.sourceLanguageHint) === normalizeMaybeText(pending.snapshot.sourceLanguageHint) &&
-      normalizeMaybeText(serverItem.languageDecisionReason) === normalizeMaybeText(pending.snapshot.languageDecisionReason) &&
-      normalizeMaybeNumber(serverItem.languageDecisionConfidence) === normalizeMaybeNumber(pending.snapshot.languageDecisionConfidence);
-
-    if (pending.mode === "ITEM") {
-      return sameCoreFields;
-    }
-
-    return sameCoreFields &&
-      normalizeMaybeText(serverItem.personalNoteCategory) === normalizeMaybeText(pending.snapshot.personalNoteCategory) &&
-      normalizeMaybeText(serverItem.personalFolderId) === normalizeMaybeText(pending.snapshot.personalFolderId) &&
-      normalizeMaybeText(serverItem.folderPath) === normalizeMaybeText(pending.snapshot.folderPath);
-  }, []);
-
-  const applyPendingContentSyncOverrides = useCallback((serverItems: LibraryItem[]): LibraryItem[] => {
-    if (pendingContentSyncRef.current.size === 0) return serverItems;
-    const pendingResolvedIds: string[] = [];
-
-    const merged = serverItems.map((serverItem) => {
-      const pending = pendingContentSyncRef.current.get(serverItem.id);
-      if (!pending) return serverItem;
-
-      if (isServerCaughtUpWithPending(pending, serverItem)) {
-        pendingResolvedIds.push(serverItem.id);
-        return serverItem;
-      }
-
-      if (pending.mode === "HIGHLIGHTS") {
-        return {
-          ...serverItem,
-          highlights: pending.snapshot.highlights,
-        };
-      }
-
-      const itemOverlay: LibraryItem = {
-        ...serverItem,
-        title: pending.snapshot.title,
-        author: pending.snapshot.author,
-        translator: pending.snapshot.translator,
-        publisher: pending.snapshot.publisher,
-        publicationYear: pending.snapshot.publicationYear,
-        isbn: pending.snapshot.isbn,
-        url: pending.snapshot.url,
-        status: pending.snapshot.status,
-        readingStatus: pending.snapshot.readingStatus,
-        tags: pending.snapshot.tags,
-        castTop: pending.snapshot.castTop,
-        generalNotes: pending.snapshot.generalNotes,
-        summaryText: pending.snapshot.summaryText,
-        coverUrl: pending.snapshot.coverUrl,
-        pageCount: pending.snapshot.pageCount,
-        contentLanguageMode: pending.snapshot.contentLanguageMode,
-        contentLanguageResolved: pending.snapshot.contentLanguageResolved,
-        sourceLanguageHint: pending.snapshot.sourceLanguageHint,
-        languageDecisionReason: pending.snapshot.languageDecisionReason,
-        languageDecisionConfidence: pending.snapshot.languageDecisionConfidence,
-      };
-
-      if (pending.mode === "ITEM") {
-        return itemOverlay;
-      }
-
-      return {
-        ...itemOverlay,
-        personalNoteCategory: pending.snapshot.personalNoteCategory,
-        personalFolderId: pending.snapshot.personalFolderId,
-        folderPath: pending.snapshot.folderPath,
-      };
-    });
-
-    if (pendingResolvedIds.length > 0) {
-      pendingResolvedIds.forEach((id) => clearPendingContentSync(id));
-    }
-    return merged;
-  }, [clearPendingContentSync, isServerCaughtUpWithPending]);
-
-  useEffect(() => {
-    return () => {
-      for (const entry of pendingContentSyncRef.current.values()) {
-        window.clearTimeout(entry.timerId);
-      }
-      pendingContentSyncRef.current.clear();
-    };
-  }, []);
 
 
   useEffect(() => {
@@ -325,97 +167,9 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   }, [userId]);
 
   useEffect(() => {
-    if (!realtimePollingEnabled) return;
-    if (!userId) return;
-
-    let cancelled = false;
-    let timerId: number | null = null;
-    let realtimeDisabled = false;
-
-    realtimeCursorRef.current = Date.now();
-    realtimeInFlightRef.current = false;
-
-    const scheduleNext = () => {
-      if (cancelled) return;
-      const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
-      const delay = hidden ? 5000 : 2500;
-      timerId = window.setTimeout(() => {
-        void pollOnce();
-      }, delay);
-    };
-
-    const pollOnce = async () => {
-      if (cancelled || realtimeInFlightRef.current) {
-        scheduleNext();
-        return;
-      }
-      if (mutationInFlightCountRef.current > 0) {
-        scheduleNext();
-        return;
-      }
-      realtimeInFlightRef.current = true;
-
-      try {
-        const response = await pollRealtimeEvents(userId, realtimeCursorRef.current, 100);
-        const events = response.events || [];
-        const latestEventTs = events.reduce((maxTs, event) => {
-          const ts = Number(event.updated_at_ms || 0);
-          return ts > maxTs ? ts : maxTs;
-        }, 0);
-        realtimeCursorRef.current = Math.max(
-          realtimeCursorRef.current,
-          Number(response.server_time_ms || 0),
-          latestEventTs
-        );
-
-        if (events.length > 0) {
-          const [{ items, lastDoc: newLastDoc }, folders] = await Promise.all([
-            fetchItemsForUser(userId),
-            fetchPersonalNoteFoldersForUser(userId),
-          ]);
-          if (!cancelled) {
-            const deletedIds = recentlyDeletedIdsRef.current;
-            const safeItems = deletedIds.size > 0 ? items.filter((i) => !deletedIds.has(i.id)) : items;
-            setBooks(applyPendingContentSyncOverrides(safeItems));
-            setPersonalNoteFolders(folders);
-            setLastDoc(newLastDoc);
-            setHasMore(!!newLastDoc);
-          }
-        }
-      } catch (err) {
-        if (err instanceof Error && err.message === 'REALTIME_ENDPOINT_NOT_FOUND') {
-          realtimeDisabled = true;
-          console.warn("Realtime polling disabled: endpoint is not available on current backend.");
-          return;
-        }
-        console.warn("Realtime polling failed (non-critical):", err);
-      } finally {
-        realtimeInFlightRef.current = false;
-        if (realtimeDisabled) {
-          return;
-        }
-        scheduleNext();
-      }
-    };
-
-    const onVisibilityChange = () => {
-      if (timerId !== null) {
-        window.clearTimeout(timerId);
-      }
-      scheduleNext();
-    };
-
-    scheduleNext();
-    document.addEventListener('visibilitychange', onVisibilityChange);
-
-    return () => {
-      cancelled = true;
-      if (timerId !== null) {
-        window.clearTimeout(timerId);
-      }
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-    };
-  }, [applyPendingContentSyncOverrides, realtimePollingEnabled, userId]);
+    if (!realtimePollingEnabled || !userId) return;
+    return startRealtimePolling(setBooks, setPersonalNoteFolders, setLastDoc, setHasMore);
+  }, [realtimePollingEnabled, startRealtimePolling, userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -523,18 +277,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     return folder?.name;
   }, [personalNoteFolders]);
 
-  const refreshLibraryFromServer = useCallback(async () => {
-    const [{ items, lastDoc: newLastDoc }, folders] = await Promise.all([
-      fetchItemsForUser(userId),
-      fetchPersonalNoteFoldersForUser(userId),
-    ]);
-    const deletedIds = recentlyDeletedIdsRef.current;
-    const safeItems = deletedIds.size > 0 ? items.filter((i) => !deletedIds.has(i.id)) : items;
-    setBooks(applyPendingContentSyncOverrides(safeItems));
-    setPersonalNoteFolders(folders);
-    setLastDoc(newLastDoc);
-    setHasMore(!!newLastDoc);
-  }, [applyPendingContentSyncOverrides, userId]);
+  // refreshLibraryFromServer is now defined above via useLibrarySync hook
 
   const handleAddBook = useCallback(
     async (itemData: Omit<LibraryItem, "id" | "highlights"> & { id?: string }) => {
@@ -796,8 +539,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     if (!deletedItem) return;
 
     clearPendingContentSync(id);
-    recentlyDeletedIdsRef.current.add(id);
-    setTimeout(() => recentlyDeletedIdsRef.current.delete(id), 10000);
+    markRecentlyDeleted(id);
     setBooks((prev) => prev.filter((b) => b.id !== id));
 
     if (selectedBookId === id) {
@@ -818,7 +560,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     }
 
     if (!firestoreDeleteSucceeded) {
-      recentlyDeletedIdsRef.current.delete(id);
+      unmarkRecentlyDeleted(id);
       setBooks((prev) => [deletedItem, ...prev]);
       window.alert(`Delete failed: ${deleteErrorMessage || "Unknown error"}`);
       return;
@@ -836,7 +578,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     } catch (err) {
       console.warn("Post-delete refresh failed:", err);
     }
-  }, [books, clearPendingContentSync, refreshLibraryFromServer, runWithMutationLock, selectedBookId, userId]);
+  }, [books, clearPendingContentSync, markRecentlyDeleted, refreshLibraryFromServer, runWithMutationLock, selectedBookId, unmarkRecentlyDeleted, userId]);
 
   const handleBulkDelete = useCallback(async (ids: string[]) => {
     if (!window.confirm(`Are you sure you want to delete ${ids.length} items?`)) return;
@@ -845,8 +587,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
 
     ids.forEach((id) => {
       clearPendingContentSync(id);
-      recentlyDeletedIdsRef.current.add(id);
-      setTimeout(() => recentlyDeletedIdsRef.current.delete(id), 10000);
+      markRecentlyDeleted(id);
     });
     setBooks((prev) => prev.filter((b) => !ids.includes(b.id)));
 
@@ -868,7 +609,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     }
 
     if (!firestoreDeleteSucceeded) {
-      ids.forEach((id) => recentlyDeletedIdsRef.current.delete(id));
+      ids.forEach((id) => unmarkRecentlyDeleted(id));
       setBooks((prev) => [...deletedItems, ...prev]);
       window.alert(`Bulk delete failed: ${deleteErrorMessage || "Unknown error"}`);
       return;
@@ -888,7 +629,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     } catch (err) {
       console.warn("Post-bulk-delete refresh failed:", err);
     }
-  }, [books, clearPendingContentSync, refreshLibraryFromServer, runWithMutationLock, selectedBookId, userId]);
+  }, [books, clearPendingContentSync, markRecentlyDeleted, refreshLibraryFromServer, runWithMutationLock, selectedBookId, unmarkRecentlyDeleted, userId]);
 
   const handleUpdateHighlights = useCallback(async (highlights: Highlight[]) => {
     if (!selectedBookId) return;

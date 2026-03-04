@@ -574,7 +574,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                   {(isNote ? book.generalNotes : (book.summaryText || book.generalNotes)) ? (
                     isNote ? (
                       <div
-                        className="personal-note-render text-slate-700 dark:text-slate-300 leading-relaxed text-sm md:text-base max-w-none"
+                        className="personal-note-content personal-note-render text-slate-700 dark:text-slate-300 leading-relaxed text-sm md:text-base max-w-none"
                         dangerouslySetInnerHTML={{ __html: noteHtml }}
                       />
                     ) : (

@@ -183,7 +183,7 @@ export const PersonalNoteEditor: React.FC<PersonalNoteEditorProps> = ({
     autofocus: autoFocus ? 'end' : false,
     editorProps: {
       attributes: {
-        class: 'personal-note-prosemirror',
+        class: 'personal-note-content personal-note-prosemirror',
       },
       handleKeyDown: (view, event) => {
         const activeMenu = slashMenuRef.current;
