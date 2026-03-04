@@ -26,6 +26,9 @@ type PendingContentSyncEntry = {
 const normalizeMaybeText = (value: unknown): string =>
     typeof value === "string" ? value.trim() : "";
 
+const normalizeMaybeBoolean = (value: unknown): boolean | null =>
+    typeof value === "boolean" ? value : null;
+
 const normalizeMaybeNumber = (value: unknown): number | null => {
     if (typeof value === "number" && Number.isFinite(value)) return value;
     if (typeof value === "string" && value.trim() !== "") {
@@ -57,6 +60,109 @@ const normalizeComparableHighlights = (highlights: Highlight[] = []) =>
             tags: normalizeTagList(highlight.tags),
         }))
         .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+
+const normalizeLentInfo = (value: unknown): { borrowerName: string; lentDate: string } | null => {
+    if (!value || typeof value !== "object") return null;
+    const lentInfo = value as { borrowerName?: unknown; lentDate?: unknown };
+    return {
+        borrowerName: normalizeMaybeText(lentInfo.borrowerName),
+        lentDate: normalizeMaybeText(lentInfo.lentDate),
+    };
+};
+
+const normalizeComparableItem = (item: LibraryItem) => ({
+    id: normalizeMaybeText(item.id),
+    type: normalizeMaybeText(item.type),
+    title: normalizeMaybeText(item.title),
+    author: normalizeMaybeText(item.author),
+    translator: normalizeMaybeText(item.translator),
+    publisher: normalizeMaybeText(item.publisher),
+    publicationYear: normalizeMaybeText(item.publicationYear),
+    isbn: normalizeMaybeText(item.isbn),
+    url: normalizeMaybeText(item.url),
+    code: normalizeMaybeText(item.code),
+    status: normalizeMaybeText(item.status),
+    readingStatus: normalizeMaybeText(item.readingStatus),
+    tags: normalizeTagList(item.tags),
+    generalNotes: normalizeMaybeText(item.generalNotes),
+    summaryText: normalizeMaybeText(item.summaryText),
+    contentLanguageMode: normalizeMaybeText(item.contentLanguageMode),
+    contentLanguageResolved: normalizeMaybeText(item.contentLanguageResolved),
+    sourceLanguageHint: normalizeMaybeText(item.sourceLanguageHint),
+    languageDecisionReason: normalizeMaybeText(item.languageDecisionReason),
+    languageDecisionConfidence: normalizeMaybeNumber(item.languageDecisionConfidence),
+    personalNoteCategory: normalizeMaybeText(item.personalNoteCategory),
+    personalFolderId: normalizeMaybeText(item.personalFolderId),
+    folderPath: normalizeMaybeText(item.folderPath),
+    coverUrl: normalizeMaybeText(item.coverUrl),
+    lentInfo: normalizeLentInfo(item.lentInfo),
+    highlights: normalizeComparableHighlights(item.highlights || []),
+    addedAt: normalizeMaybeNumber(item.addedAt),
+    isFavorite: normalizeMaybeBoolean(item.isFavorite),
+    isIngested: normalizeMaybeBoolean(item.isIngested),
+    pageCount: normalizeMaybeNumber(item.pageCount),
+    castTop: normalizeStringList(item.castTop),
+    rating: normalizeMaybeNumber(item.rating),
+});
+
+const areItemsEquivalent = (a: LibraryItem, b: LibraryItem): boolean =>
+    JSON.stringify(normalizeComparableItem(a)) === JSON.stringify(normalizeComparableItem(b));
+
+const reconcileItemsWithPrevious = (
+    previousItems: LibraryItem[],
+    nextItems: LibraryItem[]
+): LibraryItem[] => {
+    if (previousItems.length === 0) return nextItems;
+
+    const previousById = new Map(previousItems.map((item) => [item.id, item]));
+    let changed = previousItems.length !== nextItems.length;
+
+    const reconciled = nextItems.map((nextItem, index) => {
+        const previousAtIndex = previousItems[index];
+        if (!changed && previousAtIndex?.id !== nextItem.id) {
+            changed = true;
+        }
+
+        const previousItem = previousById.get(nextItem.id);
+        if (!previousItem) {
+            changed = true;
+            return nextItem;
+        }
+
+        if (areItemsEquivalent(previousItem, nextItem)) {
+            return previousItem;
+        }
+
+        changed = true;
+        return nextItem;
+    });
+
+    return changed ? reconciled : previousItems;
+};
+
+const areFoldersEquivalent = (a: PersonalNoteFolder, b: PersonalNoteFolder): boolean =>
+    normalizeMaybeText(a.id) === normalizeMaybeText(b.id) &&
+    normalizeMaybeText(a.category) === normalizeMaybeText(b.category) &&
+    normalizeMaybeText(a.name) === normalizeMaybeText(b.name) &&
+    normalizeMaybeNumber(a.order) === normalizeMaybeNumber(b.order) &&
+    normalizeMaybeNumber(a.createdAt) === normalizeMaybeNumber(b.createdAt) &&
+    normalizeMaybeNumber(a.updatedAt) === normalizeMaybeNumber(b.updatedAt);
+
+const reconcileFoldersWithPrevious = (
+    previousFolders: PersonalNoteFolder[],
+    nextFolders: PersonalNoteFolder[]
+): PersonalNoteFolder[] => {
+    if (previousFolders.length === 0) return nextFolders;
+    if (previousFolders.length !== nextFolders.length) return nextFolders;
+    for (let i = 0; i < nextFolders.length; i += 1) {
+        const previousFolder = previousFolders[i];
+        const nextFolder = nextFolders[i];
+        if (!previousFolder || !areFoldersEquivalent(previousFolder, nextFolder)) {
+            return nextFolders;
+        }
+    }
+    return previousFolders;
+};
 
 // ---------------------------------------------------------------------------
 // isServerCaughtUpWithPending (pure function)
@@ -277,8 +383,11 @@ export function useLibrarySync(userId: string): UseLibrarySyncReturn {
             ]);
             const deletedIds = recentlyDeletedIdsRef.current;
             const safeItems = deletedIds.size > 0 ? items.filter((i) => !deletedIds.has(i.id)) : items;
-            setBooks(applyPendingContentSyncOverrides(safeItems));
-            setPersonalNoteFolders(folders);
+            const nextItems = applyPendingContentSyncOverrides(safeItems);
+            setBooks((previousItems) => reconcileItemsWithPrevious(previousItems, nextItems));
+            setPersonalNoteFolders((previousFolders) =>
+                reconcileFoldersWithPrevious(previousFolders, folders)
+            );
             setLastDoc(newLastDoc);
             setHasMore(!!newLastDoc);
         },
@@ -340,8 +449,11 @@ export function useLibrarySync(userId: string): UseLibrarySyncReturn {
                         if (!cancelled) {
                             const deletedIds = recentlyDeletedIdsRef.current;
                             const safeItems = deletedIds.size > 0 ? items.filter((i) => !deletedIds.has(i.id)) : items;
-                            setBooks(applyPendingContentSyncOverrides(safeItems));
-                            setPersonalNoteFolders(folders);
+                            const nextItems = applyPendingContentSyncOverrides(safeItems);
+                            setBooks((previousItems) => reconcileItemsWithPrevious(previousItems, nextItems));
+                            setPersonalNoteFolders((previousFolders) =>
+                                reconcileFoldersWithPrevious(previousFolders, folders)
+                            );
                             setLastDoc(newLastDoc);
                             setHasMore(!!newLastDoc);
                         }
