@@ -19,6 +19,7 @@ export interface SearchRequest {
     question: string;
     firebase_uid: string;
     mode?: 'STANDARD' | 'EXPLORER';
+    search_surface?: 'CORE' | 'PDF_ONLY';
     book_id?: string;
     context_book_id?: string;
     resource_type?: BackendResourceType | 'ALL_NOTES' | null;

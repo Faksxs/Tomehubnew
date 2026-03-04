@@ -33,6 +33,7 @@ const HIGHLIGHT_STOP_WORDS = new Set([
 
 export default function SmartSearch({ userId, onBack, books = [] }: SmartSearchProps) {
     const [query, setQuery] = useState('');
+    const [searchSurface, setSearchSurface] = useState<'CORE' | 'PDF_ONLY'>('CORE');
     const [results, setResults] = useState<SearchResult[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -117,6 +118,7 @@ export default function SmartSearch({ userId, onBack, books = [] }: SmartSearchP
                 body: JSON.stringify({
                     question: query,
                     firebase_uid: userId,
+                    search_surface: searchSurface,
                     limit: limit,
                     offset: newOffset
                 }),
@@ -145,6 +147,17 @@ export default function SmartSearch({ userId, onBack, books = [] }: SmartSearchP
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleSurfaceChange = (surface: 'CORE' | 'PDF_ONLY') => {
+        if (surface === searchSurface) return;
+        setSearchSurface(surface);
+        setOffset(0);
+        setResults([]);
+        setTotalResults(0);
+        setAnalyticsResult(null);
+        setError(null);
+        setSearched(false);
     };
 
     return (
@@ -211,9 +224,31 @@ export default function SmartSearch({ userId, onBack, books = [] }: SmartSearchP
                             type="text"
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
-                            placeholder="Search your library intelligently..."
+                            placeholder={searchSurface === 'PDF_ONLY' ? 'Search only inserted PDF chunks...' : 'Search your library intelligently...'}
                             className="w-full pl-11 md:pl-14 pr-4 md:pr-6 py-3.5 md:py-5 rounded-2xl border border-[#E6EAF2] dark:border-slate-700 bg-white dark:bg-slate-800 text-base md:text-lg text-slate-900 dark:text-white shadow-sm focus:shadow-xl focus:shadow-[#CC561E]/5 focus:outline-none focus:ring-2 focus:ring-[#CC561E]/50 transition-all placeholder:text-slate-400"
                         />
+                    </div>
+                    <div className={`flex items-center gap-2 ${!searched ? 'justify-center' : 'justify-start'}`}>
+                        <button
+                            type="button"
+                            onClick={() => handleSurfaceChange('CORE')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider border transition-colors ${searchSurface === 'CORE'
+                                ? 'bg-[#CC561E] text-white border-[#CC561E]'
+                                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-[#E6EAF2] dark:border-slate-700 hover:border-[#CC561E]/50'
+                                }`}
+                        >
+                            Normal
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handleSurfaceChange('PDF_ONLY')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider border transition-colors ${searchSurface === 'PDF_ONLY'
+                                ? 'bg-[#CC561E] text-white border-[#CC561E]'
+                                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-[#E6EAF2] dark:border-slate-700 hover:border-[#CC561E]/50'
+                                }`}
+                        >
+                            PDF Chunk
+                        </button>
                     </div>
                     <div className={`text-[11px] md:text-xs text-slate-500 dark:text-slate-400 ${!searched ? 'text-center' : 'text-left'}`}>
                         Tip: <span className="font-bold text-[#CC561E]">Enter</span> to search.

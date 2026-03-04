@@ -1,7 +1,7 @@
 const localhostHosts = new Set(['localhost', '127.0.0.1']);
 const loopbackHosts = new Set(['localhost', '127.0.0.1', '::1']);
 
-const localDefaultBase = 'http://localhost:8000';
+const localDefaultBase = 'http://localhost:8011';
 const productionDefaultBase = 'https://api.tomehub.nl';
 
 const isLoopbackUrl = (value: string): boolean => {
@@ -31,7 +31,7 @@ export const API_BASE_URL = shouldIgnoreConfiguredLoopbackBase
     ? fallbackBase
     : (configuredBase || fallbackBase).replace(/\/+$/, '');
 
-const backendStartHint = "Backend baglantisi kurulamadi. `apps/backend` klasorunde `python app.py` calistirin (port 8000).";
+const backendStartHint = "Backend baglantisi kurulamadi. `apps/backend` klasorunde backend'i calistirin (varsayilan local: port 8011).";
 
 export async function getFirebaseIdToken(): Promise<string> {
     const { auth } = await import('./firebaseClient');

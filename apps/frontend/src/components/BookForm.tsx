@@ -683,8 +683,9 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
         {mode === 'edit' && (
           <form onSubmit={handleSubmit} className={`${isNote ? 'p-3 md:p-5' : 'p-6'} overflow-y-auto flex-1`}>
             {/* Basic Info */}
-            <div className={isNote ? 'space-y-2' : (isMedia ? 'space-y-3.5' : 'space-y-5')}>
-              <div className={`grid grid-cols-1 md:grid-cols-2 ${isNote ? 'gap-2' : (isMedia ? 'gap-3.5' : 'gap-4')}`}>
+            <div className={isNote ? 'space-y-2' : (isMedia ? 'space-y-3.5' : 'space-y-3.5')}>
+              <div className={`grid grid-cols-1 md:grid-cols-2 ${isNote ? 'gap-2' : (isMedia ? 'gap-3' : 'gap-x-4 gap-y-3')}`}>
+
                 {isMedia && (
                   <>
                     <div>
@@ -739,18 +740,39 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                         />
                       </div>
                       {isMedia && (
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Watch Status *</label>
-                          <select
-                            name="readingStatus"
-                            value={formData.readingStatus}
-                            onChange={handleChange}
-                            className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
-                          >
-                            <option value="To Read">Watchlist</option>
-                            <option value="Reading">Watching</option>
-                            <option value="Finished">Watched</option>
-                          </select>
+                        <div className="flex gap-4">
+                          <div className="flex-1">
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Watch Status *</label>
+                            <select
+                              name="readingStatus"
+                              value={formData.readingStatus}
+                              onChange={handleChange}
+                              className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white flex items-center h-[42px]"
+                            >
+                              <option value="To Read">Watchlist</option>
+                              <option value="Reading">Watching</option>
+                              <option value="Finished">Watched</option>
+                            </select>
+                          </div>
+                          <div className="flex-1">
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Rating</label>
+                            <div className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 bg-white dark:bg-slate-950 flex items-center justify-between h-[42px]">
+                              <StarRating
+                                value={formData.rating || undefined}
+                                onChange={(rating) => setFormData(prev => ({ ...prev, rating }))}
+                                size={20}
+                              />
+                              {formData.rating > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setFormData(prev => ({ ...prev, rating: 0 }))}
+                                  className="text-[10px] text-slate-400 dark:text-slate-500 hover:text-red-400 transition-colors uppercase tracking-tight font-semibold"
+                                >
+                                  Clear
+                                </button>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -806,32 +828,53 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                 )}
 
                 {resourceType === 'BOOK' && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Content Language</label>
-                    <select
-                      name="contentLanguageMode"
-                      value={formData.contentLanguageMode}
-                      onChange={handleChange}
-                      className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
-                    >
-                      <option value="AUTO">AUTO (Recommended)</option>
-                      <option value="TR">TR</option>
-                      <option value="EN">EN</option>
-                    </select>
-                    {(formData.contentLanguageResolved || formData.sourceLanguageHint) && (
-                      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                        Resolved: {formData.contentLanguageResolved || '-'} | Source Hint: {formData.sourceLanguageHint || '-'}
-                      </p>
-                    )}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Content Language</label>
+                      <select
+                        name="contentLanguageMode"
+                        value={formData.contentLanguageMode}
+                        onChange={handleChange}
+                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white flex items-center h-[42px]"
+                      >
+                        <option value="AUTO">AUTO (Recommended)</option>
+                        <option value="TR">TR</option>
+                        <option value="EN">EN</option>
+                      </select>
+                      {(formData.contentLanguageResolved || formData.sourceLanguageHint) && (
+                        <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                          Resolved: {formData.contentLanguageResolved || '-'} | Source Hint: {formData.sourceLanguageHint || '-'}
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Rating</label>
+                      <div className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 bg-white dark:bg-slate-950 flex items-center justify-between h-[42px]">
+                        <StarRating
+                          value={formData.rating || undefined}
+                          onChange={(rating) => setFormData(prev => ({ ...prev, rating }))}
+                          size={20}
+                        />
+                        {formData.rating > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, rating: 0 }))}
+                            className="text-[10px] text-slate-400 dark:text-slate-500 hover:text-red-400 transition-colors uppercase tracking-tight font-semibold"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
 
               {!isNote && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-3">
                   {resourceType !== 'WEBSITE' && !isMedia && (
                     <div className={resourceType === 'ARTICLE' ? 'md:col-span-2' : ''}>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 focus:ring-2">
                         {resourceType === 'ARTICLE' ? 'Journal / Publisher' : 'Publisher'}
                       </label>
                       <input
@@ -844,75 +887,112 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                   )}
 
                   {resourceType === 'BOOK' && (
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">ISBN</label>
-                      <div className="flex gap-1.5">
-                        <input
-                          name="isbn"
-                          value={formData.isbn}
-                          onChange={handleChange}
-                          className="flex-1 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] font-mono bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowScanner(true)}
-                          className="px-2.5 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-500 dark:text-slate-400 hover:text-[#CC561E] hover:border-[#CC561E]/50 dark:hover:text-[#f3a47b] dark:hover:border-[#CC561E]/50 transition-colors"
-                          title="Scan ISBN barcode"
-                        >
-                          <Camera size={18} />
-                        </button>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">ISBN</label>
+                        <div className="flex gap-1.5">
+                          <input
+                            name="isbn"
+                            value={formData.isbn}
+                            onChange={handleChange}
+                            className="flex-1 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] font-mono text-sm bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowScanner(true)}
+                            className="px-2 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-500 dark:text-slate-400 hover:text-[#CC561E] hover:border-[#CC561E]/50 dark:hover:text-[#f3a47b] dark:hover:border-[#CC561E]/50 transition-colors"
+                            title="Scan ISBN barcode"
+                          >
+                            <Camera size={16} />
+                          </button>
+                        </div>
                       </div>
-                      {showScanner && (
-                        <BarcodeScanner
-                          onDetected={(code) => {
-                            setShowScanner(false);
-                            setFormData(prev => ({ ...prev, isbn: code }));
-                          }}
-                          onClose={() => setShowScanner(false)}
+
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Page Count</label>
+                        <input
+                          type="number"
+                          name="pageCount"
+                          value={formData.pageCount}
+                          onChange={handleChange}
+                          className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                          placeholder="e.g. 250"
                         />
-                      )}
-                    </div>
-                  )}
-
-                  {resourceType === 'ARTICLE' && (
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Year</label>
-                      <input
-                        name="publicationYear"
-                        value={formData.publicationYear}
-                        onChange={handleChange}
-                        placeholder="YYYY"
-                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
-                      />
+                      </div>
                     </div>
                   )}
 
                   {resourceType === 'BOOK' && (
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Page Count</label>
-                      <input
-                        type="number"
-                        name="pageCount"
-                        value={formData.pageCount}
-                        onChange={handleChange}
-                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
-                        placeholder="e.g. 250"
-                      />
-                    </div>
-                  )}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Shelf Code</label>
+                        <input
+                          name="code"
+                          value={formData.code}
+                          onChange={handleChange}
+                          className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 flex items-center focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white h-[42px]"
+                          placeholder="e.g. A-12"
+                        />
+                      </div>
 
-                  {resourceType === 'BOOK' && (
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Shelf Code</label>
-                      <input
-                        name="code"
-                        value={formData.code}
-                        onChange={handleChange}
-                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
-                        placeholder="e.g. A-12"
-                      />
+                      {/* PDF Upload Compacted */}
+                      <div>
+                        <label className="block text-sm font-medium text-[#CC561E] dark:text-[#f3a47b] mb-1 flex items-center gap-1.5">
+                          <Upload size={14} />
+                          Upload PDF
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <label className="flex-1 cursor-pointer">
+                            <div className={`w-full border border-[#CC561E]/30 dark:border-[#CC561E]/40 bg-[#CC561E]/5 dark:bg-[#CC561E]/10 rounded-lg px-3 flex items-center justify-between transition-colors h-[42px] ${selectedPdf ? 'text-[#CC561E] dark:text-[#f3a47b] font-medium' : 'text-slate-600 dark:text-slate-400 hover:bg-[#CC561E]/10'}`}>
+                              <span className="truncate max-w-[120px] text-sm">
+                                {selectedPdf ? selectedPdf.name : 'Choose file...'}
+                              </span>
+                              {isExtractingMetadata && <Loader2 size={12} className="animate-spin text-[#CC561E]" />}
+                            </div>
+                            <input
+                              type="file"
+                              accept=".pdf"
+                              onChange={handleFileChange}
+                              className="hidden"
+                            />
+                          </label>
+                          {selectedPdf && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedPdf(null)}
+                              className="text-red-500 hover:text-red-600 flex items-center justify-center border border-red-200 dark:border-red-900/50 rounded-lg transition-colors bg-red-50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/20 w-[42px] h-[42px]"
+                              title="Remove PDF"
+                            >
+                              <X size={16} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {showScanner && (
+                <BarcodeScanner
+                  onDetected={(code) => {
+                    setShowScanner(false);
+                    setFormData(prev => ({ ...prev, isbn: code }));
+                  }}
+                  onClose={() => setShowScanner(false)}
+                />
+              )}
+
+              {resourceType === 'ARTICLE' && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Year</label>
+                  <input
+                    name="publicationYear"
+                    value={formData.publicationYear}
+                    onChange={handleChange}
+                    placeholder="YYYY"
+                    className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                  />
                 </div>
               )}
 
@@ -976,7 +1056,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                         </button>
                       )}
                     </div>
-                    <div className="w-16 h-20 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-sm relative group">
+                    <div className="w-14 h-18 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-sm relative group">
                       {formData.coverUrl ? (
                         <img
                           src={formData.coverUrl}
@@ -985,11 +1065,11 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                           onError={(e) => e.currentTarget.style.display = 'none'}
                         />
                       ) : (
-                        <ImageIcon className="text-slate-300" size={20} />
+                        <ImageIcon className="text-slate-300" size={18} />
                       )}
                       {isFetchingCover && (
                         <div className="absolute inset-0 bg-white/50 flex items-center justify-center backdrop-blur-[1px]">
-                          <Loader2 size={16} className="animate-spin text-[#CC561E]" />
+                          <Loader2 size={14} className="animate-spin text-[#CC561E]" />
                         </div>
                       )}
                       {!isFetchingCover && !formData.coverUrl && (
@@ -1028,27 +1108,23 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
               )}
 
               {/* PDF Upload Section - For Books and Articles */}
-              {(resourceType === 'BOOK' || resourceType === 'ARTICLE') && (
-                <div className="bg-[rgba(204,86,30,0.05)] dark:bg-[rgba(204,86,30,0.1)] p-4 rounded-xl border border-[#CC561E]/10 dark:border-[#CC561E]/20">
+              {/* The BOOK PDF upload is now compacted and moved next to Shelf Code */}
+              {resourceType === 'ARTICLE' && (
+                <div className="bg-[rgba(204,86,30,0.05)] dark:bg-[rgba(204,86,30,0.1)] p-3 rounded-lg border border-[#CC561E]/10 dark:border-[#CC561E]/20">
                   <label className="block text-sm font-semibold text-[#CC561E] dark:text-[#f3a47b] mb-2 flex items-center gap-2">
-                    <Upload size={16} />
-                    Upload PDF Document to Library
+                    <Upload size={14} />
+                    Upload PDF Document
                   </label>
                   <div className="flex items-center gap-3">
                     <input
                       type="file"
                       accept=".pdf"
                       onChange={handleFileChange}
-                      className="flex-1 text-sm text-slate-600 dark:text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-[#CC561E] file:text-white hover:file:bg-[#b34b1a] transition-all cursor-pointer"
+                      className="flex-1 text-xs text-slate-600 dark:text-slate-400 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-[#CC561E] file:text-white hover:file:bg-[#b34b1a] transition-all cursor-pointer"
                     />
                     {selectedPdf && (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedPdf(null)}
-                        className="text-red-500 hover:text-red-600 p-2"
-                        title="Remove PDF"
-                      >
-                        <X size={18} />
+                      <button type="button" onClick={() => setSelectedPdf(null)} className="text-red-500 hover:text-red-600 p-1" title="Remove PDF">
+                        <X size={14} />
                       </button>
                     )}
                     {isExtractingMetadata && (
@@ -1065,7 +1141,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
               )}
             </div>
 
-            <hr className={`${isNote ? 'my-3' : 'my-6'} border-slate-100 dark:border-slate-800`} />
+            <hr className={`${isNote ? 'my-2' : 'my-3'} border-slate-100 dark:border-slate-800`} />
 
             {/* Notes Section moved UP for Personal Notes to prioritize writing */}
             {isNote && (
@@ -1088,7 +1164,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
             )}
 
             {/* Status & Tags */}
-            <div className={isNote ? 'space-y-3' : (isMedia ? 'space-y-3.5' : 'space-y-5')}>
+            <div className={isNote ? 'space-y-2' : (isMedia ? 'space-y-3' : 'space-y-3.5')}>
               {!isNote && !isMedia && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -1155,26 +1231,28 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                 />
               </div>
 
-              {/* Star Rating - for all non-note types */}
-              {!isNote && (
+              {/* Star Rating - only for Articles now as others moved up */}
+              {!isNote && resourceType === 'ARTICLE' && (
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                    {isMedia ? 'Your Rating' : 'Rating'}
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Rating
                   </label>
-                  <StarRating
-                    value={formData.rating || undefined}
-                    onChange={(rating) => setFormData(prev => ({ ...prev, rating }))}
-                    size={22}
-                  />
-                  {formData.rating > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, rating: 0 }))}
-                      className="mt-1 text-xs text-slate-400 dark:text-slate-500 hover:text-red-400 transition-colors"
-                    >
-                      Clear rating
-                    </button>
-                  )}
+                  <div className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 bg-white dark:bg-slate-950 flex items-center justify-between h-[42px] max-w-[50%]">
+                    <StarRating
+                      value={formData.rating || undefined}
+                      onChange={(rating) => setFormData(prev => ({ ...prev, rating }))}
+                      size={20}
+                    />
+                    {formData.rating > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, rating: 0 }))}
+                        className="text-[10px] text-slate-400 dark:text-slate-500 hover:text-red-400 transition-colors uppercase tracking-tight font-semibold"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -1205,7 +1283,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
               )}
             </div>
 
-            <hr className={`${isNote ? 'my-3' : 'my-6'} border-slate-100 dark:border-slate-800`} />
+            <hr className={`${isNote ? 'my-2' : 'my-3'} border-slate-100 dark:border-slate-800`} />
 
             {/* Notes (Only for non-notes) */}
             {!isNote && (
