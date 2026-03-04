@@ -28,6 +28,8 @@ services:
     volumes:
       # Mount wallet for Oracle mTLS connection
       - ../apps/backend/wallet:/app/wallet:ro
+      # Mount secrets for Firebase credentials
+      - ../apps/backend/secrets:/app/secrets:ro
       # Mount OCI private key
       - ../apps/backend/oci_private_key.pem:/app/oci_private_key.pem:ro
       # Mount uploads directory for temporary file storage
