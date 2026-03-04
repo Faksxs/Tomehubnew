@@ -278,7 +278,49 @@ def _apply_ingestion_type_filter(sql: str, params: Dict[str, Any], ingestion_typ
     return (sql, params)
 
 
-def _should_exclude_pdf_in_first_pass(resource_type: Optional[str], book_id: Optional[str]) -> bool:
+_PDF_LIKE_SOURCE_TYPES = {"PDF", "EPUB", "PDF_CHUNK", "BOOK_CHUNK"}
+
+
+def _normalize_search_surface(search_surface: Optional[str]) -> str:
+    surface = str(search_surface or "CORE").strip().upper()
+    if surface in {"CORE", "PDF_ONLY"}:
+        return surface
+    return "CORE"
+
+
+def _resolve_content_type_for_surface(content_type: Optional[str], search_surface: Optional[str]) -> Optional[str]:
+    surface = _normalize_search_surface(search_surface)
+    if surface == "PDF_ONLY":
+        return None
+    ct = str(content_type or "").strip().upper()
+    if surface == "CORE" and ct in _PDF_LIKE_SOURCE_TYPES:
+        return None
+    return ct or None
+
+
+def _allow_pdf_fallback(search_surface: Optional[str]) -> bool:
+    surface = _normalize_search_surface(search_surface)
+    return surface not in {"CORE", "PDF_ONLY"}
+
+
+def _apply_search_surface_filter(sql: str, params: Dict[str, Any], search_surface: Optional[str]) -> tuple:
+    surface = _normalize_search_surface(search_surface)
+    if surface == "PDF_ONLY":
+        sql += " AND c.content_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'BOOK_CHUNK') "
+    return (sql, params)
+
+
+def _should_exclude_pdf_in_first_pass(
+    resource_type: Optional[str],
+    book_id: Optional[str],
+    search_surface: Optional[str] = None,
+) -> bool:
+    surface = _normalize_search_surface(search_surface)
+    if surface == "CORE":
+        return True
+    if surface == "PDF_ONLY":
+        return False
+
     # Scoped retrieval should never hide PDF chunks in first pass.
     if str(book_id or "").strip():
         return False
@@ -288,7 +330,7 @@ def _should_exclude_pdf_in_first_pass(resource_type: Optional[str], book_id: Opt
         return True
 
     # Explicit scopes already constrain source_type; no extra PDF exclusion needed.
-    if rt in {"BOOK", "ALL_NOTES", "PERSONAL_NOTE", "ARTICLE", "WEBSITE", "MOVIE", "SERIES", "PDF", "EPUB", "PDF_CHUNK"}:
+    if rt in {"BOOK", "ALL_NOTES", "PERSONAL_NOTE", "ARTICLE", "WEBSITE", "MOVIE", "SERIES", "PDF", "EPUB", "PDF_CHUNK", "BOOK_CHUNK"}:
         return False
     return False
 
@@ -305,6 +347,7 @@ class ExactMatchStrategy(SearchStrategy):
         resource_type: Optional[str] = None,
         book_id: Optional[str] = None,
         visibility_scope: Optional[str] = None,
+        search_surface: Optional[str] = None,
         content_type: Optional[str] = None,
         ingestion_type: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
@@ -313,6 +356,7 @@ class ExactMatchStrategy(SearchStrategy):
                 with conn.cursor() as cursor:
                     q_deaccented = deaccent_text(query)
                     candidate_limit = min(max(limit * 4, limit + 40), 2500)
+                    effective_content_type = _resolve_content_type_for_surface(content_type, search_surface)
 
                     base_sql = """
                         SELECT c.id, c.content_chunk, c.title, c.content_type as source_type, c.page_number, 
@@ -345,11 +389,12 @@ class ExactMatchStrategy(SearchStrategy):
                         sql, params = _apply_resource_type_filter(sql, params, resource_type)
                         sql, params = _apply_book_id_filter(sql, params, book_id)
                         sql, params = _apply_visibility_filter(sql, params, visibility_scope)
-                        sql, params = _apply_content_type_filter(sql, params, content_type)
+                        sql, params = _apply_content_type_filter(sql, params, effective_content_type)
                         sql, params = _apply_ingestion_type_filter(sql, params, ingestion_type)
+                        sql, params = _apply_search_surface_filter(sql, params, search_surface)
 
-                        if not include_pdf and _should_exclude_pdf_in_first_pass(resource_type, book_id):
-                            sql += " AND c.content_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK') "
+                        if not include_pdf and _should_exclude_pdf_in_first_pass(resource_type, book_id, search_surface):
+                            sql += " AND c.content_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK', 'BOOK_CHUNK') "
 
                         if use_oracle_text:
                             params["p_oracle_text_query"] = oracle_text_query
@@ -389,7 +434,12 @@ class ExactMatchStrategy(SearchStrategy):
                         match_mode = "exact_deaccented"
 
                     # Fallback pass with PDF included (only when query is not scoped).
-                    if not rows and not resource_type and not book_id:
+                    if (
+                        not rows
+                        and not resource_type
+                        and not book_id
+                        and _allow_pdf_fallback(search_surface)
+                    ):
                         logger.info("ExactMatchStrategy: no first-pass results, trying PDF-inclusive fallback")
                         if oracle_text_enabled:
                             try:
@@ -453,6 +503,7 @@ class LemmaMatchStrategy(SearchStrategy):
         resource_type: Optional[str] = None,
         book_id: Optional[str] = None,
         visibility_scope: Optional[str] = None,
+        search_surface: Optional[str] = None,
         content_type: Optional[str] = None,
         ingestion_type: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
@@ -460,6 +511,7 @@ class LemmaMatchStrategy(SearchStrategy):
         if not lemmas:
             return []
         lemma_candidates = lemmas[:5]
+        effective_content_type = _resolve_content_type_for_surface(content_type, search_surface)
             
         try:
             with DatabaseManager.get_read_connection() as conn:
@@ -481,12 +533,13 @@ class LemmaMatchStrategy(SearchStrategy):
                     sql, params = _apply_resource_type_filter(sql, params, resource_type)
                     sql, params = _apply_book_id_filter(sql, params, book_id)
                     sql, params = _apply_visibility_filter(sql, params, visibility_scope)
-                    sql, params = _apply_content_type_filter(sql, params, content_type)
+                    sql, params = _apply_content_type_filter(sql, params, effective_content_type)
                     sql, params = _apply_ingestion_type_filter(sql, params, ingestion_type)
+                    sql, params = _apply_search_surface_filter(sql, params, search_surface)
 
                     # 1. TRY FIRST: Search without PDF (exclude raw PDF content)
-                    if _should_exclude_pdf_in_first_pass(resource_type, book_id):
-                        sql += " AND c.content_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK') "
+                    if _should_exclude_pdf_in_first_pass(resource_type, book_id, search_surface):
+                        sql += " AND c.content_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK', 'BOOK_CHUNK') "
                     
                     lemma_conditions = []
                     for i, lemma in enumerate(lemma_candidates):
@@ -507,7 +560,12 @@ class LemmaMatchStrategy(SearchStrategy):
                     rows = cursor.fetchall()
                     
                     # 4. FALLBACK: If no results found and no resource_type filter, search including PDF content
-                    if not rows and not resource_type and not book_id:
+                    if (
+                        not rows
+                        and not resource_type
+                        and not book_id
+                        and _allow_pdf_fallback(search_surface)
+                    ):
                         logger.info(f"LemmaMatchStrategy: No results without PDF content, trying with PDF fallback")
                         sql_with_pdf = """
                             SELECT c.id, c.content_chunk, c.title, c.content_type as source_type, c.page_number, 
@@ -526,8 +584,9 @@ class LemmaMatchStrategy(SearchStrategy):
                         if lemma_conditions_fb:
                             sql_with_pdf += " AND (" + " OR ".join(lemma_conditions_fb) + ")"
                         sql_with_pdf, params = _apply_visibility_filter(sql_with_pdf, params, visibility_scope)
-                        sql_with_pdf, params = _apply_content_type_filter(sql_with_pdf, params, content_type)
+                        sql_with_pdf, params = _apply_content_type_filter(sql_with_pdf, params, effective_content_type)
                         sql_with_pdf, params = _apply_ingestion_type_filter(sql_with_pdf, params, ingestion_type)
+                        sql_with_pdf, params = _apply_search_surface_filter(sql_with_pdf, params, search_surface)
                         
                         sql_with_pdf += """
                              ORDER BY id DESC
@@ -596,12 +655,14 @@ class SemanticMatchStrategy(SearchStrategy):
         resource_type: Optional[str] = None,
         book_id: Optional[str] = None,
         visibility_scope: Optional[str] = None,
+        search_surface: Optional[str] = None,
         content_type: Optional[str] = None,
         ingestion_type: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         emb = self.get_embedding(query)
         if not emb:
             return []
+        effective_content_type = _resolve_content_type_for_surface(content_type, search_surface)
             
         try:
             with DatabaseManager.get_read_connection() as conn:
@@ -624,12 +685,13 @@ class SemanticMatchStrategy(SearchStrategy):
                         sql, params = _apply_resource_type_filter(sql, params, resource_type)
                         sql, params = _apply_book_id_filter(sql, params, book_id)
                         sql, params = _apply_visibility_filter(sql, params, visibility_scope)
-                        sql, params = _apply_content_type_filter(sql, params, content_type)
+                        sql, params = _apply_content_type_filter(sql, params, effective_content_type)
                         sql, params = _apply_ingestion_type_filter(sql, params, ingestion_type)
+                        sql, params = _apply_search_surface_filter(sql, params, search_surface)
 
                         # Apply PDF exclusion filter if requested and no resource_type
-                        if exclude_pdf and _should_exclude_pdf_in_first_pass(resource_type, book_id):
-                            sql += " AND c.content_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK') "
+                        if exclude_pdf and _should_exclude_pdf_in_first_pass(resource_type, book_id, search_surface):
+                            sql += " AND c.content_type NOT IN ('PDF', 'EPUB', 'PDF_CHUNK', 'BOOK_CHUNK') "
 
                         if length_filter:
                             if length_filter == 'SHORT':
@@ -657,7 +719,12 @@ class SemanticMatchStrategy(SearchStrategy):
                         rows.extend(run_query(limit))
                     
                     # FALLBACK: If no results found and no resource_type filter, search including PDF content
-                    if not rows and not resource_type and not book_id:
+                    if (
+                        not rows
+                        and not resource_type
+                        and not book_id
+                        and _allow_pdf_fallback(search_surface)
+                    ):
                         logger.info(f"SemanticMatchStrategy: No results without PDF content, trying with PDF fallback")
                         if intent == 'DIRECT' or intent == 'FOLLOW_UP':
                             sweep_limit = max(5, limit // 2)
@@ -722,15 +789,21 @@ class OdlShadowRescueStrategy(SearchStrategy):
         resource_type: Optional[str] = None,
         book_id: Optional[str] = None,
         visibility_scope: Optional[str] = None,
+        search_surface: Optional[str] = None,
         content_type: Optional[str] = None,
         ingestion_type: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
+        surface = _normalize_search_surface(search_surface)
+        # Layer-2 CORE and PDF_ONLY surfaces should not run ODL rescue.
+        if surface in {"CORE", "PDF_ONLY"}:
+            return []
+
         # ODL shadow only serves PDF-like chunks.
-        if content_type and str(content_type).strip().upper() not in {"PDF", "EPUB", "PDF_CHUNK"}:
+        if content_type and str(content_type).strip().upper() not in {"PDF", "EPUB", "PDF_CHUNK", "BOOK_CHUNK"}:
             return []
         if resource_type:
             rt = str(resource_type).strip().upper()
-            if rt not in {"BOOK", "PDF", "PDF_CHUNK", "EPUB"}:
+            if rt not in {"BOOK", "PDF", "PDF_CHUNK", "EPUB", "BOOK_CHUNK"}:
                 return []
         if not bool(getattr(settings, "ODL_RESCUE_ENABLED", False)):
             return []

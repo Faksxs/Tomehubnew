@@ -187,6 +187,7 @@ def perform_search(
     result_mix_policy=None,
     semantic_tail_cap=None,
     visibility_scope: str = "default",
+    search_surface: str = "CORE",
     content_type=None,
     ingestion_type=None,
 ):
@@ -217,6 +218,7 @@ def perform_search(
             result_mix_policy=result_mix_policy,
             semantic_tail_cap=semantic_tail_cap,
             visibility_scope=visibility_scope,
+            search_surface=search_surface,
             content_type=content_type,
             ingestion_type=ingestion_type,
         )

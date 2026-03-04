@@ -74,6 +74,14 @@ from services.monitoring import (
     SEARCH_RESULT_COUNT,
     L3_PERF_GUARD_APPLIED_TOTAL,
     L3_PHASE_LATENCY_SECONDS,
+    L3_STEPBACK_TOTAL,
+    L3_STEPBACK_LATENCY_MS,
+    L3_STEPBACK_CANDIDATE_COUNT,
+    L3_PARENT_CONTEXT_TOTAL,
+    L3_PARENT_CONTEXT_LATENCY_MS,
+    L3_PARENT_CONTEXT_ADDED_COUNT,
+    L3_CONTEXT_DUP_SUPPRESS_TOTAL,
+    L3_CONTEXT_REORDER_TOTAL,
 )
 from services.cache_service import get_cache, generate_cache_key
 from services.external_kb_service import (
@@ -134,6 +142,17 @@ _REWRITE_LEADIN_PHRASES = (
 _REWRITE_GREETING_TOKENS = {
     "merhaba", "selam", "selamlar", "hey", "hi", "hello", "gunaydin",
     "iyiaksamlar", "iyiaksam", "iyigunler",
+}
+
+_STEPBACK_STOPWORDS = {
+    "ve", "veya", "ile", "icin", "gibi", "kadar", "daha", "cok", "az",
+    "mi", "midir", "midir", "nedir", "nasil", "neden", "hangi", "hangi",
+    "bu", "su", "o", "da", "de", "ki", "ya", "ama", "fakat", "ancak",
+    "bir", "iki", "uc", "dort", "bes",
+}
+
+_STEPBACK_GENERIC_TOKENS = {
+    "konu", "sey", "durum", "metin", "icerik", "yapi", "ornek", "acikla", "aciklama",
 }
 
 def _passes_noise_guard_for_chunk(chunk: Dict[str, Any]) -> bool:
@@ -793,6 +812,282 @@ def _compute_quote_target_count(confidence_score: float, chunk_count: int) -> in
     return max(min_quotes, min(max_quotes, desired))
 
 
+def _is_uid_allowed(firebase_uid: str, canary_uids: set[str]) -> bool:
+    if not canary_uids:
+        return True
+    normalized = {str(uid).strip() for uid in canary_uids if str(uid).strip()}
+    return str(firebase_uid).strip() in normalized
+
+
+def _tokenize_stepback(text: str) -> List[str]:
+    t = _normalize_ascii(text or "").lower()
+    return [tok for tok in re.findall(r"[a-z0-9]+", t) if tok]
+
+
+def _build_stepback_query(question: str, keywords: List[str], min_query_tokens: int = 4) -> Optional[str]:
+    tokens = _tokenize_stepback(question)
+    if len(tokens) < max(2, int(min_query_tokens or 4)):
+        return None
+
+    prioritized: List[str] = []
+    seen = set()
+    for kw in (keywords or []):
+        kw_tokens = _tokenize_stepback(str(kw))
+        for tok in kw_tokens:
+            if len(tok) < 3 or tok in _STEPBACK_STOPWORDS or tok in _STEPBACK_GENERIC_TOKENS:
+                continue
+            if tok not in seen:
+                prioritized.append(tok)
+                seen.add(tok)
+            if len(prioritized) >= 4:
+                break
+        if len(prioritized) >= 4:
+            break
+
+    if len(prioritized) < 2:
+        for tok in tokens:
+            if len(tok) < 3 or tok in _STEPBACK_STOPWORDS or tok in _STEPBACK_GENERIC_TOKENS:
+                continue
+            if tok not in seen:
+                prioritized.append(tok)
+                seen.add(tok)
+            if len(prioritized) >= 4:
+                break
+
+    if len(prioritized) < 2:
+        return None
+    return " ".join(prioritized[:4]).strip() or None
+
+
+def _chunk_key(chunk: Dict[str, Any]) -> str:
+    title = str(chunk.get("title", "") or "")
+    content = str(chunk.get("content_chunk", "") or "")
+    return f"{title}_{content[:20]}"
+
+
+def _safe_int(value: Any) -> Optional[int]:
+    try:
+        if value is None:
+            return None
+        return int(value)
+    except Exception:
+        return None
+
+
+def _fetch_parent_context_neighbors(
+    firebase_uid: str,
+    seeds: List[Dict[str, Any]],
+    timeout_ms: int,
+    seed_topk: int,
+    neighbor_window: int,
+    neighbor_limit: int,
+) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    started = time.perf_counter()
+    candidates: List[Dict[str, Any]] = []
+    scanned_seeds = 0
+    fetched_rows = 0
+    status = "skipped"
+    skip_reason: Optional[str] = None
+
+    seed_topk_eff = max(1, min(int(seed_topk or 3), 8))
+    window_eff = max(1, min(int(neighbor_window or 1), 3))
+    per_seed_limit = max(1, min(int(neighbor_limit or 2), 8))
+    deadline = started + (max(50, int(timeout_ms or 260)) / 1000.0)
+
+    seed_candidates = [s for s in (seeds or []) if isinstance(s, dict)]
+    if not seed_candidates:
+        return [], {"status": status, "skip_reason": "no_seed_candidates", "latency_ms": 0}
+
+    dedup_ids = set()
+    try:
+        with DatabaseManager.get_read_connection() as conn:
+            with conn.cursor() as cursor:
+                for seed in seed_candidates[:seed_topk_eff]:
+                    scanned_seeds += 1
+                    if time.perf_counter() > deadline:
+                        status = "timeout"
+                        skip_reason = "parent_timeout"
+                        break
+
+                    book_id = str(seed.get("book_id") or "").strip()
+                    if not book_id:
+                        continue
+
+                    anchor_id = seed.get("id")
+                    page_num = _safe_int(seed.get("page_number"))
+                    chunk_idx = _safe_int(seed.get("chunk_index"))
+                    if page_num is None and chunk_idx is None:
+                        continue
+
+                    page_low = page_num - window_eff if page_num is not None else None
+                    page_high = page_num + window_eff if page_num is not None else None
+                    chunk_low = chunk_idx - window_eff if chunk_idx is not None else None
+                    chunk_high = chunk_idx + window_eff if chunk_idx is not None else None
+
+                    cursor.execute(
+                        """
+                        SELECT * FROM (
+                            SELECT
+                                c.id,
+                                c.content_chunk,
+                                c.title,
+                                c.content_type,
+                                c.page_number,
+                                c.chunk_index,
+                                c.item_id
+                            FROM TOMEHUB_CONTENT_V2 c
+                            WHERE c.firebase_uid = :p_uid
+                              AND c.item_id = :p_item_id
+                              AND (:p_anchor_id IS NULL OR c.id <> :p_anchor_id)
+                              AND (
+                                (:p_page_low IS NOT NULL AND c.page_number BETWEEN :p_page_low AND :p_page_high)
+                                OR (:p_chunk_low IS NOT NULL AND c.chunk_index BETWEEN :p_chunk_low AND :p_chunk_high)
+                              )
+                            ORDER BY
+                                CASE
+                                    WHEN :p_chunk IS NOT NULL THEN ABS(NVL(c.chunk_index, :p_chunk) - :p_chunk)
+                                    ELSE 9999
+                                END ASC,
+                                CASE
+                                    WHEN :p_page IS NOT NULL THEN ABS(NVL(c.page_number, :p_page) - :p_page)
+                                    ELSE 9999
+                                END ASC,
+                                c.id ASC
+                        )
+                        WHERE ROWNUM <= :p_limit
+                        """,
+                        {
+                            "p_uid": firebase_uid,
+                            "p_item_id": book_id,
+                            "p_anchor_id": anchor_id,
+                            "p_page_low": page_low,
+                            "p_page_high": page_high,
+                            "p_chunk_low": chunk_low,
+                            "p_chunk_high": chunk_high,
+                            "p_page": page_num,
+                            "p_chunk": chunk_idx,
+                            "p_limit": per_seed_limit,
+                        },
+                    )
+                    rows = cursor.fetchall() or []
+                    fetched_rows += len(rows)
+
+                    for row in rows:
+                        candidate_id = row[0]
+                        if candidate_id in dedup_ids:
+                            continue
+                        dedup_ids.add(candidate_id)
+                        candidates.append(
+                            {
+                                "id": candidate_id,
+                                "content_chunk": safe_read_clob(row[1]),
+                                "title": row[2] or seed.get("title", "Unknown"),
+                                "source_type": row[3] or seed.get("source_type", "BOOK"),
+                                "page_number": row[4] or 0,
+                                "chunk_index": row[5],
+                                "book_id": str(row[6] or book_id),
+                                "_parent_context": True,
+                                "_parent_anchor_id": anchor_id,
+                            }
+                        )
+        if candidates and status != "timeout":
+            status = "ok"
+        elif status != "timeout":
+            status = "skipped"
+            skip_reason = skip_reason or "no_parent_candidates"
+    except Exception as err:
+        status = "error"
+        skip_reason = f"parent_fetch_error:{err}"
+        logger.warning("Parent-context fetch failed-open: %s", err)
+
+    latency_ms = int((time.perf_counter() - started) * 1000)
+    return candidates, {
+        "status": status,
+        "skip_reason": skip_reason,
+        "latency_ms": latency_ms,
+        "scanned_seeds": scanned_seeds,
+        "fetched_rows": fetched_rows,
+        "candidate_count": len(candidates),
+    }
+
+
+def _chunk_token_set(chunk: Dict[str, Any]) -> set[str]:
+    text = _normalize_ascii(str(chunk.get("content_chunk", "") or "")).lower()
+    tokens = re.findall(r"[a-z0-9]+", text[:1200])
+    return {tok for tok in tokens if len(tok) >= 3}
+
+
+def _jaccard_similarity(tokens_a: set[str], tokens_b: set[str]) -> float:
+    if not tokens_a or not tokens_b:
+        return 0.0
+    inter = len(tokens_a.intersection(tokens_b))
+    if inter == 0:
+        return 0.0
+    union = len(tokens_a.union(tokens_b))
+    if union == 0:
+        return 0.0
+    return float(inter) / float(union)
+
+
+def _apply_duplicate_suppression(
+    chunks: List[Dict[str, Any]],
+    threshold: float,
+    compare_window: int,
+) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    if not chunks:
+        return [], {"status": "skipped", "suppressed_count": 0}
+
+    compare_window_eff = max(1, min(int(compare_window or 8), 20))
+    threshold_eff = max(0.4, min(float(threshold or 0.92), 1.0))
+    kept: List[Dict[str, Any]] = []
+    kept_token_sets: List[set[str]] = []
+    suppressed = 0
+
+    for chunk in chunks:
+        key = _chunk_key(chunk)
+        is_duplicate = False
+        token_set = _chunk_token_set(chunk)
+
+        if not token_set:
+            for prev in kept[-compare_window_eff:]:
+                if _chunk_key(prev) == key:
+                    is_duplicate = True
+                    break
+        else:
+            for prev_tokens in kept_token_sets[-compare_window_eff:]:
+                if _jaccard_similarity(token_set, prev_tokens) >= threshold_eff:
+                    is_duplicate = True
+                    break
+
+        if is_duplicate:
+            suppressed += 1
+            continue
+
+        kept.append(chunk)
+        kept_token_sets.append(token_set)
+
+    return kept, {
+        "status": "ok" if suppressed > 0 else "no_change",
+        "suppressed_count": suppressed,
+        "kept_count": len(kept),
+        "threshold": threshold_eff,
+    }
+
+
+def _apply_long_context_reorder(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if len(chunks) <= 2:
+        return list(chunks)
+
+    head: List[Dict[str, Any]] = []
+    tail: List[Dict[str, Any]] = []
+    for idx, chunk in enumerate(chunks):
+        if idx % 2 == 0:
+            head.append(chunk)
+        else:
+            tail.append(chunk)
+    return head + list(reversed(tail))
+
+
 def _read_search_log_strategy_details_json(cursor, search_log_id: int) -> Dict[str, Any]:
     """Read STRATEGY_DETAILS safely, with fallback that avoids direct CLOB fetch edge cases."""
     try:
@@ -1099,6 +1394,59 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         except:
             return []
 
+    stepback_mode = "disabled"
+    stepback_status = "disabled"
+    stepback_applied = False
+    stepback_shadow = False
+    stepback_skip_reason = "flag_disabled"
+    stepback_query = None
+    stepback_candidate_count = 0
+    stepback_latency_ms = 0
+
+    stepback_enabled_flag = bool(getattr(settings, "L3_PHASE4_STEPBACK_ENABLED", False))
+    stepback_shadow_flag = bool(getattr(settings, "L3_PHASE4_STEPBACK_SHADOW_ENABLED", False))
+    if stepback_enabled_flag or stepback_shadow_flag:
+        canary_uids = set(getattr(settings, "L3_PHASE4_STEPBACK_CANARY_UIDS", set()) or set())
+        if _is_uid_allowed(firebase_uid, canary_uids):
+            stepback_query = _build_stepback_query(
+                effective_query,
+                keywords,
+                min_query_tokens=int(getattr(settings, "L3_PHASE4_STEPBACK_MIN_QUERY_TOKENS", 4) or 4),
+            )
+            if stepback_query and stepback_query != _normalize_ascii(effective_query).lower():
+                stepback_mode = "apply" if stepback_enabled_flag else "shadow"
+                stepback_status = "pending"
+                stepback_skip_reason = None
+            else:
+                stepback_status = "skipped"
+                stepback_skip_reason = "no_stepback_query"
+        else:
+            stepback_mode = "apply" if stepback_enabled_flag else "shadow"
+            stepback_status = "skipped"
+            stepback_skip_reason = "uid_not_in_canary"
+
+    def run_stepback_search():
+        if not stepback_query:
+            return [], {}
+        search_depth = 'deep' if mode == 'EXPLORER' else 'normal'
+        effective_book_id = None if compare_applied else context_book_id
+        return perform_search(
+            stepback_query,
+            firebase_uid,
+            intent=intent,
+            book_id=effective_book_id,
+            search_depth=search_depth,
+            resource_type=resource_type,
+            limit=max(2, int(getattr(settings, "L3_PHASE4_STEPBACK_LIMIT", 10) or 10)),
+            offset=0,
+            session_id=session_id,
+            visibility_scope=visibility_scope,
+            content_type=content_type,
+            ingestion_type=ingestion_type,
+            result_mix_policy="lexical_then_semantic_tail",
+            semantic_tail_cap=getattr(settings, "SEARCH_SMART_SEMANTIC_TAIL_CAP", 6),
+        )
+
     graph_results = []
     question_results = []
     vec_meta = {}
@@ -1119,14 +1467,17 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
     degradations = []
     
     # Replaced Sentry Spans with Standard Threading
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    with ThreadPoolExecutor(max_workers=4) as executor:
         future_vector = executor.submit(run_vector_search)
         future_graph = None
+        future_stepback = None
         if getattr(settings, "SEARCH_GRAPH_DIRECT_SKIP", True) and intent in {"DIRECT", "FOLLOW_UP"}:
             graph_skipped_by_intent = True
         else:
             future_graph = executor.submit(run_graph_search)
             graph_latency_budget_applied = True
+        if stepback_status == "pending" and stepback_query:
+            future_stepback = executor.submit(run_stepback_search)
 
         try:
             # Result is now (list, dict)
@@ -1161,6 +1512,65 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
                 logger.error(f"Graph retrieval unexpected error: {e}")
                 degradations.append({"component": "GRAPH_SERVICE", "reason": str(e), "severity": "HIGH"})
                 graph_results = []
+
+        if future_stepback is not None:
+            stepback_started = time.perf_counter()
+            try:
+                timeout_sec = max(
+                    0.05, float(getattr(settings, "L3_PHASE4_STEPBACK_TIMEOUT_MS", 220)) / 1000.0
+                )
+                stepback_rows, _stepback_meta = future_stepback.result(timeout=timeout_sec)
+                stepback_latency_ms = int((time.perf_counter() - stepback_started) * 1000)
+                stepback_candidate_count = len(stepback_rows or [])
+                try:
+                    L3_STEPBACK_LATENCY_MS.labels(mode=stepback_mode).observe(float(stepback_latency_ms))
+                    L3_STEPBACK_CANDIDATE_COUNT.labels(mode=stepback_mode).observe(
+                        float(stepback_candidate_count)
+                    )
+                except Exception:
+                    pass
+
+                if stepback_rows:
+                    if stepback_enabled_flag:
+                        for c in stepback_rows:
+                            c2 = dict(c)
+                            c2["_stepback_hit"] = True
+                            key = _chunk_key(c2)
+                            if key not in all_chunks_map:
+                                all_chunks_map[key] = c2
+                        stepback_applied = True
+                        stepback_status = "ok"
+                    else:
+                        stepback_shadow = True
+                        stepback_status = "ok"
+                else:
+                    stepback_status = "skipped"
+                    stepback_skip_reason = "empty_stepback_output"
+            except FutureTimeoutError:
+                future_stepback.cancel()
+                stepback_latency_ms = int((time.perf_counter() - stepback_started) * 1000)
+                stepback_status = "timeout"
+                stepback_skip_reason = "stepback_timeout"
+                degradations.append(
+                    {
+                        "component": "STEPBACK_SEARCH",
+                        "reason": f"timeout>{int(getattr(settings, 'L3_PHASE4_STEPBACK_TIMEOUT_MS', 220))}ms",
+                        "severity": "LOW",
+                    }
+                )
+            except Exception as stepback_err:
+                stepback_latency_ms = int((time.perf_counter() - stepback_started) * 1000)
+                stepback_status = "error"
+                stepback_skip_reason = "stepback_error"
+                logger.warning("Step-back retrieval failed-open: %s", stepback_err)
+
+    try:
+        final_stepback_status = (
+            "applied" if stepback_applied else ("shadow" if stepback_shadow else stepback_status)
+        )
+        L3_STEPBACK_TOTAL.labels(mode=stepback_mode, status=final_stepback_status).inc()
+    except Exception:
+        pass
 
     # Merge Results
     if question_results:
@@ -1315,7 +1725,73 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
                         all_chunks_map[key] = c
         else:
             supplementary_search_skipped_reason = "keyword_variant_missing"
-    
+
+    parent_mode = "disabled"
+    parent_status = "disabled"
+    parent_applied = False
+    parent_shadow = False
+    parent_skip_reason = "flag_disabled"
+    parent_added_count = 0
+    parent_candidate_count = 0
+    parent_latency_ms = 0
+    parent_scanned_seeds = 0
+
+    parent_enabled_flag = bool(getattr(settings, "L3_PHASE4_PARENT_CONTEXT_ENABLED", False))
+    parent_shadow_flag = bool(getattr(settings, "L3_PHASE4_PARENT_CONTEXT_SHADOW_ENABLED", False))
+    if parent_enabled_flag or parent_shadow_flag:
+        parent_mode = "apply" if parent_enabled_flag else "shadow"
+        canary_uids = set(getattr(settings, "L3_PHASE4_PARENT_CONTEXT_CANARY_UIDS", set()) or set())
+        if _is_uid_allowed(firebase_uid, canary_uids):
+            parent_candidates, parent_diag = _fetch_parent_context_neighbors(
+                firebase_uid=firebase_uid,
+                seeds=question_results or list(all_chunks_map.values()),
+                timeout_ms=int(getattr(settings, "L3_PHASE4_PARENT_TIMEOUT_MS", 260) or 260),
+                seed_topk=int(getattr(settings, "L3_PHASE4_PARENT_SEED_TOPK", 3) or 3),
+                neighbor_window=int(getattr(settings, "L3_PHASE4_PARENT_NEIGHBOR_WINDOW", 1) or 1),
+                neighbor_limit=int(getattr(settings, "L3_PHASE4_PARENT_NEIGHBOR_LIMIT", 2) or 2),
+            )
+            parent_candidate_count = int(parent_diag.get("candidate_count", 0) or 0)
+            parent_latency_ms = int(parent_diag.get("latency_ms", 0) or 0)
+            parent_status = str(parent_diag.get("status") or "skipped")
+            parent_skip_reason = parent_diag.get("skip_reason")
+            parent_scanned_seeds = int(parent_diag.get("scanned_seeds", 0) or 0)
+            try:
+                L3_PARENT_CONTEXT_LATENCY_MS.labels(mode=parent_mode).observe(float(parent_latency_ms))
+            except Exception:
+                pass
+
+            if parent_candidates:
+                if parent_enabled_flag:
+                    for c in parent_candidates:
+                        key = _chunk_key(c)
+                        if key not in all_chunks_map:
+                            all_chunks_map[key] = c
+                            parent_added_count += 1
+                    parent_applied = parent_added_count > 0
+                    if parent_applied:
+                        parent_status = "ok"
+                    else:
+                        parent_status = "skipped"
+                        parent_skip_reason = "parent_candidates_duplicate"
+                else:
+                    parent_shadow = True
+                    parent_status = "ok"
+            try:
+                L3_PARENT_CONTEXT_ADDED_COUNT.labels(mode=parent_mode).observe(float(parent_added_count))
+            except Exception:
+                pass
+        else:
+            parent_status = "skipped"
+            parent_skip_reason = "uid_not_in_canary"
+
+    try:
+        final_parent_status = (
+            "applied" if parent_applied else ("shadow" if parent_shadow else parent_status)
+        )
+        L3_PARENT_CONTEXT_TOTAL.labels(mode=parent_mode, status=final_parent_status).inc()
+    except Exception:
+        pass
+
     combined_chunks = list(all_chunks_map.values())
     
     if not combined_chunks and mode != 'EXPLORER':
@@ -1356,6 +1832,10 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
             if ext_boost > chunk.get('answerability_score', 0):
                 chunk['answerability_score'] = ext_boost
                 chunk['epistemic_level'] = 'B'
+        if chunk.get("_parent_context"):
+            decay = float(getattr(settings, "L3_PHASE4_PARENT_SCORE_DECAY", 0.88) or 0.88)
+            current = float(chunk.get("answerability_score", 0.0) or 0.0)
+            chunk["answerability_score"] = max(0.0, current * max(0.0, min(1.0, decay)))
         
     # Passage Weighting & Sorting
     standard_top_40 = combined_chunks[:40]
@@ -1392,6 +1872,38 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         return base * weight
 
     final_chunks.sort(key=get_weighted_score, reverse=True)
+
+    duplicate_suppression_applied = False
+    duplicate_suppression_status = "disabled"
+    duplicate_suppressed_count = 0
+    if bool(getattr(settings, "L3_PHASE4_DUP_SUPPRESS_ENABLED", False)):
+        deduped_chunks, dedup_diag = _apply_duplicate_suppression(
+            final_chunks,
+            threshold=float(getattr(settings, "L3_PHASE4_DUP_SUPPRESS_THRESHOLD", 0.92) or 0.92),
+            compare_window=int(getattr(settings, "L3_PHASE4_DUP_SUPPRESS_COMPARE_WINDOW", 8) or 8),
+        )
+        duplicate_suppressed_count = int(dedup_diag.get("suppressed_count", 0) or 0)
+        duplicate_suppression_status = str(dedup_diag.get("status") or "no_change")
+        if deduped_chunks:
+            final_chunks = deduped_chunks
+        duplicate_suppression_applied = duplicate_suppressed_count > 0
+    try:
+        L3_CONTEXT_DUP_SUPPRESS_TOTAL.labels(
+            status="applied" if duplicate_suppression_applied else duplicate_suppression_status
+        ).inc()
+    except Exception:
+        pass
+
+    long_context_reorder_applied = False
+    long_context_reorder_status = "disabled"
+    if bool(getattr(settings, "L3_PHASE4_LONG_CONTEXT_REORDER_ENABLED", False)):
+        final_chunks = _apply_long_context_reorder(final_chunks)
+        long_context_reorder_applied = True
+        long_context_reorder_status = "applied"
+    try:
+        L3_CONTEXT_REORDER_TOTAL.labels(status=long_context_reorder_status).inc()
+    except Exception:
+        pass
     
     # Answer Mode & Confidence
     answer_mode = determine_answer_mode(final_chunks, intent, complexity)
@@ -1404,11 +1916,14 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
 
     retrieval_fusion_mode = vec_meta.get("retrieval_fusion_mode", "concat")
     vector_retrieval_path = vec_meta.get("retrieval_path", "hybrid")
-    retrieval_path = (
-        f"{vector_retrieval_path}+graph"
-        if graph_latency_budget_applied and not graph_skipped_by_intent
-        else vector_retrieval_path
-    )
+    retrieval_path_parts = [vector_retrieval_path]
+    if graph_latency_budget_applied and not graph_skipped_by_intent:
+        retrieval_path_parts.append("graph")
+    if stepback_applied:
+        retrieval_path_parts.append("stepback")
+    if parent_applied:
+        retrieval_path_parts.append("parent")
+    retrieval_path = "+".join(retrieval_path_parts)
     router_mode = vec_meta.get("router_mode", "static")
     router_reason = vec_meta.get("router_reason")
     retrieval_mode = vec_meta.get("retrieval_mode", "balanced")
@@ -1463,6 +1978,28 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
             "odl_rescue_candidates_added": odl_rescue_candidates_added,
             "odl_rescue_candidates_topk": odl_rescue_candidates_topk,
             "odl_shadow_status": odl_shadow_status,
+            "stepback_mode": stepback_mode,
+            "stepback_status": stepback_status,
+            "stepback_applied": stepback_applied,
+            "stepback_shadow": stepback_shadow,
+            "stepback_skip_reason": stepback_skip_reason,
+            "stepback_query": stepback_query,
+            "stepback_candidate_count": stepback_candidate_count,
+            "stepback_latency_ms": stepback_latency_ms,
+            "parent_mode": parent_mode,
+            "parent_status": parent_status,
+            "parent_applied": parent_applied,
+            "parent_shadow": parent_shadow,
+            "parent_skip_reason": parent_skip_reason,
+            "parent_candidate_count": parent_candidate_count,
+            "parent_added_count": parent_added_count,
+            "parent_scanned_seeds": parent_scanned_seeds,
+            "parent_latency_ms": parent_latency_ms,
+            "duplicate_suppression_applied": duplicate_suppression_applied,
+            "duplicate_suppression_status": duplicate_suppression_status,
+            "duplicate_suppressed_count": duplicate_suppressed_count,
+            "long_context_reorder_applied": long_context_reorder_applied,
+            "long_context_reorder_status": long_context_reorder_status,
         },
     )
 
@@ -1520,6 +2057,28 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         "per_book_evidence_count": per_book_evidence_count,
         "compare_degrade_reason": compare_degrade_reason,
         "compare_mode": compare_mode,
+        "stepback_mode": stepback_mode,
+        "stepback_status": stepback_status,
+        "stepback_applied": stepback_applied,
+        "stepback_shadow": stepback_shadow,
+        "stepback_skip_reason": stepback_skip_reason,
+        "stepback_query": stepback_query,
+        "stepback_candidate_count": stepback_candidate_count,
+        "stepback_latency_ms": stepback_latency_ms,
+        "parent_mode": parent_mode,
+        "parent_status": parent_status,
+        "parent_applied": parent_applied,
+        "parent_shadow": parent_shadow,
+        "parent_skip_reason": parent_skip_reason,
+        "parent_candidate_count": parent_candidate_count,
+        "parent_added_count": parent_added_count,
+        "parent_scanned_seeds": parent_scanned_seeds,
+        "parent_latency_ms": parent_latency_ms,
+        "duplicate_suppression_applied": duplicate_suppression_applied,
+        "duplicate_suppression_status": duplicate_suppression_status,
+        "duplicate_suppressed_count": duplicate_suppressed_count,
+        "long_context_reorder_applied": long_context_reorder_applied,
+        "long_context_reorder_status": long_context_reorder_status,
         "level_counts": {
             'A': level_a_count,
             'B': level_b_count,
@@ -1571,6 +2130,28 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
             "per_book_evidence_count": per_book_evidence_count,
             "compare_degrade_reason": compare_degrade_reason,
             "compare_mode": compare_mode,
+            "stepback_mode": stepback_mode,
+            "stepback_status": stepback_status,
+            "stepback_applied": stepback_applied,
+            "stepback_shadow": stepback_shadow,
+            "stepback_skip_reason": stepback_skip_reason,
+            "stepback_query": stepback_query,
+            "stepback_candidate_count": stepback_candidate_count,
+            "stepback_latency_ms": stepback_latency_ms,
+            "parent_mode": parent_mode,
+            "parent_status": parent_status,
+            "parent_applied": parent_applied,
+            "parent_shadow": parent_shadow,
+            "parent_skip_reason": parent_skip_reason,
+            "parent_candidate_count": parent_candidate_count,
+            "parent_added_count": parent_added_count,
+            "parent_scanned_seeds": parent_scanned_seeds,
+            "parent_latency_ms": parent_latency_ms,
+            "duplicate_suppression_applied": duplicate_suppression_applied,
+            "duplicate_suppression_status": duplicate_suppression_status,
+            "duplicate_suppressed_count": duplicate_suppressed_count,
+            "long_context_reorder_applied": long_context_reorder_applied,
+            "long_context_reorder_status": long_context_reorder_status,
             "level_counts": {"A": level_a_count, "B": level_b_count, "C": level_c_count},
             "selected_buckets": selected_buckets,
             "executed_strategies": executed_strategies,

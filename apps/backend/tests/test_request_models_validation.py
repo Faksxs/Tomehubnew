@@ -58,6 +58,21 @@ class RequestModelValidationTests(unittest.TestCase):
         )
         self.assertEqual(req.compare_mode, "EXPLICIT_ONLY")
 
+    def test_search_surface_default(self):
+        req = SearchRequest(
+            question="test",
+            firebase_uid="u1",
+        )
+        self.assertEqual(req.search_surface, "CORE")
+
+    def test_search_surface_validation(self):
+        with self.assertRaises(ValidationError):
+            SearchRequest(
+                question="test",
+                firebase_uid="u1",
+                search_surface="random",
+            )
+
     def test_search_target_book_ids_normalization(self):
         req = SearchRequest(
             question="test",

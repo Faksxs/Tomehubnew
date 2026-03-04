@@ -20,7 +20,8 @@ import {
     Zap,
     LayoutGrid,
     Archive,
-    Menu
+    Menu,
+    Film
 } from 'lucide-react';
 import { LibraryItem } from '../../types';
 import { CATEGORIES, MIN_CATEGORY_BOOKS_VISIBLE } from '../CategorySelector';
@@ -34,7 +35,8 @@ import {
     SystemDistributionLogo,
     ProgressLogo,
     FocusLogo,
-    InventoryLogo
+    InventoryLogo,
+    CinemaLogo
 } from '../ui/FeatureLogos';
 
 interface KnowledgeDashboardProps {
@@ -81,6 +83,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
 
     // --- DATA PROCESSING (LEVEL A) ---
     const books = items.filter(i => i.type === 'BOOK');
+    const cinema = items.filter(i => i.type === 'MOVIE' || i.type === 'SERIES');
     const articles = items.filter(i => i.type === 'ARTICLE');
     const websites = items.filter(i => i.type === 'WEBSITE');
     const personalNotes = items.filter(i => i.type === 'PERSONAL_NOTE');
@@ -89,9 +92,10 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
     const statsA = [
         { label: 'All Notes', value: allHighlights.length, icon: HighlightsLogo, tab: 'NOTES' },
         { label: 'Total Books', value: books.length, icon: BooksLogo, tab: 'BOOK' },
-        { label: 'Articles', value: articles.length, icon: ArticlesLogo, tab: 'ARTICLE' },
-        { label: 'Websites', value: websites.length, icon: WebsitesLogo, tab: 'WEBSITE' },
+        { label: 'Cinema', value: cinema.length, icon: CinemaLogo, tab: 'MOVIE' },
         { label: 'Personal Notes', value: personalNotes.length, icon: NotesLogo, tab: 'PERSONAL_NOTE' },
+        { label: 'Websites', value: websites.length, icon: WebsitesLogo, tab: 'WEBSITE' },
+        { label: 'Articles', value: articles.length, icon: ArticlesLogo, tab: 'ARTICLE' },
     ];
 
     // --- DATA PROCESSING (LEVEL B) ---
@@ -104,16 +108,10 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
     const lostCount = books.filter(i => i.status === 'Lost').length;
     const onShelfCount = books.filter(i => i.status === 'On Shelf').length;
 
-    // --- DATA PROCESSING (TODAY'S PICK) ---
-    const todaysPickItem = useMemo(() => {
-        const toReadItems = items.filter(i => i.readingStatus === 'To Read' && i.type !== 'PERSONAL_NOTE');
-        if (toReadItems.length === 0) return null;
-
-        const dayOfYear = Math.floor(Date.now() / 86400000);
-        const index = dayOfYear % toReadItems.length;
-        const sorted = [...toReadItems].sort((a, b) => normalizeAddedAt(a.addedAt) - normalizeAddedAt(b.addedAt));
-        return sorted[index];
-    }, [items]);
+    // --- DATA PROCESSING (CINEMA STATS) ---
+    const cinemaWatchlistCount = cinema.filter(i => i.readingStatus === 'To Read').length;
+    const cinemaWatchingCount = cinema.filter(i => i.readingStatus === 'Reading').length;
+    const cinemaWatchedCount = cinema.filter(i => i.readingStatus === 'Finished').length;
     const advancedStats = useMemo(() => {
         const now = Date.now();
         const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
@@ -248,7 +246,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                     <div className="flex items-center gap-1.5 md:gap-2 px-1 text-xs md:text-sm font-bold uppercase tracking-[0.15em] md:tracking-[0.18em] text-slate-500 dark:text-slate-400">
                         <Activity size={11} className="text-primary/60 md:w-3 md:h-3" /> Level A - Core Stats
                     </div>
-                    <div className="grid grid-cols-2 min-[560px]:grid-cols-3 lg:grid-cols-5 gap-2.5 md:gap-4">
+                    <div className="grid grid-cols-2 min-[560px]:grid-cols-3 lg:grid-cols-6 gap-2.5 md:gap-4">
                         {statsA.map((stat) => (
                             <div
                                 key={stat.label}
@@ -261,21 +259,21 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                     shadow-lg lg:shadow-md
                                     hover:shadow-xl hover:border-primary/40 dark:hover:border-primary/40
                                     transition-colors duration-200
-                                    flex flex-col items-center p-2.5 md:p-4 gap-1.5 md:gap-3
+                                    flex flex-col items-center p-2.5 md:p-3 gap-1.5 md:gap-3
                                 "
                             >
                                 <div className="flex items-center justify-center gap-2 md:gap-2.5 w-full">
                                     <div className="relative shrink-0">
                                         <div className="relative p-1 md:p-1.5 bg-orange-500/5 dark:bg-orange-500/10 rounded-lg md:rounded-xl border border-orange-500/10 dark:border-orange-500/20 transition-colors group-hover:border-orange-500/40">
-                                            <stat.icon className="w-3.5 h-3.5 md:w-4.5 md:h-4.5 text-[#CC561E] dark:text-[#f3a47b]" />
+                                            <stat.icon className="w-3.5 h-3.5 md:w-4 md:h-4 text-[#CC561E] dark:text-[#f3a47b]" />
                                         </div>
                                     </div>
-                                    <div className="text-[8.5px] md:text-[11px] font-bold uppercase tracking-[0.05em] md:tracking-widest text-slate-400 group-hover:text-slate-300 transition-colors leading-tight">
+                                    <div className="text-[8.5px] md:text-[10px] font-bold uppercase tracking-[0.05em] md:tracking-widest text-slate-400 group-hover:text-slate-300 transition-colors leading-tight">
                                         {stat.label}
                                     </div>
                                 </div>
                                 <div className="w-full text-center mt-auto">
-                                    <div className="text-lg md:text-[26px] font-black tracking-tight text-white leading-none">
+                                    <div className="text-lg md:text-2xl font-black tracking-tight text-white leading-none">
                                         <CountUp value={stat.value} />
                                     </div>
                                 </div>
@@ -331,36 +329,29 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                     })}
                                 </div>
 
-                                {/* TODAY'S PICK (Relocated to balance whitespace) */}
-                                {todaysPickItem && (
-                                    <div className="mt-auto pt-6 border-t border-slate-200/10 dark:border-white/5 animate-in fade-in duration-500">
-                                        <div className="flex flex-col gap-2">
-                                            <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-[#CC561E] dark:text-[#f3a47b]">
-                                                <Sparkles size={11} /> Today's Pick
+                                {/* INVENTORY */}
+                                <div className="mt-auto pt-6 border-t border-slate-200/10 dark:border-white/5 animate-in fade-in duration-500">
+                                    <div className="space-y-2 md:space-y-4">
+                                        <div className="flex items-center gap-2 md:gap-3 border-b border-white/10 pb-2 md:pb-3">
+                                            <InventoryLogo size={16} className="text-primary md:w-5 md:h-5" />
+                                            <h3 className="font-extrabold text-white tracking-tight uppercase text-xs">Book Inventory</h3>
+                                        </div>
+                                        <div className="flex gap-1.5 md:gap-3">
+                                            <div onClick={() => onStatusSelect?.('On Shelf')} className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-[#14B8A6]/85 text-center border border-[#14B8A6]/55 cursor-pointer hover:border-[#14B8A6]/70 transition-all font-bold group">
+                                                <p className="text-[9px] md:text-[10px] uppercase font-black text-white mb-0.5 md:mb-1">Shelf</p>
+                                                <p className="text-sm md:text-lg font-black text-white"><CountUp value={onShelfCount} /></p>
                                             </div>
-                                            <div
-                                                onClick={() => onStatusSelect?.('To Read')}
-                                                className="group cursor-pointer relative overflow-hidden rounded-2xl border border-white/20 bg-transparent hover:bg-white/5 p-3 md:p-4 transition-all flex items-center justify-between"
-                                                title={todaysPickItem.title}
-                                            >
-                                                <div className="absolute top-0 left-0 w-1 h-full bg-orange-500/80 rounded-l-full" />
-                                                <div className="pl-1.5 flex items-center justify-between w-full gap-3">
-                                                    <div className="flex flex-col gap-0.5 overflow-hidden">
-                                                        <span className="text-xs md:text-sm font-bold text-white truncate group-hover:text-primary transition-colors">
-                                                            {todaysPickItem.title}
-                                                        </span>
-                                                        <span className="text-[9px] md:text-[10px] text-slate-400 font-medium uppercase tracking-wider">
-                                                            Waiting in To-Read
-                                                        </span>
-                                                    </div>
-                                                    <div className="p-1.5 shrink-0 bg-white/10 dark:bg-black/20 rounded-lg border border-white/10 group-hover:scale-110 transition-transform">
-                                                        {todaysPickItem.type === 'ARTICLE' ? <FileText size={12} className="text-white" /> : (todaysPickItem.type === 'WEBSITE' ? <Globe size={12} className="text-white" /> : <Book size={12} className="text-white" />)}
-                                                    </div>
-                                                </div>
+                                            <div onClick={() => onStatusSelect?.('Lent Out')} className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-[#F59E0B]/85 text-center border border-[#F59E0B]/55 cursor-pointer hover:border-[#F59E0B]/70 transition-all font-bold group">
+                                                <p className="text-[9px] md:text-[10px] uppercase font-black text-white mb-0.5 md:mb-1">Lent</p>
+                                                <p className="text-sm md:text-lg font-black text-white"><CountUp value={lentCount} /></p>
+                                            </div>
+                                            <div onClick={() => onStatusSelect?.('Lost')} className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-[#F43F5E]/85 text-center border border-[#F43F5E]/55 cursor-pointer hover:border-[#F43F5E]/70 transition-all font-bold group">
+                                                <p className="text-[9px] md:text-[10px] uppercase font-black text-white mb-0.5 md:mb-1">Lost</p>
+                                                <p className="text-sm md:text-lg font-black text-white"><CountUp value={lostCount} /></p>
                                             </div>
                                         </div>
                                     </div>
-                                )}
+                                </div>
                             </div>
 
                             {/* Right Column (Progress & Inventory) */}
@@ -387,21 +378,21 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                 </div>
                                 <div className="space-y-2 md:space-y-4">
                                     <div className="flex items-center gap-2 md:gap-3 border-b border-white/10 pb-2 md:pb-4">
-                                        <InventoryLogo size={16} className="text-primary md:w-5 md:h-5" />
-                                        <h3 className="font-extrabold text-white tracking-tight uppercase text-xs">Inventory</h3>
+                                        <Film size={16} className="text-primary md:w-5 md:h-5" />
+                                        <h3 className="font-extrabold text-white tracking-tight uppercase text-xs">Cinema</h3>
                                     </div>
                                     <div className="flex gap-1.5 md:gap-3">
-                                        <div onClick={() => onStatusSelect?.('On Shelf')} className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-[#14B8A6]/85 text-center border border-[#14B8A6]/55 cursor-pointer hover:border-[#14B8A6]/70 transition-all font-bold group">
-                                            <p className="text-[9px] md:text-[10px] uppercase font-black text-white mb-0.5 md:mb-1">Shelf</p>
-                                            <p className="text-sm md:text-lg font-black text-white"><CountUp value={onShelfCount} /></p>
+                                        <div onClick={() => { onNavigateToTab?.('MOVIE'); onStatusSelect?.('To Read'); }} className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-slate-800/80 text-center border border-white/10 cursor-pointer hover:border-primary/50 transition-all font-bold group">
+                                            <p className="text-[9px] md:text-[10px] uppercase font-black text-slate-400 mb-0.5 md:mb-1 group-hover:text-primary transition-colors">Watchlist</p>
+                                            <p className="text-sm md:text-lg font-black text-white"><CountUp value={cinemaWatchlistCount} /></p>
                                         </div>
-                                        <div onClick={() => onStatusSelect?.('Lent Out')} className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-[#F59E0B]/85 text-center border border-[#F59E0B]/55 cursor-pointer hover:border-[#F59E0B]/70 transition-all font-bold group">
-                                            <p className="text-[9px] md:text-[10px] uppercase font-black text-white mb-0.5 md:mb-1">Lent</p>
-                                            <p className="text-sm md:text-lg font-black text-white"><CountUp value={lentCount} /></p>
+                                        <div onClick={() => { onNavigateToTab?.('MOVIE'); onStatusSelect?.('Reading'); }} className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-slate-800/80 text-center border border-white/10 cursor-pointer hover:border-primary/50 transition-all font-bold group">
+                                            <p className="text-[9px] md:text-[10px] uppercase font-black text-slate-400 mb-0.5 md:mb-1 group-hover:text-primary transition-colors">Watching</p>
+                                            <p className="text-sm md:text-lg font-black text-white"><CountUp value={cinemaWatchingCount} /></p>
                                         </div>
-                                        <div onClick={() => onStatusSelect?.('Lost')} className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-[#F43F5E]/85 text-center border border-[#F43F5E]/55 cursor-pointer hover:border-[#F43F5E]/70 transition-all font-bold group">
-                                            <p className="text-[9px] md:text-[10px] uppercase font-black text-white mb-0.5 md:mb-1">Lost</p>
-                                            <p className="text-sm md:text-lg font-black text-white"><CountUp value={lostCount} /></p>
+                                        <div onClick={() => { onNavigateToTab?.('MOVIE'); onStatusSelect?.('Finished'); }} className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-slate-800/80 text-center border border-white/10 cursor-pointer hover:border-primary/50 transition-all font-bold group">
+                                            <p className="text-[9px] md:text-[10px] uppercase font-black text-slate-400 mb-0.5 md:mb-1 group-hover:text-primary transition-colors">Watched</p>
+                                            <p className="text-sm md:text-lg font-black text-white"><CountUp value={cinemaWatchedCount} /></p>
                                         </div>
                                     </div>
                                 </div>
@@ -427,62 +418,62 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                     </button>
 
                     {showLevelC && (
-                            <div
-                                className="overflow-hidden animate-in fade-in duration-200"
-                                onClick={() => onNavigateToTab?.('INSIGHTS')}
-                            >
-                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4 pt-0.5 md:pt-2">
+                        <div
+                            className="overflow-hidden animate-in fade-in duration-200"
+                            onClick={() => onNavigateToTab?.('INSIGHTS')}
+                        >
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4 pt-0.5 md:pt-2">
 
-                                    {/* 1. Pulse */}
-                                    <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-colors cursor-pointer group">
-                                        <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
-                                            <Activity size={10} className="text-[#FF4D4D]" /> Pulse
-                                        </p>
-                                        <div className="flex flex-col">
-                                            <p className="text-xl md:text-2xl font-black text-white"><CountUp prefix="+" value={advancedStats.pulse} /></p>
-                                            <p className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase">30 Day Activity</p>
-                                        </div>
+                                {/* 1. Pulse */}
+                                <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-colors cursor-pointer group">
+                                    <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
+                                        <Activity size={10} className="text-[#FF4D4D]" /> Pulse
+                                    </p>
+                                    <div className="flex flex-col">
+                                        <p className="text-xl md:text-2xl font-black text-white"><CountUp prefix="+" value={advancedStats.pulse} /></p>
+                                        <p className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase">30 Day Activity</p>
                                     </div>
-
-                                    {/* 2. T-Profile */}
-                                    <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-colors cursor-pointer group">
-                                        <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
-                                            <TrendingUp size={10} className="text-[#F63049]" /> T-Profile
-                                        </p>
-                                        <div className="flex flex-col">
-                                            <p className="text-xl md:text-2xl font-black text-white"><CountUp value={advancedStats.tScore} /></p>
-                                            <p className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase">{advancedStats.orphanCount} Orphans</p>
-                                        </div>
-                                    </div>
-
-                                    {/* 3. Forgetting Curve (Rust) */}
-                                    <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-colors cursor-pointer group">
-                                        <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
-                                            <Zap size={10} className="text-orange-400" /> Rust Index
-                                        </p>
-                                        <div className="flex flex-col">
-                                            <p className="text-xl md:text-2xl font-black text-white"><CountUp value={advancedStats.rust} suffix="%" /></p>
-                                            <p className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase">{advancedStats.activeNodes} Active Nodes</p>
-                                        </div>
-                                    </div>
-
-                                    {/* 4. Intellect Engine */}
-                                    <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-colors cursor-pointer group">
-                                        <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
-                                            <Sparkles size={10} className="text-primary" /> Intellect
-                                        </p>
-                                        <div className="flex flex-col">
-                                            <p className="text-xl md:text-2xl font-black text-white"><CountUp value={advancedStats.ingestRatio} suffix="%" /></p>
-                                            <p className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase">{advancedStats.ingestedCount} Ingested</p>
-                                        </div>
-                                    </div>
-
                                 </div>
-                                <div className="mt-3 text-center">
-                                    <p className="text-[9px] md:text-[10px] font-bold text-slate-500 uppercase tracking-widest animate-pulse">Click any card for full network analysis</p>
+
+                                {/* 2. T-Profile */}
+                                <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-colors cursor-pointer group">
+                                    <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
+                                        <TrendingUp size={10} className="text-[#F63049]" /> T-Profile
+                                    </p>
+                                    <div className="flex flex-col">
+                                        <p className="text-xl md:text-2xl font-black text-white"><CountUp value={advancedStats.tScore} /></p>
+                                        <p className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase">{advancedStats.orphanCount} Orphans</p>
+                                    </div>
                                 </div>
+
+                                {/* 3. Forgetting Curve (Rust) */}
+                                <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-colors cursor-pointer group">
+                                    <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
+                                        <Zap size={10} className="text-orange-400" /> Rust Index
+                                    </p>
+                                    <div className="flex flex-col">
+                                        <p className="text-xl md:text-2xl font-black text-white"><CountUp value={advancedStats.rust} suffix="%" /></p>
+                                        <p className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase">{advancedStats.activeNodes} Active Nodes</p>
+                                    </div>
+                                </div>
+
+                                {/* 4. Intellect Engine */}
+                                <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-colors cursor-pointer group">
+                                    <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
+                                        <Sparkles size={10} className="text-primary" /> Intellect
+                                    </p>
+                                    <div className="flex flex-col">
+                                        <p className="text-xl md:text-2xl font-black text-white"><CountUp value={advancedStats.ingestRatio} suffix="%" /></p>
+                                        <p className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase">{advancedStats.ingestedCount} Ingested</p>
+                                    </div>
+                                </div>
+
                             </div>
-                        )}
+                            <div className="mt-3 text-center">
+                                <p className="text-[9px] md:text-[10px] font-bold text-slate-500 uppercase tracking-widest animate-pulse">Click any card for full network analysis</p>
+                            </div>
+                        </div>
+                    )}
                 </section >
             </div >
 

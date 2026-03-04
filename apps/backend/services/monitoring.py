@@ -98,6 +98,167 @@ ODL_RESCUE_LATENCY_DELTA_MS = Histogram(
     buckets=(1, 5, 10, 20, 40, 80, 120, 200, 300, 500, 1000)
 )
 
+SEARCH_RERANK_TOTAL = Counter(
+    'tomehub_search_rerank_total',
+    'Search reranker executions by mode and status',
+    labelnames=['mode', 'status']
+)
+
+SEARCH_RERANK_SKIP_TOTAL = Counter(
+    'tomehub_search_rerank_skip_total',
+    'Search reranker skip reasons',
+    labelnames=['reason']
+)
+
+SEARCH_RERANK_LATENCY_MS = Histogram(
+    'tomehub_search_rerank_latency_ms',
+    'Search reranker latency in milliseconds',
+    labelnames=['mode'],
+    buckets=(1, 2, 4, 8, 12, 20, 35, 50, 80, 120, 200, 400)
+)
+
+SEARCH_RERANK_CANDIDATE_COUNT = Histogram(
+    'tomehub_search_rerank_candidate_count',
+    'Candidate pool size entering reranker',
+    labelnames=['mode'],
+    buckets=(4, 8, 12, 20, 30, 40, 60, 80, 120, 160, 240)
+)
+
+SEARCH_RERANK_TOP1_FLIP_TOTAL = Counter(
+    'tomehub_search_rerank_top1_flip_total',
+    'How often reranker changes top-1 result',
+    labelnames=['mode']
+)
+
+SEARCH_BM25PLUS_TOTAL = Counter(
+    'tomehub_search_bm25plus_total',
+    'BM25Plus booster executions by mode and status',
+    labelnames=['mode', 'status']
+)
+
+SEARCH_BM25PLUS_SKIP_TOTAL = Counter(
+    'tomehub_search_bm25plus_skip_total',
+    'BM25Plus booster skip reasons',
+    labelnames=['reason']
+)
+
+SEARCH_BM25PLUS_LATENCY_MS = Histogram(
+    'tomehub_search_bm25plus_latency_ms',
+    'BM25Plus booster latency in milliseconds',
+    labelnames=['mode'],
+    buckets=(1, 2, 4, 8, 12, 20, 35, 50, 80, 120, 200, 400)
+)
+
+SEARCH_BM25PLUS_CANDIDATE_COUNT = Histogram(
+    'tomehub_search_bm25plus_candidate_count',
+    'Candidate pool size entering BM25Plus booster',
+    labelnames=['mode'],
+    buckets=(4, 8, 12, 20, 30, 40, 60, 80, 120, 160, 240)
+)
+
+SEARCH_BM25PLUS_TOP1_FLIP_TOTAL = Counter(
+    'tomehub_search_bm25plus_top1_flip_total',
+    'How often BM25Plus booster changes top-1 result',
+    labelnames=['mode']
+)
+
+SEARCH_WIDE_POOL_TOTAL = Counter(
+    'tomehub_search_wide_pool_total',
+    'Wide pool policy executions by status',
+    labelnames=['status']
+)
+
+SEARCH_WIDE_POOL_LIMIT = Histogram(
+    'tomehub_search_wide_pool_limit',
+    'Effective internal candidate pool limit when wide pool policy is evaluated',
+    labelnames=['intent', 'status'],
+    buckets=(120, 200, 320, 480, 700, 900, 1200, 1600, 2000)
+)
+
+SEARCH_MMR_TOTAL = Counter(
+    'tomehub_search_mmr_total',
+    'MMR policy executions by mode and status',
+    labelnames=['mode', 'status']
+)
+
+SEARCH_MMR_SKIP_TOTAL = Counter(
+    'tomehub_search_mmr_skip_total',
+    'MMR policy skip reasons',
+    labelnames=['reason']
+)
+
+SEARCH_MMR_LATENCY_MS = Histogram(
+    'tomehub_search_mmr_latency_ms',
+    'MMR policy latency in milliseconds',
+    labelnames=['mode'],
+    buckets=(1, 2, 4, 8, 12, 20, 35, 50, 80, 120, 200, 400)
+)
+
+SEARCH_MMR_CANDIDATE_COUNT = Histogram(
+    'tomehub_search_mmr_candidate_count',
+    'Candidate pool size entering MMR policy',
+    labelnames=['mode'],
+    buckets=(4, 8, 12, 20, 30, 40, 60, 80, 120, 160, 240)
+)
+
+SEARCH_MMR_TOP1_FLIP_TOTAL = Counter(
+    'tomehub_search_mmr_top1_flip_total',
+    'How often MMR policy changes top-1 result',
+    labelnames=['mode']
+)
+
+L3_STEPBACK_TOTAL = Counter(
+    'tomehub_l3_stepback_total',
+    'Layer-3 step-back retrieval executions by mode and status',
+    labelnames=['mode', 'status']
+)
+
+L3_STEPBACK_LATENCY_MS = Histogram(
+    'tomehub_l3_stepback_latency_ms',
+    'Layer-3 step-back retrieval latency in milliseconds',
+    labelnames=['mode'],
+    buckets=(1, 2, 4, 8, 12, 20, 35, 50, 80, 120, 200, 400, 800)
+)
+
+L3_STEPBACK_CANDIDATE_COUNT = Histogram(
+    'tomehub_l3_stepback_candidate_count',
+    'Candidate count returned by step-back retrieval',
+    labelnames=['mode'],
+    buckets=(0, 1, 2, 4, 6, 10, 16, 24, 32)
+)
+
+L3_PARENT_CONTEXT_TOTAL = Counter(
+    'tomehub_l3_parent_context_total',
+    'Layer-3 parent-context expansion executions by mode and status',
+    labelnames=['mode', 'status']
+)
+
+L3_PARENT_CONTEXT_LATENCY_MS = Histogram(
+    'tomehub_l3_parent_context_latency_ms',
+    'Layer-3 parent-context expansion latency in milliseconds',
+    labelnames=['mode'],
+    buckets=(1, 2, 4, 8, 12, 20, 35, 50, 80, 120, 200, 400, 800)
+)
+
+L3_PARENT_CONTEXT_ADDED_COUNT = Histogram(
+    'tomehub_l3_parent_context_added_count',
+    'Neighbor chunks added by parent-context expansion',
+    labelnames=['mode'],
+    buckets=(0, 1, 2, 3, 4, 6, 8, 12, 20)
+)
+
+L3_CONTEXT_DUP_SUPPRESS_TOTAL = Counter(
+    'tomehub_l3_context_duplicate_suppression_total',
+    'Layer-3 duplicate suppression executions by status',
+    labelnames=['status']
+)
+
+L3_CONTEXT_REORDER_TOTAL = Counter(
+    'tomehub_l3_context_reorder_total',
+    'Layer-3 long-context reorder executions by status',
+    labelnames=['status']
+)
+
 # Graph enrichment metrics (async jobs triggered on ingest or manual calls)
 GRAPH_ENRICH_JOBS_TOTAL = Counter(
     'tomehub_graph_enrich_jobs_total',

@@ -22,6 +22,7 @@ class SearchRequest(BaseModel):
     mode: str = Field(default="STANDARD")  # STANDARD or EXPLORER
     include_private_notes: bool = False
     visibility_scope: str = Field(default="default", max_length=32)
+    search_surface: str = Field(default="CORE", max_length=16)
     content_type: Optional[str] = Field(default=None, max_length=64)
     ingestion_type: Optional[str] = Field(default=None, max_length=64)
     limit: int = Field(default=20, ge=1, le=100)
@@ -102,6 +103,14 @@ class SearchRequest(BaseModel):
         if scope not in {"default", "all"}:
             raise ValueError("visibility_scope must be 'default' or 'all'")
         return scope
+
+    @field_validator("search_surface", mode="before")
+    @classmethod
+    def normalize_search_surface(cls, value: Optional[str]) -> str:
+        surface = str(value or "CORE").strip().upper()
+        if surface not in {"CORE", "PDF_ONLY"}:
+            raise ValueError("search_surface must be CORE or PDF_ONLY")
+        return surface
 
     @field_validator("content_type", "ingestion_type", mode="before")
     @classmethod

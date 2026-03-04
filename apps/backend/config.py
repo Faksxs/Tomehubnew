@@ -210,6 +210,113 @@ class Settings:
         if self.SEARCH_SEMANTIC_EXPANSION_MAX_VARIATIONS < 0:
             self.SEARCH_SEMANTIC_EXPANSION_MAX_VARIATIONS = 0
 
+        # Phase-1 retrieval/rerank controls (fail-open, canary-safe).
+        # Default-off to guarantee no latency regression on rollout.
+        self.SEARCH_RERANK_ENABLED = (
+            os.getenv("SEARCH_RERANK_ENABLED", "false").strip().lower() == "true"
+        )
+        self.SEARCH_RERANK_SHADOW_ENABLED = (
+            os.getenv("SEARCH_RERANK_SHADOW_ENABLED", "false").strip().lower() == "true"
+        )
+        self.SEARCH_RERANK_PROVIDER = (
+            os.getenv("SEARCH_RERANK_PROVIDER", "fast_heuristic_v1").strip().lower()
+            or "fast_heuristic_v1"
+        )
+        self.SEARCH_RERANK_CANARY_UIDS = {
+            uid.strip() for uid in os.getenv("SEARCH_RERANK_CANARY_UIDS", "").split(",") if uid.strip()
+        }
+        self.SEARCH_RERANK_MIN_CANDIDATES = int(os.getenv("SEARCH_RERANK_MIN_CANDIDATES", "8"))
+        if self.SEARCH_RERANK_MIN_CANDIDATES < 2:
+            self.SEARCH_RERANK_MIN_CANDIDATES = 8
+        self.SEARCH_RERANK_MAX_CANDIDATES = int(os.getenv("SEARCH_RERANK_MAX_CANDIDATES", "80"))
+        if self.SEARCH_RERANK_MAX_CANDIDATES < self.SEARCH_RERANK_MIN_CANDIDATES:
+            self.SEARCH_RERANK_MAX_CANDIDATES = max(24, self.SEARCH_RERANK_MIN_CANDIDATES)
+        if self.SEARCH_RERANK_MAX_CANDIDATES > 300:
+            self.SEARCH_RERANK_MAX_CANDIDATES = 300
+        self.SEARCH_RERANK_TOP_N = int(os.getenv("SEARCH_RERANK_TOP_N", "24"))
+        if self.SEARCH_RERANK_TOP_N < 4:
+            self.SEARCH_RERANK_TOP_N = 24
+        if self.SEARCH_RERANK_TOP_N > self.SEARCH_RERANK_MAX_CANDIDATES:
+            self.SEARCH_RERANK_TOP_N = self.SEARCH_RERANK_MAX_CANDIDATES
+
+        # Phase-2 lexical booster (BM25Plus): default-off and canary-safe.
+        self.SEARCH_BM25PLUS_ENABLED = (
+            os.getenv("SEARCH_BM25PLUS_ENABLED", "false").strip().lower() == "true"
+        )
+        self.SEARCH_BM25PLUS_SHADOW_ENABLED = (
+            os.getenv("SEARCH_BM25PLUS_SHADOW_ENABLED", "false").strip().lower() == "true"
+        )
+        self.SEARCH_BM25PLUS_CANARY_UIDS = {
+            uid.strip() for uid in os.getenv("SEARCH_BM25PLUS_CANARY_UIDS", "").split(",") if uid.strip()
+        }
+        self.SEARCH_BM25PLUS_MIN_CANDIDATES = int(os.getenv("SEARCH_BM25PLUS_MIN_CANDIDATES", "8"))
+        if self.SEARCH_BM25PLUS_MIN_CANDIDATES < 2:
+            self.SEARCH_BM25PLUS_MIN_CANDIDATES = 8
+        self.SEARCH_BM25PLUS_MAX_CANDIDATES = int(os.getenv("SEARCH_BM25PLUS_MAX_CANDIDATES", "120"))
+        if self.SEARCH_BM25PLUS_MAX_CANDIDATES < self.SEARCH_BM25PLUS_MIN_CANDIDATES:
+            self.SEARCH_BM25PLUS_MAX_CANDIDATES = max(24, self.SEARCH_BM25PLUS_MIN_CANDIDATES)
+        if self.SEARCH_BM25PLUS_MAX_CANDIDATES > 300:
+            self.SEARCH_BM25PLUS_MAX_CANDIDATES = 300
+        self.SEARCH_BM25PLUS_BLEND_WEIGHT = float(os.getenv("SEARCH_BM25PLUS_BLEND_WEIGHT", "0.22"))
+        if self.SEARCH_BM25PLUS_BLEND_WEIGHT < 0.0:
+            self.SEARCH_BM25PLUS_BLEND_WEIGHT = 0.22
+        if self.SEARCH_BM25PLUS_BLEND_WEIGHT > 1.0:
+            self.SEARCH_BM25PLUS_BLEND_WEIGHT = 1.0
+
+        # Phase-2 wide candidate pool controls (default-off, canary-safe).
+        self.SEARCH_WIDE_POOL_ENABLED = (
+            os.getenv("SEARCH_WIDE_POOL_ENABLED", "false").strip().lower() == "true"
+        )
+        self.SEARCH_WIDE_POOL_CANARY_UIDS = {
+            uid.strip() for uid in os.getenv("SEARCH_WIDE_POOL_CANARY_UIDS", "").split(",") if uid.strip()
+        }
+        self.SEARCH_WIDE_POOL_LIMIT_DIRECT = int(os.getenv("SEARCH_WIDE_POOL_LIMIT_DIRECT", "900"))
+        if self.SEARCH_WIDE_POOL_LIMIT_DIRECT < 200:
+            self.SEARCH_WIDE_POOL_LIMIT_DIRECT = 900
+        if self.SEARCH_WIDE_POOL_LIMIT_DIRECT > 2500:
+            self.SEARCH_WIDE_POOL_LIMIT_DIRECT = 2500
+        self.SEARCH_WIDE_POOL_LIMIT_DEFAULT = int(os.getenv("SEARCH_WIDE_POOL_LIMIT_DEFAULT", "480"))
+        if self.SEARCH_WIDE_POOL_LIMIT_DEFAULT < 150:
+            self.SEARCH_WIDE_POOL_LIMIT_DEFAULT = 480
+        if self.SEARCH_WIDE_POOL_LIMIT_DEFAULT > 2000:
+            self.SEARCH_WIDE_POOL_LIMIT_DEFAULT = 2000
+        self.SEARCH_WIDE_POOL_SEMANTIC_FETCH_LIMIT = int(
+            os.getenv("SEARCH_WIDE_POOL_SEMANTIC_FETCH_LIMIT", "72")
+        )
+        if self.SEARCH_WIDE_POOL_SEMANTIC_FETCH_LIMIT < 20:
+            self.SEARCH_WIDE_POOL_SEMANTIC_FETCH_LIMIT = 72
+        if self.SEARCH_WIDE_POOL_SEMANTIC_FETCH_LIMIT > 180:
+            self.SEARCH_WIDE_POOL_SEMANTIC_FETCH_LIMIT = 180
+
+        # Phase-3 MMR diversity policy (default-off, canary-safe).
+        self.SEARCH_MMR_ENABLED = (
+            os.getenv("SEARCH_MMR_ENABLED", "false").strip().lower() == "true"
+        )
+        self.SEARCH_MMR_SHADOW_ENABLED = (
+            os.getenv("SEARCH_MMR_SHADOW_ENABLED", "false").strip().lower() == "true"
+        )
+        self.SEARCH_MMR_CANARY_UIDS = {
+            uid.strip() for uid in os.getenv("SEARCH_MMR_CANARY_UIDS", "").split(",") if uid.strip()
+        }
+        self.SEARCH_MMR_MIN_CANDIDATES = int(os.getenv("SEARCH_MMR_MIN_CANDIDATES", "8"))
+        if self.SEARCH_MMR_MIN_CANDIDATES < 2:
+            self.SEARCH_MMR_MIN_CANDIDATES = 8
+        self.SEARCH_MMR_MAX_CANDIDATES = int(os.getenv("SEARCH_MMR_MAX_CANDIDATES", "100"))
+        if self.SEARCH_MMR_MAX_CANDIDATES < self.SEARCH_MMR_MIN_CANDIDATES:
+            self.SEARCH_MMR_MAX_CANDIDATES = max(24, self.SEARCH_MMR_MIN_CANDIDATES)
+        if self.SEARCH_MMR_MAX_CANDIDATES > 300:
+            self.SEARCH_MMR_MAX_CANDIDATES = 300
+        self.SEARCH_MMR_TOP_N = int(os.getenv("SEARCH_MMR_TOP_N", "24"))
+        if self.SEARCH_MMR_TOP_N < 4:
+            self.SEARCH_MMR_TOP_N = 24
+        if self.SEARCH_MMR_TOP_N > self.SEARCH_MMR_MAX_CANDIDATES:
+            self.SEARCH_MMR_TOP_N = self.SEARCH_MMR_MAX_CANDIDATES
+        self.SEARCH_MMR_LAMBDA = float(os.getenv("SEARCH_MMR_LAMBDA", "0.62"))
+        if self.SEARCH_MMR_LAMBDA < 0.0:
+            self.SEARCH_MMR_LAMBDA = 0.62
+        if self.SEARCH_MMR_LAMBDA > 1.0:
+            self.SEARCH_MMR_LAMBDA = 1.0
+
         # ODL secondary rescue path (default-off, canary-safe).
         self.ODL_SECONDARY_ENABLED = os.getenv("ODL_SECONDARY_ENABLED", "false").strip().lower() == "true"
         self.ODL_SHADOW_INGEST_ENABLED = (
@@ -393,6 +500,89 @@ class Settings:
         )
         if self.L3_PERF_CONTEXT_CHARS_STANDARD < 120:
             self.L3_PERF_CONTEXT_CHARS_STANDARD = 700
+        # Layer-3 Phase-4 quality controls (default-off, canary-safe).
+        self.L3_PHASE4_STEPBACK_ENABLED = (
+            os.getenv("L3_PHASE4_STEPBACK_ENABLED", "false").strip().lower() == "true"
+        )
+        self.L3_PHASE4_STEPBACK_SHADOW_ENABLED = (
+            os.getenv("L3_PHASE4_STEPBACK_SHADOW_ENABLED", "false").strip().lower() == "true"
+        )
+        self.L3_PHASE4_STEPBACK_CANARY_UIDS = {
+            uid.strip() for uid in os.getenv("L3_PHASE4_STEPBACK_CANARY_UIDS", "").split(",") if uid.strip()
+        }
+        self.L3_PHASE4_STEPBACK_LIMIT = int(os.getenv("L3_PHASE4_STEPBACK_LIMIT", "10"))
+        if self.L3_PHASE4_STEPBACK_LIMIT < 2:
+            self.L3_PHASE4_STEPBACK_LIMIT = 10
+        if self.L3_PHASE4_STEPBACK_LIMIT > 40:
+            self.L3_PHASE4_STEPBACK_LIMIT = 40
+        self.L3_PHASE4_STEPBACK_TIMEOUT_MS = int(os.getenv("L3_PHASE4_STEPBACK_TIMEOUT_MS", "220"))
+        if self.L3_PHASE4_STEPBACK_TIMEOUT_MS < 50:
+            self.L3_PHASE4_STEPBACK_TIMEOUT_MS = 220
+        self.L3_PHASE4_STEPBACK_MIN_QUERY_TOKENS = int(
+            os.getenv("L3_PHASE4_STEPBACK_MIN_QUERY_TOKENS", "4")
+        )
+        if self.L3_PHASE4_STEPBACK_MIN_QUERY_TOKENS < 2:
+            self.L3_PHASE4_STEPBACK_MIN_QUERY_TOKENS = 4
+
+        self.L3_PHASE4_PARENT_CONTEXT_ENABLED = (
+            os.getenv("L3_PHASE4_PARENT_CONTEXT_ENABLED", "false").strip().lower() == "true"
+        )
+        self.L3_PHASE4_PARENT_CONTEXT_SHADOW_ENABLED = (
+            os.getenv("L3_PHASE4_PARENT_CONTEXT_SHADOW_ENABLED", "false").strip().lower() == "true"
+        )
+        self.L3_PHASE4_PARENT_CONTEXT_CANARY_UIDS = {
+            uid.strip() for uid in os.getenv("L3_PHASE4_PARENT_CONTEXT_CANARY_UIDS", "").split(",") if uid.strip()
+        }
+        self.L3_PHASE4_PARENT_SEED_TOPK = int(os.getenv("L3_PHASE4_PARENT_SEED_TOPK", "3"))
+        if self.L3_PHASE4_PARENT_SEED_TOPK < 1:
+            self.L3_PHASE4_PARENT_SEED_TOPK = 3
+        if self.L3_PHASE4_PARENT_SEED_TOPK > 8:
+            self.L3_PHASE4_PARENT_SEED_TOPK = 8
+        self.L3_PHASE4_PARENT_NEIGHBOR_WINDOW = int(
+            os.getenv("L3_PHASE4_PARENT_NEIGHBOR_WINDOW", "1")
+        )
+        if self.L3_PHASE4_PARENT_NEIGHBOR_WINDOW < 1:
+            self.L3_PHASE4_PARENT_NEIGHBOR_WINDOW = 1
+        if self.L3_PHASE4_PARENT_NEIGHBOR_WINDOW > 3:
+            self.L3_PHASE4_PARENT_NEIGHBOR_WINDOW = 3
+        self.L3_PHASE4_PARENT_NEIGHBOR_LIMIT = int(
+            os.getenv("L3_PHASE4_PARENT_NEIGHBOR_LIMIT", "2")
+        )
+        if self.L3_PHASE4_PARENT_NEIGHBOR_LIMIT < 1:
+            self.L3_PHASE4_PARENT_NEIGHBOR_LIMIT = 2
+        if self.L3_PHASE4_PARENT_NEIGHBOR_LIMIT > 8:
+            self.L3_PHASE4_PARENT_NEIGHBOR_LIMIT = 8
+        self.L3_PHASE4_PARENT_TIMEOUT_MS = int(os.getenv("L3_PHASE4_PARENT_TIMEOUT_MS", "260"))
+        if self.L3_PHASE4_PARENT_TIMEOUT_MS < 50:
+            self.L3_PHASE4_PARENT_TIMEOUT_MS = 260
+        self.L3_PHASE4_PARENT_SCORE_DECAY = float(
+            os.getenv("L3_PHASE4_PARENT_SCORE_DECAY", "0.88")
+        )
+        if self.L3_PHASE4_PARENT_SCORE_DECAY <= 0.0:
+            self.L3_PHASE4_PARENT_SCORE_DECAY = 0.88
+        if self.L3_PHASE4_PARENT_SCORE_DECAY > 1.0:
+            self.L3_PHASE4_PARENT_SCORE_DECAY = 1.0
+
+        self.L3_PHASE4_DUP_SUPPRESS_ENABLED = (
+            os.getenv("L3_PHASE4_DUP_SUPPRESS_ENABLED", "false").strip().lower() == "true"
+        )
+        self.L3_PHASE4_DUP_SUPPRESS_THRESHOLD = float(
+            os.getenv("L3_PHASE4_DUP_SUPPRESS_THRESHOLD", "0.92")
+        )
+        if self.L3_PHASE4_DUP_SUPPRESS_THRESHOLD <= 0.0:
+            self.L3_PHASE4_DUP_SUPPRESS_THRESHOLD = 0.92
+        if self.L3_PHASE4_DUP_SUPPRESS_THRESHOLD > 1.0:
+            self.L3_PHASE4_DUP_SUPPRESS_THRESHOLD = 1.0
+        self.L3_PHASE4_DUP_SUPPRESS_COMPARE_WINDOW = int(
+            os.getenv("L3_PHASE4_DUP_SUPPRESS_COMPARE_WINDOW", "8")
+        )
+        if self.L3_PHASE4_DUP_SUPPRESS_COMPARE_WINDOW < 1:
+            self.L3_PHASE4_DUP_SUPPRESS_COMPARE_WINDOW = 8
+        if self.L3_PHASE4_DUP_SUPPRESS_COMPARE_WINDOW > 20:
+            self.L3_PHASE4_DUP_SUPPRESS_COMPARE_WINDOW = 20
+        self.L3_PHASE4_LONG_CONTEXT_REORDER_ENABLED = (
+            os.getenv("L3_PHASE4_LONG_CONTEXT_REORDER_ENABLED", "false").strip().lower() == "true"
+        )
         self.L3_QUOTE_DYNAMIC_COUNT_ENABLED = (
             os.getenv("L3_QUOTE_DYNAMIC_COUNT_ENABLED", "false").strip().lower() == "true"
         )

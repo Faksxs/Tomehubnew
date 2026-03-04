@@ -162,11 +162,37 @@ class Phase4SmokeEndpointsTests(unittest.TestCase):
         data = resp.json()
         self.assertEqual(data["total"], 1)
         self.assertEqual(captured["kwargs"]["visibility_scope"], "all")
+        self.assertEqual(captured["kwargs"]["search_surface"], "CORE")
         self.assertEqual(captured["kwargs"]["content_type"], "HIGHLIGHT")
         self.assertEqual(captured["kwargs"]["ingestion_type"], "MANUAL")
         self.assertEqual(data["metadata"]["visibility_scope"], "all")
+        self.assertEqual(data["metadata"]["search_surface"], "CORE")
         self.assertEqual(data["metadata"]["content_type_filter"], "HIGHLIGHT")
         self.assertEqual(data["metadata"]["ingestion_type_filter"], "MANUAL")
+
+    def test_smart_search_pdf_only_surface_propagates(self):
+        captured = {}
+
+        def _fake_perform_search(*args, **kwargs):
+            captured["kwargs"] = kwargs
+            return ([], {"total_count": 0})
+
+        with patch("services.smart_search_service.perform_search", side_effect=_fake_perform_search), patch.object(
+            tomehub_app, "_allow_dev_unverified_auth", return_value=True
+        ):
+            resp = self.client.post(
+                "/api/smart-search",
+                json={
+                    "question": "kader",
+                    "firebase_uid": "u1",
+                    "search_surface": "PDF_ONLY",
+                },
+            )
+
+        self.assertEqual(resp.status_code, 200, resp.text)
+        data = resp.json()
+        self.assertEqual(captured["kwargs"]["search_surface"], "PDF_ONLY")
+        self.assertEqual(data["metadata"]["search_surface"], "PDF_ONLY")
 
     def test_search_phase4_filters_propagate_to_generate_answer(self):
         captured = {}

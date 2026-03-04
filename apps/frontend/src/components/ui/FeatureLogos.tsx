@@ -75,6 +75,20 @@ export const WebsitesLogo: React.FC<LogoProps> = ({ className, size = 24 }) => (
     </svg>
 );
 
+export const CinemaLogo: React.FC<LogoProps> = ({ className, size = 24 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+        {/* Film Strip Background */}
+        <rect x="3" y="4" width="18" height="16" rx="2" stroke="#CC561E" strokeWidth="2" fill="#CC561E" fillOpacity="0.05" />
+
+        {/* Play Triangle */}
+        <path d="M10 9L16 12L10 15V9Z" stroke="#CC561E" strokeWidth="2" fill="#CC561E" fillOpacity="0.2" strokeLinejoin="round" />
+
+        {/* Top/Bottom Strip Holes */}
+        <path d="M6 4V6M10 4V6M14 4V6M18 4V6" stroke="#CC561E" strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M6 18V20M10 18V20M14 18V20M18 18V20" stroke="#CC561E" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+);
+
 export const NotesLogo: React.FC<LogoProps> = ({ className, size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
         {/* Background Notebook Sheet */}

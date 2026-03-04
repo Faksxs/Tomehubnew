@@ -1376,6 +1376,7 @@ async def perform_search(
                 result_mix_policy="lexical_then_semantic_tail",
                 semantic_tail_cap=settings.SEARCH_SMART_SEMANTIC_TAIL_CAP,
                 visibility_scope=visibility_scope,
+                search_surface=request.search_surface,
                 content_type=request.content_type,
                 ingestion_type=request.ingestion_type,
             )
@@ -1385,6 +1386,7 @@ async def perform_search(
             metadata.setdefault("search_variant", "smart_search")
             metadata.setdefault("graph_capability", "disabled")
             metadata.setdefault("visibility_scope", visibility_scope)
+            metadata.setdefault("search_surface", request.search_surface)
             metadata.setdefault("content_type_filter", request.content_type)
             metadata.setdefault("ingestion_type_filter", request.ingestion_type)
         

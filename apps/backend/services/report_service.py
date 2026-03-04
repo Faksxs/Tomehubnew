@@ -143,13 +143,19 @@ def generate_file_report(book_id: str, firebase_uid: str):
             model_tier=MODEL_TIER_FLASH,
             provider_hint=PROVIDER_NVIDIA,
             route_mode=ROUTE_MODE_EXPLORER_QWEN_PILOT,
-            allow_secondary_fallback=True,
-            fallback_state={"secondary_fallback_used": 0},
+            allow_secondary_fallback=False,
             response_mime_type="application/json",
-            timeout_s=120.0, # Increased for larger model context
+            timeout_s=180.0, # Increased for larger model context and more reliable JSON
         )
 
-        data = json.loads(result.text)
+        raw_text = result.text.strip()
+        # Robust JSON extraction (in case model returns markdown blocks)
+        if "```json" in raw_text:
+            raw_text = raw_text.split("```json")[1].split("```")[0].strip()
+        elif "```" in raw_text:
+            raw_text = raw_text.split("```")[1].split("```")[0].strip()
+            
+        data = json.loads(raw_text)
         
         # Combine expanded info into the summary text for existing schema compatibility
         summary_body = data.get("summary", "No summary generated.")
@@ -161,15 +167,30 @@ def generate_file_report(book_id: str, firebase_uid: str):
         topics = json.dumps(data.get("key_topics", []), ensure_ascii=False)
         entities = json.dumps(data.get("entities", []), ensure_ascii=False)
         
-        # 4. Save to DB
+        # 4. Save to DB using MERGE
         with DatabaseManager.get_write_connection() as conn:
             with conn.cursor() as cursor:
-                # Simple test
-                cursor.execute("SELECT 1 FROM DUAL")
-                print("✓ Minimal SELECT worked!")
-                
-                # ... (rest of the code - keeping it but commented out for now)
-                # cursor.execute(merge_sql, ...)
+                merge_sql = """
+                MERGE INTO TOMEHUB_FILE_REPORTS target
+                USING (SELECT :p_bid as book_id, :p_uid as firebase_uid FROM DUAL) src
+                ON (target.BOOK_ID = src.book_id AND target.FIREBASE_UID = src.firebase_uid)
+                WHEN MATCHED THEN
+                    UPDATE SET
+                        SUMMARY_TEXT = :p_summary,
+                        KEY_TOPICS = :p_topics,
+                        ENTITIES = :p_entities,
+                        UPDATED_AT = CURRENT_TIMESTAMP
+                WHEN NOT MATCHED THEN
+                    INSERT (BOOK_ID, FIREBASE_UID, SUMMARY_TEXT, KEY_TOPICS, ENTITIES)
+                    VALUES (:p_bid, :p_uid, :p_summary, :p_topics, :p_entities)
+                """
+                cursor.execute(merge_sql, {
+                    "p_bid": book_id,
+                    "p_uid": firebase_uid,
+                    "p_summary": final_summary,
+                    "p_topics": topics,
+                    "p_entities": entities
+                })
                 conn.commit()
                 
         logger.info(f"Report generated via Qwen and saved for {book_id}")
@@ -180,9 +201,6 @@ def generate_file_report(book_id: str, firebase_uid: str):
         raise e
 
 def search_reports_by_topic(firebase_uid: str, topic: str, limit: int = 20) -> List[Dict]:
-    """
-    Find file reports by key topic using JSON search index.
-    """
     if not topic:
         return []
     safe_limit = max(1, min(int(limit), 50))

@@ -13,9 +13,28 @@ from .strategies import (
 )
 from utils.logger import get_logger
 from .search_utils import compute_rrf
-from services.rerank_service import rerank_candidates
+from .reranker import rerank_candidates_fast
+from .bm25plus_booster import bm25plus_blend_rank
+from .mmr_policy import apply_mmr_diversity
 from services.monitoring import (
     SEARCH_FUSION_MODE_TOTAL,
+    SEARCH_RERANK_TOTAL,
+    SEARCH_RERANK_SKIP_TOTAL,
+    SEARCH_RERANK_LATENCY_MS,
+    SEARCH_RERANK_CANDIDATE_COUNT,
+    SEARCH_RERANK_TOP1_FLIP_TOTAL,
+    SEARCH_BM25PLUS_TOTAL,
+    SEARCH_BM25PLUS_SKIP_TOTAL,
+    SEARCH_BM25PLUS_LATENCY_MS,
+    SEARCH_BM25PLUS_CANDIDATE_COUNT,
+    SEARCH_BM25PLUS_TOP1_FLIP_TOTAL,
+    SEARCH_MMR_TOTAL,
+    SEARCH_MMR_SKIP_TOTAL,
+    SEARCH_MMR_LATENCY_MS,
+    SEARCH_MMR_CANDIDATE_COUNT,
+    SEARCH_MMR_TOP1_FLIP_TOTAL,
+    SEARCH_WIDE_POOL_TOTAL,
+    SEARCH_WIDE_POOL_LIMIT,
     L3_PERF_GUARD_APPLIED_TOTAL,
     ODL_RESCUE_CALLS_TOTAL,
     ODL_RESCUE_TIMEOUT_TOTAL,
@@ -31,7 +50,7 @@ from services.odl_shadow_service import should_enable_odl_secondary_for_target
 from config import settings
 
 logger = get_logger("search_orchestrator")
-SEMANTIC_MIX_POLICY_VERSION = "v4"
+SEMANTIC_MIX_POLICY_VERSION = "v5"
 _LAST_SEARCH_LOG_CLEANUP_TS = 0.0
 
 class SearchOrchestrator:
@@ -116,6 +135,12 @@ class SearchOrchestrator:
         return len([tok for tok in (query or "").strip().split() if tok.strip()])
 
     @staticmethod
+    def _is_uid_allowed(uid: str, allowlist: set[str]) -> bool:
+        if not allowlist:
+            return True
+        return str(uid or "").strip() in allowlist
+
+    @staticmethod
     def _dynamic_single_token_semantic_cap(lexical_total: int) -> int:
         if lexical_total > 30:
             return 2
@@ -138,10 +163,21 @@ class SearchOrchestrator:
         result_mix_policy: Optional[str] = None,
         semantic_tail_cap: Optional[int] = None,
         visibility_scope: str = "default",
+        search_surface: str = "CORE",
         content_type: Optional[str] = None,
         ingestion_type: Optional[str] = None,
     ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         start_time = time.time()
+        search_surface_effective = str(search_surface or "CORE").strip().upper()
+        if search_surface_effective not in {"CORE", "PDF_ONLY"}:
+            search_surface_effective = "CORE"
+        pdf_like_types = {"PDF", "EPUB", "PDF_CHUNK", "BOOK_CHUNK", "ODL_SHADOW"}
+        content_type_effective = str(content_type or "").strip().upper() or None
+        if search_surface_effective == "PDF_ONLY":
+            content_type_effective = "PDF"
+        elif search_surface_effective == "CORE" and content_type_effective in {"PDF", "EPUB", "PDF_CHUNK"}:
+            content_type_effective = None
+        content_type = content_type_effective
         query_original = query or ""
         query_corrected = query_original
         query_correction_applied = False
@@ -168,6 +204,54 @@ class SearchOrchestrator:
         if result_mix_policy == "lexical_then_semantic_tail":
             # Keep semantic pool compact for lower latency while preserving tail quality.
             semantic_fetch_limit = max(24, min(72, semantic_tail_cap_value_for_fetch * 6))
+        wide_pool_mode = "disabled"
+        wide_pool_status = "disabled"
+        wide_pool_skip_reason = "feature_off"
+        wide_pool_applied = False
+        wide_pool_base_internal_limit = int(internal_pool_limit)
+        wide_pool_base_semantic_fetch_limit = int(semantic_fetch_limit)
+        wide_pool_internal_limit_effective = int(internal_pool_limit)
+        wide_pool_semantic_fetch_limit_effective = int(semantic_fetch_limit)
+
+        if bool(getattr(settings, "SEARCH_WIDE_POOL_ENABLED", False)):
+            wide_pool_mode = "apply"
+            canary_uids = set(getattr(settings, "SEARCH_WIDE_POOL_CANARY_UIDS", set()) or set())
+            if not self._is_uid_allowed(firebase_uid, canary_uids):
+                wide_pool_status = "skipped"
+                wide_pool_skip_reason = "uid_not_in_canary"
+            else:
+                direct_intents = {"DIRECT", "CITATION_SEEKING"}
+                target_internal_limit = int(
+                    getattr(
+                        settings,
+                        "SEARCH_WIDE_POOL_LIMIT_DIRECT" if intent in direct_intents else "SEARCH_WIDE_POOL_LIMIT_DEFAULT",
+                        900 if intent in direct_intents else 480,
+                    )
+                    or (900 if intent in direct_intents else 480)
+                )
+                target_internal_limit = max(wide_pool_base_internal_limit, min(2500, target_internal_limit))
+                target_semantic_limit = int(
+                    getattr(settings, "SEARCH_WIDE_POOL_SEMANTIC_FETCH_LIMIT", 72) or 72
+                )
+                target_semantic_limit = max(wide_pool_base_semantic_fetch_limit, min(180, target_semantic_limit))
+                internal_pool_limit = target_internal_limit
+                semantic_fetch_limit = target_semantic_limit
+                wide_pool_internal_limit_effective = int(internal_pool_limit)
+                wide_pool_semantic_fetch_limit_effective = int(semantic_fetch_limit)
+                wide_pool_applied = True
+                wide_pool_status = "ok"
+                wide_pool_skip_reason = None
+
+            try:
+                SEARCH_WIDE_POOL_TOTAL.labels(status=("applied" if wide_pool_applied else wide_pool_status)).inc()
+            except Exception:
+                pass
+            try:
+                SEARCH_WIDE_POOL_LIMIT.labels(intent=intent, status=("applied" if wide_pool_applied else wide_pool_status)).observe(
+                    float(wide_pool_internal_limit_effective)
+                )
+            except Exception:
+                pass
         
         cache_key = None
         router_reason = "static_all"
@@ -226,8 +310,27 @@ class SearchOrchestrator:
             cache_key += f"_lemseed:{int(getattr(settings, 'SEARCH_LEMMA_SEED_FALLBACK_ENABLED', True))}"
             cache_key += f"_dyntail:{int(getattr(settings, 'SEARCH_DYNAMIC_SINGLE_TOKEN_SEMANTIC_CAP_ENABLED', True))}"
             cache_key += f"_vis:{(visibility_scope or 'default')}"
+            cache_key += f"_surface:{search_surface_effective}"
             cache_key += f"_ct:{(content_type or 'none')}"
             cache_key += f"_it:{(ingestion_type or 'none')}"
+            cache_key += f"_rrke:{int(bool(getattr(settings, 'SEARCH_RERANK_ENABLED', False)))}"
+            cache_key += f"_rrks:{int(bool(getattr(settings, 'SEARCH_RERANK_SHADOW_ENABLED', False)))}"
+            cache_key += f"_rrkprov:{str(getattr(settings, 'SEARCH_RERANK_PROVIDER', 'off') or 'off')}"
+            cache_key += f"_rrktop:{int(getattr(settings, 'SEARCH_RERANK_TOP_N', 24) or 24)}"
+            cache_key += f"_rrkpool:{int(getattr(settings, 'SEARCH_RERANK_MAX_CANDIDATES', 80) or 80)}"
+            cache_key += f"_b25e:{int(bool(getattr(settings, 'SEARCH_BM25PLUS_ENABLED', False)))}"
+            cache_key += f"_b25s:{int(bool(getattr(settings, 'SEARCH_BM25PLUS_SHADOW_ENABLED', False)))}"
+            cache_key += f"_b25pool:{int(getattr(settings, 'SEARCH_BM25PLUS_MAX_CANDIDATES', 120) or 120)}"
+            cache_key += f"_b25w:{float(getattr(settings, 'SEARCH_BM25PLUS_BLEND_WEIGHT', 0.22) or 0.22):.3f}"
+            cache_key += f"_wpe:{int(bool(getattr(settings, 'SEARCH_WIDE_POOL_ENABLED', False)))}"
+            cache_key += f"_wpd:{int(getattr(settings, 'SEARCH_WIDE_POOL_LIMIT_DIRECT', 900) or 900)}"
+            cache_key += f"_wpn:{int(getattr(settings, 'SEARCH_WIDE_POOL_LIMIT_DEFAULT', 480) or 480)}"
+            cache_key += f"_wps:{int(getattr(settings, 'SEARCH_WIDE_POOL_SEMANTIC_FETCH_LIMIT', 72) or 72)}"
+            cache_key += f"_mmre:{int(bool(getattr(settings, 'SEARCH_MMR_ENABLED', False)))}"
+            cache_key += f"_mmrs:{int(bool(getattr(settings, 'SEARCH_MMR_SHADOW_ENABLED', False)))}"
+            cache_key += f"_mmrpool:{int(getattr(settings, 'SEARCH_MMR_MAX_CANDIDATES', 100) or 100)}"
+            cache_key += f"_mmrtop:{int(getattr(settings, 'SEARCH_MMR_TOP_N', 24) or 24)}"
+            cache_key += f"_mmrl:{float(getattr(settings, 'SEARCH_MMR_LAMBDA', 0.62) or 0.62):.3f}"
             cache_key += f"_odl:{int(bool(getattr(settings, 'ODL_SECONDARY_ENABLED', False)))}"
             cache_key += f"_odlr:{int(bool(getattr(settings, 'ODL_RESCUE_ENABLED', False)))}"
             cache_key += f"_odlmin:{int(getattr(settings, 'ODL_RESCUE_MIN_RESULTS', 5) or 5)}"
@@ -255,6 +358,7 @@ class SearchOrchestrator:
                     "total_count": total_count,
                     "retrieval_fusion_mode": settings.RETRIEVAL_FUSION_MODE,
                     "retrieval_path": "hybrid",
+                    "search_surface": search_surface_effective,
                     "router_mode": settings.SEARCH_ROUTER_MODE,
                     "retrieval_mode": retrieval_mode,
                     "latency_budget_applied": latency_budget_applied,
@@ -268,6 +372,14 @@ class SearchOrchestrator:
                     "odl_rescue_candidates_added": 0,
                     "odl_rescue_candidates_topk": 0,
                     "odl_shadow_status": "cache",
+                    "wide_pool_mode": wide_pool_mode,
+                    "wide_pool_status": wide_pool_status,
+                    "wide_pool_applied": wide_pool_applied,
+                    "wide_pool_skip_reason": wide_pool_skip_reason,
+                    "wide_pool_base_internal_limit": wide_pool_base_internal_limit,
+                    "wide_pool_internal_limit_effective": wide_pool_internal_limit_effective,
+                    "wide_pool_base_semantic_fetch_limit": wide_pool_base_semantic_fetch_limit,
+                    "wide_pool_semantic_fetch_limit_effective": wide_pool_semantic_fetch_limit_effective,
                 }
                 meta.update(cached_meta)
                 return cached_results, meta
@@ -330,6 +442,7 @@ class SearchOrchestrator:
                         resource_type=resource_type,
                         book_id=book_id,
                         visibility_scope=visibility_scope,
+                        search_surface=search_surface_effective,
                         content_type=content_type,
                         ingestion_type=ingestion_type,
                     )
@@ -345,6 +458,7 @@ class SearchOrchestrator:
                         resource_type=resource_type,
                         book_id=book_id,
                         visibility_scope=visibility_scope,
+                        search_surface=search_surface_effective,
                         content_type=content_type,
                         ingestion_type=ingestion_type,
                     )
@@ -411,6 +525,7 @@ class SearchOrchestrator:
                         resource_type=resource_type,
                         book_id=book_id,
                         visibility_scope=visibility_scope,
+                        search_surface=search_surface_effective,
                         content_type=content_type,
                         ingestion_type=ingestion_type,
                     )
@@ -466,6 +581,7 @@ class SearchOrchestrator:
                         resource_type=resource_type,
                         book_id=book_id,
                         visibility_scope=visibility_scope,
+                        search_surface=search_surface_effective,
                         content_type=content_type,
                         ingestion_type=ingestion_type,
                     )
@@ -482,6 +598,7 @@ class SearchOrchestrator:
                         resource_type=resource_type,
                         book_id=book_id,
                         visibility_scope=visibility_scope,
+                        search_surface=search_surface_effective,
                         content_type=content_type,
                         ingestion_type=ingestion_type,
                     )
@@ -524,6 +641,7 @@ class SearchOrchestrator:
                             resource_type=resource_type,
                             book_id=book_id,
                             visibility_scope=visibility_scope,
+                            search_surface=search_surface_effective,
                             content_type=content_type,
                             ingestion_type=ingestion_type,
                         )
@@ -553,6 +671,7 @@ class SearchOrchestrator:
                     resource_type=resource_type,
                     book_id=book_id,
                     visibility_scope=visibility_scope,
+                    search_surface=search_surface_effective,
                     content_type=content_type,
                     ingestion_type=ingestion_type,
                 )
@@ -678,6 +797,32 @@ class SearchOrchestrator:
         semantic_tail_added = None
         semantic_tail_cap_value = None
         mix_policy_applied = None
+        pdf_like_suppressed_count = 0
+        rerank_mode = "disabled"
+        rerank_status = "disabled"
+        rerank_skip_reason = "feature_off"
+        rerank_applied = False
+        rerank_shadow = False
+        rerank_latency_ms: Optional[int] = None
+        rerank_candidate_count = 0
+        rerank_top1_changed = False
+        rerank_provider = str(getattr(settings, "SEARCH_RERANK_PROVIDER", "off") or "off")
+        bm25plus_mode = "disabled"
+        bm25plus_status = "disabled"
+        bm25plus_skip_reason = "feature_off"
+        bm25plus_applied = False
+        bm25plus_shadow = False
+        bm25plus_latency_ms: Optional[int] = None
+        bm25plus_candidate_count = 0
+        bm25plus_top1_changed = False
+        mmr_mode = "disabled"
+        mmr_status = "disabled"
+        mmr_skip_reason = "feature_off"
+        mmr_applied = False
+        mmr_shadow = False
+        mmr_latency_ms: Optional[int] = None
+        mmr_candidate_count = 0
+        mmr_top1_changed = False
 
         # Optional Layer-2 mix policy:
         # 1) lexical (exact+lemma) first
@@ -806,7 +951,10 @@ class SearchOrchestrator:
             mix_policy_applied = "lexical_then_semantic_tail"
 
         # ODL secondary rescue (additive-only, never replacing primary).
-        if self._is_odl_rescue_allowed(firebase_uid=firebase_uid, book_id=book_id):
+        if (
+            search_surface_effective not in {"CORE", "PDF_ONLY"}
+            and self._is_odl_rescue_allowed(firebase_uid=firebase_uid, book_id=book_id)
+        ):
             odl_shadow_status = "eligible"
             primary_total_found = len(final_list)
             primary_top_score = self._compute_top_score(final_list, fusion_mode)
@@ -835,6 +983,7 @@ class SearchOrchestrator:
                     resource_type=resource_type,
                     book_id=book_id,
                     visibility_scope=visibility_scope,
+                    search_surface=search_surface_effective,
                     content_type=content_type,
                     ingestion_type=ingestion_type,
                 )
@@ -899,6 +1048,286 @@ class SearchOrchestrator:
             else:
                 odl_shadow_status = "not_triggered"
 
+        def is_pdf_like_item(item: Dict[str, Any]) -> bool:
+            source_type = str(item.get("source_type", "") or "").strip().upper()
+            if source_type in pdf_like_types:
+                return True
+            return bool(item.get("odl_shadow"))
+
+        if search_surface_effective == "CORE":
+            before_count = len(final_list)
+            final_list = [item for item in final_list if not is_pdf_like_item(item)]
+            pdf_like_suppressed_count = max(0, before_count - len(final_list))
+        elif search_surface_effective == "PDF_ONLY":
+            final_list = [item for item in final_list if is_pdf_like_item(item)]
+
+        bm25_enabled_flag = bool(getattr(settings, "SEARCH_BM25PLUS_ENABLED", False))
+        bm25_shadow_flag = bool(getattr(settings, "SEARCH_BM25PLUS_SHADOW_ENABLED", False))
+        if bm25_enabled_flag or bm25_shadow_flag:
+            bm25plus_mode = "apply" if bm25_enabled_flag else "shadow"
+            canary_uids = set(getattr(settings, "SEARCH_BM25PLUS_CANARY_UIDS", set()) or set())
+            if not self._is_uid_allowed(firebase_uid, canary_uids):
+                bm25plus_status = "skipped"
+                bm25plus_skip_reason = "uid_not_in_canary"
+            else:
+                min_candidates = max(2, int(getattr(settings, "SEARCH_BM25PLUS_MIN_CANDIDATES", 8) or 8))
+                max_candidates = max(
+                    min_candidates,
+                    min(300, int(getattr(settings, "SEARCH_BM25PLUS_MAX_CANDIDATES", 120) or 120)),
+                )
+                if len(final_list) < min_candidates:
+                    bm25plus_status = "skipped"
+                    bm25plus_skip_reason = "insufficient_candidates"
+                else:
+                    bm25plus_candidate_count = min(len(final_list), max_candidates)
+                    bm25_weight = float(getattr(settings, "SEARCH_BM25PLUS_BLEND_WEIGHT", 0.22) or 0.22)
+                    bm25_weight = max(0.0, min(1.0, bm25_weight))
+                    original_top_key = self._item_key(final_list[0]) if final_list else None
+                    try:
+                        SEARCH_BM25PLUS_CANDIDATE_COUNT.labels(mode=bm25plus_mode).observe(
+                            float(bm25plus_candidate_count)
+                        )
+                    except Exception:
+                        pass
+
+                    try:
+                        started_bm25 = time.perf_counter()
+                        blended_rows, _bm25_diag = bm25plus_blend_rank(
+                            query_original,
+                            [dict(item) for item in final_list],
+                            candidate_limit=bm25plus_candidate_count,
+                            blend_weight=bm25_weight,
+                        )
+                        bm25plus_latency_ms = int((time.perf_counter() - started_bm25) * 1000)
+                        try:
+                            SEARCH_BM25PLUS_LATENCY_MS.labels(mode=bm25plus_mode).observe(
+                                float(bm25plus_latency_ms)
+                            )
+                        except Exception:
+                            pass
+
+                        new_top_key = self._item_key(blended_rows[0]) if blended_rows else None
+                        bm25plus_top1_changed = bool(
+                            original_top_key and new_top_key and original_top_key != new_top_key
+                        )
+
+                        if bm25_enabled_flag and blended_rows:
+                            final_list = blended_rows
+                            bm25plus_applied = True
+                            bm25plus_status = "ok"
+                            bm25plus_skip_reason = None
+                            if bm25plus_top1_changed:
+                                try:
+                                    SEARCH_BM25PLUS_TOP1_FLIP_TOTAL.labels(mode=bm25plus_mode).inc()
+                                except Exception:
+                                    pass
+                        elif bm25_shadow_flag and blended_rows:
+                            bm25plus_shadow = True
+                            bm25plus_status = "ok"
+                            bm25plus_skip_reason = None
+                            if bm25plus_top1_changed:
+                                try:
+                                    SEARCH_BM25PLUS_TOP1_FLIP_TOTAL.labels(mode=bm25plus_mode).inc()
+                                except Exception:
+                                    pass
+                        else:
+                            bm25plus_status = "skipped"
+                            bm25plus_skip_reason = "empty_blended_output"
+                    except Exception as bm25_err:
+                        logger.warning("BM25Plus booster failed-open: %s", bm25_err)
+                        bm25plus_status = "error"
+                        bm25plus_skip_reason = "bm25plus_error"
+
+            try:
+                status_label = "applied" if bm25plus_applied else ("shadow" if bm25plus_shadow else bm25plus_status)
+                SEARCH_BM25PLUS_TOTAL.labels(mode=bm25plus_mode, status=status_label).inc()
+            except Exception:
+                pass
+            if bm25plus_skip_reason:
+                try:
+                    SEARCH_BM25PLUS_SKIP_TOTAL.labels(reason=bm25plus_skip_reason).inc()
+                except Exception:
+                    pass
+
+        mmr_enabled_flag = bool(getattr(settings, "SEARCH_MMR_ENABLED", False))
+        mmr_shadow_flag = bool(getattr(settings, "SEARCH_MMR_SHADOW_ENABLED", False))
+        if mmr_enabled_flag or mmr_shadow_flag:
+            mmr_mode = "apply" if mmr_enabled_flag else "shadow"
+            canary_uids = set(getattr(settings, "SEARCH_MMR_CANARY_UIDS", set()) or set())
+            if not self._is_uid_allowed(firebase_uid, canary_uids):
+                mmr_status = "skipped"
+                mmr_skip_reason = "uid_not_in_canary"
+            else:
+                min_candidates = max(2, int(getattr(settings, "SEARCH_MMR_MIN_CANDIDATES", 8) or 8))
+                max_candidates = max(
+                    min_candidates,
+                    min(300, int(getattr(settings, "SEARCH_MMR_MAX_CANDIDATES", 100) or 100)),
+                )
+                if len(final_list) < min_candidates:
+                    mmr_status = "skipped"
+                    mmr_skip_reason = "insufficient_candidates"
+                else:
+                    mmr_candidate_count = min(len(final_list), max_candidates)
+                    mmr_top_n = int(getattr(settings, "SEARCH_MMR_TOP_N", 24) or 24)
+                    mmr_top_n = max(4, mmr_top_n)
+                    mmr_top_n = min(mmr_candidate_count, mmr_top_n)
+                    mmr_lambda = float(getattr(settings, "SEARCH_MMR_LAMBDA", 0.62) or 0.62)
+                    mmr_lambda = max(0.0, min(1.0, mmr_lambda))
+                    original_top_key = self._item_key(final_list[0]) if final_list else None
+                    try:
+                        SEARCH_MMR_CANDIDATE_COUNT.labels(mode=mmr_mode).observe(float(mmr_candidate_count))
+                    except Exception:
+                        pass
+                    try:
+                        started_mmr = time.perf_counter()
+                        mmr_rows, _mmr_diag = apply_mmr_diversity(
+                            query_original,
+                            [dict(item) for item in final_list],
+                            candidate_limit=mmr_candidate_count,
+                            top_n=mmr_top_n,
+                            lambda_weight=mmr_lambda,
+                        )
+                        mmr_latency_ms = int((time.perf_counter() - started_mmr) * 1000)
+                        try:
+                            SEARCH_MMR_LATENCY_MS.labels(mode=mmr_mode).observe(float(mmr_latency_ms))
+                        except Exception:
+                            pass
+                        new_top_key = self._item_key(mmr_rows[0]) if mmr_rows else None
+                        mmr_top1_changed = bool(
+                            original_top_key and new_top_key and original_top_key != new_top_key
+                        )
+
+                        if mmr_enabled_flag and mmr_rows:
+                            final_list = mmr_rows
+                            mmr_applied = True
+                            mmr_status = "ok"
+                            mmr_skip_reason = None
+                            if mmr_top1_changed:
+                                try:
+                                    SEARCH_MMR_TOP1_FLIP_TOTAL.labels(mode=mmr_mode).inc()
+                                except Exception:
+                                    pass
+                        elif mmr_shadow_flag and mmr_rows:
+                            mmr_shadow = True
+                            mmr_status = "ok"
+                            mmr_skip_reason = None
+                            if mmr_top1_changed:
+                                try:
+                                    SEARCH_MMR_TOP1_FLIP_TOTAL.labels(mode=mmr_mode).inc()
+                                except Exception:
+                                    pass
+                        else:
+                            mmr_status = "skipped"
+                            mmr_skip_reason = "empty_mmr_output"
+                    except Exception as mmr_err:
+                        logger.warning("MMR policy failed-open: %s", mmr_err)
+                        mmr_status = "error"
+                        mmr_skip_reason = "mmr_error"
+            try:
+                status_label = "applied" if mmr_applied else ("shadow" if mmr_shadow else mmr_status)
+                SEARCH_MMR_TOTAL.labels(mode=mmr_mode, status=status_label).inc()
+            except Exception:
+                pass
+            if mmr_skip_reason:
+                try:
+                    SEARCH_MMR_SKIP_TOTAL.labels(reason=mmr_skip_reason).inc()
+                except Exception:
+                    pass
+
+        rerank_enabled_flag = bool(getattr(settings, "SEARCH_RERANK_ENABLED", False))
+        rerank_shadow_flag = bool(getattr(settings, "SEARCH_RERANK_SHADOW_ENABLED", False))
+        if rerank_enabled_flag or rerank_shadow_flag:
+            rerank_mode = "apply" if rerank_enabled_flag else "shadow"
+            canary_uids = set(getattr(settings, "SEARCH_RERANK_CANARY_UIDS", set()) or set())
+            if not self._is_uid_allowed(firebase_uid, canary_uids):
+                rerank_status = "skipped"
+                rerank_skip_reason = "uid_not_in_canary"
+            else:
+                min_candidates = max(2, int(getattr(settings, "SEARCH_RERANK_MIN_CANDIDATES", 8) or 8))
+                max_candidates = max(
+                    min_candidates,
+                    min(300, int(getattr(settings, "SEARCH_RERANK_MAX_CANDIDATES", 80) or 80)),
+                )
+                if len(final_list) < min_candidates:
+                    rerank_status = "skipped"
+                    rerank_skip_reason = "insufficient_candidates"
+                else:
+                    rerank_candidate_count = min(len(final_list), max_candidates)
+                    top_n = int(getattr(settings, "SEARCH_RERANK_TOP_N", 24) or 24)
+                    top_n = max(4, top_n)
+                    top_n = min(rerank_candidate_count, top_n)
+                    candidate_pool = [dict(item) for item in final_list[:rerank_candidate_count]]
+                    original_top_key = self._item_key(candidate_pool[0]) if candidate_pool else None
+                    try:
+                        SEARCH_RERANK_CANDIDATE_COUNT.labels(mode=rerank_mode).observe(
+                            float(rerank_candidate_count)
+                        )
+                    except Exception:
+                        pass
+
+                    try:
+                        started_rerank = time.perf_counter()
+                        reranked_pool, _rerank_diag = rerank_candidates_fast(
+                            query_original,
+                            candidate_pool,
+                            top_n=top_n,
+                        )
+                        rerank_latency_ms = int((time.perf_counter() - started_rerank) * 1000)
+                        try:
+                            SEARCH_RERANK_LATENCY_MS.labels(mode=rerank_mode).observe(float(rerank_latency_ms))
+                        except Exception:
+                            pass
+
+                        rerank_diag_top_key = self._item_key(reranked_pool[0]) if reranked_pool else None
+                        rerank_top1_changed = bool(
+                            original_top_key and rerank_diag_top_key and original_top_key != rerank_diag_top_key
+                        )
+
+                        if rerank_enabled_flag and reranked_pool:
+                            # Apply only the promoted head to keep rerank changes bounded and stable.
+                            promoted = reranked_pool[:top_n]
+                            promoted_keys = {self._item_key(item) for item in promoted}
+                            remainder = [
+                                item for item in candidate_pool if self._item_key(item) not in promoted_keys
+                            ]
+                            final_list = promoted + remainder + final_list[rerank_candidate_count:]
+                            rerank_applied = True
+                            rerank_status = "ok"
+                            rerank_skip_reason = None
+                            if rerank_top1_changed:
+                                try:
+                                    SEARCH_RERANK_TOP1_FLIP_TOTAL.labels(mode=rerank_mode).inc()
+                                except Exception:
+                                    pass
+                        elif rerank_shadow_flag and reranked_pool:
+                            rerank_shadow = True
+                            rerank_status = "ok"
+                            rerank_skip_reason = None
+                            if rerank_top1_changed:
+                                try:
+                                    SEARCH_RERANK_TOP1_FLIP_TOTAL.labels(mode=rerank_mode).inc()
+                                except Exception:
+                                    pass
+                        else:
+                            rerank_status = "skipped"
+                            rerank_skip_reason = "empty_rerank_output"
+                    except Exception as rerank_err:
+                        # Fail-open: ranking path remains unchanged on any rerank failure.
+                        logger.warning("Reranker failed-open: %s", rerank_err)
+                        rerank_status = "error"
+                        rerank_skip_reason = "rerank_error"
+
+            try:
+                status_label = "applied" if rerank_applied else ("shadow" if rerank_shadow else rerank_status)
+                SEARCH_RERANK_TOTAL.labels(mode=rerank_mode, status=status_label).inc()
+            except Exception:
+                pass
+            if rerank_skip_reason:
+                try:
+                    SEARCH_RERANK_SKIP_TOTAL.labels(reason=rerank_skip_reason).inc()
+                except Exception:
+                    pass
+
         # Pagination Slicing
         total_found = len(final_list)
         top_candidates = final_list[offset : offset + limit]
@@ -937,6 +1366,7 @@ class SearchOrchestrator:
             "query_correction_applied": query_correction_applied,
             "typo_rescue_applied": typo_rescue_applied,
             "lemma_seed_fallback_applied": lemma_seed_fallback_applied,
+            "search_surface": search_surface_effective,
             "visibility_scope": visibility_scope,
             "content_type_filter": content_type,
             "ingestion_type_filter": ingestion_type,
@@ -954,9 +1384,42 @@ class SearchOrchestrator:
             "odl_rescue_candidates_added": odl_rescue_candidates_added,
             "odl_rescue_candidates_topk": odl_rescue_candidates_topk,
             "odl_shadow_status": odl_shadow_status,
+            "pdf_like_suppressed_count": pdf_like_suppressed_count,
+            "wide_pool_mode": wide_pool_mode,
+            "wide_pool_status": wide_pool_status,
+            "wide_pool_applied": wide_pool_applied,
+            "wide_pool_skip_reason": wide_pool_skip_reason,
+            "wide_pool_base_internal_limit": wide_pool_base_internal_limit,
+            "wide_pool_internal_limit_effective": wide_pool_internal_limit_effective,
+            "wide_pool_base_semantic_fetch_limit": wide_pool_base_semantic_fetch_limit,
+            "wide_pool_semantic_fetch_limit_effective": wide_pool_semantic_fetch_limit_effective,
+            "bm25plus_mode": bm25plus_mode,
+            "bm25plus_status": bm25plus_status,
+            "bm25plus_applied": bm25plus_applied,
+            "bm25plus_shadow": bm25plus_shadow,
+            "bm25plus_skip_reason": bm25plus_skip_reason,
+            "bm25plus_candidate_count": bm25plus_candidate_count,
+            "bm25plus_top1_changed": bm25plus_top1_changed,
+            "BM25PLUS_TIME_MS": bm25plus_latency_ms,
+            "mmr_mode": mmr_mode,
+            "mmr_status": mmr_status,
+            "mmr_applied": mmr_applied,
+            "mmr_shadow": mmr_shadow,
+            "mmr_skip_reason": mmr_skip_reason,
+            "mmr_candidate_count": mmr_candidate_count,
+            "mmr_top1_changed": mmr_top1_changed,
+            "MMR_TIME_MS": mmr_latency_ms,
+            "rerank_provider": rerank_provider,
+            "rerank_mode": rerank_mode,
+            "rerank_status": rerank_status,
+            "rerank_applied": rerank_applied,
+            "rerank_shadow": rerank_shadow,
+            "rerank_skip_reason": rerank_skip_reason,
+            "rerank_candidate_count": rerank_candidate_count,
+            "rerank_top1_changed": rerank_top1_changed,
             "VECTOR_TIME_MS": strategy_timing_ms.get("SemanticMatchStrategy"),
             "GRAPH_TIME_MS": None,
-            "RERANK_TIME_MS": None,
+            "RERANK_TIME_MS": rerank_latency_ms,
             "LLM_TIME_MS": None,
             "CACHE_HIT": False,
             "CACHE_LAYER": "MISS",
@@ -1006,6 +1469,7 @@ class SearchOrchestrator:
                             "query_correction_applied": query_correction_applied,
                             "typo_rescue_applied": typo_rescue_applied,
                             "lemma_seed_fallback_applied": lemma_seed_fallback_applied,
+                            "search_surface": search_surface_effective,
                             "visibility_scope": visibility_scope,
                             "content_type_filter": content_type,
                             "ingestion_type_filter": ingestion_type,
@@ -1023,9 +1487,42 @@ class SearchOrchestrator:
                             "odl_rescue_candidates_added": odl_rescue_candidates_added,
                             "odl_rescue_candidates_topk": odl_rescue_candidates_topk,
                             "odl_shadow_status": odl_shadow_status,
+                            "pdf_like_suppressed_count": pdf_like_suppressed_count,
+                            "wide_pool_mode": wide_pool_mode,
+                            "wide_pool_status": wide_pool_status,
+                            "wide_pool_applied": wide_pool_applied,
+                            "wide_pool_skip_reason": wide_pool_skip_reason,
+                            "wide_pool_base_internal_limit": wide_pool_base_internal_limit,
+                            "wide_pool_internal_limit_effective": wide_pool_internal_limit_effective,
+                            "wide_pool_base_semantic_fetch_limit": wide_pool_base_semantic_fetch_limit,
+                            "wide_pool_semantic_fetch_limit_effective": wide_pool_semantic_fetch_limit_effective,
+                            "bm25plus_mode": bm25plus_mode,
+                            "bm25plus_status": bm25plus_status,
+                            "bm25plus_applied": bm25plus_applied,
+                            "bm25plus_shadow": bm25plus_shadow,
+                            "bm25plus_skip_reason": bm25plus_skip_reason,
+                            "bm25plus_candidate_count": bm25plus_candidate_count,
+                            "bm25plus_top1_changed": bm25plus_top1_changed,
+                            "BM25PLUS_TIME_MS": bm25plus_latency_ms,
+                            "mmr_mode": mmr_mode,
+                            "mmr_status": mmr_status,
+                            "mmr_applied": mmr_applied,
+                            "mmr_shadow": mmr_shadow,
+                            "mmr_skip_reason": mmr_skip_reason,
+                            "mmr_candidate_count": mmr_candidate_count,
+                            "mmr_top1_changed": mmr_top1_changed,
+                            "MMR_TIME_MS": mmr_latency_ms,
+                            "rerank_provider": rerank_provider,
+                            "rerank_mode": rerank_mode,
+                            "rerank_status": rerank_status,
+                            "rerank_applied": rerank_applied,
+                            "rerank_shadow": rerank_shadow,
+                            "rerank_skip_reason": rerank_skip_reason,
+                            "rerank_candidate_count": rerank_candidate_count,
+                            "rerank_top1_changed": rerank_top1_changed,
                             "VECTOR_TIME_MS": strategy_timing_ms.get("SemanticMatchStrategy"),
                             "GRAPH_TIME_MS": None,
-                            "RERANK_TIME_MS": None,
+                            "RERANK_TIME_MS": rerank_latency_ms,
                             "LLM_TIME_MS": None,
                             "CACHE_HIT": False,
                             "CACHE_LAYER": "MISS",
@@ -1061,6 +1558,7 @@ class SearchOrchestrator:
             "query_correction_applied": query_correction_applied,
             "typo_rescue_applied": typo_rescue_applied,
             "lemma_seed_fallback_applied": lemma_seed_fallback_applied,
+            "search_surface": search_surface_effective,
             "visibility_scope": visibility_scope,
             "content_type_filter": content_type,
             "ingestion_type_filter": ingestion_type,
@@ -1078,9 +1576,42 @@ class SearchOrchestrator:
             "odl_rescue_candidates_added": odl_rescue_candidates_added,
             "odl_rescue_candidates_topk": odl_rescue_candidates_topk,
             "odl_shadow_status": odl_shadow_status,
+            "pdf_like_suppressed_count": pdf_like_suppressed_count,
+            "wide_pool_mode": wide_pool_mode,
+            "wide_pool_status": wide_pool_status,
+            "wide_pool_applied": wide_pool_applied,
+            "wide_pool_skip_reason": wide_pool_skip_reason,
+            "wide_pool_base_internal_limit": wide_pool_base_internal_limit,
+            "wide_pool_internal_limit_effective": wide_pool_internal_limit_effective,
+            "wide_pool_base_semantic_fetch_limit": wide_pool_base_semantic_fetch_limit,
+            "wide_pool_semantic_fetch_limit_effective": wide_pool_semantic_fetch_limit_effective,
+            "bm25plus_mode": bm25plus_mode,
+            "bm25plus_status": bm25plus_status,
+            "bm25plus_applied": bm25plus_applied,
+            "bm25plus_shadow": bm25plus_shadow,
+            "bm25plus_skip_reason": bm25plus_skip_reason,
+            "bm25plus_candidate_count": bm25plus_candidate_count,
+            "bm25plus_top1_changed": bm25plus_top1_changed,
+            "BM25PLUS_TIME_MS": bm25plus_latency_ms,
+            "mmr_mode": mmr_mode,
+            "mmr_status": mmr_status,
+            "mmr_applied": mmr_applied,
+            "mmr_shadow": mmr_shadow,
+            "mmr_skip_reason": mmr_skip_reason,
+            "mmr_candidate_count": mmr_candidate_count,
+            "mmr_top1_changed": mmr_top1_changed,
+            "MMR_TIME_MS": mmr_latency_ms,
+            "rerank_provider": rerank_provider,
+            "rerank_mode": rerank_mode,
+            "rerank_status": rerank_status,
+            "rerank_applied": rerank_applied,
+            "rerank_shadow": rerank_shadow,
+            "rerank_skip_reason": rerank_skip_reason,
+            "rerank_candidate_count": rerank_candidate_count,
+            "rerank_top1_changed": rerank_top1_changed,
             "VECTOR_TIME_MS": strategy_timing_ms.get("SemanticMatchStrategy"),
             "GRAPH_TIME_MS": None,
-            "RERANK_TIME_MS": None,
+            "RERANK_TIME_MS": rerank_latency_ms,
             "LLM_TIME_MS": None,
             "CACHE_HIT": False,
             "CACHE_LAYER": "MISS",

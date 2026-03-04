@@ -1,8 +1,70 @@
 import re
 import unicodedata
+import logging
 
 
 _MOJIBAKE_MARKERS = ("Ã", "Ä", "Å", "Â", "â", "�")
+
+
+_FALLBACK_SUFFIXES_ASCII = (
+    "lerinden",
+    "larindan",
+    "lerimiz",
+    "larimiz",
+    "lerin",
+    "larin",
+    "lere",
+    "lara",
+    "leri",
+    "lari",
+    "lerden",
+    "lardan",
+    "inin",
+    "unun",
+    "inden",
+    "indan",
+    "undan",
+    "unden",
+    "imiz",
+    "umuz",
+    "siniz",
+    "sunuz",
+    "daki",
+    "deki",
+    "ndeki",
+    "ndan",
+    "nden",
+    "nin",
+    "nun",
+    "dan",
+    "den",
+    "dir",
+    "dur",
+    "tir",
+    "tur",
+    "lik",
+    "luk",
+    "li",
+    "lu",
+    "ci",
+    "cu",
+    "si",
+    "su",
+    "im",
+    "um",
+    "in",
+    "un",
+    "de",
+    "da",
+    "te",
+    "ta",
+    "e",
+    "a",
+    "i",
+    "u",
+)
+_LOGGER = logging.getLogger("text_utils")
+_MISSING_ANALYZER_WARNED = False
 
 
 def repair_common_mojibake(text: str) -> str:
@@ -89,6 +151,8 @@ try:
     import zeyrek
 
     _analyzer = zeyrek.MorphAnalyzer()
+    logging.getLogger("zeyrek").setLevel(logging.ERROR)
+    logging.getLogger("zeyrek.rulebasedanalyzer").setLevel(logging.ERROR)
 except ImportError:
     _analyzer = None
     print("[WARNING] Zeyrek not found. Lemmatization will be disabled.")
@@ -116,37 +180,102 @@ def deaccent_text(text: str) -> str:
     return normalize_text(text)
 
 
+def _fallback_stem_candidates(token: str) -> set[str]:
+    token = deaccent_text((token or "").strip())
+    if len(token) < 3:
+        return set()
+    out = {token}
+    for suffix in _FALLBACK_SUFFIXES_ASCII:
+        if token.endswith(suffix):
+            stem = token[: -len(suffix)]
+            if len(stem) >= 3:
+                out.add(stem)
+    return out
+
+
+def _fallback_lemmas(text: str) -> list[str]:
+    canonical = normalize_canonical(text)
+    if not canonical:
+        return []
+    out: set[str] = set()
+    for raw in canonical.split():
+        token = re.sub(r"\d+", "", raw).strip()
+        if len(token) < 2:
+            continue
+        candidates = _fallback_stem_candidates(token)
+        if candidates:
+            out.update(candidates)
+        elif len(token) >= 3:
+            out.add(deaccent_text(token))
+    return list(out)
+
+
+def _fallback_lemma_frequencies(text: str) -> dict[str, int]:
+    canonical = normalize_canonical(text)
+    if not canonical:
+        return {}
+    freqs: dict[str, int] = {}
+    for raw in canonical.split():
+        token = re.sub(r"\d+", "", raw).strip()
+        if len(token) < 2:
+            continue
+        candidates = _fallback_stem_candidates(token)
+        if candidates:
+            lemma = sorted(candidates, key=len)[0]
+        else:
+            lemma = deaccent_text(token)
+        if len(lemma) < 3:
+            continue
+        freqs[lemma] = freqs.get(lemma, 0) + 1
+    return freqs
+
+
 def get_lemmas(text: str) -> list[str]:
     """
     Extract unique lemmas (roots) from text using Zeyrek.
     """
-    if not text or not _analyzer:
+    global _MISSING_ANALYZER_WARNED
+    if not text:
         return []
+    canonical = normalize_canonical(text)
+    if not canonical:
+        return []
+    if not _analyzer:
+        if not _MISSING_ANALYZER_WARNED:
+            _LOGGER.warning("Zeyrek analyzer unavailable, using heuristic lemma fallback.")
+            _MISSING_ANALYZER_WARNED = True
+        return _fallback_lemmas(canonical)
 
     lemmas: set[str] = set()
     try:
-        canonical = normalize_canonical(text)
         results = _analyzer.analyze(canonical)
         for word_analysis in results:
             for parse in word_analysis:
                 if parse.lemma and parse.lemma.lower() not in ["unk", "unknown"]:
                     lemmas.add(parse.lemma.lower())
-    except Exception:
-        pass
+    except Exception as e:
+        _LOGGER.warning("Lemma extraction failed; fallback enabled: %s", e)
+        return _fallback_lemmas(canonical)
 
-    return list(lemmas)
+    if lemmas:
+        return list(lemmas)
+    return _fallback_lemmas(canonical)
 
 
 def get_lemma_frequencies(text: str) -> dict[str, int]:
     """
     Extract lemma frequencies from text using Zeyrek.
     """
-    if not text or not _analyzer:
+    if not text:
         return {}
+    canonical = normalize_canonical(text)
+    if not canonical:
+        return {}
+    if not _analyzer:
+        return _fallback_lemma_frequencies(canonical)
 
     freqs: dict[str, int] = {}
     try:
-        canonical = normalize_canonical(text)
         results = _analyzer.analyze(canonical)
         for word_analysis in results:
             if not word_analysis:
@@ -156,7 +285,10 @@ def get_lemma_frequencies(text: str) -> dict[str, int]:
             if not lemma or lemma in ["unk", "unknown"]:
                 continue
             freqs[lemma] = freqs.get(lemma, 0) + 1
-    except Exception:
-        return {}
+    except Exception as e:
+        _LOGGER.warning("Lemma frequency extraction failed; fallback enabled: %s", e)
+        return _fallback_lemma_frequencies(canonical)
 
-    return freqs
+    if freqs:
+        return freqs
+    return _fallback_lemma_frequencies(canonical)
