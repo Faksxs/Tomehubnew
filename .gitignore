@@ -89,3 +89,5 @@ apps/backend/uploads/
 *.tar
 
 *.tar
+diff.txt
+diff_app.txt

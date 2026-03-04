@@ -1,14 +1,35 @@
 const localhostHosts = new Set(['localhost', '127.0.0.1']);
+const loopbackHosts = new Set(['localhost', '127.0.0.1', '::1']);
 
 const localDefaultBase = 'http://localhost:8000';
 const productionDefaultBase = 'https://api.tomehub.nl';
 
-const configuredBase = (import.meta.env.VITE_API_BASE_URL || '').trim();
-const fallbackBase = localhostHosts.has(window.location.hostname)
+const isLoopbackUrl = (value: string): boolean => {
+    try {
+        const parsed = new URL(value);
+        return loopbackHosts.has(parsed.hostname.toLowerCase());
+    } catch {
+        return false;
+    }
+};
+
+const configuredBase = (import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '');
+const isRunningOnLocalhost = localhostHosts.has(window.location.hostname);
+const shouldIgnoreConfiguredLoopbackBase = !isRunningOnLocalhost && isLoopbackUrl(configuredBase);
+
+if (shouldIgnoreConfiguredLoopbackBase) {
+    console.warn(
+        `[apiClient] Ignoring loopback VITE_API_BASE_URL on non-local host (${window.location.hostname}): ${configuredBase}`,
+    );
+}
+
+const fallbackBase = isRunningOnLocalhost
     ? localDefaultBase
     : productionDefaultBase;
 
-export const API_BASE_URL = (configuredBase || fallbackBase).replace(/\/+$/, '');
+export const API_BASE_URL = shouldIgnoreConfiguredLoopbackBase
+    ? fallbackBase
+    : (configuredBase || fallbackBase).replace(/\/+$/, '');
 
 const backendStartHint = "Backend baglantisi kurulamadi. `apps/backend` klasorunde `python app.py` calistirin (port 8000).";
 
