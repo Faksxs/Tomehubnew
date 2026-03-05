@@ -27,6 +27,15 @@ def _filter_query_lemmas(lemmas: List[str]) -> List[str]:
     return filtered
 
 
+def _strip_metadata_header(text: str) -> str:
+    if not text:
+        return text
+    match = re.search(r'Content/Notes:\s*(.*)', text, flags=re.IGNORECASE | re.DOTALL)
+    if match:
+        return match.group(1).lstrip()
+    return text
+
+
 def _normalize_match_text(text: str) -> str:
     # Preserve token boundaries before deaccenting; some normalizers can drop punctuation.
     pre = repair_common_mojibake(text or "").lower()
@@ -472,7 +481,7 @@ class ExactMatchStrategy(SearchStrategy):
                         results.append({
                             'id': r[0],
                             'title': r[2],
-                            'content_chunk': content,
+                            'content_chunk': _strip_metadata_header(content),
                             'source_type': r[3],
                             'page_number': r[4],
                             'tags': tags,
@@ -620,7 +629,7 @@ class LemmaMatchStrategy(SearchStrategy):
                         results.append({
                             'id': r[0],
                             'title': title,
-                            'content_chunk': content,
+                            'content_chunk': _strip_metadata_header(content),
                             'source_type': r[3],
                             'page_number': r[4],
                             'tags': tags,
@@ -755,7 +764,7 @@ class SemanticMatchStrategy(SearchStrategy):
                         results.append({
                             'id': r[0],
                             'title': r[2],
-                            'content_chunk': content,
+                            'content_chunk': _strip_metadata_header(content),
                             'source_type': r[3],
                             'page_number': r[4],
                             'tags': tags,

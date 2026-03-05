@@ -348,7 +348,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                             <span className="text-white text-xs md:text-sm">{toReadCount}</span>
                                         </div>
                                     </div>
-                                    00:                                 </div>
+                                </div>
                                 <div className="space-y-2 md:space-y-4">
                                     <div className="flex items-center gap-2 md:gap-3 border-b border-white/10 pb-2 md:pb-4">
                                         <Film size={16} className="text-primary md:w-5 md:h-5" />

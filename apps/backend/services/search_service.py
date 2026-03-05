@@ -584,13 +584,14 @@ def search_similar_content(query_text: str, firebase_uid: str, top_k: int = 5) -
                 seen_titles = set()
                 
                 # Diversity Pass: First 10 results from diff books
+                from services.search_system.strategies import _strip_metadata_header
                 for res in reranked_results:
                     if len(selected_chunks) >= top_k: 
                         break
                     
                     # Use 'content_chunk' key to match old API
                     selected_chunks.append({
-                        'content_chunk': res['content'],
+                        'content_chunk': _strip_metadata_header(res['content']),
                         'page_number': res['page'],
                         'title': res['title'],
                         'similarity_score': res.get('rerank_score', 0), # New score
