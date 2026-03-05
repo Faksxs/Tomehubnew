@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useDeferredValue, useTransition } from 'react';
 import { LibraryItem, ReadingStatus, ResourceType, PhysicalStatus, PersonalNoteCategory, PersonalNoteFolder } from '../types';
 import { Search, Plus, Book as BookIcon, Filter, FileText, Globe, ExternalLink, StickyNote, Quote, ArrowRight, PenTool, BarChart2, AlertTriangle, Library, ArrowUpDown, Calendar, Clock3, Hash, Menu, Trash2, ChevronDown, ChevronLeft, ChevronRight, Loader2, Star, CheckCircle, Zap, X, Folder, ListFilter, GripVertical, Pencil, FolderPlus, Film, Tv } from 'lucide-react';
 import {
@@ -114,6 +114,8 @@ interface BookListProps {
 export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNoteFolders = [], onAddBook, onAddPersonalNote, onQuickCreatePersonalNote, onCreatePersonalFolder, onRenamePersonalFolder, onDeletePersonalFolder, onMovePersonalNote, onMovePersonalFolder, onSelectBook, onSelectBookWithTab, activeTab, mediaLibraryEnabled = false, onMobileMenuClick, onDeleteBook, onDeleteMultiple, onToggleFavorite, onToggleHighlightFavorite, userId, categoryFilter, onCategoryFilterChange, onCategoryNavigate, onStatusNavigate, currentPage, onPageChange, searchQuery, onSearchChange, statusFilter, onStatusFilterChange, sortOption, onSortOptionChange, publisherFilter, onPublisherFilterChange, onTabChange }) => {
     // UI State (Moved to App.tsx for persistence)
     const [isTyping, setIsTyping] = useState(false); // Visual feedback
+    const [isSearchPending, startSearchTransition] = useTransition();
+    const deferredSearchQuery = useDeferredValue(searchQuery);
 
     // Pagination State (Moved to App.tsx) - using props instead
 
@@ -267,14 +269,16 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
         if (localInput !== searchQuery) {
             setIsTyping(true);
             const timer = setTimeout(() => {
-                onSearchChange(localInput);
-                onPageChange(1); // Reset pagination on new search
+                startSearchTransition(() => {
+                    onSearchChange(localInput);
+                    onPageChange(1); // Reset pagination on new search
+                });
                 setIsTyping(false);
             }, 300);
 
             return () => clearTimeout(timer);
         }
-    }, [localInput, searchQuery, onSearchChange, onPageChange]);
+    }, [localInput, searchQuery, onSearchChange, onPageChange, startSearchTransition]);
 
     // Keep local input in sync if searchQuery is reset from parent (e.g. tab change)
     useEffect(() => {
@@ -289,7 +293,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
     const filteredBooks = useMemo(() => {
         if (isNotesTab || isStats) return [];
 
-        const term = normalizeSearchText(searchQuery);
+        const term = normalizeSearchText(deferredSearchQuery);
         const recentNoteIdsForFilter = (isPersonalNotes && noteSmartFilter === 'RECENT')
             ? new Set(
                 books
@@ -390,6 +394,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
 
             if (isMediaTab) {
                 if (includesNormalized(book.publicationYear || '', term)) return true;
+                if (includesNormalized(book.originalTitle || '', term)) return true;
                 if (includesNormalized(book.summaryText || '', term)) return true;
                 if ((book.castTop || []).some((name) => includesNormalized(name, term))) return true;
                 if (includesNormalized(book.url || '', term)) return true;
@@ -424,7 +429,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
             return b.addedAt - a.addedAt;
         });
 
-    }, [books, searchQuery, statusFilter, publisherFilter, sortOption, activeTab, isNotesTab, isStats, categoryFilter, isPersonalNotes, isMediaTab, mediaTypeFilter, noteCategoryFilter, noteFolderFilter, noteSmartFilter, noteTagFilter, folderById, legacyFolderLookup]);
+    }, [books, deferredSearchQuery, statusFilter, publisherFilter, sortOption, activeTab, isNotesTab, isStats, categoryFilter, isPersonalNotes, isMediaTab, mediaTypeFilter, noteCategoryFilter, noteFolderFilter, noteSmartFilter, noteTagFilter, folderById, legacyFolderLookup]);
 
     const allPersonalNotes = useMemo(
         () => books.filter((book) => book.type === 'PERSONAL_NOTE'),
@@ -535,7 +540,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
     const filteredHighlights = useMemo(() => {
         if (!isNotesTab) return [];
 
-        const term = normalizeSearchText(searchQuery);
+        const term = normalizeSearchText(deferredSearchQuery);
 
         return books
             .flatMap(book => book.highlights.map(h => ({ ...h, source: book })))
@@ -553,7 +558,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                     !!(item.tags && item.tags.some(t => includesNormalized(t, term)));
             })
             .sort((a, b) => b.createdAt - a.createdAt);
-    }, [books, isNotesTab, searchQuery, statusFilter]);
+    }, [books, isNotesTab, deferredSearchQuery, statusFilter]);
 
     // --- STATS CALCULATION ---
     const stats = useMemo(() => {
@@ -870,7 +875,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
         }
 
         // Loading State for Search (Debounce visual)
-        if (isTyping) {
+        if (isTyping || isSearchPending) {
             return (
                 <div className="flex flex-col items-center justify-center py-20 text-slate-400 animate-in fade-in duration-200">
                     <Loader2 size={32} className="animate-spin text-[#262D40]/90 mb-4" />
@@ -909,7 +914,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                             onSelectBook(highlight.source);
                                         }
                                     }}
-                                    className={`break-inside-avoid p-2.5 md:p-6 rounded-xl border hover:shadow-md transition-all group cursor-pointer relative flex flex-col ${isNote
+                                    className={`break-inside-avoid p-2.5 md:p-6 rounded-xl border hover:shadow-md transition-all group cursor-pointer relative flex flex-col active:scale-[0.99] ${isNote
                                         ? 'bg-white dark:bg-slate-800 border-[#E6EAF2] dark:border-slate-700 hover:border-[#262D40]/12 dark:hover:border-[#262D40]/30'
                                         : 'bg-white dark:bg-slate-800 border-[#E6EAF2] dark:border-slate-700 hover:border-[#262D40]/12 dark:hover:border-[#262D40]/30'
                                         }`}
@@ -1341,7 +1346,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                                             ref={setNodeRef}
                                                             style={isDragging ? undefined : style}
                                                             onClick={() => handleNoteCardClick(note)}
-                                                            className={`bg-white dark:bg-slate-800 p-2.5 md:p-5 rounded-xl border border-[#E6EAF2] dark:border-slate-800 hover:border-[#262D40]/20 dark:hover:border-[#262D40]/30 hover:shadow-md transition-all cursor-pointer flex flex-col group relative ${isDragging || activeDraggedNoteId === note.id ? 'opacity-60 ring-2 ring-[#CC561E]/40' : ''}`}
+                                                            className={`bg-white dark:bg-slate-800 p-2.5 md:p-5 rounded-xl border border-[#E6EAF2] dark:border-slate-800 hover:border-[#262D40]/20 dark:hover:border-[#262D40]/30 hover:shadow-md transition-all cursor-pointer flex flex-col group relative active:scale-[0.99] ${isDragging || activeDraggedNoteId === note.id ? 'opacity-60 ring-2 ring-[#CC561E]/40' : ''}`}
                                                         >
                                                             <div className="absolute top-2 left-2 z-10">
                                                                 <button
@@ -1426,7 +1431,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                             <div
                                 key={book.id}
                                 onClick={() => onSelectBook(book)}
-                                className={`bg-white ${libraryCardDarkBg} rounded-xl border border-[#E6EAF2] dark:border-slate-800 overflow-hidden hover:shadow-lg hover:-translate-y-1 transition-all cursor-pointer group flex flex-col h-full relative`}
+                                className={`bg-white ${libraryCardDarkBg} rounded-xl border border-[#E6EAF2] dark:border-slate-800 overflow-hidden hover:shadow-lg hover:-translate-y-1 transition-all cursor-pointer group flex flex-col h-full relative active:scale-[0.99]`}
                             >
                                 {/* Compact Cover / Icon Container */}
                                 <div className="h-[122px] md:h-40 bg-[#F3F5FA] dark:bg-slate-800 relative flex items-end justify-between overflow-hidden group-hover:opacity-95 transition-opacity">
@@ -1671,7 +1676,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                             className={`w-full pl-7 md:pl-10 ${(isNotesTab || isPersonalNotes) ? 'pr-10' : 'pr-4'} md:pr-4 py-1 border border-[#E6EAF2] dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-[#CC561E] focus:border-transparent outline-none transition-all text-[11px] md:text-base bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500`}
                         />
                         {/* Loading Spinner inside input */}
-                        {isTyping && (
+                        {(isTyping || isSearchPending) && (
                             <div className="absolute right-3 top-1/2 -translate-y-1/2">
                                 <Loader2 size={16} className="animate-spin text-[#CC561E]" />
                             </div>

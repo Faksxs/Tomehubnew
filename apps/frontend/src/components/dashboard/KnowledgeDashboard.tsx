@@ -35,7 +35,6 @@ import {
     SystemDistributionLogo,
     ProgressLogo,
     FocusLogo,
-    InventoryLogo,
     CinemaLogo
 } from '../ui/FeatureLogos';
 
@@ -105,10 +104,6 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
     const finishedCount = readableItems.filter(i => i.readingStatus === 'Finished').length;
     const readingCount = readableItems.filter(i => i.readingStatus === 'Reading').length;
     const toReadCount = readableItems.filter(i => i.readingStatus === 'To Read').length;
-
-    const lentCount = books.filter(i => i.status === 'Lent Out').length;
-    const lostCount = books.filter(i => i.status === 'Lost').length;
-    const onShelfCount = books.filter(i => i.status === 'On Shelf').length;
 
     // --- DATA PROCESSING (CINEMA STATS) ---
     const cinemaWatchlistCount = cinema.filter(i => i.readingStatus === 'To Read').length;
@@ -330,33 +325,9 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                         );
                                     })}
                                 </div>
-
-                                {/* INVENTORY */}
-                                <div className="mt-auto pt-6 animate-in fade-in duration-500">
-                                    <div className="space-y-2 md:space-y-4">
-                                        <div className="flex items-center gap-2 md:gap-3 border-b border-white/10 pb-2 md:pb-3">
-                                            <InventoryLogo size={16} className="text-primary md:w-5 md:h-5" />
-                                            <h3 className="font-extrabold text-white tracking-tight uppercase text-xs">Book Inventory</h3>
-                                        </div>
-                                        <div className="flex gap-1.5 md:gap-3">
-                                            <div onClick={() => onStatusSelect?.('On Shelf')} className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-[#14B8A6]/85 text-center border border-[#14B8A6]/55 cursor-pointer hover:border-[#14B8A6]/70 transition-all font-bold group">
-                                                <p className="text-[9px] md:text-[10px] uppercase font-black text-white mb-0.5 md:mb-1">Shelf</p>
-                                                <p className="text-sm md:text-lg font-black text-white"><CountUp value={onShelfCount} /></p>
-                                            </div>
-                                            <div onClick={() => onStatusSelect?.('Lent Out')} className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-[#F59E0B]/85 text-center border border-[#F59E0B]/55 cursor-pointer hover:border-[#F59E0B]/70 transition-all font-bold group">
-                                                <p className="text-[9px] md:text-[10px] uppercase font-black text-white mb-0.5 md:mb-1">Lent</p>
-                                                <p className="text-sm md:text-lg font-black text-white"><CountUp value={lentCount} /></p>
-                                            </div>
-                                            <div onClick={() => onStatusSelect?.('Lost')} className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-[#F43F5E]/85 text-center border border-[#F43F5E]/55 cursor-pointer hover:border-[#F43F5E]/70 transition-all font-bold group">
-                                                <p className="text-[9px] md:text-[10px] uppercase font-black text-white mb-0.5 md:mb-1">Lost</p>
-                                                <p className="text-sm md:text-lg font-black text-white"><CountUp value={lostCount} /></p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
                             </div>
 
-                            {/* Right Column (Progress & Inventory) */}
+                            {/* Right Column (Progress & Cinema) */}
                             <div className="md:col-span-4 flex flex-col gap-3 md:gap-8">
                                 <div className="space-y-2 md:space-y-4">
                                     <div className="flex items-center gap-2 md:gap-3 border-b border-white/10 pb-2 md:pb-4">
@@ -377,7 +348,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                             <span className="text-white text-xs md:text-sm">{toReadCount}</span>
                                         </div>
                                     </div>
-                                </div>
+                                    00:                                 </div>
                                 <div className="space-y-2 md:space-y-4">
                                     <div className="flex items-center gap-2 md:gap-3 border-b border-white/10 pb-2 md:pb-4">
                                         <Film size={16} className="text-primary md:w-5 md:h-5" />
@@ -512,8 +483,3 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
         </div >
     );
 };
-
-
-
-
-

@@ -16,7 +16,7 @@ import uvicorn
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Request, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Request, BackgroundTasks, Response
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
@@ -486,6 +486,7 @@ async def realtime_poll(
             raise HTTPException(status_code=400, detail="firebase_uid is required in development")
 
     safe_limit = max(1, min(int(limit), 300))
+    compact_poll = request.headers.get("x-th-compact-poll") == "1"
     events: list[dict[str, Any]] = []
     cutoff_ms = max(int(since_ms or 0), 0)
 
@@ -574,6 +575,9 @@ async def realtime_poll(
     if len(events) > safe_limit:
         events = events[:safe_limit]
     server_time_ms = int(datetime.now().timestamp() * 1000)
+    if compact_poll and len(events) == 0:
+        return Response(status_code=204)
+
     return {
         "success": True,
         "server_time_ms": server_time_ms,

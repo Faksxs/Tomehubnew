@@ -51,7 +51,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
             icon: <Library className="w-5 h-5" style={{ color: brandOrange }} />,
             subtitle: "The Foundation",
             title: "Dynamic Synthesis Hub",
-            description: "A unified home for Books, Articles, Websites, and Notes. Enhanced by Night Shift processing.",
+            description: "A unified home for Books, Articles, Websites, Cinema, and Advanced Personal Notes. Enhanced by Night Shift processing.",
             highlight: "All-in-One Evolution",
             accent: brandOrange
         },
@@ -59,7 +59,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
             icon: <Zap className="w-5 h-5 text-yellow-500" />,
             subtitle: "The Reflex",
             title: "Smart Retrieval",
-            description: "Sub-second response. Lemma-based and semantic proximity scan for instant access.",
+            description: "Sub-second multimodal response. Lemma-based and semantic proximity scan for instant knowledge access.",
             highlight: "Instant & Localized",
             accent: "#EAB308"
         },
@@ -67,7 +67,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
             icon: <Brain className="w-5 h-5 text-indigo-500" />,
             subtitle: "The Brain",
             title: "Explorer & Deep AI",
-            description: "Dual AI validation. Work AI synthesizes while Judge AI evaluates answers with zero risk.",
+            description: "Multi-model AI validation featuring Qwen & Gemini. Work AI synthesizes while Judge AI evaluates answers with zero risk.",
             highlight: "Verified Intelligence",
             accent: "#6366F1"
         },
@@ -75,7 +75,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
             icon: <Waves className="w-5 h-5 text-blue-500" />,
             subtitle: "The Intuition",
             title: "Flow & Flux System",
-            description: "Discovery beyond search. Uses graph mechanics to surface hidden connections organically.",
+            description: "Discovery beyond search. Uses graph mechanics to surface hidden connections organically, augmented by seamless Flux Translation.",
             highlight: "Autonomous Discovery",
             accent: "#3B82F6"
         },
@@ -83,7 +83,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
             icon: <Network className="w-5 h-5 text-emerald-500" />,
             subtitle: "Relational Intelligence",
             title: "Graph & Vector Harmony",
-            description: "Blends vector similarity with knowledge graph traversal for deep connectivity.",
+            description: "Blends vector similarity with knowledge graph traversal for deep connectivity across all your saved media.",
             highlight: "Contextual Depth",
             accent: "#10B981"
         },

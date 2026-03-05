@@ -335,6 +335,7 @@ class LibraryItemUpsertRequest(BaseModel):
     translator: Optional[str] = Field(default=None, max_length=256)
     publisher: Optional[str] = Field(default=None, max_length=256)
     publicationYear: Optional[str] = Field(default=None, max_length=16)
+    originalTitle: Optional[str] = Field(default=None, max_length=256)
     isbn: Optional[str] = Field(default=None, max_length=256)
     url: Optional[str] = Field(default=None, max_length=2000)
     status: Optional[str] = Field(default=None, max_length=128)

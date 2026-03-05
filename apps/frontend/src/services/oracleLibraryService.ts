@@ -94,6 +94,9 @@ const normalizeItemShape = (item: LibraryItem): LibraryItem => ({
     readingStatus: (item.readingStatus || "To Read") as LibraryItem["readingStatus"],
     author: (item.author || "Unknown Author").trim() || "Unknown Author",
     title: (item.title || "Untitled").trim() || "Untitled",
+    originalTitle: typeof item.originalTitle === "string" && item.originalTitle.trim()
+        ? item.originalTitle.trim()
+        : undefined,
     summaryText: typeof item.summaryText === "string" ? item.summaryText : undefined,
     castTop: Array.isArray(item.castTop)
         ? item.castTop.map((name) => String(name || "").trim()).filter(Boolean).slice(0, 6)

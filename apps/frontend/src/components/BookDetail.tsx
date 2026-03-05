@@ -618,6 +618,13 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                       </div>
                     )}
 
+                    {isMedia && book.originalTitle && book.originalTitle.trim().toLowerCase() !== book.title.trim().toLowerCase() && (
+                      <div className="flex flex-col gap-0.5 md:gap-1">
+                        <span className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400">Original Title</span>
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-200">{book.originalTitle}</span>
+                      </div>
+                    )}
+
                     {!isMedia && book.translator && (
                       <div className="flex flex-col gap-0.5 md:gap-1">
                         <span className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400">Translator</span>

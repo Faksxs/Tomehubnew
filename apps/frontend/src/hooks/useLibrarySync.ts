@@ -74,6 +74,7 @@ const normalizeComparableItem = (item: LibraryItem) => ({
     id: normalizeMaybeText(item.id),
     type: normalizeMaybeText(item.type),
     title: normalizeMaybeText(item.title),
+    originalTitle: normalizeMaybeText(item.originalTitle),
     author: normalizeMaybeText(item.author),
     translator: normalizeMaybeText(item.translator),
     publisher: normalizeMaybeText(item.publisher),
@@ -222,6 +223,7 @@ function isServerCaughtUpWithPending(
 
     const sameCoreFields =
         normalizeMaybeText(serverItem.title) === normalizeMaybeText(pending.snapshot.title) &&
+        normalizeMaybeText(serverItem.originalTitle) === normalizeMaybeText(pending.snapshot.originalTitle) &&
         normalizeMaybeText(serverItem.author) === normalizeMaybeText(pending.snapshot.author) &&
         normalizeMaybeText(serverItem.translator) === normalizeMaybeText(pending.snapshot.translator) &&
         normalizeMaybeText(serverItem.publisher) === normalizeMaybeText(pending.snapshot.publisher) &&
@@ -359,6 +361,7 @@ export function useLibrarySync(userId: string): UseLibrarySyncReturn {
                 const itemOverlay: LibraryItem = {
                     ...serverItem,
                     title: pending.snapshot.title,
+                    originalTitle: pending.snapshot.originalTitle,
                     author: pending.snapshot.author,
                     translator: pending.snapshot.translator,
                     publisher: pending.snapshot.publisher,

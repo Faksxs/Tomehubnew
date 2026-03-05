@@ -56,6 +56,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
   // Form State
   const [formData, setFormData] = useState({
     title: '',
+    originalTitle: '',
     author: '',
     translator: '',
     publisher: '', // Journal for articles
@@ -96,6 +97,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
       setCategoryManuallyEdited(false);
       setFormData({
         title: initialData.title,
+        originalTitle: initialData.originalTitle || '',
         author: initialData.author,
         translator: initialData.translator || '',
         publisher: initialData.publisher || '',
@@ -172,6 +174,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
         const results = await searchMedia(searchQuery, kind, 1);
         const mapped = results.map((item) => ({
           title: item.title,
+          originalTitle: item.originalTitle || undefined,
           author: '',
           summary: item.summary || undefined,
           coverUrl: item.coverUrl || null,
@@ -217,6 +220,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
 
       const mapped = results.map((item) => ({
         title: item.title,
+        originalTitle: item.originalTitle || undefined,
         author: '',
         summary: item.summary || undefined,
         coverUrl: item.coverUrl || null,
@@ -317,6 +321,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
           setFormData(prev => ({
             ...prev,
             title: prev.title || details.title || draft.title || '',
+            originalTitle: prev.originalTitle || details.originalTitle || draft.originalTitle || '',
             author: prev.author || details.author || '',
             publicationYear: prev.publicationYear || details.publicationYear || '',
             summaryText: prev.summaryText || details.summaryText || draft.summary || '',
@@ -338,6 +343,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
     setFormData(prev => ({
       ...prev,
       title: draft.title,
+      originalTitle: draft.originalTitle || '',
       author: draft.author,
       publisher: draft.publisher || '',
       isbn: draft.isbn || '',
@@ -527,6 +533,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
       id: newBookId, // Pass the ID we used for ingestion
       type: resourceType,
       title: formData.title,
+      originalTitle: isMedia ? (formData.originalTitle.trim() || undefined) : undefined,
       author: formData.author,
       translator: formData.translator,
       publisher: isMedia ? '' : formData.publisher,
@@ -679,7 +686,11 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                       className="w-full text-left p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-[#CC561E]/50 dark:hover:border-[#CC561E]/50 hover:shadow-md hover:bg-[rgba(204,86,30,0.05)] dark:hover:bg-[rgba(204,86,30,0.1)] transition-all group flex justify-between items-center"
                     >
                       <div>
-                        <h3 className="font-bold text-slate-900 dark:text-white">{draft.title}</h3>
+                        <h3 className="font-bold text-slate-900 dark:text-white">
+                          {draft.originalTitle && draft.originalTitle.trim().toLowerCase() !== draft.title.trim().toLowerCase()
+                            ? `${draft.title} (${draft.originalTitle})`
+                            : draft.title}
+                        </h3>
                         <p className="text-slate-600 dark:text-slate-400 text-sm">{draft.author}</p>
                         <div className="flex gap-3 mt-1 text-xs text-slate-400">
                           {draft.publisher && <span>{draft.publisher}</span>}

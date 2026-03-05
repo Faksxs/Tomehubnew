@@ -34,6 +34,7 @@ export interface LibraryItem {
   translator?: string;
   publisher?: string; // Used as Journal Name for Articles
   publicationYear?: string; // Specific for Articles
+  originalTitle?: string; // Optional original/localized title alias (mainly cinema items)
   isbn?: string;
   url?: string; // Specific for Websites
   code?: string; // Shelf code

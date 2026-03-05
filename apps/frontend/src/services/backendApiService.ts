@@ -609,6 +609,7 @@ export interface MediaSearchItem {
     tmdbId: number;
     tmdbKind: 'movie' | 'tv';
     title: string;
+    originalTitle?: string | null;
     year?: string | null;
     summary?: string | null;
     coverUrl?: string | null;
@@ -621,6 +622,7 @@ export interface MediaDetails {
     tmdbKind: 'movie' | 'tv';
     tmdbToken: string;
     title?: string | null;
+    originalTitle?: string | null;
     author?: string | null;
     publicationYear?: string | null;
     summaryText?: string | null;
@@ -865,8 +867,19 @@ export async function pollRealtimeEvents(
     url.searchParams.append('limit', String(Math.min(300, Math.max(1, Math.floor(limit || 100)))));
 
     const response = await fetchWithAuth(url.toString(), {
-        headers: { 'Content-Type': 'application/json' }
+        headers: {
+            'Content-Type': 'application/json',
+            'X-TH-Compact-Poll': '1',
+        }
     });
+    if (response.status === 204) {
+        return {
+            success: true,
+            server_time_ms: Date.now(),
+            events: [],
+            count: 0,
+        };
+    }
     if (response.status === 404) {
         throw new Error('REALTIME_ENDPOINT_NOT_FOUND');
     }

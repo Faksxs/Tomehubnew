@@ -214,6 +214,7 @@ def search_tmdb_media(query: str, kind: str = "multi", page: int = 1, max_result
         title = str(row.get("title") or row.get("name") or "").strip()
         if not title:
             continue
+        original_title = str(row.get("original_title") or row.get("original_name") or "").strip() or None
         release_date = row.get("release_date") if media_type == "movie" else row.get("first_air_date")
         mapped.append(
             {
@@ -221,6 +222,7 @@ def search_tmdb_media(query: str, kind: str = "multi", page: int = 1, max_result
                 "tmdbId": int(tmdb_id),
                 "tmdbKind": media_type,
                 "title": title,
+                "originalTitle": original_title,
                 "year": _extract_year_from_date(release_date),
                 "summary": str(row.get("overview") or "").strip() or None,
                 "coverUrl": _poster_url(row.get("poster_path")),
@@ -273,6 +275,7 @@ def get_tmdb_media_details(kind: str, tmdb_id: int) -> Optional[Dict[str, Any]]:
     imdb_id = str(external_ids.get("imdb_id") or "").strip() or None
     imdb_url = f"https://www.imdb.com/title/{imdb_id}/" if imdb_id else None
     title = str(payload.get("title") or payload.get("name") or "").strip()
+    original_title = str(payload.get("original_title") or payload.get("original_name") or "").strip() or None
     summary = str(payload.get("overview") or "").strip() or None
     release_date = payload.get("release_date") if normalized_kind == "movie" else payload.get("first_air_date")
     year = _extract_year_from_date(release_date)
@@ -283,6 +286,7 @@ def get_tmdb_media_details(kind: str, tmdb_id: int) -> Optional[Dict[str, Any]]:
         "tmdbKind": normalized_kind,
         "tmdbToken": f"tmdb:{normalized_kind}:{int(tmdb_id)}",
         "title": title or None,
+        "originalTitle": original_title,
         "author": author or None,
         "publicationYear": year,
         "summaryText": summary,

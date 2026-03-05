@@ -385,7 +385,8 @@ def list_library_items(
             {_lib_select_expr('IS_FAVORITE')},
             {_lib_select_expr('PAGE_COUNT')},
             {_lib_select_expr('UPDATED_AT')},
-            {_lib_select_expr('RATING')}
+            {_lib_select_expr('RATING')},
+            {_lib_select_expr('ORIGINAL_TITLE')}
         FROM {_LIBRARY_TABLE} li
         WHERE {' AND '.join(where_parts)}
         ORDER BY li.UPDATED_AT DESC, li.ITEM_ID DESC
@@ -434,6 +435,7 @@ def list_library_items(
                     "isFavorite": bool(int(r[24])) if r[24] is not None else False,
                     "pageCount": int(r[25]) if r[25] is not None else None,
                     "rating": float(r[27]) if r[27] is not None else None,
+                    "originalTitle": str(r[28] or "").strip() or None,
                     "highlights": [],
                     "isIngested": False,
                     "_updatedAtMs": updated_ms,
@@ -750,6 +752,7 @@ def upsert_library_item(firebase_uid: str, item_id: str, payload: dict[str, Any]
     field_map: list[tuple[str, Any, str]] = [
         ("ITEM_TYPE", item_type, "scalar"),
         ("TITLE", title, "scalar"),
+        ("ORIGINAL_TITLE", payload.get("originalTitle"), "scalar"),
         ("AUTHOR", author, "scalar"),
         ("TRANSLATOR", payload.get("translator"), "scalar"),
         ("PUBLISHER", None if item_type in {"MOVIE", "SERIES"} else payload.get("publisher"), "scalar"),
@@ -857,7 +860,7 @@ def upsert_library_item(firebase_uid: str, item_id: str, payload: dict[str, Any]
             if dedupe_matched_existing:
                 # Safe merge for TMDb dedupe collisions: do not overwrite user-owned fields.
                 select_cols = []
-                for col in ("TITLE", "AUTHOR", "PUBLICATION_YEAR", "ISBN", "SOURCE_URL", "COVER_URL", "SUMMARY_TEXT", "CAST_TOP_JSON"):
+                for col in ("TITLE", "ORIGINAL_TITLE", "AUTHOR", "PUBLICATION_YEAR", "ISBN", "SOURCE_URL", "COVER_URL", "SUMMARY_TEXT", "CAST_TOP_JSON"):
                     if col in lib_cols:
                         select_cols.append(col)
                 existing_row: tuple[Any, ...] | None = None
@@ -909,6 +912,7 @@ def upsert_library_item(firebase_uid: str, item_id: str, payload: dict[str, Any]
                     safe_sets.append(f"{col} = TO_CLOB(:{b})")
 
                 _append_scalar_if_blank("TITLE", title)
+                _append_scalar_if_blank("ORIGINAL_TITLE", payload.get("originalTitle"))
                 _append_scalar_if_blank("AUTHOR", author)
                 _append_scalar_if_blank("PUBLICATION_YEAR", _to_int_or_none(payload.get("publicationYear")))
                 _append_scalar_if_blank("ISBN", tmdb_token or payload.get("isbn"))
@@ -963,6 +967,7 @@ def patch_library_item(firebase_uid: str, item_id: str, patch: dict[str, Any]) -
     lib_cols = _library_cols()
     allowlist_map = {
         "title": ("TITLE", "str"),
+        "originalTitle": ("ORIGINAL_TITLE", "str"),
         "author": ("AUTHOR", "str"),
         "translator": ("TRANSLATOR", "str"),
         "publisher": ("PUBLISHER", "str"),
