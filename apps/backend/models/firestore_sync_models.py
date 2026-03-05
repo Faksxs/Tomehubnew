@@ -95,7 +95,7 @@ class StrictHighlight(BaseModel):
     text: str = Field(min_length=1, max_length=6000)
     type: Literal["highlight", "insight"] = "highlight"
     comment: Optional[str] = Field(default=None, max_length=2000)
-    pageNumber: Optional[int] = Field(default=None, ge=0, le=100000)
+    pageNumber: Optional[float] = Field(default=None, ge=0, le=100000)
     tags: list[str] = Field(default_factory=list)
     createdAt: Optional[int] = None
 
@@ -195,7 +195,7 @@ def normalize_and_validate_item(item_id: str, raw: dict[str, Any]) -> StrictFire
                     "text": text[:6000],
                     "type": _normalize_highlight_type(h.get("type")),
                     "comment": (str(h.get("comment")).strip()[:2000] if h.get("comment") else None),
-                    "pageNumber": int(h.get("pageNumber")) if str(h.get("pageNumber", "")).strip().isdigit() else None,
+                    "pageNumber": _safe_float(h.get("pageNumber")),
                     "tags": _dedupe_labels(h.get("tags")),
                     "createdAt": _as_timestamp_ms(h.get("createdAt")),
                 }

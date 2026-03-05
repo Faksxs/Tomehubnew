@@ -857,6 +857,12 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                         onCategorySelect={(cat) => onCategoryNavigate?.(cat)}
                         onStatusSelect={(status) => onStatusNavigate?.(status)}
                         onNavigateToTab={(tab) => onTabChange?.(tab as any)}
+                        onNavigateToTabWithStatus={(tab, status) => {
+                            // Dashboard navigation needs to land on the tab *and* apply status after App tab-change resets filters.
+                            onCategoryFilterChange(null);
+                            onTabChange?.(tab as any);
+                            onStatusFilterChange(status);
+                        }}
                         onMobileMenuClick={onMobileMenuClick}
                     />
                 </React.Suspense>
@@ -972,9 +978,9 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                     <div className="bg-[#F3F5FA] dark:bg-slate-800 w-12 h-12 md:w-16 md:h-16 rounded-full flex items-center justify-center mx-auto mb-3 md:mb-4">
                         {activeTab === 'BOOK' ? <BookIcon size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" /> :
                             activeTab === 'MOVIE' ? <Film size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" /> :
-                            activeTab === 'ARTICLE' ? <FileText size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" /> :
-                                (activeTab as any) === 'PERSONAL_NOTE' ? <PenTool size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" /> :
-                                    <Globe size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" />}
+                                activeTab === 'ARTICLE' ? <FileText size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" /> :
+                                    (activeTab as any) === 'PERSONAL_NOTE' ? <PenTool size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" /> :
+                                        <Globe size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" />}
                     </div>
                     <h3 className="text-base md:text-lg font-medium text-slate-900 dark:text-white">No {getTabLabel(activeTab).toLowerCase()} found</h3>
                     <p className="text-slate-500 dark:text-slate-400 text-xs md:text-sm max-w-xs mx-auto mt-2">
@@ -1469,8 +1475,8 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                             <div className="relative p-4 rounded-full">
                                                 {book.type === 'BOOK' ? <BooksLogo size={48} className="text-[#262D40] dark:text-white/80 drop-shadow-[0_0_8px_rgba(38,45,64,0.35)]" /> :
                                                     (book.type === 'MOVIE' || book.type === 'SERIES') ? <Film size={48} className="text-[#262D40] dark:text-white/80 drop-shadow-[0_0_8px_rgba(38,45,64,0.35)]" /> :
-                                                    book.type === 'ARTICLE' ? <ArticlesLogo size={48} className="text-[#262D40] dark:text-white/80 drop-shadow-[0_0_8px_rgba(38,45,64,0.35)]" /> :
-                                                        <WebsitesLogo size={48} className="text-[#262D40] dark:text-white/80 drop-shadow-[0_0_8px_rgba(38,45,64,0.35)]" />}
+                                                        book.type === 'ARTICLE' ? <ArticlesLogo size={48} className="text-[#262D40] dark:text-white/80 drop-shadow-[0_0_8px_rgba(38,45,64,0.35)]" /> :
+                                                            <WebsitesLogo size={48} className="text-[#262D40] dark:text-white/80 drop-shadow-[0_0_8px_rgba(38,45,64,0.35)]" />}
                                             </div>
                                         </div>
                                     </div>
@@ -1479,9 +1485,10 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                     {(book.type === 'BOOK' || book.type === 'MOVIE' || book.type === 'SERIES') && book.coverUrl && (
                                         <>
                                             <img
-                                                src={book.coverUrl}
+                                                src={getCoverUrlForGrid(book.coverUrl)}
                                                 alt={book.title}
                                                 loading="lazy"
+                                                decoding="async"
                                                 className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 z-10"
                                                 onError={(e) => {
                                                     e.currentTarget.style.display = 'none';
@@ -1499,8 +1506,13 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
 
                                     {/* Status Badges */}
                                     <div className="relative z-30 p-1.5 md:p-4 w-full flex justify-between items-end">
-                                        <div className={`text-[8px] md:text-xs font-bold px-1 md:px-2 py-0.5 md:py-1 rounded shadow-sm backdrop-blur-md ${(book.type === 'BOOK' && book.coverUrl) || book.type !== 'BOOK' ? 'bg-white/90 dark:bg-slate-900/90 text-slate-900 dark:text-white border border-white/50 dark:border-slate-700' : statusColors[book.readingStatus]
-                                            }`}>
+                                        <div className={`text-[8px] md:text-xs font-bold px-1.5 md:px-2.5 py-1 md:py-1.5 rounded-full shadow-lg backdrop-blur-md flex items-center gap-1.5 ${(book.type === 'BOOK' && book.coverUrl) || book.type !== 'BOOK' ? 'bg-slate-900/80 text-white border border-white/20' : statusColors[book.readingStatus]}`}>
+                                            {isMediaTab && book.readingStatus === 'Reading' && (
+                                                <span className="relative flex h-2 w-2">
+                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+                                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
+                                                </span>
+                                            )}
                                             {isMediaTab
                                                 ? (book.readingStatus === 'To Read' ? 'Watchlist' : (book.readingStatus === 'Reading' ? 'Watching' : 'Watched'))
                                                 : book.readingStatus}
@@ -1532,14 +1544,14 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                         <span className="truncate max-w-[70%]">
                                             {book.type === 'BOOK' ? (book.publisher || '') :
                                                 (book.type === 'MOVIE' || book.type === 'SERIES') ? (book.castTop?.slice(0, 2).join(', ') || 'Media') :
-                                                book.type === 'ARTICLE' ? (book.publisher || 'Journal') :
-                                                    (() => {
-                                                        try {
-                                                            return book.url ? new URL(book.url).hostname : 'Web';
-                                                        } catch {
-                                                            return 'Web';
-                                                        }
-                                                    })()}
+                                                    book.type === 'ARTICLE' ? (book.publisher || 'Journal') :
+                                                        (() => {
+                                                            try {
+                                                                return book.url ? new URL(book.url).hostname : 'Web';
+                                                            } catch {
+                                                                return 'Web';
+                                                            }
+                                                        })()}
                                         </span>
                                         {book.type === 'ARTICLE' && book.publicationYear && (
                                             <span className="bg-[#F3F5FA] dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-500 dark:text-slate-400 font-mono">
@@ -1611,7 +1623,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                         ? `${stats.total} Highlights`
                                         : (isPersonalNotes
                                             ? `${stats.total} Notes`
-                                            : `${stats.total} Items • ${stats.reading} Reading`
+                                            : `${stats.total} Items • ${stats.reading} ${isMediaTab ? 'Watching' : 'Reading'}`
                                         )
                                     }
                                 </p>
@@ -1711,9 +1723,9 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                     <option value="FAVORITES">Favorites</option>
                                     <option value="HIGHLIGHTS">Highlight</option>
                                     <optgroup label="Status">
-                                    <option value="To Read">{isMediaTab ? 'Watchlist' : 'To Read'}</option>
-                                    <option value="Reading">{isMediaTab ? 'Watching' : 'Reading'}</option>
-                                    <option value="Finished">{isMediaTab ? 'Watched' : 'Finished'}</option>
+                                        <option value="To Read">{isMediaTab ? 'Watchlist' : 'To Read'}</option>
+                                        <option value="Reading">{isMediaTab ? 'Watching' : 'Reading'}</option>
+                                        <option value="Finished">{isMediaTab ? 'Watched' : 'Finished'}</option>
                                     </optgroup>
                                     {activeTab === 'BOOK' && (
                                         <optgroup label="Inventory">
@@ -1824,7 +1836,20 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                         Undo
                     </button>
                 </div>
-            )}
-        </div>
+            )}                  </div>
     );
 });
+    const getCoverUrlForGrid = (coverUrl: string): string => {
+        const raw = String(coverUrl || "").trim();
+        if (!raw) return raw;
+
+        // OpenLibrary `-L` images are large; the grid cards are small, so prefer `-M` to reduce bytes/latency.
+        // Keep querystring intact (e.g. `?default=false`).
+        const openLibrarySized = raw.replace(/-L(\.(?:jpe?g|png|webp))(\?.*)?$/i, "-M$1$2");
+
+        // TMDb posters default to w500; the grid cards are small, so prefer w342 to reduce bytes/latency.
+        return openLibrarySized.replace(
+            /(https?:\/\/image\.tmdb\.org\/t\/p\/)(original|w\d+)(\/)/i,
+            "$1w342$3"
+        );
+    };

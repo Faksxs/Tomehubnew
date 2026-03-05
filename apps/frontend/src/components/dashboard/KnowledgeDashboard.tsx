@@ -45,6 +45,7 @@ interface KnowledgeDashboardProps {
     onCategorySelect?: (category: string) => void;
     onStatusSelect?: (status: string) => void;
     onNavigateToTab?: (tab: string) => void;
+    onNavigateToTabWithStatus?: (tab: string, status: string) => void;
     onMobileMenuClick?: () => void;
 }
 
@@ -65,6 +66,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
     onCategorySelect,
     onStatusSelect,
     onNavigateToTab,
+    onNavigateToTabWithStatus,
     onMobileMenuClick
 }) => {
     const [showLevelC, setShowLevelC] = useState(false);
@@ -330,7 +332,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                 </div>
 
                                 {/* INVENTORY */}
-                                <div className="mt-auto pt-6 border-t border-slate-200/10 dark:border-white/5 animate-in fade-in duration-500">
+                                <div className="mt-auto pt-6 animate-in fade-in duration-500">
                                     <div className="space-y-2 md:space-y-4">
                                         <div className="flex items-center gap-2 md:gap-3 border-b border-white/10 pb-2 md:pb-3">
                                             <InventoryLogo size={16} className="text-primary md:w-5 md:h-5" />
@@ -382,15 +384,45 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                         <h3 className="font-extrabold text-white tracking-tight uppercase text-xs">Cinema</h3>
                                     </div>
                                     <div className="flex gap-1.5 md:gap-3">
-                                        <div onClick={() => { onNavigateToTab?.('MOVIE'); onStatusSelect?.('To Read'); }} className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-slate-800/80 text-center border border-white/10 cursor-pointer hover:border-primary/50 transition-all font-bold group">
+                                        <div
+                                            onClick={() => {
+                                                if (onNavigateToTabWithStatus) {
+                                                    onNavigateToTabWithStatus('MOVIE', 'To Read');
+                                                    return;
+                                                }
+                                                onNavigateToTab?.('MOVIE');
+                                                onStatusSelect?.('To Read');
+                                            }}
+                                            className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-slate-800/80 text-center border border-white/10 cursor-pointer hover:border-primary/50 transition-all font-bold group"
+                                        >
                                             <p className="text-[9px] md:text-[10px] uppercase font-black text-slate-400 mb-0.5 md:mb-1 group-hover:text-primary transition-colors">Watchlist</p>
                                             <p className="text-sm md:text-lg font-black text-white"><CountUp value={cinemaWatchlistCount} /></p>
                                         </div>
-                                        <div onClick={() => { onNavigateToTab?.('MOVIE'); onStatusSelect?.('Reading'); }} className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-slate-800/80 text-center border border-white/10 cursor-pointer hover:border-primary/50 transition-all font-bold group">
+                                        <div
+                                            onClick={() => {
+                                                if (onNavigateToTabWithStatus) {
+                                                    onNavigateToTabWithStatus('MOVIE', 'Reading');
+                                                    return;
+                                                }
+                                                onNavigateToTab?.('MOVIE');
+                                                onStatusSelect?.('Reading');
+                                            }}
+                                            className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-slate-800/80 text-center border border-white/10 cursor-pointer hover:border-primary/50 transition-all font-bold group"
+                                        >
                                             <p className="text-[9px] md:text-[10px] uppercase font-black text-slate-400 mb-0.5 md:mb-1 group-hover:text-primary transition-colors">Watching</p>
                                             <p className="text-sm md:text-lg font-black text-white"><CountUp value={cinemaWatchingCount} /></p>
                                         </div>
-                                        <div onClick={() => { onNavigateToTab?.('MOVIE'); onStatusSelect?.('Finished'); }} className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-slate-800/80 text-center border border-white/10 cursor-pointer hover:border-primary/50 transition-all font-bold group">
+                                        <div
+                                            onClick={() => {
+                                                if (onNavigateToTabWithStatus) {
+                                                    onNavigateToTabWithStatus('MOVIE', 'Finished');
+                                                    return;
+                                                }
+                                                onNavigateToTab?.('MOVIE');
+                                                onStatusSelect?.('Finished');
+                                            }}
+                                            className="flex-1 p-1.5 md:p-3 rounded-lg md:rounded-xl bg-slate-800/80 text-center border border-white/10 cursor-pointer hover:border-primary/50 transition-all font-bold group"
+                                        >
                                             <p className="text-[9px] md:text-[10px] uppercase font-black text-slate-400 mb-0.5 md:mb-1 group-hover:text-primary transition-colors">Watched</p>
                                             <p className="text-sm md:text-lg font-black text-white"><CountUp value={cinemaWatchedCount} /></p>
                                         </div>

@@ -166,7 +166,7 @@ def _extract_cast_top(cast_rows: Any, limit: int = 6) -> List[str]:
     return out
 
 
-def search_tmdb_media(query: str, kind: str = "multi", page: int = 1, max_results: int = 10) -> List[Dict[str, Any]]:
+def search_tmdb_media(query: str, kind: str = "multi", page: int = 1, max_results: int = 10, **kwargs) -> List[Dict[str, Any]]:
     text = str(query or "").strip()
     if not text:
         return []
@@ -177,13 +177,23 @@ def search_tmdb_media(query: str, kind: str = "multi", page: int = 1, max_result
     if normalized_kind not in {"multi", "movie", "tv"}:
         normalized_kind = "multi"
 
+    params: Dict[str, Any] = {
+        "query": text,
+        "include_adult": "false",
+        "page": max(1, int(page or 1)),
+    }
+    
+    # Extract year if provided as a parameter (e.g. from app.py parsing)
+    year = kwargs.get("year")
+    if year:
+        if normalized_kind == "movie":
+            params["primary_release_year"] = year
+        elif normalized_kind == "tv":
+            params["first_air_date_year"] = year
+
     payload = _tmdb_request(
         f"/search/{normalized_kind}",
-        {
-            "query": text,
-            "include_adult": "false",
-            "page": max(1, int(page or 1)),
-        },
+        params,
     )
     rows = payload.get("results") if isinstance(payload, dict) else []
     if not isinstance(rows, list):

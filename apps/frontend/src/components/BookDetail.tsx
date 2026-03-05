@@ -365,7 +365,14 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                 {/* Cover Placeholder */}
                 <div className="w-20 h-32 md:w-34 md:h-52 bg-slate-200 dark:bg-slate-800 rounded-lg shadow-inner flex-shrink-0 flex items-center justify-center text-slate-400 dark:text-slate-600 self-center md:self-start overflow-hidden relative border border-[#E6EAF2] dark:border-slate-700">
                   {(book.type === 'BOOK' || isMedia) && book.coverUrl ? (
-                    <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover" />
+                    <img
+                      src={book.coverUrl}
+                      alt={book.title}
+                      loading="eager"
+                      decoding="async"
+                      fetchPriority="high"
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
                     book.type === 'BOOK' ? <BookOpen size={32} className="md:w-12 md:h-12" /> :
                       isMedia ? ((book.type === 'SERIES') ? <Tv size={32} className="md:w-12 md:h-12" /> : <Film size={32} className="md:w-12 md:h-12" />) :

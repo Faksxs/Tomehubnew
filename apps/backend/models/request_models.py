@@ -168,7 +168,7 @@ class AddItemRequest(BaseModel):
     type: str = "PERSONAL_NOTE"
     firebase_uid: str = Field(..., min_length=1, max_length=_UID_MAX)
     book_id: Optional[str] = Field(default=None, max_length=_BOOK_ID_MAX)
-    page_number: Optional[int] = Field(default=None, ge=0, le=100000)
+    page_number: Optional[float] = Field(default=None, ge=0, le=100000)
     chunk_type: Optional[str] = Field(default=None, max_length=64)
     chunk_index: Optional[int] = Field(default=None, ge=0, le=1000000)
     comment: Optional[str] = Field(default=None, max_length=4000)
@@ -268,7 +268,7 @@ class HighlightItem(BaseModel):
     text: str = Field(..., min_length=1, max_length=6000)
     type: Optional[str] = "highlight"  # highlight | insight (legacy: note)
     comment: Optional[str] = Field(default=None, max_length=2000)
-    pageNumber: Optional[int] = Field(default=None, ge=0, le=100000)
+    pageNumber: Optional[float] = Field(default=None, ge=0, le=100000)
     tags: Optional[List[str]] = None
     createdAt: Optional[int] = None
 

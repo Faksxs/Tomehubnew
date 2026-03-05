@@ -168,14 +168,10 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
     }
   };
 
-  const formatTimestamp = (seconds?: number): string => {
-    const raw = Number(seconds);
+  const formatTimestamp = (minutes?: number): string => {
+    const raw = Number(minutes);
     if (!Number.isFinite(raw) || raw < 0) return '';
-    const total = Math.floor(raw);
-    const hh = Math.floor(total / 3600).toString().padStart(2, '0');
-    const mm = Math.floor((total % 3600) / 60).toString().padStart(2, '0');
-    const ss = Math.floor(total % 60).toString().padStart(2, '0');
-    return `${hh}:${mm}:${ss}`;
+    return raw.toString();
   };
 
   return (
@@ -306,13 +302,14 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
             <div className={`grid ${isMedia ? 'grid-cols-1' : 'grid-cols-2 md:grid-cols-3'} gap-2 md:gap-4`}>
               <div>
                 <label className="block text-[10px] md:text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5 uppercase">
-                  {isMedia ? 'Timestamp (seconds)' : 'Page #'}
+                  {isMedia ? 'Timestamp (Minute)' : 'Page #'}
                 </label>
                 <input
                   type="number"
+                  step="0.01"
                   className="w-full border border-[#E6EAF2] dark:border-white/10 rounded-lg py-1.5 px-2 text-xs md:text-sm bg-white dark:bg-slate-800/50 text-slate-800 dark:text-white focus:ring-2 focus:ring-orange-500/30"
                   value={formData.pageNumber || ''}
-                  onChange={e => setFormData(prev => ({ ...prev, pageNumber: parseInt(e.target.value) || undefined }))}
+                  onChange={e => setFormData(prev => ({ ...prev, pageNumber: parseFloat(e.target.value) || undefined }))}
                 />
               </div>
               {!isMedia && (
@@ -511,5 +508,3 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
     </div>
   );
 };
-
-

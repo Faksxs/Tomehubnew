@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { LibraryItem, PersonalNoteCategory, PhysicalStatus, ReadingStatus, ResourceType, ContentLanguageMode } from '../types';
-import { X, Loader2, Search, ChevronRight, Book as BookIcon, SkipForward, Image as ImageIcon, FileText, Globe, PenTool, Wand2, Sparkles, Calendar, Upload, Camera, Film, Tv } from 'lucide-react';
+import { X, Loader2, Search, ChevronRight, Book as BookIcon, SkipForward, Image as ImageIcon, FileText, Globe, PenTool, Wand2, Sparkles, Calendar, Upload, Camera, Film, Tv, Plus } from 'lucide-react';
 import StarRating from './StarRating';
 import { BarcodeScanner } from './BarcodeScanner';
 import { searchResourcesAI, ItemDraft, generateTagsForNote } from '../services/geminiService';
@@ -37,8 +37,10 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
 
   // Search State
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Array<ItemDraft & Partial<MediaSearchItem>>>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<Array<ItemDraft & Partial<MediaSearchItem>>>([]);
+  const [searchPage, setSearchPage] = useState(1);
+  const [hasMoreResults, setHasMoreResults] = useState(false);
   const [isFetchingCover, setIsFetchingCover] = useState(false);
   const [isEnriching, setIsEnriching] = useState(false);
   const [isGeneratingTags, setIsGeneratingTags] = useState(false);
@@ -83,8 +85,8 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
 
   useEffect(() => {
     const initKey = initialData
-      ? `edit:${initialData.id}`
-      : `new:${initialType}:${noteDefaults?.personalNoteCategory || ''}:${noteDefaults?.personalFolderId || ''}:${noteDefaults?.folderPath || ''}`;
+      ? `edit:${initialData.id} `
+      : `new:${initialType}:${noteDefaults?.personalNoteCategory || ''}:${noteDefaults?.personalFolderId || ''}:${noteDefaults?.folderPath || ''} `;
     if (initKeyRef.current === initKey) return;
     initKeyRef.current = initKey;
     setResourceType(initialData?.type || initialType);
@@ -166,6 +168,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
     try {
       if (isMedia && mediaLibraryEnabled) {
         const kind = resourceType === 'MOVIE' ? 'movie' : (resourceType === 'SERIES' ? 'tv' : 'multi');
+        setSearchPage(1);
         const results = await searchMedia(searchQuery, kind, 1);
         const mapped = results.map((item) => ({
           title: item.title,
@@ -179,6 +182,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
           type: item.type,
         })) as Array<ItemDraft & Partial<MediaSearchItem>>;
         setSearchResults(mapped);
+        setHasMoreResults(results.length >= 10);
         return;
       }
 
@@ -198,6 +202,36 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
           setMode('edit');
         }
       }
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleLoadMore = async () => {
+    if (isSearching || !hasMoreResults) return;
+    setIsSearching(true);
+    try {
+      const nextPage = searchPage + 1;
+      const kind = resourceType === 'MOVIE' ? 'movie' : (resourceType === 'SERIES' ? 'tv' : 'multi');
+      const results = await searchMedia(searchQuery, kind, nextPage);
+
+      const mapped = results.map((item) => ({
+        title: item.title,
+        author: '',
+        summary: item.summary || undefined,
+        coverUrl: item.coverUrl || null,
+        publishedDate: item.year || '',
+        isbn: item.tmdbToken,
+        tmdbId: item.tmdbId,
+        tmdbKind: item.tmdbKind,
+        type: item.type,
+      })) as Array<ItemDraft & Partial<MediaSearchItem>>;
+
+      setSearchResults(prev => [...prev, ...mapped]);
+      setSearchPage(nextPage);
+      setHasMoreResults(results.length >= 10);
+    } catch (error) {
+      console.error("Load more failed:", error);
     } finally {
       setIsSearching(false);
     }
@@ -361,7 +395,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
         title: prev.title.trim() ? prev.title : template.suggestedTitle,
         tags: Array.from(mergedTags).join(', '),
         generalNotes: prev.generalNotes.trim()
-          ? `${prev.generalNotes}<p></p>${template.htmlContent}`
+          ? `${prev.generalNotes} <p></p>${template.htmlContent} `
           : template.htmlContent,
         personalNoteCategory: nextCategory,
       };
@@ -546,11 +580,11 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className={`bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full overflow-hidden flex flex-col ${isNote ? 'max-w-3xl max-h-[94vh]' : 'max-w-2xl max-h-[90vh]'}`}>
+      <div className={`bg - white dark: bg - slate - 900 rounded - xl shadow - 2xl w - full overflow - hidden flex flex - col ${isNote ? 'max-w-3xl max-h-[94vh]' : 'max-w-2xl max-h-[90vh]'} `}>
 
         {/* Header */}
-        <div className={`${isNote ? 'p-3 md:p-4' : 'p-5'} border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-900 z-10`}>
-          <h2 className={`${isNote ? 'text-lg' : 'text-xl'} font-bold text-slate-800 dark:text-white flex items-center gap-2`}>
+        <div className={`${isNote ? 'p-3 md:p-4' : 'p-5'} border - b border - slate - 100 dark: border - slate - 800 flex justify - between items - center bg - white dark: bg - slate - 900 z - 10`}>
+          <h2 className={`${isNote ? 'text-lg' : 'text-xl'} font - bold text - slate - 800 dark: text - white flex items - center gap - 2`}>
             {mode === 'search' ? (
               <>
                 <Search className="text-[#CC561E]" size={24} />
@@ -656,6 +690,27 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                       <ChevronRight className="text-slate-300 dark:text-slate-600 group-hover:text-[#CC561E]" size={20} />
                     </button>
                   ))}
+
+                  {isMedia && hasMoreResults && (
+                    <button
+                      type="button"
+                      onClick={handleLoadMore}
+                      disabled={isSearching}
+                      className="w-full py-3 px-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-[#CC561E] hover:text-[#CC561E] dark:hover:border-[#f3a47b] dark:hover:text-[#f3a47b] transition-all flex items-center justify-center gap-2 font-medium"
+                    >
+                      {isSearching ? (
+                        <>
+                          <Loader2 size={18} className="animate-spin" />
+                          <span>Daha Fazla Yükleniyor...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Plus size={18} />
+                          <span>Daha Fazla Yükle</span>
+                        </>
+                      )}
+                    </button>
+                  )}
                 </>
               ) : (
                 !isSearching && searchQuery && (
@@ -681,10 +736,10 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
 
         {/* Mode: Edit Form */}
         {mode === 'edit' && (
-          <form onSubmit={handleSubmit} className={`${isNote ? 'p-3 md:p-5' : 'p-6'} overflow-y-auto flex-1`}>
+          <form onSubmit={handleSubmit} className={`${isNote ? 'p-3 md:p-5' : 'p-6'} overflow - y - auto flex - 1`}>
             {/* Basic Info */}
             <div className={isNote ? 'space-y-2' : (isMedia ? 'space-y-3.5' : 'space-y-3.5')}>
-              <div className={`grid grid-cols-1 md:grid-cols-2 ${isNote ? 'gap-2' : (isMedia ? 'gap-3' : 'gap-x-4 gap-y-3')}`}>
+              <div className={`grid grid - cols - 1 md: grid - cols - 2 ${isNote ? 'gap-2' : (isMedia ? 'gap-3' : 'gap-x-4 gap-y-3')} `}>
 
                 {isMedia && (
                   <>
@@ -712,13 +767,13 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                   </>
                 )}
                 <div className="md:col-span-2">
-                  <label className={`block text-[12px] font-medium mb-0.5 ${noteLabelClass}`}>Title *</label>
+                  <label className={`block text - [12px] font - medium mb - 0.5 ${noteLabelClass} `}>Title *</label>
                   <input
                     required
                     name="title"
                     value={formData.title}
                     onChange={handleChange}
-                    className={`w-full border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 ${isNote ? 'py-1.5 text-sm' : 'py-2'} focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white`}
+                    className={`w - full border border - slate - 300 dark: border - slate - 700 rounded - lg px - 2.5 ${isNote ? 'py-1.5 text-sm' : 'py-2'} focus: ring - 2 focus: ring - [#CC561E] focus: border - [#CC561E] bg - white dark: bg - slate - 950 text - slate - 900 dark: text - white`}
                     placeholder={isNote ? "Note Title" : (resourceType === 'WEBSITE' ? 'Page Title or Site Name' : (isMedia ? 'e.g. The Matrix' : 'e.g. The Stranger'))}
                   />
                 </div>
@@ -740,38 +795,23 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                         />
                       </div>
                       {isMedia && (
-                        <div className="flex gap-2 sm:gap-3">
-                          <div className="w-[125px] sm:w-[140px] flex-shrink-0">
-                            <label className="block text-[13px] sm:text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 whitespace-nowrap">Watch Status *</label>
-                            <select
-                              name="readingStatus"
-                              value={formData.readingStatus}
-                              onChange={handleChange}
-                              className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-2 sm:px-3 py-2 text-sm focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white flex items-center h-[42px]"
-                            >
-                              <option value="To Read">Watchlist</option>
-                              <option value="Reading">Watching</option>
-                              <option value="Finished">Watched</option>
-                            </select>
-                          </div>
-                          <div className="flex-1 min-w-[140px]">
-                            <label className="block text-[13px] sm:text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Rating</label>
-                            <div className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-2 sm:px-3 py-2 bg-white dark:bg-slate-950 flex items-center justify-between h-[42px]">
-                              <StarRating
-                                value={formData.rating || undefined}
-                                onChange={(rating) => setFormData(prev => ({ ...prev, rating }))}
-                                size={20}
-                              />
-                              {formData.rating > 0 && (
-                                <button
-                                  type="button"
-                                  onClick={() => setFormData(prev => ({ ...prev, rating: 0 }))}
-                                  className="text-[10px] text-slate-400 dark:text-slate-500 hover:text-red-400 transition-colors uppercase tracking-tight font-semibold"
-                                >
-                                  Clear
-                                </button>
-                              )}
-                            </div>
+                        <div className="flex-1">
+                          <label className="block text-[13px] sm:text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Rating</label>
+                          <div className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-2 sm:px-3 py-2 bg-white dark:bg-slate-950 flex items-center justify-between h-[42px]">
+                            <StarRating
+                              value={formData.rating || undefined}
+                              onChange={(rating) => setFormData(prev => ({ ...prev, rating }))}
+                              size={20}
+                            />
+                            {formData.rating > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setFormData(prev => ({ ...prev, rating: 0 }))}
+                                className="text-[10px] text-slate-400 dark:text-slate-500 hover:text-red-400 transition-colors uppercase tracking-tight font-semibold"
+                              >
+                                Clear
+                              </button>
+                            )}
                           </div>
                         </div>
                       )}
@@ -782,7 +822,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                 {isNote && (
                   <div className="md:col-span-2 grid grid-cols-2 gap-3">
                     <div>
-                      <label className={`block text-[12px] font-medium mb-0.5 flex items-center gap-1 ${noteSubLabelClass}`}>
+                      <label className={`block text - [12px] font - medium mb - 0.5 flex items - center gap - 1 ${noteSubLabelClass} `}>
                         <Calendar size={12} className="text-slate-400" />
                         Date
                       </label>
@@ -795,7 +835,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                       />
                     </div>
                     <div>
-                      <label className={`block text-[12px] font-medium mb-0.5 ${noteSubLabelClass}`}>
+                      <label className={`block text - [12px] font - medium mb - 0.5 ${noteSubLabelClass} `}>
                         Category
                       </label>
                       <select
@@ -809,7 +849,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                         <option value="IDEAS">Ideas</option>
                       </select>
                     </div>
-                    <p className={`col-span-2 text-[10px] leading-tight ${noteHelperClass}`}>
+                    <p className={`col - span - 2 text - [10px] leading - tight ${noteHelperClass} `}>
                       Private/Daily sadece local aramada kalir. Ideas AI aramalara da katilir.
                     </p>
                   </div>
@@ -943,7 +983,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                         </label>
                         <div className="flex items-center gap-2">
                           <label className="flex-1 cursor-pointer">
-                            <div className={`w-full border border-[#CC561E]/30 dark:border-[#CC561E]/40 bg-[#CC561E]/5 dark:bg-[#CC561E]/10 rounded-lg px-3 flex items-center justify-between transition-colors h-[42px] ${selectedPdf ? 'text-[#CC561E] dark:text-[#f3a47b] font-medium' : 'text-slate-600 dark:text-slate-400 hover:bg-[#CC561E]/10'}`}>
+                            <div className={`w - full border border - [#CC561E] / 30 dark: border - [#CC561E] / 40 bg - [#CC561E] / 5 dark: bg - [#CC561E] / 10 rounded - lg px - 3 flex items - center justify - between transition - colors h - [42px] ${selectedPdf ? 'text-[#CC561E] dark:text-[#f3a47b] font-medium' : 'text-slate-600 dark:text-slate-400 hover:bg-[#CC561E]/10'} `}>
                               <span className="truncate max-w-[120px] text-sm">
                                 {selectedPdf ? selectedPdf.name : 'Choose file...'}
                               </span>
@@ -998,21 +1038,38 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
 
               {/* URL Field for Website or Article */}
               {(resourceType === 'WEBSITE' || resourceType === 'ARTICLE' || isMedia) && (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">{isMedia ? 'IMDb / Source URL' : 'URL'}</label>
-                  <input
-                    name="url"
-                    value={formData.url}
-                    onChange={handleChange}
-                    className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] text-[#CC561E] dark:text-[#f3a47b] bg-white dark:bg-slate-950"
-                    placeholder="https://..."
-                  />
+                <div className={isMedia ? "grid grid-cols-1 md:grid-cols-3 gap-3.5" : ""}>
+                  <div className={isMedia ? "md:col-span-2" : ""}>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">{isMedia ? 'IMDb / Source URL' : 'URL'}</label>
+                    <input
+                      name="url"
+                      value={formData.url}
+                      onChange={handleChange}
+                      className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] text-[#CC561E] dark:text-[#f3a47b] bg-white dark:bg-slate-950"
+                      placeholder="https://..."
+                    />
+                  </div>
+                  {isMedia && (
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 whitespace-nowrap">Watch Status *</label>
+                      <select
+                        name="readingStatus"
+                        value={formData.readingStatus}
+                        onChange={handleChange}
+                        className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white flex items-center h-[42px]"
+                      >
+                        <option value="To Read">Watchlist</option>
+                        <option value="Reading">Watching</option>
+                        <option value="Finished">Watched</option>
+                      </select>
+                    </div>
+                  )}
                 </div>
               )}
 
               {isNote && (
                 <div>
-                  <label className={`block text-[12px] font-medium mb-0.5 ${noteLabelClass}`}>
+                  <label className={`block text - [12px] font - medium mb - 0.5 ${noteLabelClass} `}>
                     Sub-file (optional)
                   </label>
                   <input
@@ -1041,7 +1098,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                         value={formData.coverUrl}
                         onChange={handleChange}
                         placeholder={isMedia ? "Paste poster image URL" : "Paste image URL or Auto-Find ->"}
-                        className={`w-full border border-slate-300 dark:border-slate-700 rounded-lg pl-3 ${isMedia ? 'pr-3' : 'pr-24'} py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] text-sm text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-950`}
+                        className={`w - full border border - slate - 300 dark: border - slate - 700 rounded - lg pl - 3 ${isMedia ? 'pr-3' : 'pr-24'} py - 2 focus: ring - 2 focus: ring - [#CC561E] focus: border - [#CC561E] text - sm text - slate - 600 dark: text - slate - 300 bg - white dark: bg - slate - 950`}
                       />
                       {!isMedia && (
                         <button
@@ -1087,81 +1144,87 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                         rel="noreferrer"
                         className="text-xs text-slate-400 dark:text-slate-500 hover:text-[#CC561E] dark:hover:text-[#f3a47b] hover:underline flex items-center gap-1"
                       >
-                        Manual Search on Google Images <Search size={10} />
-                      </a>
-                    </div>
+                        Manual Search on Google Images < Search size={10} />
+                      </a >
+                    </div >
                   )}
-                </div>
+                </div >
               )}
 
-              {isMedia && (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Top Cast (max 6, comma separated)</label>
-                  <input
-                    name="castTop"
-                    value={formData.castTop}
-                    onChange={handleChange}
-                    className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
-                    placeholder="e.g. Cillian Murphy, Emily Blunt"
-                  />
-                </div>
-              )}
+              {
+                isMedia && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Top Cast (max 6, comma separated)</label>
+                    <input
+                      name="castTop"
+                      value={formData.castTop}
+                      onChange={handleChange}
+                      className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                      placeholder="e.g. Cillian Murphy, Emily Blunt"
+                    />
+                  </div>
+                )
+              }
 
               {/* PDF Upload Section - For Books and Articles */}
               {/* The BOOK PDF upload is now compacted and moved next to Shelf Code */}
-              {resourceType === 'ARTICLE' && (
-                <div className="bg-[rgba(204,86,30,0.05)] dark:bg-[rgba(204,86,30,0.1)] p-3 rounded-lg border border-[#CC561E]/10 dark:border-[#CC561E]/20">
-                  <label className="block text-sm font-semibold text-[#CC561E] dark:text-[#f3a47b] mb-2 flex items-center gap-2">
-                    <Upload size={14} />
-                    Upload PDF Document
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="file"
-                      accept=".pdf"
-                      onChange={handleFileChange}
-                      className="flex-1 text-xs text-slate-600 dark:text-slate-400 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-[#CC561E] file:text-white hover:file:bg-[#b34b1a] transition-all cursor-pointer"
-                    />
-                    {selectedPdf && (
-                      <button type="button" onClick={() => setSelectedPdf(null)} className="text-red-500 hover:text-red-600 p-1" title="Remove PDF">
-                        <X size={14} />
-                      </button>
-                    )}
-                    {isExtractingMetadata && (
-                      <div className="flex items-center gap-1.5 text-xs text-[#CC561E] font-medium animate-pulse">
-                        <Loader2 size={14} className="animate-spin" />
-                        Verifying metadata...
-                      </div>
-                    )}
+              {
+                resourceType === 'ARTICLE' && (
+                  <div className="bg-[rgba(204,86,30,0.05)] dark:bg-[rgba(204,86,30,0.1)] p-3 rounded-lg border border-[#CC561E]/10 dark:border-[#CC561E]/20">
+                    <label className="block text-sm font-semibold text-[#CC561E] dark:text-[#f3a47b] mb-2 flex items-center gap-2">
+                      <Upload size={14} />
+                      Upload PDF Document
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="file"
+                        accept=".pdf"
+                        onChange={handleFileChange}
+                        className="flex-1 text-xs text-slate-600 dark:text-slate-400 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-[#CC561E] file:text-white hover:file:bg-[#b34b1a] transition-all cursor-pointer"
+                      />
+                      {selectedPdf && (
+                        <button type="button" onClick={() => setSelectedPdf(null)} className="text-red-500 hover:text-red-600 p-1" title="Remove PDF">
+                          <X size={14} />
+                        </button>
+                      )}
+                      {isExtractingMetadata && (
+                        <div className="flex items-center gap-1.5 text-xs text-[#CC561E] font-medium animate-pulse">
+                          <Loader2 size={14} className="animate-spin" />
+                          Verifying metadata...
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-2">
+                      PDF content will be vectorized and added to your searchable AI library.
+                    </p>
                   </div>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-2">
-                    PDF content will be vectorized and added to your searchable AI library.
-                  </p>
-                </div>
-              )}
-            </div>
+                )
+              }
+            </div >
 
             <hr className={`${isNote ? 'my-2' : 'my-3'} border-slate-100 dark:border-slate-800`} />
 
             {/* Notes Section moved UP for Personal Notes to prioritize writing */}
-            {isNote && (
-              <div className="mb-4 flex-1 flex flex-col">
-                <label className={`block text-sm font-medium mb-1 ${noteLabelClass}`}>
-                  Content
-                </label>
-                <PersonalNoteEditor
-                  value={formData.generalNotes}
-                  onChange={(next) => setFormData(prev => ({ ...prev, generalNotes: next }))}
-                  minHeight={420}
-                  onSlashCommand={handleSlashCommand}
-                  slashTemplateItems={PERSONAL_NOTE_TEMPLATES.map((template) => ({ id: template.id, label: template.name }))}
-                />
-                <p className={`mt-1 text-[10px] ${noteHelperClass}`}>
-                  Toolbar supports heading, bold, underline, bullet list, numbered list and checklist.
-                  Hızlı şablon için: /task &lt;şablon-adı&gt; (örn: /task kitap)
-                </p>
-              </div>
-            )}
+            {
+              isNote && (
+                <div className="mb-4 flex-1 flex flex-col">
+                  <label className={`block text-sm font-medium mb-1 ${noteLabelClass}`}>
+                    Content
+                  </label>
+                  <PersonalNoteEditor
+                    value={formData.generalNotes}
+                    onChange={(next) => setFormData(prev => ({ ...prev, generalNotes: next }))}
+                    minHeight={420}
+                    onSlashCommand={handleSlashCommand}
+                    slashTemplateItems={PERSONAL_NOTE_TEMPLATES.map((template) => ({ id: template.id, label: template.name }))}
+                  />
+                  <p className={`mt-1 text-[10px] ${noteHelperClass}`}>
+                    Toolbar supports heading, bold, underline, bullet list, numbered list and checklist.
+                    Hızlı şablon için: /task &lt;şablon-adı&gt; (örn: /task kitap)
+                  </p>
+                </div>
+              )
+            }
 
             {/* Status & Tags */}
             <div className={isNote ? 'space-y-2' : (isMedia ? 'space-y-3' : 'space-y-3.5')}>
@@ -1286,21 +1349,23 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
             <hr className={`${isNote ? 'my-2' : 'my-3'} border-slate-100 dark:border-slate-800`} />
 
             {/* Notes (Only for non-notes) */}
-            {!isNote && (
-              <div className="mb-4 flex-1 flex flex-col">
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                  Summary
-                </label>
-                <textarea
-                  name="summaryText"
-                  rows={4}
-                  value={formData.summaryText}
-                  onChange={handleChange}
-                  className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] resize-none leading-relaxed flex-1 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
-                  placeholder={resourceType === 'WEBSITE' ? "Why did you save this website?" : (isMedia ? "Your review and key takeaways..." : "Your thoughts...")}
-                />
-              </div>
-            )}
+            {
+              !isNote && (
+                <div className="mb-4 flex-1 flex flex-col">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Summary
+                  </label>
+                  <textarea
+                    name="summaryText"
+                    rows={4}
+                    value={formData.summaryText}
+                    onChange={handleChange}
+                    className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] resize-none leading-relaxed flex-1 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                    placeholder={resourceType === 'WEBSITE' ? "Why did you save this website?" : (isMedia ? "Your review and key takeaways..." : "Your thoughts...")}
+                  />
+                </div>
+              )
+            }
 
             <div className={`flex justify-between items-center ${isNote ? 'pt-1' : 'pt-2'} mt-auto`}>
               {!initialData && resourceType !== 'WEBSITE' && !isNote && (
@@ -1344,10 +1409,10 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                 </button>
               </div>
             </div>
-          </form>
+          </form >
         )}
-      </div>
-    </div>
+      </div >
+    </div >
   );
 };
 

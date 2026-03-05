@@ -13,12 +13,20 @@ load_dotenv(dotenv_path=env_path)
 
 logger = logging.getLogger(__name__)
 
-from services.llm_client import MODEL_TIER_FLASH, generate_text, get_model_for_tier
+from services.llm_client import (
+    MODEL_TIER_FLASH, 
+    generate_text, 
+    get_model_for_tier,
+    ROUTE_MODE_EXPLORER_QWEN_PILOT
+)
 from services.language_policy_service import (
     resolve_book_content_language,
     text_matches_target_language,
     tags_match_target_language,
 )
+from config import Settings
+
+settings = Settings()
 
 # Category anchors used as optional 5th tag for BOOK enrichment.
 # "Diger" is intentionally excluded per product rule.
@@ -300,7 +308,6 @@ async def _run_enrich_once(
     force_regenerate: bool,
     retry_note: Optional[str] = None,
 ) -> Dict[str, Any]:
-    model = get_model_for_tier(MODEL_TIER_FLASH)
     payload = {**book_data}
     if retry_note:
         payload["_retry_note"] = retry_note
@@ -315,16 +322,21 @@ async def _run_enrich_once(
     result = await asyncio.wait_for(
         asyncio.to_thread(
             generate_text,
-            model,
-            prompt,
-            "ai_enrich_book",
-            MODEL_TIER_FLASH,
-            None,
-            None,
-            None,
-            30.0,
+            model=settings.LLM_EXPLORER_PRIMARY_MODEL,
+            prompt=prompt,
+            task="ai_enrich_book",
+            model_tier=MODEL_TIER_FLASH,
+            temperature=None,
+            max_output_tokens=None,
+            response_mime_type="application/json",
+            timeout_s=45.0,
+            allow_pro_fallback=False,
+            fallback_state=None,
+            provider_hint=settings.LLM_EXPLORER_PRIMARY_PROVIDER,
+            route_mode=ROUTE_MODE_EXPLORER_QWEN_PILOT,
+            allow_secondary_fallback=True,
         ),
-        timeout=30.0,
+        timeout=50.0,
     )
 
     clean_text = clean_json_response(result.text)
@@ -347,7 +359,7 @@ async def _run_enrich_once(
 )
 async def enrich_book_async(book_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Enriches book metadata using Gemini.
+    Enriches book metadata using Qwen (with Gemini fallback).
     """
     try:
         language_policy = resolve_book_content_language(book_data)
@@ -414,21 +426,25 @@ async def enrich_book_async(book_data: Dict[str, Any]) -> Dict[str, Any]:
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=5))
 async def generate_tags_async(note_content: str) -> List[str]:
     try:
-        model = get_model_for_tier(MODEL_TIER_FLASH)
         prompt = PROMPT_GENERATE_TAGS.format(note_content=note_content)
         result = await asyncio.wait_for(
             asyncio.to_thread(
                 generate_text,
-                model,
-                prompt,
-                "ai_generate_tags",
-                MODEL_TIER_FLASH,
-                None,
-                None,
-                None,
-                30.0,
+                model=settings.LLM_EXPLORER_PRIMARY_MODEL,
+                prompt=prompt,
+                task="ai_generate_tags",
+                model_tier=MODEL_TIER_FLASH,
+                temperature=None,
+                max_output_tokens=None,
+                response_mime_type="application/json",
+                timeout_s=30.0,
+                allow_pro_fallback=False,
+                fallback_state=None,
+                provider_hint=settings.LLM_EXPLORER_PRIMARY_PROVIDER,
+                route_mode=ROUTE_MODE_EXPLORER_QWEN_PILOT,
+                allow_secondary_fallback=True,
             ),
-            timeout=30.0,
+            timeout=35.0,
         )
         text = clean_json_response(result.text)
 
@@ -442,21 +458,25 @@ async def generate_tags_async(note_content: str) -> List[str]:
 @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=1, max=5))
 async def verify_cover_async(title: str, author: str, isbn: str = "") -> Optional[str]:
     try:
-        model = get_model_for_tier(MODEL_TIER_FLASH)
         prompt = PROMPT_VERIFY_COVER.format(title=title, author=author, isbn=isbn or 'N/A')
         result = await asyncio.wait_for(
             asyncio.to_thread(
                 generate_text,
-                model,
-                prompt,
-                "ai_verify_cover",
-                MODEL_TIER_FLASH,
-                None,
-                None,
-                None,
-                20.0,
+                model=settings.LLM_EXPLORER_PRIMARY_MODEL,
+                prompt=prompt,
+                task="ai_verify_cover",
+                model_tier=MODEL_TIER_FLASH,
+                temperature=None,
+                max_output_tokens=None,
+                response_mime_type=None,
+                timeout_s=25.0,
+                allow_pro_fallback=False,
+                fallback_state=None,
+                provider_hint=settings.LLM_EXPLORER_PRIMARY_PROVIDER,
+                route_mode=ROUTE_MODE_EXPLORER_QWEN_PILOT,
+                allow_secondary_fallback=True,
             ),
-            timeout=20.0,
+            timeout=30.0,
         )
         url = result.text.strip()
 
@@ -474,22 +494,26 @@ async def analyze_highlights_async(highlights: List[str]) -> str:
         if not highlights:
             return ""
 
-        model = get_model_for_tier(MODEL_TIER_FLASH)
         text_block = "\n---\n".join(highlights)
         prompt = PROMPT_ANALYZE_HIGHLIGHTS.format(highlights_text=text_block)
         result = await asyncio.wait_for(
             asyncio.to_thread(
                 generate_text,
-                model,
-                prompt,
-                "ai_analyze_highlights",
-                MODEL_TIER_FLASH,
-                None,
-                None,
-                None,
-                35.0,
+                model=settings.LLM_EXPLORER_PRIMARY_MODEL,
+                prompt=prompt,
+                task="ai_analyze_highlights",
+                model_tier=MODEL_TIER_FLASH,
+                temperature=None,
+                max_output_tokens=None,
+                response_mime_type=None,
+                timeout_s=40.0,
+                allow_pro_fallback=False,
+                fallback_state=None,
+                provider_hint=settings.LLM_EXPLORER_PRIMARY_PROVIDER,
+                route_mode=ROUTE_MODE_EXPLORER_QWEN_PILOT,
+                allow_secondary_fallback=True,
             ),
-            timeout=35.0,
+            timeout=45.0,
         )
         return result.text.strip()
     except Exception as e:
@@ -500,21 +524,25 @@ async def analyze_highlights_async(highlights: List[str]) -> str:
 @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=8))
 async def search_resources_async(query: str, resource_type: str) -> List[Dict[str, Any]]:
     try:
-        model = get_model_for_tier(MODEL_TIER_FLASH)
         prompt = PROMPT_SEARCH_RESOURCES.format(query=query, resource_type=resource_type)
         result = await asyncio.wait_for(
             asyncio.to_thread(
                 generate_text,
-                model,
-                prompt,
-                "ai_search_resources",
-                MODEL_TIER_FLASH,
-                None,
-                None,
-                None,
-                30.0,
+                model=settings.LLM_EXPLORER_PRIMARY_MODEL,
+                prompt=prompt,
+                task="ai_search_resources",
+                model_tier=MODEL_TIER_FLASH,
+                temperature=None,
+                max_output_tokens=None,
+                response_mime_type="application/json",
+                timeout_s=35.0,
+                allow_pro_fallback=False,
+                fallback_state=None,
+                provider_hint=settings.LLM_EXPLORER_PRIMARY_PROVIDER,
+                route_mode=ROUTE_MODE_EXPLORER_QWEN_PILOT,
+                allow_secondary_fallback=True,
             ),
-            timeout=30.0,
+            timeout=40.0,
         )
         clean = clean_json_response(result.text)
         parsed = json.loads(clean)
@@ -538,21 +566,25 @@ If unsure, return null for that field.
 @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=8))
 async def extract_metadata_from_text_async(text: str) -> Dict[str, Optional[str]]:
     try:
-        model = get_model_for_tier(MODEL_TIER_FLASH)
         prompt = PROMPT_EXTRACT_METADATA.format(text=text[:2000])
         result = await asyncio.wait_for(
             asyncio.to_thread(
                 generate_text,
-                model,
-                prompt,
-                "ai_extract_metadata",
-                MODEL_TIER_FLASH,
-                None,
-                None,
-                None,
-                25.0,
+                model=settings.LLM_EXPLORER_PRIMARY_MODEL,
+                prompt=prompt,
+                task="ai_extract_metadata",
+                model_tier=MODEL_TIER_FLASH,
+                temperature=None,
+                max_output_tokens=None,
+                response_mime_type=None,
+                timeout_s=25.0,
+                allow_pro_fallback=False,
+                fallback_state=None,
+                provider_hint=settings.LLM_EXPLORER_PRIMARY_PROVIDER,
+                route_mode=ROUTE_MODE_EXPLORER_QWEN_PILOT,
+                allow_secondary_fallback=True,
             ),
-            timeout=25.0,
+            timeout=30.0,
         )
         clean = clean_json_response(result.text)
         return json.loads(clean)
