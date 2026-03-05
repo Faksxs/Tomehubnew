@@ -580,11 +580,11 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className={`bg - white dark: bg - slate - 900 rounded - xl shadow - 2xl w - full overflow - hidden flex flex - col ${isNote ? 'max-w-3xl max-h-[94vh]' : 'max-w-2xl max-h-[90vh]'} `}>
+      <div className={`bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full overflow-hidden flex flex-col ${isNote ? 'max-w-3xl max-h-[94vh]' : 'max-w-2xl max-h-[90vh]'}`}>
 
         {/* Header */}
-        <div className={`${isNote ? 'p-3 md:p-4' : 'p-5'} border - b border - slate - 100 dark: border - slate - 800 flex justify - between items - center bg - white dark: bg - slate - 900 z - 10`}>
-          <h2 className={`${isNote ? 'text-lg' : 'text-xl'} font - bold text - slate - 800 dark: text - white flex items - center gap - 2`}>
+        <div className={`${isNote ? 'p-3 md:p-4' : 'p-5'} border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-900 z-10`}>
+          <h2 className={`${isNote ? 'text-lg' : 'text-xl'} font-bold text-slate-800 dark:text-white flex items-center gap-2`}>
             {mode === 'search' ? (
               <>
                 <Search className="text-[#CC561E]" size={24} />
@@ -736,10 +736,10 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
 
         {/* Mode: Edit Form */}
         {mode === 'edit' && (
-          <form onSubmit={handleSubmit} className={`${isNote ? 'p-3 md:p-5' : 'p-6'} overflow - y - auto flex - 1`}>
+          <form onSubmit={handleSubmit} className={`${isNote ? 'p-3 md:p-5' : 'p-6'} overflow-y-auto flex-1`}>
             {/* Basic Info */}
             <div className={isNote ? 'space-y-2' : (isMedia ? 'space-y-3.5' : 'space-y-3.5')}>
-              <div className={`grid grid - cols - 1 md: grid - cols - 2 ${isNote ? 'gap-2' : (isMedia ? 'gap-3' : 'gap-x-4 gap-y-3')} `}>
+              <div className={`grid grid-cols-1 md:grid-cols-2 ${isNote ? 'gap-2' : (isMedia ? 'gap-3' : 'gap-x-4 gap-y-3')}`}>
 
                 {isMedia && (
                   <>
@@ -767,13 +767,13 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                   </>
                 )}
                 <div className="md:col-span-2">
-                  <label className={`block text - [12px] font - medium mb - 0.5 ${noteLabelClass} `}>Title *</label>
+                  <label className={`block text-[12px] font-medium mb-0.5 ${noteLabelClass}`}>Title *</label>
                   <input
                     required
                     name="title"
                     value={formData.title}
                     onChange={handleChange}
-                    className={`w - full border border - slate - 300 dark: border - slate - 700 rounded - lg px - 2.5 ${isNote ? 'py-1.5 text-sm' : 'py-2'} focus: ring - 2 focus: ring - [#CC561E] focus: border - [#CC561E] bg - white dark: bg - slate - 950 text - slate - 900 dark: text - white`}
+                    className={`w-full border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 ${isNote ? 'py-1.5 text-sm' : 'py-2'} focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white`}
                     placeholder={isNote ? "Note Title" : (resourceType === 'WEBSITE' ? 'Page Title or Site Name' : (isMedia ? 'e.g. The Matrix' : 'e.g. The Stranger'))}
                   />
                 </div>
@@ -822,7 +822,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                 {isNote && (
                   <div className="md:col-span-2 grid grid-cols-2 gap-3">
                     <div>
-                      <label className={`block text - [12px] font - medium mb - 0.5 flex items - center gap - 1 ${noteSubLabelClass} `}>
+                      <label className={`block text-[12px] font-medium mb-0.5 flex items-center gap-1 ${noteSubLabelClass}`}>
                         <Calendar size={12} className="text-slate-400" />
                         Date
                       </label>
@@ -835,7 +835,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                       />
                     </div>
                     <div>
-                      <label className={`block text - [12px] font - medium mb - 0.5 ${noteSubLabelClass} `}>
+                      <label className={`block text-[12px] font-medium mb-0.5 ${noteSubLabelClass}`}>
                         Category
                       </label>
                       <select
@@ -849,7 +849,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                         <option value="IDEAS">Ideas</option>
                       </select>
                     </div>
-                    <p className={`col - span - 2 text - [10px] leading - tight ${noteHelperClass} `}>
+                    <p className={`col-span-2 text-[10px] leading-tight ${noteHelperClass}`}>
                       Private/Daily sadece local aramada kalir. Ideas AI aramalara da katilir.
                     </p>
                   </div>
@@ -983,7 +983,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                         </label>
                         <div className="flex items-center gap-2">
                           <label className="flex-1 cursor-pointer">
-                            <div className={`w - full border border - [#CC561E] / 30 dark: border - [#CC561E] / 40 bg - [#CC561E] / 5 dark: bg - [#CC561E] / 10 rounded - lg px - 3 flex items - center justify - between transition - colors h - [42px] ${selectedPdf ? 'text-[#CC561E] dark:text-[#f3a47b] font-medium' : 'text-slate-600 dark:text-slate-400 hover:bg-[#CC561E]/10'} `}>
+                            <div className={`w-full border border-[#CC561E]/30 dark:border-[#CC561E]/40 bg-[#CC561E]/5 dark:bg-[#CC561E]/10 rounded-lg px-3 flex items-center justify-between transition-colors h-[42px] ${selectedPdf ? 'text-[#CC561E] dark:text-[#f3a47b] font-medium' : 'text-slate-600 dark:text-slate-400 hover:bg-[#CC561E]/10'}`}>
                               <span className="truncate max-w-[120px] text-sm">
                                 {selectedPdf ? selectedPdf.name : 'Choose file...'}
                               </span>
@@ -1069,7 +1069,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
 
               {isNote && (
                 <div>
-                  <label className={`block text - [12px] font - medium mb - 0.5 ${noteLabelClass} `}>
+                  <label className={`block text-[12px] font-medium mb-0.5 ${noteLabelClass}`}>
                     Sub-file (optional)
                   </label>
                   <input
@@ -1098,7 +1098,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                         value={formData.coverUrl}
                         onChange={handleChange}
                         placeholder={isMedia ? "Paste poster image URL" : "Paste image URL or Auto-Find ->"}
-                        className={`w - full border border - slate - 300 dark: border - slate - 700 rounded - lg pl - 3 ${isMedia ? 'pr-3' : 'pr-24'} py - 2 focus: ring - 2 focus: ring - [#CC561E] focus: border - [#CC561E] text - sm text - slate - 600 dark: text - slate - 300 bg - white dark: bg - slate - 950`}
+                        className={`w-full border border-slate-300 dark:border-slate-700 rounded-lg pl-3 ${isMedia ? 'pr-3' : 'pr-24'} py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] text-sm text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-950`}
                       />
                       {!isMedia && (
                         <button
