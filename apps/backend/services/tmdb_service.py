@@ -148,7 +148,7 @@ def _extract_series_creators(details: Dict[str, Any], crew: Any) -> str:
     return ", ".join(creators)
 
 
-def _extract_cast_top(cast_rows: Any, limit: int = 6) -> List[str]:
+def _extract_cast_top(cast_rows: Any, limit: int = 8) -> List[str]:
     out: List[str] = []
     if not isinstance(cast_rows, list):
         return out
@@ -257,7 +257,7 @@ def get_tmdb_media_details(kind: str, tmdb_id: int) -> Optional[Dict[str, Any]]:
 
     credits = payload.get("credits") if isinstance(payload.get("credits"), dict) else {}
     external_ids = payload.get("external_ids") if isinstance(payload.get("external_ids"), dict) else {}
-    cast_top = _extract_cast_top(credits.get("cast"), limit=6)
+    cast_top = _extract_cast_top(credits.get("cast"), limit=8)
     
     genres = []
     if isinstance(payload.get("genres"), list):
