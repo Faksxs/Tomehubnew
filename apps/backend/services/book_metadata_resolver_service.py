@@ -724,12 +724,12 @@ async def resolve_book_metadata_async(query: str, limit: int = 10) -> List[Dict[
         tasks = []
         if isbn_mode:
             tasks.append(loop.run_in_executor(pool, _fetch_openlibrary_by_bib, isbn_set))
-            tasks.append(loop.run_in_executor(pool, _fetch_openlibrary_search, trimmed, True, isbn_set))
+            tasks.append(loop.run_in_executor(pool, lambda: _fetch_openlibrary_search(trimmed, isbn_mode=True, isbn_set=isbn_set)))
             tasks.append(loop.run_in_executor(pool, _fetch_google_books, trimmed, isbn_set))
         else:
             # Google is prioritized as per user request, both run concurrently
             tasks.append(loop.run_in_executor(pool, _fetch_google_books, trimmed, set()))
-            tasks.append(loop.run_in_executor(pool, _fetch_openlibrary_search, trimmed, False, set()))
+            tasks.append(loop.run_in_executor(pool, lambda: _fetch_openlibrary_search(trimmed, isbn_mode=False, isbn_set=set())))
             
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
