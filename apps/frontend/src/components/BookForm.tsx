@@ -50,6 +50,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
   const [showScanner, setShowScanner] = useState(false);
   const [categoryManuallyEdited, setCategoryManuallyEdited] = useState(false);
   const [mediaPickerError, setMediaPickerError] = useState('');
+  const [searchError, setSearchError] = useState('');
   const initKeyRef = useRef<string | null>(null);
   const { user } = useAuth();
 
@@ -166,6 +167,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
     setIsSearching(true);
     setSearchResults([]);
     setMediaPickerError('');
+    setSearchError('');
 
     try {
       if (isMedia && mediaLibraryEnabled) {
@@ -193,8 +195,8 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
       setSearchResults(results as Array<ItemDraft & Partial<MediaSearchItem>>);
     } catch (error) {
       console.error("Search failed:", error);
+      const message = error instanceof Error ? error.message : 'Search failed';
       if (isMedia && mediaLibraryEnabled) {
-        const message = error instanceof Error ? error.message : 'Media search failed';
         setMediaPickerError(message);
         const lower = message.toLowerCase();
         if (lower.includes('not configured') || lower.includes('disabled')) {
@@ -204,6 +206,8 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
           }));
           setMode('edit');
         }
+      } else {
+        setSearchError(message);
       }
     } finally {
       setIsSearching(false);
@@ -704,9 +708,14 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                   // Auto-trigger search with the scanned ISBN
                   setIsSearching(true);
                   setSearchResults([]);
+                  setSearchError('');
                   searchResourcesAI(code, resourceType)
                     .then((results) => setSearchResults(results))
-                    .catch((err) => console.error('Barcode search failed:', err))
+                    .catch((err) => {
+                      console.error('Barcode search failed:', err);
+                      const message = err instanceof Error ? err.message : 'Barcode search failed';
+                      setSearchError(message);
+                    })
                     .finally(() => setIsSearching(false));
                 }}
                 onClose={() => setShowScanner(false)}
@@ -715,6 +724,9 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
 
             {mediaPickerError && (
               <p className="mt-2 text-xs text-red-600 dark:text-red-400">{mediaPickerError}</p>
+            )}
+            {!isMedia && searchError && (
+              <p className="mt-2 text-xs text-red-600 dark:text-red-400">{searchError}</p>
             )}
             <div className="space-y-3 flex-1 mt-6">
               {searchResults.length > 0 ? (
@@ -765,7 +777,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                   )}
                 </>
               ) : (
-                !isSearching && searchQuery && (
+                !isSearching && searchQuery && !(isMedia ? mediaPickerError : searchError) && (
                   <div className="text-center py-10 text-slate-500">
                     <p>{isMedia ? `No TMDb results found matching "${searchQuery}".` : `No AI results found matching "${searchQuery}".`}</p>
                     <p className="text-sm mt-2">Try entering details manually.</p>

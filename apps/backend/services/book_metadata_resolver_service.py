@@ -146,6 +146,32 @@ def _build_query_variants(query: str) -> List[str]:
     return variants[:3]
 
 
+def _build_relaxed_query_fallbacks(query: str) -> List[str]:
+    compact = " ".join(str(query or "").split())
+    if not compact:
+        return []
+
+    tokens = [token for token in compact.split(" ") if token]
+    candidates: List[str] = []
+
+    if len(tokens) >= 4:
+        candidates.append(" ".join(tokens[:3]))
+    if len(tokens) >= 3:
+        candidates.append(" ".join(tokens[:-1]))
+    if len(tokens) >= 5:
+        candidates.append(" ".join(tokens[:4]))
+
+    deduped: List[str] = []
+    for candidate in candidates:
+        normalized = " ".join(candidate.split()).strip()
+        if not normalized or normalized == compact:
+            continue
+        if normalized in deduped:
+            continue
+        deduped.append(normalized)
+    return deduped[:2]
+
+
 def _contains_cyrillic(value: str) -> bool:
     return bool(_CYRILLIC_RE.search(str(value or "")))
 
@@ -651,6 +677,17 @@ def resolve_book_metadata(query: str, limit: int = 10) -> List[Dict[str, Any]]:
         merged.extend(_fetch_google_books(trimmed, set()))
 
     deduped = _dedupe_results(merged)
+    if not deduped and not isbn_mode:
+        for relaxed_query in _build_relaxed_query_fallbacks(trimmed):
+            relaxed_items = _fetch_openlibrary_search(relaxed_query, isbn_mode=False, isbn_set=set())
+            deduped = _dedupe_results(relaxed_items)
+            if deduped:
+                logger.info(
+                    "Book resolver used relaxed query fallback",
+                    extra={"query": trimmed, "relaxed_query": relaxed_query, "hits": len(deduped)},
+                )
+                break
+
     ranked = _rank_results(trimmed, deduped)
     _verify_cover_urls(ranked, top_n=3)
 

@@ -181,20 +181,36 @@ export const searchResourcesAI = async (
 
   // Main path: backend resolver/search.
   try {
+    const auth = getAuth();
     const idToken = await getAuthToken();
+    const firebaseUid = auth.currentUser?.uid?.trim() || "";
 
     const response = await fetch(`${API_BASE_URL}/api/ai/search-resources`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${idToken}`
+        'Authorization': `Bearer ${idToken}`,
+        ...(firebaseUid ? { 'X-Firebase-UID': firebaseUid } : {})
       },
       body: JSON.stringify({ query: trimmed, type: type })
     });
 
     if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.detail || 'Search failed');
+      let detail = '';
+      try {
+        const err = await response.json();
+        detail = String(err?.detail || err?.error || '').trim();
+      } catch {
+        detail = '';
+      }
+
+      if (response.status === 429) {
+        throw new Error('Search is temporarily rate-limited. Please retry in 30-60 seconds.');
+      }
+      if (response.status === 401 || response.status === 403) {
+        throw new Error('Authentication required for search. Please re-login and try again.');
+      }
+      throw new Error(detail || `Search failed (${response.status})`);
     }
 
     const data = await response.json();
@@ -210,7 +226,10 @@ export const searchResourcesAI = async (
 
   } catch (error) {
     console.error("Error searching resources (Backend):", error);
-    return [];
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error('Search is temporarily unavailable. Please try again.');
   }
 };
 
