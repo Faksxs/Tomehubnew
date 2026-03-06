@@ -598,7 +598,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
       personalFolderId: isNote ? (formData.personalFolderId.trim() || undefined) : undefined,
       folderPath: isNote ? (formData.folderPath.trim() || undefined) : undefined,
       coverUrl: formData.coverUrl,
-      castTop: isMedia ? formData.castTop.split(',').map(t => t.trim()).filter(Boolean).slice(0, 6) : undefined,
+      castTop: isMedia ? formData.castTop.split(',').map(t => t.trim()).filter(Boolean).slice(0, 8) : undefined,
       lentInfo,
       addedAt: addedAtTimestamp,
       pageCount: resourceType === 'BOOK' && formData.pageCount ? parseInt(formData.pageCount) : undefined,
@@ -1230,7 +1230,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
               {
                 isMedia && (
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Top Cast (max 6, comma separated)</label>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Top Cast (max 8, comma separated)</label>
                     <input
                       name="castTop"
                       value={formData.castTop}
