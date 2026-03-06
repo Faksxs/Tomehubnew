@@ -100,7 +100,7 @@ from services.analytics_service import (
 NOISE_SOURCE_ALLOWLIST = {
     "PDF", "EPUB", "PDF_CHUNK", "BOOK",
     "HIGHLIGHT", "INSIGHT", "PERSONAL_NOTE",
-    "ARTICLE", "WEBSITE", "MOVIE", "SERIES", "GRAPH_RELATION",
+    "ARTICLE", "MOVIE", "SERIES", "GRAPH_RELATION",
     "UNKNOWN", "OTHER" 
 }
 
@@ -173,7 +173,7 @@ def _passes_noise_guard_for_chunk(chunk: Dict[str, Any]) -> bool:
     if "website deneme" in content_lc:
         return False
 
-    if source_type in {"WEBSITE", "ARTICLE"} and len(content) < 100:
+    if source_type == "ARTICLE" and len(content) < 100:
         return False
 
     if content_lc.startswith("title:") and len(content) < 220:

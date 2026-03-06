@@ -22,7 +22,6 @@ import {
     HighlightsLogo,
     BooksLogo,
     ArticlesLogo,
-    WebsitesLogo,
     NotesLogo
 } from './ui/FeatureLogos';
 import { isInsightType } from '../lib/highlightType';
@@ -253,7 +252,6 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
             case 'BOOK': return 24;
             case 'MOVIE': return 24;
             case 'ARTICLE': return 24;
-            case 'WEBSITE': return 24;
             case 'PERSONAL_NOTE': return 30;
             case 'NOTES': return 50;
             default: return 24;
@@ -582,7 +580,6 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
             case 'MOVIE': return 'Cinema';
             case 'SERIES': return 'Series';
             case 'ARTICLE': return 'Articles';
-            case 'WEBSITE': return 'Websites';
             case 'PERSONAL_NOTE': return 'Personal Notes';
             case 'NOTES': return 'All Notes';
             case 'DASHBOARD': return 'Dashboard';
@@ -600,7 +597,6 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
         if (activeTab === 'PERSONAL_NOTE') return "Search notes...";
         if (isMediaTab) return "Search title, director, cast...";
         if (activeTab === 'ARTICLE') return "Search title, author...";
-        if (activeTab === 'WEBSITE') return "Search site, URL...";
         return "Search title, author, ISBN...";
     };
 
@@ -761,7 +757,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
     // --- RENDER LOGIC: PAGINATION ---
     const totalItems = isNotesTab ? filteredHighlights.length : filteredBooks.length;
     const totalPages = Math.ceil(totalItems / itemsPerPage);
-    const libraryCardDarkBg = (activeTab === 'ARTICLE' || activeTab === 'WEBSITE') ? 'dark:bg-slate-800' : 'dark:bg-slate-900';
+    const libraryCardDarkBg = (activeTab === 'ARTICLE') ? 'dark:bg-slate-800' : 'dark:bg-slate-900';
 
     const displayedBooks = useMemo(() => {
         const start = (currentPage - 1) * itemsPerPage;
@@ -939,8 +935,6 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                             <StickyNote className="text-[#CC561E] fill-[#CC561E]/10 w-4 h-4 md:w-6 md:h-6" />
                                         ) : highlight.source?.type === 'ARTICLE' ? (
                                             <ArticlesLogo size={18} className="text-[#262D40]/85 md:w-6 md:h-6" />
-                                        ) : highlight.source?.type === 'WEBSITE' ? (
-                                            <WebsitesLogo size={18} className="text-[#262D40]/85 md:w-6 md:h-6" />
                                         ) : (
                                             <Quote className="text-[#262D40]/82 fill-[#262D40]/85 w-4 h-4 md:w-6 md:h-6" />
                                         )}
@@ -1480,8 +1474,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                             <div className="relative p-4 rounded-full">
                                                 {book.type === 'BOOK' ? <BooksLogo size={48} className="text-[#262D40] dark:text-white/80 drop-shadow-[0_0_8px_rgba(38,45,64,0.35)]" /> :
                                                     (book.type === 'MOVIE' || book.type === 'SERIES') ? <Film size={48} className="text-[#262D40] dark:text-white/80 drop-shadow-[0_0_8px_rgba(38,45,64,0.35)]" /> :
-                                                        book.type === 'ARTICLE' ? <ArticlesLogo size={48} className="text-[#262D40] dark:text-white/80 drop-shadow-[0_0_8px_rgba(38,45,64,0.35)]" /> :
-                                                            <WebsitesLogo size={48} className="text-[#262D40] dark:text-white/80 drop-shadow-[0_0_8px_rgba(38,45,64,0.35)]" />}
+                                                        <ArticlesLogo size={48} className="text-[#262D40] dark:text-white/80 drop-shadow-[0_0_8px_rgba(38,45,64,0.35)]" />}
                                             </div>
                                         </div>
                                     </div>
@@ -1568,11 +1561,6 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                                 {book.publicationYear}
                                             </span>
                                         )}
-                                        {book.type === 'WEBSITE' && book.url && (
-                                            <a href={book.url} target="_blank" rel="noreferrer" className="text-[#262D40]/70 hover:text-[#262D40]" onClick={(e) => e.stopPropagation()}>
-                                                <ExternalLink size={12} className="md:w-3.5 md:h-3.5" />
-                                            </a>
-                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -1593,7 +1581,6 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
             case 'BOOK': return BooksLogo;
             case 'MOVIE': return BooksLogo;
             case 'ARTICLE': return ArticlesLogo;
-            case 'WEBSITE': return WebsitesLogo;
             case 'PERSONAL_NOTE': return NotesLogo;
             default: return Library;
         }
@@ -1653,7 +1640,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                         >
                             <Plus size={14} className="md:w-5 md:h-5" />
                             <span className="text-[10px] md:text-base">
-                                Add {activeTab === 'ARTICLE' ? 'Article' : (activeTab === 'WEBSITE' ? 'Web' : (activeTab === 'PERSONAL_NOTE' ? 'Note' : (isMediaTab ? 'Media' : 'Book')))}
+                                Add {activeTab === 'ARTICLE' ? 'Article' : (activeTab === 'PERSONAL_NOTE' ? 'Note' : (isMediaTab ? 'Media' : 'Book'))}
                             </span>
                         </button>
                     </div>
@@ -1844,17 +1831,17 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
             )}                  </div>
     );
 });
-    const getCoverUrlForGrid = (coverUrl: string): string => {
-        const raw = String(coverUrl || "").trim();
-        if (!raw) return raw;
+const getCoverUrlForGrid = (coverUrl: string): string => {
+    const raw = String(coverUrl || "").trim();
+    if (!raw) return raw;
 
-        // OpenLibrary `-L` images are large; the grid cards are small, so prefer `-M` to reduce bytes/latency.
-        // Keep querystring intact (e.g. `?default=false`).
-        const openLibrarySized = raw.replace(/-L(\.(?:jpe?g|png|webp))(\?.*)?$/i, "-M$1$2");
+    // OpenLibrary `-L` images are large; the grid cards are small, so prefer `-M` to reduce bytes/latency.
+    // Keep querystring intact (e.g. `?default=false`).
+    const openLibrarySized = raw.replace(/-L(\.(?:jpe?g|png|webp))(\?.*)?$/i, "-M$1$2");
 
-        // TMDb posters default to w500; the grid cards are small, so prefer w342 to reduce bytes/latency.
-        return openLibrarySized.replace(
-            /(https?:\/\/image\.tmdb\.org\/t\/p\/)(original|w\d+)(\/)/i,
-            "$1w342$3"
-        );
-    };
+    // TMDb posters default to w500; the grid cards are small, so prefer w342 to reduce bytes/latency.
+    return openLibrarySized.replace(
+        /(https?:\/\/image\.tmdb\.org\/t\/p\/)(original|w\d+)(\/)/i,
+        "$1w342$3"
+    );
+};

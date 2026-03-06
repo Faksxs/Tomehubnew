@@ -62,18 +62,6 @@ export const ArticlesLogo: React.FC<LogoProps> = ({ className, size = 24 }) => (
     </svg>
 );
 
-export const WebsitesLogo: React.FC<LogoProps> = ({ className, size = 24 }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-        {/* Simplified Globe */}
-        <circle cx="11" cy="11" r="9" stroke="#CC561E" strokeWidth="2" fill="#CC561E" fillOpacity="0.05" />
-        <ellipse cx="11" cy="11" rx="3.5" ry="9" stroke="#CC561E" strokeWidth="1.5" strokeOpacity="0.6" />
-        <path d="M2 11H20" stroke="#CC561E" strokeWidth="1.5" strokeOpacity="0.6" />
-        <path d="M11 2V20" stroke="#CC561E" strokeWidth="1.5" strokeOpacity="0.6" />
-
-        {/* Clear Cursor Arrow */}
-        <path d="M16 14L22 17L19 18L21 21L19 22L17 19L14 22V14Z" fill="#CC561E" stroke="#000" strokeWidth="0.5" />
-    </svg>
-);
 
 export const CinemaLogo: React.FC<LogoProps> = ({ className, size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>

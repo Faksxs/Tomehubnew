@@ -230,7 +230,7 @@ def _apply_resource_type_filter(sql: str, params: Dict[str, Any], resource_type:
                 "   AND li2.ITEM_TYPE = :p_item_type"
                 " ) "
             )
-    elif rt in {"ARTICLE", "WEBSITE"}:
+    elif rt == "ARTICLE":
         sql += f" AND {field} = :p_res_type "
         params["p_res_type"] = rt
     else:
@@ -339,7 +339,7 @@ def _should_exclude_pdf_in_first_pass(
         return True
 
     # Explicit scopes already constrain source_type; no extra PDF exclusion needed.
-    if rt in {"BOOK", "ALL_NOTES", "PERSONAL_NOTE", "ARTICLE", "WEBSITE", "MOVIE", "SERIES", "PDF", "EPUB", "PDF_CHUNK", "BOOK_CHUNK"}:
+    if rt in {"BOOK", "ALL_NOTES", "PERSONAL_NOTE", "ARTICLE", "MOVIE", "SERIES", "PDF", "EPUB", "PDF_CHUNK", "BOOK_CHUNK"}:
         return False
     return False
 

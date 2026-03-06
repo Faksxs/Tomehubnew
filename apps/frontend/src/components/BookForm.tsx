@@ -30,7 +30,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
   // 'search' mode is for finding the item first. 'edit' mode is the actual form.
   // Websites and Personal Notes default directly to 'edit'.
   const [mode, setMode] = useState<'search' | 'edit'>(
-    initialData ? 'edit' : ((initialType === 'WEBSITE' || initialType === 'PERSONAL_NOTE') ? 'edit' : 'search')
+    initialData ? 'edit' : ((initialType === 'PERSONAL_NOTE') ? 'edit' : 'search')
   );
   const [resourceType, setResourceType] = useState<ResourceType>(initialData?.type || initialType);
   const isMedia = isMediaType(resourceType);
@@ -356,7 +356,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
       tags: draft.tags ? draft.tags.join(', ') : '',
       summaryText: draft.summary || '',
       coverUrl: draft.coverUrl || '',
-      url: (resourceType === 'WEBSITE' || resourceType === 'ARTICLE' || isMedia) ? (draft.url || '') : '',
+      url: (resourceType === 'ARTICLE' || isMedia) ? (draft.url || '') : '',
       pageCount: draft.pageCount?.toString() || '',
       contentLanguageMode: (draft.contentLanguageMode || formData.contentLanguageMode || 'AUTO') as ContentLanguageMode,
       contentLanguageResolved: ((draft.contentLanguageResolved || '').toLowerCase() === 'tr' ? 'tr' : ((draft.contentLanguageResolved || '').toLowerCase() === 'en' ? 'en' : '')) as '' | 'tr' | 'en',
@@ -584,7 +584,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
       publisher: isMedia ? '' : formData.publisher,
       publicationYear: formData.publicationYear,
       isbn: formData.isbn,
-      url: (resourceType === 'WEBSITE' || resourceType === 'ARTICLE' || isMedia) ? formData.url : '',
+      url: (resourceType === 'ARTICLE' || isMedia) ? formData.url : '',
       code: formData.code,
       status: formData.status as PhysicalStatus,
       readingStatus: formData.readingStatus as ReadingStatus,
@@ -610,7 +610,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
     const size = isNote ? 20 : 24;
     switch (resourceType) {
       case 'ARTICLE': return <FileText className="text-[#CC561E]" size={size} />;
-      case 'WEBSITE': return <Globe className="text-[#CC561E]" size={size} />;
+
       case 'PERSONAL_NOTE': return <PenTool className="text-[#CC561E]" size={size} />;
       case 'MOVIE': return <Film className="text-[#CC561E]" size={size} />;
       case 'SERIES': return <Tv className="text-[#CC561E]" size={size} />;
@@ -622,7 +622,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
     if (initialData) return 'Edit Details';
     switch (resourceType) {
       case 'ARTICLE': return 'New Article';
-      case 'WEBSITE': return 'New Website Resource';
+
       case 'PERSONAL_NOTE': return 'New Note';
       case 'MOVIE': return 'New Movie';
       case 'SERIES': return 'New Series';
@@ -850,19 +850,19 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                     value={formData.title}
                     onChange={handleChange}
                     className={`w-full border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 ${isNote ? 'py-1.5 text-sm' : 'py-2'} focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white`}
-                    placeholder={isNote ? "Note Title" : (resourceType === 'WEBSITE' ? 'Page Title or Site Name' : (isMedia ? 'e.g. The Matrix' : 'e.g. The Stranger'))}
+                    placeholder={isNote ? "Note Title" : (isMedia ? 'e.g. The Matrix' : 'e.g. The Stranger')}
                   />
                 </div>
 
                 {!isNote && (
-                  <div className={(resourceType === 'WEBSITE' || isMedia) ? 'md:col-span-2' : ''}>
+                  <div className={isMedia ? 'md:col-span-2' : ''}>
                     <div className={isMedia ? "grid grid-cols-2 gap-3.5" : ""}>
                       <div>
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                          {isMedia ? 'Director / Creator *' : (resourceType === 'WEBSITE' ? 'Author / Organization' : 'Author *')}
+                          {isMedia ? 'Director / Creator *' : 'Author *'}
                         </label>
                         <input
-                          required={resourceType !== 'WEBSITE'}
+                          required
                           name="author"
                           value={formData.author}
                           onChange={handleChange}
@@ -988,7 +988,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
 
               {!isNote && (
                 <div className="space-y-3">
-                  {resourceType !== 'WEBSITE' && !isMedia && (
+                  {!isMedia && (
                     <div className={resourceType === 'ARTICLE' ? 'md:col-span-2' : ''}>
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 focus:ring-2">
                         {resourceType === 'ARTICLE' ? 'Journal / Publisher' : 'Publisher'}
@@ -1113,7 +1113,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
               )}
 
               {/* URL Field for Website or Article */}
-              {(resourceType === 'WEBSITE' || resourceType === 'ARTICLE' || isMedia) && (
+              {(resourceType === 'ARTICLE' || isMedia) && (
                 <div className={isMedia ? "grid grid-cols-1 md:grid-cols-3 gap-3.5" : ""}>
                   <div className={isMedia ? "md:col-span-2" : ""}>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">{isMedia ? 'IMDb / Source URL' : 'URL'}</label>
@@ -1437,14 +1437,14 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                     value={formData.summaryText}
                     onChange={handleChange}
                     className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] resize-none leading-relaxed flex-1 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
-                    placeholder={resourceType === 'WEBSITE' ? "Why did you save this website?" : (isMedia ? "Your review and key takeaways..." : "Your thoughts...")}
+                    placeholder={isMedia ? "Your review and key takeaways..." : "Your thoughts..."}
                   />
                 </div>
               )
             }
 
             <div className={`flex justify-between items-center ${isNote ? 'pt-1' : 'pt-2'} mt-auto`}>
-              {!initialData && resourceType !== 'WEBSITE' && !isNote && (
+              {!initialData && !isNote && (
                 <button
                   type="button"
                   onClick={() => setMode('search')}
@@ -1475,11 +1475,9 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                     <>
                       Save {resourceType === 'ARTICLE'
                         ? 'Article'
-                        : (resourceType === 'WEBSITE'
-                          ? 'Website'
-                          : (resourceType === 'PERSONAL_NOTE'
-                            ? 'Note'
-                            : (resourceType === 'MOVIE' ? 'Movie' : (resourceType === 'SERIES' ? 'Series' : 'Book'))))}
+                        : (resourceType === 'PERSONAL_NOTE'
+                          ? 'Note'
+                          : (resourceType === 'MOVIE' ? 'Movie' : (resourceType === 'SERIES' ? 'Series' : 'Book')))}
                     </>
                   )}
                 </button>

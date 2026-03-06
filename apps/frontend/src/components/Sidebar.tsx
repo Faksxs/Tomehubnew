@@ -10,7 +10,6 @@ import {
   FluxLogo,
   BooksLogo,
   ArticlesLogo,
-  WebsitesLogo,
   NotesLogo,
   HighlightsLogo
 } from './ui/FeatureLogos';
@@ -34,7 +33,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, mediaL
     { id: 'BOOK', label: 'Books', icon: BooksLogo },
     ...(mediaLibraryEnabled ? [{ id: 'MOVIE', label: 'Cinema', icon: Film }] : []),
     { id: 'ARTICLE', label: 'Articles', icon: ArticlesLogo },
-    { id: 'WEBSITE', label: 'Websites', icon: WebsitesLogo },
+
     { id: 'PERSONAL_NOTE', label: 'Personal Notes', icon: NotesLogo },
     { id: 'NOTES', label: 'All Notes', icon: HighlightsLogo },
   ];
@@ -86,11 +85,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, mediaL
                   }`}
               >
                 <Icon
-                  className={`w-[18px] h-[18px] lg:w-5 lg:h-5 transition-colors ${
-                    item.id === 'MOVIE'
-                      ? 'text-[#CC561E]'
-                      : (isActive ? 'text-[#CC561E]' : 'text-white/60 group-hover:text-white')
-                  }`}
+                  className={`w-[18px] h-[18px] lg:w-5 lg:h-5 transition-colors ${item.id === 'MOVIE'
+                    ? 'text-[#CC561E]'
+                    : (isActive ? 'text-[#CC561E]' : 'text-white/60 group-hover:text-white')
+                    }`}
                 />
                 {item.label}
               </button>

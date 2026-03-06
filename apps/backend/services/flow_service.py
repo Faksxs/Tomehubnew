@@ -87,7 +87,7 @@ DEFAULT_TOPIC_LABEL = "Flux"
 INITIAL_BATCH_SIZE = 5
 FLOW_CONTENT_CHAR_LIMIT = 650
 FLOW_CONTENT_FORWARD_WINDOW = 120
-LIMITED_SOURCE_TYPES = {"PDF", "EPUB", "PDF_CHUNK", "ARTICLE", "WEBSITE"}
+LIMITED_SOURCE_TYPES = {"PDF", "EPUB", "PDF_CHUNK", "ARTICLE"}
 SQL_CLAUSE_KEYWORDS = {
     "WHERE", "JOIN", "ON", "LEFT", "RIGHT", "FULL", "INNER", "OUTER", "CROSS",
     "GROUP", "ORDER", "FETCH", "OFFSET", "UNION", "HAVING", "CONNECT", "START",
@@ -552,7 +552,7 @@ class FlowService:
             sql += " AND content_type IN ('HIGHLIGHT', 'INSIGHT') "
         elif resource_type == 'BOOK':
             sql += " AND content_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'BOOK', 'HIGHLIGHT', 'INSIGHT') "
-        elif resource_type in ('ARTICLE', 'WEBSITE'):
+        elif resource_type in ('ARTICLE',):
             sql += " AND content_type = :p_type "
             params["p_type"] = resource_type
         return sql, params

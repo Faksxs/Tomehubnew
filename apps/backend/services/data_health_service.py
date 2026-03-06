@@ -13,7 +13,7 @@ class DataHealthService:
     """
     
     MIN_CONTENT_LENGTH = 12
-    VALID_SOURCE_TYPES = ['PDF', 'EPUB', 'PDF_CHUNK', 'BOOK', 'HIGHLIGHT', 'INSIGHT', 'ARTICLE', 'WEBSITE', 'PERSONAL_NOTE', 'MOVIE', 'SERIES']
+    VALID_SOURCE_TYPES = ['PDF', 'EPUB', 'PDF_CHUNK', 'BOOK', 'HIGHLIGHT', 'INSIGHT', 'ARTICLE', 'PERSONAL_NOTE', 'MOVIE', 'SERIES']
 
     @staticmethod
     def validate_content(text: str) -> bool:

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Book, FileText, Globe, StickyNote, Layers } from 'lucide-react';
 
-export type SourceFilter = 'BOOK' | 'ARTICLE' | 'WEBSITE' | 'PERSONAL_NOTE' | 'ALL';
+export type SourceFilter = 'BOOK' | 'ARTICLE' | 'PERSONAL_NOTE' | 'ALL';
 
 interface SourceNavigatorProps {
     activeFilter: SourceFilter;
@@ -13,7 +13,6 @@ const SourceNavigator: React.FC<SourceNavigatorProps> = ({ activeFilter, onFilte
         { id: 'ALL', label: 'All Notes', icon: Layers, color: 'text-slate-400', bg: 'bg-slate-500/10' },
         { id: 'BOOK', label: 'Books', icon: Book, color: 'text-slate-400', bg: 'bg-slate-500/10' },
         { id: 'ARTICLE', label: 'Articles', icon: FileText, color: 'text-slate-400', bg: 'bg-slate-500/10' },
-        { id: 'WEBSITE', label: 'Websites', icon: Globe, color: 'text-slate-400', bg: 'bg-slate-500/10' },
         { id: 'PERSONAL_NOTE', label: 'Personal Notes', icon: StickyNote, color: 'text-slate-400', bg: 'bg-slate-500/10' },
     ];
 

@@ -414,7 +414,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
 
       // 4) Arka planda AI enrichment (UI'yı bloklamadan)
       // SKIP AI enrichment for Personal Notes - preserve user's original content
-      if (!wasDedupedByToken && (itemForPostSave.type === 'BOOK' || itemForPostSave.type === 'ARTICLE' || itemForPostSave.type === 'WEBSITE')) {
+      if (!wasDedupedByToken && (itemForPostSave.type === 'BOOK' || itemForPostSave.type === 'ARTICLE' )) {
         (async () => {
           try {
             // LibraryItem -> ItemDraft dönüşümü (senin helper'ın)

@@ -30,7 +30,7 @@ interface StatisticsViewProps {
 export const StatisticsView: React.FC<StatisticsViewProps> = ({ items, onCategorySelect }) => {
     const books = items.filter(i => i.type === 'BOOK');
     const articles = items.filter(i => i.type === 'ARTICLE');
-    const websites = items.filter(i => i.type === 'WEBSITE');
+
     const personalNotes = items.filter(i => i.type === 'PERSONAL_NOTE');
 
     const allHighlights = items.flatMap(i => i.highlights || []);
@@ -117,7 +117,6 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({ items, onCategor
                 <div className="mt-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 divide-y md:divide-y-0 md:divide-x divide-border/40">
                     <PrimaryStat label="Total Books" value={books.length} icon={Book} />
                     <PrimaryStat label="Articles" value={articles.length} icon={FileText} />
-                    <PrimaryStat label="Websites" value={websites.length} icon={Globe} />
                     <PrimaryStat label="Notes" value={personalNotes.length} icon={PenTool} />
                     <PrimaryStat label="Highlights" value={allHighlights.length} icon={Quote} />
                 </div>

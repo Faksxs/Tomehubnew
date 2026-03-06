@@ -30,7 +30,6 @@ import {
     HighlightsLogo,
     BooksLogo,
     ArticlesLogo,
-    WebsitesLogo,
     NotesLogo,
     SystemDistributionLogo,
     ProgressLogo,
@@ -86,7 +85,6 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
     const books = items.filter(i => i.type === 'BOOK');
     const cinema = items.filter(i => i.type === 'MOVIE' || i.type === 'SERIES');
     const articles = items.filter(i => i.type === 'ARTICLE');
-    const websites = items.filter(i => i.type === 'WEBSITE');
     const personalNotes = items.filter(i => i.type === 'PERSONAL_NOTE');
     const allHighlights = items.flatMap(i => i.highlights || []);
 
@@ -95,12 +93,11 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
         { label: 'Total Books', value: books.length, icon: BooksLogo, tab: 'BOOK' },
         { label: 'Cinema', value: cinema.length, icon: CinemaLogo, tab: 'MOVIE' },
         { label: 'Personal Notes', value: personalNotes.length, icon: NotesLogo, tab: 'PERSONAL_NOTE' },
-        { label: 'Websites', value: websites.length, icon: WebsitesLogo, tab: 'WEBSITE' },
         { label: 'Articles', value: articles.length, icon: ArticlesLogo, tab: 'ARTICLE' },
     ];
 
     // --- DATA PROCESSING (LEVEL B) ---
-    const readableItems = items.filter(i => i.type !== 'PERSONAL_NOTE');
+    const readableItems = items.filter(i => i.type !== 'PERSONAL_NOTE' && i.type !== 'MOVIE' && i.type !== 'SERIES');
     const finishedCount = readableItems.filter(i => i.readingStatus === 'Finished').length;
     const readingCount = readableItems.filter(i => i.readingStatus === 'Reading').length;
     const toReadCount = readableItems.filter(i => i.readingStatus === 'To Read').length;
@@ -256,21 +253,21 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                     shadow-lg lg:shadow-md
                                     hover:shadow-xl hover:border-primary/40 dark:hover:border-primary/40
                                     transition-colors duration-200
-                                    flex flex-col items-center p-2.5 md:p-3 gap-1.5 md:gap-3
+                                    flex flex-col items-center p-2 md:p-3 gap-1 md:gap-3
                                 "
                             >
-                                <div className="flex items-center justify-center gap-2 md:gap-2.5 w-full">
+                                <div className="flex items-center justify-center gap-1.5 md:gap-2.5 w-full">
                                     <div className="relative shrink-0">
                                         <div className="relative p-1 md:p-1.5 bg-orange-500/5 dark:bg-orange-500/10 rounded-lg md:rounded-xl border border-orange-500/10 dark:border-orange-500/20 transition-colors group-hover:border-orange-500/40">
-                                            <stat.icon className="w-3.5 h-3.5 md:w-4 md:h-4 text-[#CC561E] dark:text-[#f3a47b]" />
+                                            <stat.icon className="w-3 h-3 md:w-4 md:h-4 text-[#CC561E] dark:text-[#f3a47b]" />
                                         </div>
                                     </div>
-                                    <div className="text-[8.5px] md:text-[10px] font-bold uppercase tracking-[0.05em] md:tracking-widest text-slate-400 group-hover:text-slate-300 transition-colors leading-tight">
+                                    <div className="text-[7.5px] md:text-[10px] font-bold uppercase tracking-[0.05em] md:tracking-widest text-slate-400 group-hover:text-slate-300 transition-colors leading-tight">
                                         {stat.label}
                                     </div>
                                 </div>
                                 <div className="w-full text-center mt-auto">
-                                    <div className="text-lg md:text-2xl font-black tracking-tight text-white leading-none">
+                                    <div className="text-base md:text-2xl font-black tracking-tight text-white leading-none">
                                         <CountUp value={stat.value} />
                                     </div>
                                 </div>

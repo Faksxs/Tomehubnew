@@ -13,7 +13,7 @@ const normalizeSourceTypeForBackend = (type: string): string => {
     return normalized || 'PERSONAL_NOTE';
 };
 
-export type BackendResourceType = 'BOOK' | 'ARTICLE' | 'WEBSITE' | 'PERSONAL_NOTE' | 'MOVIE' | 'SERIES';
+export type BackendResourceType = 'BOOK' | 'ARTICLE' | 'PERSONAL_NOTE' | 'MOVIE' | 'SERIES';
 
 export interface SearchRequest {
     question: string;
