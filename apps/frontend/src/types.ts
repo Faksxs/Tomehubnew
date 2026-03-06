@@ -1,5 +1,5 @@
 
-export type PhysicalStatus = 'On Shelf' | 'Lent Out' | 'Lost';
+export type PhysicalStatus = 'On Shelf' | 'Lent Out' | 'Lost' | 'Digital';
 export type ReadingStatus = 'To Read' | 'Reading' | 'Finished';
 export type PersonalNoteCategory = 'PRIVATE' | 'DAILY' | 'IDEAS';
 

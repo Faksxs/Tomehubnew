@@ -1527,6 +1527,11 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                                     <AlertTriangle size={10} className="md:w-3 md:h-3" />
                                                 </div>
                                             )}
+                                            {book.type === 'BOOK' && book.status === 'Digital' && (
+                                                <div className="w-4 h-4 md:w-6 md:h-6 rounded-full bg-[#0EA5E9] text-white flex items-center justify-center shadow-sm border border-white/20" title="Digital">
+                                                    <Globe size={10} className="md:w-3 md:h-3" />
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </div>

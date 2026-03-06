@@ -1333,6 +1333,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                         <option value="On Shelf">On Shelf</option>
                         <option value="Lent Out">Lent Out</option>
                         <option value="Lost">Lost</option>
+                        <option value="Digital">Digital</option>
                       </select>
                     </div>
                   )}

@@ -48,6 +48,7 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({ items, onCategor
     // Inventory Counts (BOOKS ONLY)
     const lentCount = books.filter(i => i.status === 'Lent Out').length;
     const lostCount = books.filter(i => i.status === 'Lost').length;
+    const digitalCount = books.filter(i => i.status === 'Digital').length;
     const onShelfCount = books.filter(i => i.status === 'On Shelf').length;
 
     // Knowledge status (TomeHub-specific heuristics)
@@ -244,6 +245,10 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({ items, onCategor
                                         <li className="flex items-center justify-between py-2">
                                             <span className="text-muted-foreground">Lost</span>
                                             <span className="font-semibold text-foreground">{lostCount}</span>
+                                        </li>
+                                        <li className="flex items-center justify-between py-2">
+                                            <span className="text-muted-foreground">Digital</span>
+                                            <span className="font-semibold text-foreground">{digitalCount}</span>
                                         </li>
                                     </ul>
                                 </div>
