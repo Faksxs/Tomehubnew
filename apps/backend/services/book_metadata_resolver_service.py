@@ -690,7 +690,27 @@ def _verify_cover_urls(items: List[Dict[str, Any]], top_n: int = 3) -> None:
         item["coverVerified"] = bool(item.get("coverUrl"))
 
 
-def resolve_book_metadata(query: str, limit: int = 10) -> List[Dict[str, Any]]:
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+
+async def _verify_cover_urls_async(items: List[Dict[str, Any]], top_n: int = 3) -> None:
+    def check_one(idx: int, item: Dict[str, Any]) -> None:
+        cover = _sanitize_cover_url(item.get("coverUrl"))
+        item["coverUrl"] = cover
+        if idx < top_n and cover and not _is_viable_cover_url(cover):
+            item["coverUrl"] = None
+        item["coverVerified"] = bool(item.get("coverUrl"))
+        
+    loop = asyncio.get_running_loop()
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        tasks = [
+            loop.run_in_executor(pool, check_one, idx, item)
+            for idx, item in enumerate(items)
+        ]
+        if tasks:
+            await asyncio.gather(*tasks)
+
+async def resolve_book_metadata_async(query: str, limit: int = 10) -> List[Dict[str, Any]]:
     trimmed = str(query or "").strip()
     if not trimmed:
         return []
@@ -698,42 +718,45 @@ def resolve_book_metadata(query: str, limit: int = 10) -> List[Dict[str, Any]]:
     isbn_set = equivalent_isbn_set(trimmed)
     isbn_mode = bool(isbn_set)
 
-    if isbn_mode:
-        merged = _run_provider_fetches_parallel(
-            [
-                ("openlibrary_bib", lambda: _fetch_openlibrary_by_bib(isbn_set)),
-                (
-                    "openlibrary_search_isbn",
-                    lambda: _fetch_openlibrary_search(trimmed, isbn_mode=True, isbn_set=isbn_set),
-                ),
-                ("google_books_isbn", lambda: _fetch_google_books(trimmed, isbn_set)),
-            ]
-        )
-    else:
-        merged = _run_provider_fetches_parallel(
-            [
-                (
-                    "openlibrary_search_text",
-                    lambda: _fetch_openlibrary_search(trimmed, isbn_mode=False, isbn_set=set()),
-                ),
-                ("google_books_text", lambda: _fetch_google_books(trimmed, set())),
-            ]
-        )
+    loop = asyncio.get_running_loop()
 
-    deduped = _dedupe_results(merged)
-    if not deduped and not isbn_mode:
-        for relaxed_query in _build_relaxed_query_fallbacks(trimmed):
-            relaxed_items = _fetch_openlibrary_search(relaxed_query, isbn_mode=False, isbn_set=set())
-            deduped = _dedupe_results(relaxed_items)
-            if deduped:
-                logger.info(
-                    "Book resolver used relaxed query fallback",
-                    extra={"query": trimmed, "relaxed_query": relaxed_query, "hits": len(deduped)},
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        tasks = []
+        if isbn_mode:
+            tasks.append(loop.run_in_executor(pool, _fetch_openlibrary_by_bib, isbn_set))
+            tasks.append(loop.run_in_executor(pool, _fetch_openlibrary_search, trimmed, True, isbn_set))
+            tasks.append(loop.run_in_executor(pool, _fetch_google_books, trimmed, isbn_set))
+        else:
+            # Google is prioritized as per user request, both run concurrently
+            tasks.append(loop.run_in_executor(pool, _fetch_google_books, trimmed, set()))
+            tasks.append(loop.run_in_executor(pool, _fetch_openlibrary_search, trimmed, False, set()))
+            
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        merged: List[Dict[str, Any]] = []
+        for res in results:
+            if isinstance(res, list):
+                merged.extend(res)
+
+        deduped = _dedupe_results(merged)
+        
+        if not deduped and not isbn_mode:
+            relaxed_tasks = []
+            for relaxed_query in _build_relaxed_query_fallbacks(trimmed):
+                relaxed_tasks.append(
+                    loop.run_in_executor(pool, _fetch_google_books, relaxed_query, set())
                 )
-                break
+            if relaxed_tasks:
+                rel_results = await asyncio.gather(*relaxed_tasks, return_exceptions=True)
+                for res in rel_results:
+                    if isinstance(res, list):
+                        deduped.extend(res)
+                deduped = _dedupe_results(deduped)
 
     ranked = _rank_results(trimmed, deduped)
-    _verify_cover_urls(ranked, top_n=3)
+    
+    # Background cover verify for top items async
+    asyncio.create_task(_verify_cover_urls_async(ranked, top_n=3))
 
     for item in ranked:
         all_isbns = [i for i in item.get("allIsbns") or [] if i]
@@ -741,10 +764,19 @@ def resolve_book_metadata(query: str, limit: int = 10) -> List[Dict[str, Any]]:
         item["allIsbns"] = all_isbns
         if "coverVerified" not in item:
             item["coverVerified"] = bool(item.get("coverUrl"))
+            
     return ranked[: max(1, int(limit))]
 
-
-async def resolve_book_metadata_async(query: str, limit: int = 10) -> List[Dict[str, Any]]:
-    # Use dedicated resolver executor to avoid blocking LLM/default thread pools.
-    loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(_RESOLVER_EXECUTOR, resolve_book_metadata, query, limit)
+def resolve_book_metadata(query: str, limit: int = 10) -> List[Dict[str, Any]]:
+    import asyncio
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        return loop.run_until_complete(resolve_book_metadata_async(query, limit))
+        
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(asyncio.run, resolve_book_metadata_async(query, limit))
+        return future.result()

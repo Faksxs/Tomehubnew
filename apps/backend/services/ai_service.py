@@ -439,8 +439,8 @@ async def _run_enrich_once(
 # --- Async AI Functions with Tenacity ---
 
 @retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=2, max=10),
+    stop=stop_after_attempt(2),
+    wait=wait_exponential(multiplier=0.5, min=1, max=3),
     retry_error_callback=lambda state: state.args[0] if state.args else {}
 )
 async def enrich_book_async(book_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -509,7 +509,7 @@ async def enrich_book_async(book_data: Dict[str, Any]) -> Dict[str, Any]:
         raise e
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=5))
+@retry(stop=stop_after_attempt(1), wait=wait_exponential(multiplier=1, min=1, max=2))
 async def generate_tags_async(note_content: str) -> List[str]:
     try:
         prompt = PROMPT_GENERATE_TAGS.format(note_content=note_content)
@@ -522,7 +522,7 @@ async def generate_tags_async(note_content: str) -> List[str]:
             temperature=None,
             max_output_tokens=None,
             response_mime_type="application/json",
-            timeout_s=30.0,
+            timeout_s=15.0,
             allow_pro_fallback=False,
             fallback_state=None,
             provider_hint=settings.LLM_EXPLORER_PRIMARY_PROVIDER,
@@ -539,7 +539,7 @@ async def generate_tags_async(note_content: str) -> List[str]:
         raise e
 
 
-@retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=1, max=5))
+@retry(stop=stop_after_attempt(1), wait=wait_exponential(multiplier=1, min=1, max=2))
 async def verify_cover_async(title: str, author: str, isbn: str = "") -> Optional[str]:
     try:
         prompt = PROMPT_VERIFY_COVER.format(title=title, author=author, isbn=isbn or 'N/A')
@@ -552,7 +552,7 @@ async def verify_cover_async(title: str, author: str, isbn: str = "") -> Optiona
             temperature=None,
             max_output_tokens=None,
             response_mime_type=None,
-            timeout_s=25.0,
+            timeout_s=15.0,
             allow_pro_fallback=False,
             fallback_state=None,
             provider_hint=settings.LLM_EXPLORER_PRIMARY_PROVIDER,
@@ -570,7 +570,7 @@ async def verify_cover_async(title: str, author: str, isbn: str = "") -> Optiona
         raise e
 
 
-@retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=8))
+@retry(stop=stop_after_attempt(1), wait=wait_exponential(multiplier=1, min=1, max=3))
 async def analyze_highlights_async(highlights: List[str]) -> str:
     try:
         if not highlights:
@@ -587,7 +587,7 @@ async def analyze_highlights_async(highlights: List[str]) -> str:
             temperature=None,
             max_output_tokens=None,
             response_mime_type=None,
-            timeout_s=40.0,
+            timeout_s=20.0,
             allow_pro_fallback=False,
             fallback_state=None,
             provider_hint=settings.LLM_EXPLORER_PRIMARY_PROVIDER,
