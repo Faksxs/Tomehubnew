@@ -744,7 +744,7 @@ def upsert_library_item(firebase_uid: str, item_id: str, payload: dict[str, Any]
         if name in normalized_cast_top:
             continue
         normalized_cast_top.append(name)
-        if len(normalized_cast_top) >= 6:
+        if len(normalized_cast_top) >= 8:
             break
     cast_top_json_value = json.dumps(normalized_cast_top, ensure_ascii=False)
     effective_item_id = item_id

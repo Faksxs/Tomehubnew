@@ -99,7 +99,7 @@ const normalizeItemShape = (item: LibraryItem): LibraryItem => ({
         : undefined,
     summaryText: typeof item.summaryText === "string" ? item.summaryText : undefined,
     castTop: Array.isArray(item.castTop)
-        ? item.castTop.map((name) => String(name || "").trim()).filter(Boolean).slice(0, 6)
+        ? item.castTop.map((name) => String(name || "").trim()).filter(Boolean).slice(0, 8)
         : undefined,
 });
 

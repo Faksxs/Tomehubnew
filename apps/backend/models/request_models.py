@@ -7,7 +7,7 @@ _TEXT_MAX = 2000
 _NOTE_MAX = 20000
 _TAG_MAX = 64
 _TARGET_BOOKS_MAX = 20
-_CAST_TOP_MAX = 6
+_CAST_TOP_MAX = 8
 
 
 class SearchRequest(BaseModel):
