@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import random
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib import parse as urllib_parse
@@ -26,6 +28,8 @@ _NEGATIVE_CACHE_LOCK = threading.Lock()
 _NEGATIVE_CACHE: Dict[str, float] = {}
 _COVER_CHECK_CACHE_LOCK = threading.Lock()
 _COVER_CHECK_CACHE: Dict[str, Tuple[float, bool]] = {}
+_RESOLVER_EXECUTOR = ThreadPoolExecutor(max_workers=6, thread_name_prefix="book-resolver-main")
+_PROVIDER_EXECUTOR = ThreadPoolExecutor(max_workers=8, thread_name_prefix="book-resolver-provider")
 _CYRILLIC_RE = re.compile(r"[\u0400-\u04FF]")
 _LATIN_RE = re.compile(r"[A-Za-z]")
 
@@ -648,14 +652,41 @@ def _fetch_google_books(query: str, isbn_set: Set[str]) -> List[Dict[str, Any]]:
     return out
 
 
+def _run_provider_fetches_parallel(tasks: List[Tuple[str, Any]]) -> List[Dict[str, Any]]:
+    merged: List[Dict[str, Any]] = []
+    if not tasks:
+        return merged
+
+    futures = [(name, _PROVIDER_EXECUTOR.submit(fn)) for name, fn in tasks]
+    for name, future in futures:
+        try:
+            rows = future.result()
+            if isinstance(rows, list):
+                merged.extend(rows)
+        except Exception as exc:
+            logger.warning(
+                "Provider fetch failed during parallel resolve",
+                extra={"provider_task": name, "error": str(exc)},
+            )
+    return merged
+
+
 def _verify_cover_urls(items: List[Dict[str, Any]], top_n: int = 3) -> None:
+    checks: List[Tuple[Dict[str, Any], str, Any]] = []
     for idx, item in enumerate(items):
         cover = _sanitize_cover_url(item.get("coverUrl"))
         item["coverUrl"] = cover
-        if idx >= top_n:
-            continue
-        if cover and not _is_viable_cover_url(cover):
+        if idx < top_n and cover:
+            checks.append((item, cover, _PROVIDER_EXECUTOR.submit(_is_viable_cover_url, cover)))
+
+    for item, cover, future in checks:
+        try:
+            if not bool(future.result()):
+                item["coverUrl"] = None
+        except Exception:
             item["coverUrl"] = None
+
+    for item in items:
         item["coverVerified"] = bool(item.get("coverUrl"))
 
 
@@ -667,14 +698,27 @@ def resolve_book_metadata(query: str, limit: int = 10) -> List[Dict[str, Any]]:
     isbn_set = equivalent_isbn_set(trimmed)
     isbn_mode = bool(isbn_set)
 
-    merged: List[Dict[str, Any]] = []
     if isbn_mode:
-        merged.extend(_fetch_openlibrary_by_bib(isbn_set))
-        merged.extend(_fetch_openlibrary_search(trimmed, isbn_mode=True, isbn_set=isbn_set))
-        merged.extend(_fetch_google_books(trimmed, isbn_set))
+        merged = _run_provider_fetches_parallel(
+            [
+                ("openlibrary_bib", lambda: _fetch_openlibrary_by_bib(isbn_set)),
+                (
+                    "openlibrary_search_isbn",
+                    lambda: _fetch_openlibrary_search(trimmed, isbn_mode=True, isbn_set=isbn_set),
+                ),
+                ("google_books_isbn", lambda: _fetch_google_books(trimmed, isbn_set)),
+            ]
+        )
     else:
-        merged.extend(_fetch_openlibrary_search(trimmed, isbn_mode=False, isbn_set=set()))
-        merged.extend(_fetch_google_books(trimmed, set()))
+        merged = _run_provider_fetches_parallel(
+            [
+                (
+                    "openlibrary_search_text",
+                    lambda: _fetch_openlibrary_search(trimmed, isbn_mode=False, isbn_set=set()),
+                ),
+                ("google_books_text", lambda: _fetch_google_books(trimmed, set())),
+            ]
+        )
 
     deduped = _dedupe_results(merged)
     if not deduped and not isbn_mode:
@@ -701,7 +745,6 @@ def resolve_book_metadata(query: str, limit: int = 10) -> List[Dict[str, Any]]:
 
 
 async def resolve_book_metadata_async(query: str, limit: int = 10) -> List[Dict[str, Any]]:
-    # Called from async endpoints without blocking event loop.
-    from asyncio import to_thread
-
-    return await to_thread(resolve_book_metadata, query, limit)
+    # Use dedicated resolver executor to avoid blocking LLM/default thread pools.
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_RESOLVER_EXECUTOR, resolve_book_metadata, query, limit)
