@@ -56,6 +56,7 @@ class Settings:
         
         # AI
         self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+        self.GOOGLE_BOOKS_API_KEY = os.getenv("GOOGLE_BOOKS_API_KEY", "").strip() or None
         self.LLM_MODEL_LITE = os.getenv("LLM_MODEL_LITE", "gemini-2.5-flash-lite")
         # Economic policy: keep Gemini on a single cost-efficient model by default.
         self.LLM_MODEL_FLASH = os.getenv("LLM_MODEL_FLASH", "gemini-2.5-flash-lite")

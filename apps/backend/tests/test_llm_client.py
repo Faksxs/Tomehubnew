@@ -181,23 +181,15 @@ class LLMClientTests(unittest.TestCase):
         self.assertEqual(result.fallback_reason, "qwen_retryable_error")
         self.assertEqual(state["secondary_fallback_used"], 1)
 
-    def test_generate_text_explorer_qwen_rpm_cap_bypasses_to_gemini(self):
-        qwen_provider = _ProviderAlwaysRetryableError()
-        gemini_provider = _ProviderSuccess()
-
-        def _provider_selector(provider_hint=None):
-            if provider_hint == "qwen":
-                return qwen_provider
-            return gemini_provider
-
+    def test_generate_text_explorer_qwen_rpm_cap_raises_without_secondary_fallback(self):
         state = {"secondary_fallback_used": 0}
-        with patch("services.llm_client.get_provider", side_effect=_provider_selector):
-            with patch.object(llm_client.settings, "LLM_EXPLORER_QWEN_PILOT_ENABLED", True):
-                with patch.object(llm_client.settings, "LLM_EXPLORER_FALLBACK_PROVIDER", "gemini"):
-                    with patch.object(llm_client.settings, "LLM_EXPLORER_SECONDARY_MAX_PER_REQUEST", 1):
-                        with patch.object(llm_client.settings, "LLM_EXPLORER_PARALLEL_NVIDIA_ENABLED", False):
-                            with patch("services.llm_client._consume_qwen_rpm_slots", return_value=False):
-                                result = llm_client.generate_text(
+        with patch.object(llm_client.settings, "LLM_EXPLORER_QWEN_PILOT_ENABLED", True):
+            with patch.object(llm_client.settings, "LLM_EXPLORER_FALLBACK_PROVIDER", "gemini"):
+                with patch.object(llm_client.settings, "LLM_EXPLORER_SECONDARY_MAX_PER_REQUEST", 1):
+                    with patch.object(llm_client.settings, "LLM_EXPLORER_PARALLEL_NVIDIA_ENABLED", False):
+                        with patch("services.llm_client._consume_qwen_rpm_slots", return_value=False):
+                            with self.assertRaises(RuntimeError) as ctx:
+                                llm_client.generate_text(
                                     model=llm_client.settings.LLM_EXPLORER_PRIMARY_MODEL,
                                     prompt="hello",
                                     task="test_explorer_rpm",
@@ -208,12 +200,8 @@ class LLMClientTests(unittest.TestCase):
                                     fallback_state=state,
                                 )
 
-        self.assertEqual(result.text, "ok")
-        self.assertEqual(result.provider_name, "gemini")
-        self.assertTrue(result.fallback_applied)
-        self.assertTrue(result.secondary_fallback_applied)
-        self.assertEqual(result.fallback_reason, "qwen_rpm_cap")
-        self.assertEqual(state["secondary_fallback_used"], 1)
+        self.assertIn("Qwen RPM cap reached", str(ctx.exception))
+        self.assertEqual(state["secondary_fallback_used"], 0)
 
     def test_generate_text_explorer_parallel_nvidia_uses_faster_winner(self):
         qwen_model = "qwen/qwen3-next-80b-a3b-thinking"

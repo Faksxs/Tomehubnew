@@ -19,12 +19,14 @@ from services.llm_client import (
     get_model_for_tier,
     ROUTE_MODE_EXPLORER_QWEN_PILOT
 )
+from services.book_metadata_resolver_service import resolve_book_metadata_async
 from services.language_policy_service import (
     resolve_book_content_language,
     text_matches_target_language,
     tags_match_target_language,
 )
 from config import Settings
+from utils.isbn_utils import safe_isbn_from_input
 
 settings = Settings()
 
@@ -265,14 +267,19 @@ def _coerce_bool(value: Any) -> bool:
     return bool(value)
 
 
-def _safe_isbn_from_input(value: Any) -> Optional[str]:
-    raw = str(value or "").strip()
-    if not raw:
-        return None
-    compact = "".join(ch for ch in raw if ch.isdigit() or ch.upper() == "X").upper()
-    if len(compact) == 10 or len(compact) == 13:
-        return compact
-    return None
+def _log_secondary_fallback_if_any(task: str, result: Any) -> None:
+    if not result:
+        return
+    if bool(getattr(result, "secondary_fallback_applied", False)):
+        logger.warning(
+            "Secondary LLM fallback used",
+            extra={
+                "task": task,
+                "provider": getattr(result, "provider_name", None),
+                "model": getattr(result, "model_used", None),
+                "fallback_reason": getattr(result, "fallback_reason", None),
+            },
+        )
 
 
 def _strip_isbn_from_ai_resource_results(payload: Any) -> List[Dict[str, Any]]:
@@ -338,6 +345,7 @@ async def _run_enrich_once(
         ),
         timeout=50.0,
     )
+    _log_secondary_fallback_if_any("ai_enrich_book", result)
 
     clean_text = clean_json_response(result.text)
     enriched_data = json.loads(clean_text)
@@ -409,7 +417,7 @@ async def enrich_book_async(book_data: Dict[str, Any]) -> Dict[str, Any]:
                     f"[AI AIKIDO] Low confidence translator inferred for '{book_data.get('title')}': {enriched_data['translator']}"
                 )
 
-        trusted_isbn = _safe_isbn_from_input(book_data.get("isbn"))
+        trusted_isbn = safe_isbn_from_input(book_data.get("isbn"))
         final = {**book_data, **enriched_data}
         # Never accept ISBN produced/edited by LLM.
         final["isbn"] = trusted_isbn
@@ -446,6 +454,7 @@ async def generate_tags_async(note_content: str) -> List[str]:
             ),
             timeout=35.0,
         )
+        _log_secondary_fallback_if_any("ai_generate_tags", result)
         text = clean_json_response(result.text)
 
         parsed = json.loads(text)
@@ -478,6 +487,7 @@ async def verify_cover_async(title: str, author: str, isbn: str = "") -> Optiona
             ),
             timeout=30.0,
         )
+        _log_secondary_fallback_if_any("ai_verify_cover", result)
         url = result.text.strip()
 
         if url.lower() == "null" or "http" not in url:
@@ -515,6 +525,7 @@ async def analyze_highlights_async(highlights: List[str]) -> str:
             ),
             timeout=45.0,
         )
+        _log_secondary_fallback_if_any("ai_analyze_highlights", result)
         return result.text.strip()
     except Exception as e:
         logger.error(f"Highlight analysis failed: {e}")
@@ -523,6 +534,14 @@ async def analyze_highlights_async(highlights: List[str]) -> str:
 
 @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=8))
 async def search_resources_async(query: str, resource_type: str) -> List[Dict[str, Any]]:
+    normalized_type = str(resource_type or "").strip().upper()
+    if normalized_type == "BOOK":
+        try:
+            return await resolve_book_metadata_async(query, limit=10)
+        except Exception as e:
+            logger.error(f"Book metadata resolver failed: {e}")
+            return []
+
     try:
         prompt = PROMPT_SEARCH_RESOURCES.format(query=query, resource_type=resource_type)
         result = await asyncio.wait_for(
@@ -544,6 +563,7 @@ async def search_resources_async(query: str, resource_type: str) -> List[Dict[st
             ),
             timeout=40.0,
         )
+        _log_secondary_fallback_if_any("ai_search_resources", result)
         clean = clean_json_response(result.text)
         parsed = json.loads(clean)
         return _strip_isbn_from_ai_resource_results(parsed)
@@ -586,6 +606,7 @@ async def extract_metadata_from_text_async(text: str) -> Dict[str, Optional[str]
             ),
             timeout=30.0,
         )
+        _log_secondary_fallback_if_any("ai_extract_metadata", result)
         clean = clean_json_response(result.text)
         return json.loads(clean)
     except Exception as e:

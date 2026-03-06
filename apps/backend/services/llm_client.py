@@ -681,20 +681,7 @@ def generate_text(
         and settings.LLM_EXPLORER_QWEN_PILOT_ENABLED
     ):
         if not _consume_qwen_rpm_slots(required_qwen_slots):
-            if allow_secondary_fallback and _can_use_secondary_fallback(fallback_state):
-                return _secondary_fallback_generate(
-                    prompt=prompt,
-                    task=task,
-                    model_tier=model_tier,
-                    temperature=temperature,
-                    max_output_tokens=max_output_tokens,
-                    response_mime_type=response_mime_type,
-                    timeout_s=timeout_s,
-                    fallback_state=fallback_state,
-                    from_provider=PROVIDER_QWEN,
-                    reason="qwen_rpm_cap",
-                )
-            raise RuntimeError("Qwen RPM cap reached and secondary fallback is disabled")
+            raise RuntimeError("Qwen RPM cap reached")
 
     provider = get_provider(primary_provider_hint)
     provider_name = getattr(provider, "name", primary_provider_hint)
@@ -771,8 +758,9 @@ def generate_text(
             and provider_name == PROVIDER_QWEN
             and allow_secondary_fallback
             and _can_use_secondary_fallback(fallback_state)
+            and is_retryable_llm_error(exc)
         ):
-            fallback_reason = "qwen_retryable_error" if is_retryable_llm_error(exc) else "qwen_primary_error"
+            fallback_reason = "qwen_retryable_error"
             logger.warning(
                 "Qwen primary failed; using secondary fallback",
                 extra={"reason": fallback_reason},

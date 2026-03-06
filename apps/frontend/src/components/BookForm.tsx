@@ -460,6 +460,47 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
       .replace(/[\u0300-\u036f]/g, '')
       .trim();
 
+  const titleTurkishSuggestion = (() => {
+    const rawTitle = String(formData.title || '').trim();
+    if (!rawTitle) return '';
+
+    const replacementMap: Array<[RegExp, string]> = [
+      [/\bUzerine\b/g, 'Üzerine'],
+      [/\buzerine\b/g, 'üzerine'],
+      [/\bDusunce\b/g, 'Düşünce'],
+      [/\bdusunce\b/g, 'düşünce'],
+      [/\bDusunceler\b/g, 'Düşünceler'],
+      [/\bdusunceler\b/g, 'düşünceler'],
+      [/\bTurkiye\b/g, 'Türkiye'],
+      [/\bturkiye\b/g, 'türkiye'],
+      [/\bKultur\b/g, 'Kültür'],
+      [/\bkultur\b/g, 'kültür'],
+      [/\bYayinlari\b/g, 'Yayınları'],
+      [/\byayinlari\b/g, 'yayınları'],
+      [/\bYayinevi\b/g, 'Yayınevi'],
+      [/\byayinevi\b/g, 'yayınevi'],
+      [/\bCag\b/g, 'Çağ'],
+      [/\bcag\b/g, 'çağ'],
+      [/\bCagdas\b/g, 'Çağdaş'],
+      [/\bcagdas\b/g, 'çağdaş'],
+      [/\bGorus\b/g, 'Görüş'],
+      [/\bgorus\b/g, 'görüş'],
+      [/\bOgrenme\b/g, 'Öğrenme'],
+      [/\bogrenme\b/g, 'öğrenme'],
+      [/\bOgreti\b/g, 'Öğreti'],
+      [/\bogreti\b/g, 'öğreti'],
+      [/\bSark\b/g, 'Şark'],
+      [/\bsark\b/g, 'şark'],
+    ];
+
+    let candidate = rawTitle;
+    for (const [pattern, replacement] of replacementMap) {
+      candidate = candidate.replace(pattern, replacement);
+    }
+
+    return candidate !== rawTitle ? candidate : '';
+  })();
+
   const resolveSlashCommand = (token: string): 'template' | null => {
     const raw = token.toLocaleLowerCase('tr-TR');
     if (raw === '/task' || raw === '/template') return 'template';
@@ -778,7 +819,19 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                   </>
                 )}
                 <div className="md:col-span-2">
-                  <label className={`block text-[12px] font-medium mb-0.5 ${noteLabelClass}`}>Title *</label>
+                  <div className="flex items-center justify-between mb-0.5">
+                    <label className={`block text-[12px] font-medium ${noteLabelClass}`}>Title *</label>
+                    {resourceType === 'BOOK' && titleTurkishSuggestion && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, title: titleTurkishSuggestion }))}
+                        className="text-[11px] font-medium text-[#CC561E] hover:text-[#b34b1a] transition-colors"
+                        title="Apply Turkish character suggestion to title"
+                      >
+                        Türkçe karakter öner
+                      </button>
+                    )}
+                  </div>
                   <input
                     required
                     name="title"

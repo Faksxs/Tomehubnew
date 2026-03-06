@@ -548,6 +548,201 @@ def _delete_content_rows_for_item(
     return cursor.rowcount or 0
 
 
+def _resolve_source_book_identity(
+    cursor,
+    *,
+    firebase_uid: str,
+    book_id: str,
+    fallback_title: str,
+    fallback_author: str,
+) -> tuple[str, str, bool]:
+    """
+    Resolve canonical title/author for the source item and verify it is a BOOK row.
+    Returns (title, author, is_book_item).
+    """
+    title = str(fallback_title or "").strip()
+    author = str(fallback_author or "").strip()
+    try:
+        cols = _table_columns(cursor, "TOMEHUB_LIBRARY_ITEMS")
+        required = {"ITEM_ID", "FIREBASE_UID", "ITEM_TYPE", "TITLE", "AUTHOR"}
+        if not required.issubset(cols):
+            return title, author, False
+
+        where_parts = [
+            "FIREBASE_UID = :p_uid",
+            "ITEM_ID = :p_item",
+        ]
+        if "IS_DELETED" in cols:
+            where_parts.append("NVL(IS_DELETED, 0) = 0")
+
+        cursor.execute(
+            f"""
+            SELECT TRIM(TITLE), TRIM(AUTHOR), ITEM_TYPE
+            FROM TOMEHUB_LIBRARY_ITEMS
+            WHERE {' AND '.join(where_parts)}
+            FETCH FIRST 1 ROWS ONLY
+            """,
+            {"p_uid": firebase_uid, "p_item": book_id},
+        )
+        row = cursor.fetchone()
+        if not row:
+            return title, author, False
+
+        db_title = str(row[0] or "").strip()
+        db_author = str(row[1] or "").strip()
+        item_type = str(row[2] or "").strip().upper()
+        if db_title:
+            title = db_title
+        if db_author:
+            author = db_author
+        return title, author, item_type == "BOOK"
+    except Exception as e:
+        if _is_missing_table_error(e) or _is_invalid_identifier_error(e):
+            logger.debug(f"[DEBUG] source identity lookup skipped: {e}")
+            return title, author, False
+        logger.warning(f"[WARN] source identity lookup failed: {e}")
+        return title, author, False
+
+
+def _resolve_exact_highlight_mirror_targets(
+    cursor,
+    *,
+    firebase_uid: str,
+    book_id: str,
+    title: str,
+    author: str,
+) -> tuple[str, str, list[str]]:
+    """
+    Find exact TITLE+AUTHOR BOOK copies for highlight mirroring.
+    Exact rule: TRIM(TITLE) and TRIM(AUTHOR) must match exactly (case/diacritics preserved).
+    """
+    resolved_title, resolved_author, is_book_item = _resolve_source_book_identity(
+        cursor,
+        firebase_uid=firebase_uid,
+        book_id=book_id,
+        fallback_title=title,
+        fallback_author=author,
+    )
+    if not is_book_item:
+        return resolved_title, resolved_author, []
+    if not resolved_title or not resolved_author:
+        return resolved_title, resolved_author, []
+
+    try:
+        cols = _table_columns(cursor, "TOMEHUB_LIBRARY_ITEMS")
+        required = {"ITEM_ID", "FIREBASE_UID", "ITEM_TYPE", "TITLE", "AUTHOR"}
+        if not required.issubset(cols):
+            return resolved_title, resolved_author, []
+
+        where_parts = [
+            "FIREBASE_UID = :p_uid",
+            "ITEM_TYPE = 'BOOK'",
+            "ITEM_ID <> :p_item",
+            "TRIM(TITLE) = :p_title",
+            "TRIM(AUTHOR) = :p_author",
+        ]
+        if "IS_DELETED" in cols:
+            where_parts.append("NVL(IS_DELETED, 0) = 0")
+
+        cursor.execute(
+            f"""
+            SELECT ITEM_ID
+            FROM TOMEHUB_LIBRARY_ITEMS
+            WHERE {' AND '.join(where_parts)}
+            """,
+            {
+                "p_uid": firebase_uid,
+                "p_item": book_id,
+                "p_title": resolved_title,
+                "p_author": resolved_author,
+            },
+        )
+        targets = [str(r[0]).strip() for r in cursor.fetchall() if r and str(r[0] or "").strip()]
+        return resolved_title, resolved_author, targets
+    except Exception as e:
+        if _is_missing_table_error(e) or _is_invalid_identifier_error(e):
+            logger.debug(f"[DEBUG] mirror target lookup skipped: {e}")
+            return resolved_title, resolved_author, []
+        logger.warning(f"[WARN] mirror target lookup failed: {e}")
+        return resolved_title, resolved_author, []
+
+
+def _replace_highlight_rows_for_item(
+    cursor,
+    *,
+    firebase_uid: str,
+    book_id: str,
+    title: str,
+    author: str,
+    highlights: list,
+    precomputed_embeddings: Optional[list] = None,
+) -> tuple[int, int, list]:
+    deleted = _delete_content_rows_for_item(
+        cursor,
+        firebase_uid=firebase_uid,
+        book_id=book_id,
+        content_types=("HIGHLIGHT", "INSIGHT"),
+    )
+    if not highlights:
+        return deleted, 0, precomputed_embeddings or []
+
+    texts = [h.get("text", "") for h in highlights]
+    embeddings = precomputed_embeddings if precomputed_embeddings is not None else batch_get_embeddings(texts)
+
+    insert_sql = """
+        INSERT INTO TOMEHUB_CONTENT_V2
+        (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, lemma_tokens, comment_text, tags_json, created_at)
+        VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_lemmas, :p_comment, :p_tags, :p_created_at)
+        RETURNING id INTO :p_out_id
+    """
+
+    inserted = 0
+    for idx, h in enumerate(highlights):
+        text = (h.get("text") or "").strip()
+        if not DataHealthService.validate_content(text):
+            continue
+
+        source_type = normalize_highlight_type(h.get("type", "highlight"))
+        comment = h.get("comment") if source_type == "HIGHLIGHT" else None
+        page_number = h.get("pageNumber")
+        tags = h.get("tags") or []
+        tags_json = json.dumps(tags, ensure_ascii=False) if tags else None
+        prepared_tags = prepare_labels(tags_json) if tags_json else []
+        embedding = embeddings[idx] if idx < len(embeddings) else None
+        created_at_ms = h.get("createdAt")
+        created_at_dt = datetime.fromtimestamp(created_at_ms / 1000.0) if created_at_ms else None
+
+        out_id = cursor.var(oracledb.NUMBER)
+        cursor.execute(
+            insert_sql,
+            {
+                "p_uid": firebase_uid,
+                "p_type": source_type,
+                "p_title": f"{title} - {author}",
+                "p_content": text,
+                "p_page": page_number,
+                "p_chunk_idx": idx,
+                # Keep highlight rows even when vector generation is unavailable.
+                "p_vec": embedding,
+                "p_book_id": book_id,
+                "p_norm": normalize_text(text),
+                "p_lemmas": json.dumps(get_lemmas(text), ensure_ascii=False),
+                "p_comment": comment,
+                "p_tags": tags_json,
+                "p_created_at": created_at_dt,
+                "p_out_id": out_id,
+            },
+        )
+        new_id = out_id.getvalue()
+        if isinstance(new_id, list):
+            new_id = new_id[0] if new_id else None
+        if new_id is not None:
+            _insert_content_tags(cursor, int(new_id), prepared_tags)
+        inserted += 1
+
+    return deleted, inserted, embeddings
+
+
 def _oracle_error_code(error: Exception) -> Optional[int]:
     if not isinstance(error, oracledb.DatabaseError):
         return None
@@ -1260,9 +1455,20 @@ def sync_highlights_for_item(
     """
     deleted = 0
     inserted = 0
+    mirrored_attempted = 0
+    mirrored_succeeded = 0
+    mirrored_failed: list[str] = []
 
     if not book_id:
-        return {"success": False, "deleted": 0, "inserted": 0, "error": "book_id required"}
+        return {
+            "success": False,
+            "deleted": 0,
+            "inserted": 0,
+            "mirrored_attempted": 0,
+            "mirrored_succeeded": 0,
+            "mirrored_failed": [],
+            "error": "book_id required",
+        }
 
     try:
         with DatabaseManager.get_write_connection() as connection:
@@ -1279,86 +1485,26 @@ def sync_highlights_for_item(
                     item_type="BOOK",
                 )
 
-                # Delete existing highlight/insight rows for this book/user
-                deleted = _delete_content_rows_for_item(
+                resolved_title, resolved_author, mirror_targets = _resolve_exact_highlight_mirror_targets(
                     cursor,
                     firebase_uid=firebase_uid,
                     book_id=book_id,
-                    content_types=("HIGHLIGHT", "INSIGHT"),
+                    title=title,
+                    author=author,
                 )
-
-                if not highlights:
-                    connection.commit()
-                    _invalidate_search_cache(firebase_uid=firebase_uid, book_id=book_id)
-                    maybe_trigger_epistemic_distribution_refresh_async(book_id=book_id, firebase_uid=firebase_uid, reason="sync_highlights_empty")
-                    _emit_change_event_best_effort(
-                        firebase_uid=firebase_uid,
-                        item_id=book_id,
-                        entity_type="HIGHLIGHT",
-                        event_type="highlight.synced",
-                        payload={"deleted": deleted, "inserted": 0},
-                    )
-                    return {"success": True, "deleted": deleted, "inserted": 0}
-
-                texts = [h.get("text", "") for h in highlights]
-                embeddings = batch_get_embeddings(texts)
-
-                insert_sql = """
-                    INSERT INTO TOMEHUB_CONTENT_V2
-                    (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, lemma_tokens, comment_text, tags_json, created_at)
-                    VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm, :p_lemmas, :p_comment, :p_tags, :p_created_at)
-                    RETURNING id INTO :p_out_id
-                """
-
-                for idx, h in enumerate(highlights):
-                    text = (h.get("text") or "").strip()
-                    if not DataHealthService.validate_content(text):
-                        continue
-
-                    source_type = normalize_highlight_type(h.get("type", "highlight"))
-                    chunk_type = "insight" if source_type == "INSIGHT" else "highlight"
-                    comment = h.get("comment") if source_type == "HIGHLIGHT" else None
-                    page_number = h.get("pageNumber")
-                    tags = h.get("tags") or []
-                    tags_json = json.dumps(tags, ensure_ascii=False) if tags else None
-                    prepared_tags = prepare_labels(tags_json) if tags_json else []
-
-                    embedding = embeddings[idx] if idx < len(embeddings) else None
-                    
-                    created_at_ms = h.get("createdAt")
-                    created_at_dt = datetime.fromtimestamp(created_at_ms / 1000.0) if created_at_ms else None
-
-                    out_id = cursor.var(oracledb.NUMBER)
-                    cursor.execute(
-                        insert_sql,
-                        {
-                            "p_uid": firebase_uid,
-                            "p_type": source_type,
-                            "p_title": f"{title} - {author}",
-                            "p_content": text,
-                            "p_page": page_number,
-                            "p_chunk_idx": idx,
-                            # Keep highlight rows even when vector generation is unavailable.
-                            "p_vec": embedding,
-                            "p_book_id": book_id,
-                            "p_norm": normalize_text(text),
-                            "p_lemmas": json.dumps(get_lemmas(text), ensure_ascii=False),
-                            "p_comment": comment,
-                            "p_tags": tags_json,
-                            "p_created_at": created_at_dt,
-                            "p_out_id": out_id,
-                        },
-                    )
-                    new_id = out_id.getvalue()
-                    if isinstance(new_id, list):
-                        new_id = new_id[0] if new_id else None
-                    if new_id is not None:
-                        _insert_content_tags(cursor, int(new_id), prepared_tags)
-                    inserted += 1
+                deleted, inserted, embeddings = _replace_highlight_rows_for_item(
+                    cursor,
+                    firebase_uid=firebase_uid,
+                    book_id=book_id,
+                    title=resolved_title,
+                    author=resolved_author,
+                    highlights=highlights,
+                )
 
                 connection.commit()
                 _invalidate_search_cache(firebase_uid=firebase_uid, book_id=book_id)
-                maybe_trigger_epistemic_distribution_refresh_async(book_id=book_id, firebase_uid=firebase_uid, reason="sync_highlights")
+                refresh_reason = "sync_highlights" if highlights else "sync_highlights_empty"
+                maybe_trigger_epistemic_distribution_refresh_async(book_id=book_id, firebase_uid=firebase_uid, reason=refresh_reason)
                 _emit_change_event_best_effort(
                     firebase_uid=firebase_uid,
                     item_id=book_id,
@@ -1366,7 +1512,46 @@ def sync_highlights_for_item(
                     event_type="highlight.synced",
                     payload={"deleted": deleted, "inserted": inserted},
                 )
-                return {"success": True, "deleted": deleted, "inserted": inserted}
+
+        # Best-effort mirror to exact TITLE+AUTHOR BOOK copies.
+        # Source write is already committed; mirror failures should not fail the source result.
+        for target_book_id in mirror_targets:
+            mirrored_attempted += 1
+            try:
+                with DatabaseManager.get_write_connection() as mirror_connection:
+                    with mirror_connection.cursor() as mirror_cursor:
+                        _ensure_serial_write_session(mirror_cursor)
+                        _replace_highlight_rows_for_item(
+                            mirror_cursor,
+                            firebase_uid=firebase_uid,
+                            book_id=target_book_id,
+                            title=resolved_title,
+                            author=resolved_author,
+                            highlights=highlights,
+                            precomputed_embeddings=embeddings,
+                        )
+                        mirror_connection.commit()
+                _invalidate_search_cache(firebase_uid=firebase_uid, book_id=target_book_id)
+                maybe_trigger_epistemic_distribution_refresh_async(
+                    book_id=target_book_id,
+                    firebase_uid=firebase_uid,
+                    reason="sync_highlights_mirror",
+                )
+                mirrored_succeeded += 1
+            except Exception as mirror_err:
+                mirrored_failed.append(target_book_id)
+                logger.warning(
+                    f"[WARN] highlight mirror failed source={book_id} target={target_book_id}: {mirror_err}"
+                )
+
+        return {
+            "success": True,
+            "deleted": deleted,
+            "inserted": inserted,
+            "mirrored_attempted": mirrored_attempted,
+            "mirrored_succeeded": mirrored_succeeded,
+            "mirrored_failed": mirrored_failed,
+        }
     except Exception as e:
         if _retry_on_parallel and _oracle_error_code(e) == 12839:
             logger.warning("[WARN] sync_highlights_for_item ORA-12839, retrying once with fresh serial session")
@@ -1379,7 +1564,15 @@ def sync_highlights_for_item(
                 _retry_on_parallel=False,
             )
         logger.error(f"[ERROR] sync_highlights_for_item failed: {e}")
-        return {"success": False, "deleted": deleted, "inserted": inserted, "error": str(e)}
+        return {
+            "success": False,
+            "deleted": deleted,
+            "inserted": inserted,
+            "mirrored_attempted": mirrored_attempted,
+            "mirrored_succeeded": mirrored_succeeded,
+            "mirrored_failed": mirrored_failed,
+            "error": str(e),
+        }
 
 
 def sync_personal_note_for_item(

@@ -170,22 +170,7 @@ export const searchResourcesAI = async (
   const trimmed = query.trim();
   if (!trimmed) return [];
 
-  // 1) Hızlı yol: BOOK için optimized bookSearchService kullan
-  if (type === "BOOK") {
-    const { searchBooks, isIsbn } = await import('./bookSearchService');
-    const result = await searchBooks(trimmed);
-    if (result.results.length > 0) {
-      console.log(`✓ Results from bookSearchService (${result.source}, cached: ${result.cached})`);
-      return result.results;
-    }
-    // ISBN için LLM fallback'ini kapat (hallucinasyon riskini önle)
-    if (isIsbn(trimmed)) {
-      console.log("✗ ISBN not found in standard APIs. Skipping LLM fallback.");
-      return [];
-    }
-  }
-
-  // 2) Hızlı yol: ARTICLE için önce CrossRef
+  // Fast path for ARTICLE: CrossRef first.
   if (type === "ARTICLE") {
     const fastResults = await searchArticlesFromAPIs(trimmed);
     if (fastResults.length > 0) {
@@ -194,7 +179,7 @@ export const searchResourcesAI = async (
     }
   }
 
-  // 3) Fallback: Gemini ile arama (Backend üzerinden)
+  // Main path: backend resolver/search.
   try {
     const idToken = await getAuthToken();
 
@@ -216,15 +201,15 @@ export const searchResourcesAI = async (
     // Backend returns { results: ItemDraft[] }
     return data.results.map((item: any) => ({
       ...item,
-      // ISBN must not be sourced from LLM search output.
-      isbn: "",
-      coverUrl: null,
+      // ISBN must never come from LLM guesses. BOOK path is provider-based resolver.
+      isbn: type === "BOOK" ? (item.isbn || "") : "",
+      coverUrl: type === "BOOK" ? (item.coverUrl ?? null) : null,
       sourceLanguageHint: normalizeLangHint(item.sourceLanguageHint || item.source_language_hint),
       contentLanguageResolved: normalizeLangHint(item.contentLanguageResolved || item.content_language_resolved),
     })) as ItemDraft[];
 
   } catch (error) {
-    console.error("Error searching with Gemini (Backend):", error);
+    console.error("Error searching resources (Backend):", error);
     return [];
   }
 };
