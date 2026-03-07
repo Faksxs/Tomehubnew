@@ -712,7 +712,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
           <form onSubmit={handleSubmit} className={`${isNote ? 'p-0 flex flex-col' : 'p-6 overflow-y-auto'} flex-1`}>
             {/* Basic Info */}
             <div className={isNote ? 'space-y-0 flex-1 flex flex-col' : (isMedia ? 'space-y-3.5' : 'space-y-3.5')}>
-              <div className={`grid grid-cols-1 md:grid-cols-2 ${isNote ? 'gap-0 p-3 md:p-5 border-b border-[#E6EAF2] dark:border-slate-800' : (isMedia ? 'gap-3' : 'gap-x-4 gap-y-3')}`}>
+              <div className={`grid grid-cols-1 md:grid-cols-2 ${isNote ? 'gap-3 px-4 py-3 md:p-5 border-b border-[#E6EAF2] dark:border-slate-800' : (isMedia ? 'gap-3' : 'gap-x-4 gap-y-3')}`}>
                 {isMedia && (
                   <>
                     <div>
@@ -1052,7 +1052,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
               )}
 
               {isNote && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 px-4 md:px-5 mt-2">
                   <div>
                     <label className={`block text-[12px] font-medium mb-0.5 ${noteLabelClass}`}>
                       Sub-file (optional)
@@ -1206,14 +1206,16 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
             <hr className={`${isNote ? 'my-2' : 'my-3'} border-slate-100 dark:border-slate-800`} />
 
             {isNote && (
-              <NoteEditorSection
-                labelClass={noteLabelClass}
-                helperClass={noteHelperClass}
-                value={formData.generalNotes}
-                onChange={(next) => setFormData(prev => ({ ...prev, generalNotes: next }))}
-                onSlashCommand={handleSlashCommand}
-                slashTemplateItems={PERSONAL_NOTE_TEMPLATES.map((template) => ({ id: template.id, label: template.name }))}
-              />
+              <div className="px-4 md:px-5 flex flex-col flex-1">
+                <NoteEditorSection
+                  labelClass={noteLabelClass}
+                  helperClass={noteHelperClass}
+                  value={formData.generalNotes}
+                  onChange={(next) => setFormData(prev => ({ ...prev, generalNotes: next }))}
+                  onSlashCommand={handleSlashCommand}
+                  slashTemplateItems={PERSONAL_NOTE_TEMPLATES.map((template) => ({ id: template.id, label: template.name }))}
+                />
+              </div>
             )}
 
             {/* Status & Tags */}
@@ -1341,7 +1343,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
 
             {/* Notes (Only for non-notes) */}
             {!isNote && (
-              <div className="mb-4 flex-1 flex flex-col">
+              <div className="mb-4 flex-1 flex flex-col px-4 md:px-6">
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                   Summary
                 </label>

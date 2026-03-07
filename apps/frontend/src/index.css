@@ -191,6 +191,11 @@
     white-space: pre-wrap;
   }
 
+  .personal-note-content colgroup col {
+    width: auto !important;
+    min-width: 0 !important;
+  }
+
   .personal-note-content h1 {
     font-size: 1.25rem;
   }
