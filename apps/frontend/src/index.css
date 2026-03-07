@@ -167,7 +167,7 @@
 @media (max-width: 767px) {
   .personal-note-content table {
     display: table;
-    width: 100%;
+    width: 100% !important;
     table-layout: fixed !important;
     font-size: 0.82rem;
   }
