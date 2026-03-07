@@ -287,10 +287,10 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
         </button>
       </div>
 
-      <div className={`bg-white dark:bg-slate-900 shadow-sm border-[#E6EAF2] dark:border-slate-800 overflow-hidden ${isNote ? 'rounded-none border-y border-x-0 md:rounded-2xl md:border' : 'rounded-xl md:rounded-2xl border'}`}>
+      <div className={`bg-white dark:bg-slate-900 shadow-sm border-[#E6EAF2] dark:border-white/10 overflow-hidden ${isNote ? 'rounded-none border-y border-x-0 md:rounded-2xl md:border' : 'rounded-xl md:rounded-2xl border'}`}>
 
         {/* Book Header Content */}
-        <div className="p-3 md:p-8 border-b border-[#E6EAF2] dark:border-slate-800">
+        <div className="p-3 md:p-8 border-b border-[#E6EAF2] dark:border-white/10">
           {isNote ? (
             // --- SIMPLIFIED HEADER FOR NOTES ---
             <div className="flex justify-between items-start">
@@ -538,7 +538,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
 
         {/* Tabs - Hidden for Personal Notes */}
         {!isNote && (
-          <div className="flex border-b border-[#E6EAF2] dark:border-slate-800">
+          <div className="flex border-b border-[#E6EAF2] dark:border-white/10">
             <button
               onClick={() => setActiveTab('info')}
               className={`flex-1 py-3 md:py-4 text-xs md:text-sm font-medium text-center border-b-2 transition-colors ${activeTab === 'info' ? 'border-[#262D40] dark:border-white text-[#262D40] dark:text-white' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
@@ -562,7 +562,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
             <div className={isNote ? "" : "grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8"}>
               <div className={isNote ? "w-full" : "md:col-span-2 space-y-6"}>
                 {/* Summary / Content */}
-                <div className={`bg-white dark:bg-slate-900 ${isNote ? 'px-4 py-3 md:p-6 min-h-[300px]' : 'shadow-sm p-2.5 md:p-6 rounded-xl border border-[#E6EAF2] dark:border-slate-800'}`}>
+                <div className={`bg-white dark:bg-slate-900 ${isNote ? 'px-5 py-4 md:p-6 min-h-[300px]' : 'shadow-sm p-2.5 md:p-6 rounded-xl border border-[#E6EAF2] dark:border-slate-800'}`}>
                   {!isNote && !isMedia && (
                     <div className="flex items-start justify-between gap-3 mb-3 md:mb-4">
                       <div className="flex items-center gap-2">

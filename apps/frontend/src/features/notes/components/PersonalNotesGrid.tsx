@@ -57,7 +57,7 @@ export const PersonalNotesGrid: React.FC<PersonalNotesGridProps> = ({
                                 ref={setNodeRef}
                                 style={isDragging ? undefined : style}
                                 onClick={() => onNoteClick(note)}
-                                className={`bg-white dark:bg-slate-800 p-4 md:p-5 rounded-none md:rounded-xl border-y md:border-x border-[#E6EAF2] dark:border-slate-800 hover:border-[#262D40]/20 dark:hover:border-[#262D40]/30 hover:shadow-md transition-all cursor-pointer flex flex-col group relative active:scale-[0.99] ${isDragging || activeDraggedNoteId === note.id ? 'opacity-60 ring-2 ring-[#CC561E]/40' : ''}`}
+                                className={`bg-white dark:bg-slate-800 p-4 md:p-5 rounded-none md:rounded-xl border-y md:border border-[#E6EAF2] dark:border-white/10 hover:border-[#262D40]/20 dark:hover:border-white/20 hover:shadow-md transition-all cursor-pointer flex flex-col group relative active:scale-[0.99] ${isDragging || activeDraggedNoteId === note.id ? 'opacity-60 ring-2 ring-[#CC561E]/40' : ''}`}
                             >
                                 <div className="absolute top-2 left-2 z-10">
                                     <button
@@ -100,11 +100,11 @@ export const PersonalNotesGrid: React.FC<PersonalNotesGridProps> = ({
                                 <div className="text-slate-600 dark:text-slate-300 text-xs md:text-sm whitespace-pre-wrap leading-relaxed max-h-[180px] overflow-hidden relative font-lora mb-3">
                                     {notePreview || <span className="italic text-slate-400 dark:text-slate-500">Empty</span>}
                                     {notePreview.length > 140 && (
-                                        <div className="absolute bottom-0 inset-x-0 h-8 bg-gradient-to-t from-white dark:from-slate-900 to-transparent" />
+                                        <div className="absolute bottom-0 inset-x-0 h-8 bg-gradient-to-t from-white dark:from-slate-800 to-transparent" />
                                     )}
                                 </div>
 
-                                <div className="mt-auto pt-2 flex flex-wrap gap-1.5 border-t border-slate-100 dark:border-slate-800 items-center">
+                                <div className="mt-auto pt-2 flex flex-wrap gap-1.5 border-t border-slate-100 dark:border-white/10 items-center">
                                     <span className="px-2 py-0.5 bg-[#CC561E]/10 text-[#CC561E] text-[10px] md:text-xs rounded border border-[#CC561E]/20 font-semibold">
                                         {getPersonalNoteCategory(note)}
                                     </span>

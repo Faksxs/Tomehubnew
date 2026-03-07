@@ -35,7 +35,7 @@ export const BookFormFooter: React.FC<BookFormFooterProps> = ({
     onCancel,
 }) => {
     return (
-        <div className={`flex justify-between items-center ${isNote ? 'pt-1' : 'pt-2'} mt-auto`}>
+        <div className={`flex justify-between items-center mt-auto ${isNote ? 'border-t border-[#E6EAF2] bg-white px-5 py-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] dark:border-white/10 dark:bg-slate-900' : 'pt-2'}`}>
             {!initialData && !isNote && (
                 <button
                     type="button"
@@ -45,18 +45,18 @@ export const BookFormFooter: React.FC<BookFormFooterProps> = ({
                     Back to Search
                 </button>
             )}
-            <div className="flex gap-3 ml-auto">
+            <div className={`flex gap-3 ${isNote ? 'w-full justify-end' : 'ml-auto'}`}>
                 <button
                     type="button"
                     onClick={onCancel}
-                    className="px-5 py-2 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors font-medium"
+                    className={`text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors font-medium ${isNote ? 'px-4 py-2.5' : 'px-5 py-2'}`}
                 >
                     Cancel
                 </button>
                 <button
                     type="submit"
                     disabled={isIngesting}
-                    className="px-5 py-2 bg-[#CC561E] text-white hover:bg-[#b34b1a] rounded-lg shadow-lg shadow-[#CC561E]/20 transition-all font-medium flex items-center gap-2 active:scale-95"
+                    className={`bg-[#CC561E] text-white hover:bg-[#b34b1a] rounded-lg shadow-lg shadow-[#CC561E]/20 transition-all font-medium flex items-center gap-2 active:scale-95 ${isNote ? 'px-4 py-2.5' : 'px-5 py-2'}`}
                 >
                     {isIngesting ? (
                         <>

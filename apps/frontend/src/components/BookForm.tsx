@@ -656,8 +656,8 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
   }
 
   return (
-    <div className={`fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-start md:items-center justify-center z-50 overflow-y-auto ${isNote ? 'p-0 md:p-4' : 'p-4'}`}>
-      <div className={`bg-white dark:bg-slate-900 shadow-2xl w-full flex flex-col ${isNote ? 'rounded-none min-h-[100dvh] md:min-h-0 md:rounded-xl max-w-3xl md:max-h-[94vh]' : 'rounded-xl max-w-2xl max-h-[90vh] overflow-hidden'}`}>
+    <div className={`fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-start md:items-center justify-center z-50 ${isNote ? 'overflow-hidden p-0 md:p-4' : 'overflow-y-auto p-4'}`}>
+      <div className={`bg-white dark:bg-slate-900 shadow-2xl w-full flex flex-col ${isNote ? 'rounded-none h-[100dvh] overflow-hidden md:h-auto md:max-h-[94vh] md:rounded-xl max-w-3xl' : 'rounded-xl max-w-2xl max-h-[90vh] overflow-hidden'}`}>
 
         <BookFormHeader
           isNote={isNote}
@@ -709,10 +709,11 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
 
         {/* Mode: Edit Form */}
         {mode === 'edit' && (
-          <form onSubmit={handleSubmit} className={`${isNote ? 'p-0 flex flex-col' : 'p-6 overflow-y-auto'} flex-1`}>
+          <form onSubmit={handleSubmit} className={`${isNote ? 'p-0 flex min-h-0 flex-1 flex-col overflow-hidden' : 'p-6 overflow-y-auto'} flex-1`}>
+            <div className={isNote ? 'min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-4' : ''}>
             {/* Basic Info */}
             <div className={isNote ? 'space-y-0 flex-1 flex flex-col' : (isMedia ? 'space-y-3.5' : 'space-y-3.5')}>
-              <div className={`grid grid-cols-1 md:grid-cols-2 ${isNote ? 'gap-3 px-4 py-3 md:p-5 border-b border-[#E6EAF2] dark:border-slate-800' : (isMedia ? 'gap-3' : 'gap-x-4 gap-y-3')}`}>
+              <div className={`grid grid-cols-1 md:grid-cols-2 ${isNote ? 'gap-3 px-5 py-4 md:p-5 border-b border-[#E6EAF2] dark:border-white/10' : (isMedia ? 'gap-3' : 'gap-x-4 gap-y-3')}`}>
                 {isMedia && (
                   <>
                     <div>
@@ -804,7 +805,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                 )}
 
                 {isNote && (
-                  <div className="md:col-span-2 grid grid-cols-2 gap-3">
+                  <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className={`block text-[12px] font-medium mb-0.5 flex items-center gap-1 ${noteSubLabelClass}`}>
                         <Calendar size={12} className="text-slate-400" />
@@ -1203,10 +1204,10 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
               }
             </div >
 
-            <hr className={`${isNote ? 'my-2' : 'my-3'} border-slate-100 dark:border-slate-800`} />
+            <hr className={`${isNote ? 'my-2' : 'my-3'} border-slate-100 dark:border-white/10`} />
 
             {isNote && (
-              <div className="px-4 md:px-5 flex flex-col flex-1">
+              <div className="px-5 md:px-5 flex flex-col flex-1">
                 <NoteEditorSection
                   labelClass={noteLabelClass}
                   helperClass={noteHelperClass}
@@ -1339,7 +1340,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
               )}
             </div>
 
-            <hr className={`${isNote ? 'my-2' : 'my-3'} border-slate-100 dark:border-slate-800`} />
+            <hr className={`${isNote ? 'my-2' : 'my-3'} border-slate-100 dark:border-white/10`} />
 
             {/* Notes (Only for non-notes) */}
             {!isNote && (
@@ -1357,6 +1358,8 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                 />
               </div>
             )}
+
+            </div>
 
             <BookFormFooter
               initialData={initialData ? { id: initialData.id } : undefined}
