@@ -35,7 +35,7 @@ export const BookFormFooter: React.FC<BookFormFooterProps> = ({
     onCancel,
 }) => {
     return (
-        <div className={`flex justify-between items-center mt-auto ${isNote ? 'border-t border-[#E6EAF2] bg-white px-5 py-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] dark:border-white/10 dark:bg-slate-900' : 'pt-2'}`}>
+        <div className={`flex justify-between items-center mt-auto ${isNote ? 'sticky bottom-0 border-t border-[#E6EAF2] bg-white/95 px-5 py-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] backdrop-blur-sm dark:border-white/10 dark:bg-slate-900/95 z-20' : 'pt-2'}`}>
             {!initialData && !isNote && (
                 <button
                     type="button"

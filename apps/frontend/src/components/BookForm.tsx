@@ -657,7 +657,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
 
   return (
     <div className={`fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-start md:items-center justify-center z-50 ${isNote ? 'overflow-hidden p-0 md:p-4' : 'overflow-y-auto p-4'}`}>
-      <div className={`bg-white dark:bg-slate-900 shadow-2xl w-full flex flex-col ${isNote ? 'rounded-none h-[100dvh] overflow-hidden md:h-auto md:max-h-[94vh] md:rounded-xl max-w-3xl' : 'rounded-xl max-w-2xl max-h-[90vh] overflow-hidden'}`}>
+      <div className={`bg-white dark:bg-slate-900 shadow-2xl w-full flex flex-col ${isNote ? 'rounded-none h-[100dvh] overflow-y-auto overscroll-y-contain md:h-auto md:max-h-[94vh] md:rounded-xl max-w-3xl' : 'rounded-xl max-w-2xl max-h-[90vh] overflow-hidden'}`}>
 
         <BookFormHeader
           isNote={isNote}
@@ -709,8 +709,8 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
 
         {/* Mode: Edit Form */}
         {mode === 'edit' && (
-          <form onSubmit={handleSubmit} className={`${isNote ? 'p-0 flex min-h-0 flex-1 flex-col overflow-hidden' : 'p-6 overflow-y-auto'} flex-1`}>
-            <div className={isNote ? 'min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-4' : ''}>
+          <form onSubmit={handleSubmit} className={`${isNote ? 'p-0 flex flex-1 flex-col' : 'p-6 overflow-y-auto'} flex-1`}>
+            <div className={isNote ? 'pb-4' : ''}>
             {/* Basic Info */}
             <div className={isNote ? 'space-y-0 flex-1 flex flex-col' : (isMedia ? 'space-y-3.5' : 'space-y-3.5')}>
               <div className={`grid grid-cols-1 md:grid-cols-2 ${isNote ? 'gap-3 px-5 py-4 md:p-5 border-b border-[#E6EAF2] dark:border-white/10' : (isMedia ? 'gap-3' : 'gap-x-4 gap-y-3')}`}>

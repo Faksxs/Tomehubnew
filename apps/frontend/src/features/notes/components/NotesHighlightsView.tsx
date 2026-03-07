@@ -41,7 +41,7 @@ export const NotesHighlightsView: React.FC<NotesHighlightsViewProps> = ({
 
     return (
         <div className="pb-10 md:pb-20">
-            <div className="columns-2 lg:columns-3 gap-2 md:gap-6 space-y-2 md:space-y-6">
+            <div className="columns-1 sm:columns-2 lg:columns-3 gap-2 md:gap-6 space-y-2 md:space-y-6">
                 {highlights.map((highlight, idx) => {
                     const isNote = isInsightType(highlight.type);
 
@@ -90,7 +90,7 @@ export const NotesHighlightsView: React.FC<NotesHighlightsViewProps> = ({
                                 </div>
                             )}
 
-                            <div className={`pt-2 md:pt-4 mt-auto flex items-center justify-between border-t ${isNote ? 'border-[#E6EAF2]' : 'border-[#262D40]/50'}`}>
+                            <div className={`pt-2 md:pt-4 mt-auto flex items-center justify-between border-t ${isNote ? 'border-[#E6EAF2] dark:border-white/10' : 'border-[#262D40]/50 dark:border-white/10'}`}>
                                 <div className="flex-1 min-w-0">
                                     <h4 className="text-xs md:text-sm font-bold text-slate-900 dark:text-white truncate">{highlight.source.title}</h4>
                                     <div className="flex items-center gap-1 md:gap-2 text-[10px] md:text-xs text-slate-500 dark:text-slate-400">

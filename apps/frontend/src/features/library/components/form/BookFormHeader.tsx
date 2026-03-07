@@ -19,7 +19,7 @@ export const BookFormHeader: React.FC<BookFormHeaderProps> = ({
     onClose,
 }) => {
     return (
-        <div className={`${isNote ? 'p-3 md:p-4' : 'p-5'} border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-900 z-10`}>
+        <div className={`${isNote ? 'sticky top-0 px-4 py-3 md:p-4' : 'p-5'} border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm z-20`}>
             <h2 className={`${isNote ? 'text-lg' : 'text-xl'} font-bold text-slate-800 dark:text-white flex items-center gap-2`}>
                 {mode === 'search' ? (
                     <>

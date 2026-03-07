@@ -45,7 +45,7 @@ export const PersonalNotesGrid: React.FC<PersonalNotesGridProps> = ({
     }
 
     return (
-        <div className="grid grid-cols-1 xl:grid-cols-2 lg:gap-4 md:gap-4">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 md:gap-4">
             {notes.map((note) => {
                 const notePreview = extractPersonalNoteText(note.generalNotes || '');
                 const resolvedFolderName = getResolvedNoteFolderName(note);

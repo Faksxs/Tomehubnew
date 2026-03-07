@@ -167,6 +167,9 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
     const [quickCaptureCategory, setQuickCaptureCategory] = useState<PersonalNoteCategory>('DAILY');
     const [quickNoteTitle, setQuickNoteTitle] = useState('');
     const [quickNoteBody, setQuickNoteBody] = useState('');
+    const [isMobileViewport, setIsMobileViewport] = useState(() => (
+        typeof window !== 'undefined' ? window.matchMedia('(max-width: 767px)').matches : false
+    ));
     const [activeDraggedNoteId, setActiveDraggedNoteId] = useState<string | null>(null);
     const [activeDraggedFolderId, setActiveDraggedFolderId] = useState<string | null>(null);
     const [undoMove, setUndoMove] = useState<{ noteId: string; category: PersonalNoteCategory; folderId?: string; timeoutId: number } | null>(null);
@@ -193,6 +196,23 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
     }, [isMediaTab]);
 
     useEffect(() => {
+        if (typeof window === 'undefined') return undefined;
+        const mediaQuery = window.matchMedia('(max-width: 767px)');
+        const handleChange = (event: MediaQueryListEvent | MediaQueryList) => {
+            setIsMobileViewport(event.matches);
+        };
+
+        handleChange(mediaQuery);
+        const listener = (event: MediaQueryListEvent) => handleChange(event);
+        if (mediaQuery.addEventListener) {
+            mediaQuery.addEventListener('change', listener);
+            return () => mediaQuery.removeEventListener('change', listener);
+        }
+        mediaQuery.addListener(listener);
+        return () => mediaQuery.removeListener(listener);
+    }, []);
+
+    useEffect(() => {
         if (noteTagFilter) {
             setIsTopTagsOpen(true);
         }
@@ -209,11 +229,12 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
 
     const handleNoteCardClick = (note: LibraryItem) => {
         const now = Date.now();
-        const isMobile = window.innerWidth < 768;
 
-        if (isMobile && lastTap?.noteId === note.id && now - lastTap.time < 300) {
+        if (isMobileViewport && lastTap?.noteId === note.id && now - lastTap.time < 300) {
             // Double tap detected - open in edit mode
             setLastTap(null);
+            setIsPersonalPanelOpen(false);
+            setIsQuickCaptureOpen(false);
             if (onSelectBookWithTab) {
                 onSelectBookWithTab(note, 'info');
             } else {
@@ -222,6 +243,10 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
         } else {
             // Single tap - just open note preview
             setLastTap({ noteId: note.id, time: now });
+            if (isMobileViewport) {
+                setIsPersonalPanelOpen(false);
+                setIsQuickCaptureOpen(false);
+            }
             onSelectBook(note);
         }
     };
@@ -928,11 +953,23 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
     };
 
     const togglePersonalPanel = () => {
-        setIsPersonalPanelOpen((prev) => !prev);
+        setIsPersonalPanelOpen((prev) => {
+            const next = !prev;
+            if (isMobileViewport && next) {
+                setIsQuickCaptureOpen(false);
+            }
+            return next;
+        });
     };
 
     const toggleQuickCapture = () => {
-        setIsQuickCaptureOpen((prev) => !prev);
+        setIsQuickCaptureOpen((prev) => {
+            const next = !prev;
+            if (isMobileViewport && next) {
+                setIsPersonalPanelOpen(false);
+            }
+            return next;
+        });
     };
 
     const handleHighlightSelect = (highlight: (typeof displayedHighlights)[number]) => {
@@ -1017,6 +1054,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                         onDragEnd={handleDragEnd}
                         isPersonalPanelOpen={isPersonalPanelOpen}
                         onTogglePersonalPanel={togglePersonalPanel}
+                        onClosePersonalPanel={() => setIsPersonalPanelOpen(false)}
                         allNotesVisibleCount={allNotesVisibleCount}
                         favoriteNotesVisibleCount={favoriteNotesVisibleCount}
                         recentNotesVisibleCount={recentNotesVisibleCount}
