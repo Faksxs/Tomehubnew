@@ -328,7 +328,7 @@ export const PersonalNoteEditor: React.FC<PersonalNoteEditorProps> = ({
 
         <div className="hidden md:block w-px h-4 bg-slate-300 dark:bg-slate-700 mx-1" />
 
-        <ToolbarButton active={!!editor?.isActive('table')} onClick={() => editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} title="Insert Table">
+        <ToolbarButton active={!!editor?.isActive('table')} onClick={() => editor?.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run()} title="Insert Table">
           <Table2 size={18} className="md:w-3.5 md:h-3.5" />
         </ToolbarButton>
         <ToolbarButton active={false} onClick={() => editor?.chain().focus().addRowAfter().run()} title="Add Row">
