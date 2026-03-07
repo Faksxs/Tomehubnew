@@ -31,6 +31,7 @@ from models.request_models import (
     SearchRequest, SearchResponse, IngestRequest, 
     FeedbackRequest, AddItemRequest, BatchMigrateRequest,
     ChatRequest, ChatResponse, HighlightSyncRequest, ComparisonRequest, PersonalNoteSyncRequest, PurgeResourceRequest,
+    MemoryProfileRefreshRequest,
     LibraryItemUpsertRequest, LibraryItemPatchRequest, LibraryBulkDeleteRequest,
     PersonalNoteFolderUpsertRequest, PersonalNoteFolderPatchRequest,
 )
@@ -829,6 +830,7 @@ async def chat_endpoint(
         from services.chat_history_service import (
             create_session, add_message, get_session_context, summarize_session_history
         )
+        from services.memory_profile_service import get_memory_context_snippet, refresh_memory_profile
         
         loop = asyncio.get_running_loop()
         
@@ -842,6 +844,7 @@ async def chat_endpoint(
             
         # 2. Get Context (Summary + History)
         ctx_data = await loop.run_in_executor(None, get_session_context, session_id)
+        memory_context_snippet = await loop.run_in_executor(None, get_memory_context_snippet, firebase_uid)
         
         # 3. Save User Message
         await loop.run_in_executor(None, add_message, session_id, 'user', chat_request.message)
@@ -1021,6 +1024,8 @@ async def chat_endpoint(
                 else:
                     conversation_state["legacy_summary"] = raw_state_payload
                     conversation_state["active_topic"] = raw_state_payload[:100]
+            if memory_context_snippet:
+                conversation_state["memory_profile"] = memory_context_snippet[:1000]
 
             # 1. Retrieve Context
             rag_ctx = await loop.run_in_executor(
@@ -1119,7 +1124,7 @@ async def chat_endpoint(
                     firebase_uid,
                     effective_book_id,
                     ctx_data['recent_messages'],
-                    ctx_data['summary'] or "",
+                    "\n\n".join(part for part in [memory_context_snippet, ctx_data['summary'] or ""] if part).strip(),
                     retrieval_limit,
                     chat_request.offset,
                     session_id,
@@ -1140,12 +1145,14 @@ async def chat_endpoint(
             final_metadata.setdefault("effective_retrieval_limit", retrieval_limit)
             for key, value in scope_metadata.items():
                 final_metadata.setdefault(key, value)
+            final_metadata.setdefault("memory_profile_loaded", bool(memory_context_snippet))
         
         # 5. Save Assistant Message
         await loop.run_in_executor(None, add_message, session_id, 'assistant', answer, sources)
         
         # 6. Periodic Summarization (Background)
         background_tasks.add_task(summarize_session_history, session_id)
+        background_tasks.add_task(refresh_memory_profile, firebase_uid)
         
         return {
             "answer": answer,
@@ -1364,9 +1371,15 @@ async def perform_search(
             raise HTTPException(status_code=401, detail="Authentication required")
     
     try:
+        from services.search_system.mix_policy import resolve_result_mix_policy
         from services.smart_search_service import perform_search
         from functools import partial
         visibility_scope = "all" if request.include_private_notes else request.visibility_scope
+        result_mix_policy = resolve_result_mix_policy(
+            None,
+            fusion_mode=settings.RETRIEVAL_FUSION_MODE,
+            default_policy=settings.SEARCH_DEFAULT_RESULT_MIX_POLICY,
+        )
 
         loop = asyncio.get_running_loop()
         results, metadata = await loop.run_in_executor(
@@ -1377,7 +1390,7 @@ async def perform_search(
                 firebase_uid, 
                 limit=request.limit, 
                 offset=request.offset,
-                result_mix_policy="lexical_then_semantic_tail",
+                result_mix_policy=result_mix_policy,
                 semantic_tail_cap=settings.SEARCH_SMART_SEMANTIC_TAIL_CAP,
                 visibility_scope=visibility_scope,
                 search_surface=request.search_surface,
@@ -2402,6 +2415,7 @@ async def add_item_endpoint(
 async def sync_highlights_endpoint(
     book_id: str,
     request: HighlightSyncRequest,
+    background_tasks: BackgroundTasks,
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
     try:
@@ -2449,6 +2463,11 @@ async def sync_highlights_endpoint(
             result["index_freshness"] = freshness
         except Exception as e:
             logger.warning(f"Index freshness read failed after highlight sync: {e}")
+        try:
+            from services.memory_profile_service import refresh_memory_profile
+            background_tasks.add_task(refresh_memory_profile, verified_firebase_uid)
+        except Exception as e:
+            logger.warning(f"Memory profile refresh enqueue skipped after highlight sync: {e}")
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -2458,12 +2477,14 @@ async def sync_highlights_endpoint(
 async def sync_highlights_for_item_endpoint(
     item_id: str,
     request: HighlightSyncRequest,
+    background_tasks: BackgroundTasks,
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
     # Backward-compatible generic alias for non-book resources (movie/series etc.).
     return await sync_highlights_endpoint(
         book_id=item_id,
         request=request,
+        background_tasks=background_tasks,
         firebase_uid_from_jwt=firebase_uid_from_jwt,
     )
 
@@ -2472,6 +2493,7 @@ async def sync_highlights_for_item_endpoint(
 async def sync_personal_note_endpoint(
     book_id: str,
     request: PersonalNoteSyncRequest,
+    background_tasks: BackgroundTasks,
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
     try:
@@ -2520,8 +2542,66 @@ async def sync_personal_note_endpoint(
             result["index_freshness"] = freshness
         except Exception as e:
             logger.warning(f"Index freshness read failed after personal note sync: {e}")
+        try:
+            from services.memory_profile_service import refresh_memory_profile
+            background_tasks.add_task(refresh_memory_profile, verified_firebase_uid)
+        except Exception as e:
+            logger.warning(f"Memory profile refresh enqueue skipped after personal note sync: {e}")
         return result
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/memory/profile")
+async def get_memory_profile_endpoint(
+    request: Request,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+):
+    firebase_uid = get_verified_uid(request, firebase_uid_from_jwt)
+    try:
+        from services.memory_profile_service import get_memory_profile
+
+        loop = asyncio.get_running_loop()
+        profile = await loop.run_in_executor(None, get_memory_profile, firebase_uid)
+        if not profile:
+            return {
+                "firebase_uid": firebase_uid,
+                "profile_summary": "",
+                "active_themes": [],
+                "recurring_sources": [],
+                "open_questions": [],
+                "evidence_counts": {},
+                "status": "missing",
+            }
+        return profile
+    except Exception as e:
+        logger.error("Memory profile get failed", extra={"error": str(e), "traceback": traceback.format_exc()})
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/memory/profile/refresh")
+async def refresh_memory_profile_endpoint(
+    payload: MemoryProfileRefreshRequest,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+):
+    if firebase_uid_from_jwt:
+        firebase_uid = firebase_uid_from_jwt
+    else:
+        firebase_uid = payload.firebase_uid
+        if not _allow_dev_unverified_auth():
+            raise HTTPException(status_code=401, detail="Authentication required")
+    try:
+        from functools import partial
+        from services.memory_profile_service import refresh_memory_profile
+
+        loop = asyncio.get_running_loop()
+        profile = await loop.run_in_executor(
+            None,
+            partial(refresh_memory_profile, firebase_uid, force=bool(payload.force)),
+        )
+        return profile
+    except Exception as e:
+        logger.error("Memory profile refresh failed", extra={"error": str(e), "traceback": traceback.format_exc()})
         raise HTTPException(status_code=500, detail=str(e))
 
 
