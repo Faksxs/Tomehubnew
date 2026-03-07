@@ -2,10 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Bold, Heading1, Heading2, Italic, List, ListOrdered, CheckSquare, Underline as UnderlineIcon, Quote, Table2, Rows3, Columns3, Trash2, Palette, Eraser, SquareMinus } from 'lucide-react';
 import { EditorContent, useEditor } from '@tiptap/react';
 
-// @ts-ignore - In this version of @tiptap/react, BubbleMenu is located in a sub-path
-import { BubbleMenu } from '@tiptap/react/menus';
-
-import { BubbleMenu as BubbleMenuExtension } from '@tiptap/extension-bubble-menu';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import TaskList from '@tiptap/extension-task-list';
@@ -62,7 +58,6 @@ const editorExtensions = [
   TaskItem.configure({
     nested: true,
   }),
-  BubbleMenuExtension,
 ];
 
 type ToolbarButtonProps = {
@@ -336,33 +331,30 @@ export const PersonalNoteEditor: React.FC<PersonalNoteEditorProps> = ({
         <ToolbarButton active={!!editor?.isActive('table')} onClick={() => editor?.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run()} title="Insert Table">
           <Table2 size={18} className="md:w-3.5 md:h-3.5" />
         </ToolbarButton>
+        {editor?.isActive('table') && (
+          <>
+            <div className="hidden md:block w-px h-4 bg-slate-300 dark:bg-slate-700 mx-1" />
+            <ToolbarButton active={false} onClick={() => editor.chain().focus().addRowAfter().run()} title="Add Row Below">
+              <Rows3 size={18} className="md:w-3.5 md:h-3.5" />
+            </ToolbarButton>
+            <ToolbarButton active={false} onClick={() => editor.chain().focus().deleteRow().run()} title="Delete Row">
+              <SquareMinus size={18} className="md:w-3.5 md:h-3.5 text-red-500" />
+            </ToolbarButton>
+            <div className="hidden md:block w-px h-4 bg-slate-300 dark:bg-slate-700 mx-1" />
+            <ToolbarButton active={false} onClick={() => editor.chain().focus().addColumnAfter().run()} title="Add Col Right">
+              <Columns3 size={18} className="md:w-3.5 md:h-3.5" />
+            </ToolbarButton>
+            <ToolbarButton active={false} onClick={() => editor.chain().focus().deleteColumn().run()} title="Delete Col">
+              <SquareMinus size={18} className="md:w-3.5 md:h-3.5 text-red-500 rotate-90" />
+            </ToolbarButton>
+          </>
+        )}
         <ToolbarButton active={false} onClick={() => editor?.chain().focus().deleteTable().run()} title="Delete Table">
-          <Trash2 size={18} className="md:w-3.5 md:h-3.5" />
+          <Trash2 size={18} className="md:w-3.5 md:h-3.5 text-red-500" />
         </ToolbarButton>
       </div>
 
-      <div className="relative bg-white dark:bg-slate-950 text-slate-900 dark:text-white" style={editorHeightStyle}>
-        {editor && (
-          <BubbleMenu
-            editor={editor}
-            shouldShow={({ editor }) => editor.isActive('table')}
-            className="flex items-center gap-0.5 p-1 rounded-lg border border-[#E6EAF2] dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md shadow-xl overflow-hidden"
-          >
-            <ToolbarButton active={false} onClick={() => editor.chain().focus().addRowAfter().run()} title="Add Row Below">
-              <Rows3 size={16} />
-            </ToolbarButton>
-            <ToolbarButton active={false} onClick={() => editor.chain().focus().deleteRow().run()} title="Delete Current Row">
-              <SquareMinus size={16} className="text-red-500" />
-            </ToolbarButton>
-            <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
-            <ToolbarButton active={false} onClick={() => editor.chain().focus().addColumnAfter().run()} title="Add Column Right">
-              <Columns3 size={16} />
-            </ToolbarButton>
-            <ToolbarButton active={false} onClick={() => editor.chain().focus().deleteColumn().run()} title="Delete Current Column">
-              <SquareMinus size={16} className="text-red-500 rotate-90" />
-            </ToolbarButton>
-          </BubbleMenu>
-        )}
+      <div className="relative w-full overflow-x-auto bg-white dark:bg-slate-950 text-slate-900 dark:text-white" style={editorHeightStyle}>
         <EditorContent editor={editor} />
         {slashMenu && (
           <div className="absolute left-3 top-3 z-20 w-[min(420px,calc(100%-1.5rem))] rounded-lg border border-[#E6EAF2] dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl">

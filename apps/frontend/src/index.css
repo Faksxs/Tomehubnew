@@ -218,6 +218,8 @@
   line-height: 1.7;
   font-size: 0.95rem;
   color: #0f172a;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 @media (max-width: 767px) {

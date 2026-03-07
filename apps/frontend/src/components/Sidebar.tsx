@@ -116,44 +116,27 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, mediaL
               onTabChange('PROFILE');
               onClose();
             }}
-            className={`w-full flex items-center gap-3 rounded-2xl px-3 py-2.5 text-[13px] font-medium transition-all duration-200 group lg:py-3 lg:text-sm ${activeTab === 'PROFILE'
-              ? 'border border-white/10 bg-white/[0.09] text-white shadow-[0_8px_24px_rgba(0,0,0,0.18)]'
-              : 'border border-transparent text-white/70 hover:border-white/5 hover:bg-white/[0.045] hover:text-white'
-              }`}
+            className="w-full text-left rounded-xl border border-white/10 bg-gradient-to-br from-white/[0.08] via-white/[0.04] to-transparent p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-white/[0.06] transition-colors flex items-center justify-between"
           >
-            <User
-              className={`w-[17px] h-[17px] lg:w-5 lg:h-5 transition-colors ${activeTab === 'PROFILE' ? 'text-[#CC561E]' : 'text-white/60 group-hover:text-white'
-                }`}
-            />
-            Profile
-          </button>
-
-          <button
-            onClick={toggleTheme}
-            className="mt-1 w-full flex items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 text-[13px] font-medium text-white/70 transition-all duration-200 group hover:border-white/5 hover:bg-white/[0.045] hover:text-white lg:py-3 lg:text-sm"
-          >
-            {theme === 'light' ? (
-              <>
-                <Moon className="w-[17px] h-[17px] lg:w-5 lg:h-5 text-white/60 group-hover:text-white" />
-                Dark Mode
-              </>
-            ) : (
-              <>
-                <Sun className="w-[17px] h-[17px] lg:w-5 lg:h-5 text-amber-400" />
-                Light Mode
-              </>
-            )}
-          </button>
-        </div>
-
-        <div className="p-4 border-t border-white/10">
-          <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.08] via-white/[0.04] to-transparent p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-            <p className="mb-1 text-[11.5px] font-medium text-white/78">My Personal Library</p>
-            <div className="flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-[#CC561E] animate-pulse" />
-              <p className="text-[9.5px] font-semibold uppercase tracking-[0.18em] text-white/50">Online</p>
+            <div>
+              <p className="mb-0.5 text-[11px] font-medium text-white/80">My Personal Library</p>
+              <div className="flex items-center gap-1.5">
+                <div className="h-1.5 w-1.5 rounded-full bg-[#CC561E] animate-pulse" />
+                <p className="text-[8.5px] font-semibold uppercase tracking-[0.15em] text-white/50">Online</p>
+              </div>
             </div>
-          </div>
+
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleTheme();
+              }}
+              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-colors border border-white/10"
+              title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+            >
+              {theme === 'light' ? <Moon size={14} /> : <Sun size={14} className="text-amber-400" />}
+            </div>
+          </button>
         </div>
       </aside>
     </>
