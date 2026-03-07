@@ -293,14 +293,14 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
               )}
             </div>
 
-            {/* Comment input only for highlights in non-media mode */}
-            {entryType === 'highlight' && !isMedia && (
+            {/* Comment input for both highlights and insights in non-media mode */}
+            {!isMedia && (
               <div>
                 <label className="block text-[10px] md:text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5 uppercase">Comment</label>
                 <input
                   type="text"
                   className="w-full border border-[#E6EAF2] dark:border-white/10 rounded-lg py-1.5 px-2 text-xs md:text-sm bg-white dark:bg-slate-800/50 text-slate-800 dark:text-white focus:ring-2 focus:ring-orange-500/30"
-                  placeholder="Why is this quote important?"
+                  placeholder={entryType === 'highlight' ? "Why is this quote important?" : "Extra thoughts or context..."}
                   value={formData.comment || ''}
                   onChange={e => setFormData(prev => ({ ...prev, comment: e.target.value }))}
                 />

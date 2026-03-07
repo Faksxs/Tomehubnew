@@ -1,8 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { LogOut, User, ArrowLeft, Sparkles, Play, Square, Loader2, BrainCircuit, RefreshCw, BookOpenText, NotebookTabs, MessagesSquare, CircleHelp } from 'lucide-react';
-import { MigrateToAI } from './MigrateToAI';
-import { ImportBooks } from './ImportBooks';
-import { ExportBooks } from './ExportBooks';
 import { LibraryItem } from '../types';
 import { getMemoryProfile, MemoryProfileResponse, refreshMemoryProfile } from '../services/backendApiService';
 
@@ -371,11 +368,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 </div>
             </div>
 
-            {/* Migration Section */}
-            <MigrateToAI books={books} userId={userId} />
-
-            <ImportBooks />
-            <ExportBooks books={books} />
+            {/* Migration Section removed */}
         </div>
     );
 };
