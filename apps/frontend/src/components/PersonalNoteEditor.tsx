@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Bold, Heading1, Heading2, Italic, List, ListOrdered, CheckSquare, Underline as UnderlineIcon, Quote, Table2, Rows3, Columns3, Trash2, Palette, Eraser, SquareMinus } from 'lucide-react';
-import { EditorContent, useEditor, BubbleMenu } from '@tiptap/react';
+import { EditorContent, useEditor } from '@tiptap/react';
+// @ts-ignore - BubbleMenu is sometimes not recognized as a named export by bundlers despite being present in the module
+import * as TiptapReact from '@tiptap/react';
+const BubbleMenu = (TiptapReact as any).BubbleMenu;
+
+import { BubbleMenu as BubbleMenuExtension } from '@tiptap/extension-bubble-menu';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import TaskList from '@tiptap/extension-task-list';
@@ -58,6 +63,7 @@ const editorExtensions = [
   TaskItem.configure({
     nested: true,
   }),
+  BubbleMenuExtension,
 ];
 
 type ToolbarButtonProps = {
