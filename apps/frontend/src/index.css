@@ -172,13 +172,22 @@
     font-size: 0.82rem;
   }
 
+  .personal-note-content .tableWrapper {
+    overflow-x: hidden !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
   .personal-note-content th,
   .personal-note-content td {
     padding: 0.25rem 0.35rem !important;
     max-width: 0;
-    /* Ensures content wraps and never overflows cell */
+    min-width: 0 !important;
+    /* Hard override for Tiptap inline styles */
+    width: auto !important;
     word-break: break-word;
     overflow-wrap: break-word;
+    /* Ensures content wraps and never overflows cell */
     white-space: pre-wrap;
   }
 
