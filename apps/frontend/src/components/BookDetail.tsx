@@ -120,6 +120,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
     switch (status) {
       case 'Lent Out': return { icon: AlertTriangle, color: 'text-[#F59E0B]', bg: 'bg-[#F59E0B]/15', border: 'border-[#F59E0B]/45' };
       case 'Lost': return { icon: AlertTriangle, color: 'text-[#F43F5E]', bg: 'bg-[#F43F5E]/15', border: 'border-[#F43F5E]/45' };
+      case 'Digital': return { icon: Globe, color: 'text-[#0EA5E9]', bg: 'bg-[#0EA5E9]/15', border: 'border-[#0EA5E9]/45' };
       case 'On Shelf':
       default:
         return { icon: Library, color: 'text-[#14B8A6]', bg: 'bg-[#14B8A6]/15', border: 'border-[#14B8A6]/45' };

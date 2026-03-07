@@ -172,16 +172,13 @@
 @media (max-width: 767px) {
   .personal-note-content table {
     display: table;
-    width: max-content !important;
-    min-width: 100% !important;
-    table-layout: auto !important;
+    width: 100% !important;
+    table-layout: fixed !important;
     font-size: 0.82rem;
   }
 
   .personal-note-content .tableWrapper {
-    overflow-x: auto !important;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-x: contain;
+    overflow-x: hidden !important;
     max-width: 100% !important;
     width: 100% !important;
     padding-bottom: 0.35rem;
@@ -190,16 +187,14 @@
   .personal-note-content th,
   .personal-note-content td {
     padding: 0.25rem 0.35rem !important;
-    min-width: 8.5rem !important;
-    width: auto !important;
+    min-width: 0 !important;
     word-break: break-word;
     overflow-wrap: break-word;
     white-space: pre-wrap;
   }
 
   .personal-note-content colgroup col {
-    width: auto !important;
-    min-width: 8.5rem !important;
+    min-width: 0 !important;
   }
 
   .personal-note-content h1 {
