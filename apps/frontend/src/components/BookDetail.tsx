@@ -278,14 +278,16 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
   );
 
   return (
-    <div className="max-w-[1100px] w-full mx-auto p-2 md:p-4 pb-20 animate-in fade-in duration-300">
+    <div className={`max-w-[1100px] w-full mx-auto pb-20 animate-in fade-in duration-300 ${isNote ? 'p-0 md:p-4' : 'p-2 md:p-4'}`}>
       {/* Header Navigation */}
-      <button onClick={onBack} className="mb-2 md:mb-6 flex items-center text-slate-500 dark:text-slate-400 hover:text-[#262D40] dark:hover:text-white transition-colors group text-base md:text-base">
-        <ArrowLeft size={18} className="mr-1.5 md:mr-1 md:w-5 md:h-5 group-hover:-translate-x-1 transition-transform" />
-        Back to {isNote ? 'Notes' : 'Library'}
-      </button>
+      <div className={isNote ? 'px-3 pt-3 md:px-0 md:pt-0' : ''}>
+        <button onClick={onBack} className="mb-2 md:mb-6 flex items-center text-slate-500 dark:text-slate-400 hover:text-[#262D40] dark:hover:text-white transition-colors group text-base md:text-base">
+          <ArrowLeft size={18} className="mr-1.5 md:mr-1 md:w-5 md:h-5 group-hover:-translate-x-1 transition-transform" />
+          Back to {isNote ? 'Notes' : 'Library'}
+        </button>
+      </div>
 
-      <div className="bg-white dark:bg-slate-900 rounded-xl md:rounded-2xl shadow-sm border border-[#E6EAF2] dark:border-slate-800 overflow-hidden">
+      <div className={`bg-white dark:bg-slate-900 shadow-sm border-[#E6EAF2] dark:border-slate-800 overflow-hidden ${isNote ? 'rounded-none border-y border-x-0 md:rounded-2xl md:border' : 'rounded-xl md:rounded-2xl border'}`}>
 
         {/* Book Header Content */}
         <div className="p-3 md:p-8 border-b border-[#E6EAF2] dark:border-slate-800">
@@ -555,12 +557,12 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
         )}
 
         {/* Tab Content */}
-        <div className="p-2 md:p-8 bg-[#F7F8FB] dark:bg-slate-900/50 min-h-[400px]">
+        <div className={`bg-[#F7F8FB] dark:bg-slate-900/50 min-h-[400px] ${isNote ? 'p-0 md:p-8' : 'p-2 md:p-8'}`}>
           {(activeTab === 'info' || isNote) && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
               <div className={isNote ? "md:col-span-3" : "md:col-span-2 space-y-6"}>
                 {/* Summary / Content */}
-                <div className={`bg-white dark:bg-slate-900 p-2.5 md:p-6 rounded-xl border border-[#E6EAF2] dark:border-slate-800 shadow-sm ${isNote ? 'min-h-[300px]' : ''}`}>
+                <div className={`bg-white dark:bg-slate-900 shadow-sm ${isNote ? 'p-4 md:p-6 rounded-none md:rounded-xl border-y border-x-0 md:border border-[#E6EAF2] dark:border-slate-800 min-h-[300px]' : 'p-2.5 md:p-6 rounded-xl border border-[#E6EAF2] dark:border-slate-800'}`}>
                   {!isNote && !isMedia && (
                     <div className="flex items-start justify-between gap-3 mb-3 md:mb-4">
                       <div className="flex items-center gap-2">
