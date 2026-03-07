@@ -208,6 +208,18 @@ export interface RealtimePollResponse {
     count: number;
 }
 
+export interface MemoryProfileResponse {
+    firebase_uid: string;
+    profile_summary: string;
+    active_themes: string[];
+    recurring_sources: string[];
+    open_questions: string[];
+    evidence_counts: Record<string, number>;
+    last_refreshed_at?: string | null;
+    updated_at?: string | null;
+    status: 'missing' | 'empty' | 'cached' | 'ready';
+}
+
 /**
  * Check if backend API is online
  */
@@ -725,6 +737,58 @@ export async function purgeResourceContent(
     if (!response.ok) {
         throw new Error('Failed to purge resource content');
     }
+    return response.json();
+}
+
+export async function getMemoryProfile(firebaseUid: string): Promise<MemoryProfileResponse> {
+    if (!firebaseUid) {
+        throw new Error('User must be authenticated to fetch memory profile');
+    }
+
+    const url = new URL(`${API_BASE_URL}/api/memory/profile`);
+    url.searchParams.set('firebase_uid', firebaseUid);
+
+    const response = await fetchWithAuth(url.toString(), {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Firebase-UID': firebaseUid,
+        },
+    });
+
+    if (!response.ok) {
+        const message = await parseApiErrorMessage(response, 'Failed to fetch memory profile');
+        throw new Error(message);
+    }
+
+    return response.json();
+}
+
+export async function refreshMemoryProfile(
+    firebaseUid: string,
+    force: boolean = true,
+): Promise<MemoryProfileResponse> {
+    if (!firebaseUid) {
+        throw new Error('User must be authenticated to refresh memory profile');
+    }
+
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/memory/profile/refresh`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Firebase-UID': firebaseUid,
+        },
+        body: JSON.stringify({
+            firebase_uid: firebaseUid,
+            force,
+        }),
+    });
+
+    if (!response.ok) {
+        const message = await parseApiErrorMessage(response, 'Failed to refresh memory profile');
+        throw new Error(message);
+    }
+
     return response.json();
 }
 

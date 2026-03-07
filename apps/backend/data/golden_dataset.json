@@ -1,92 +1,213 @@
 [
-    {
-        "id": "q1",
-        "question": "Hz. Ali'nin ibadet sınıflandırmasında \"tüccarların ibadeti\" neyi ifade eder?",
-        "reference_answer": "Karşılık beklentisi / Özel bir yarar veya çıkar gözetmesi.",
-        "key_concepts": [
-            "Hz. Ali",
-            "İbadet",
-            "Tüccar",
-            "Karşılık"
-        ]
-    },
-    {
-        "id": "q2",
-        "question": "Heraklit neden bir irmaga iki kez girilmez der?",
-        "reference_answer": "Evrendeki sürekli değişim / Sabit kalmanın mümkün olmaması.",
-        "key_concepts": [
-            "Heraklit",
-            "Irmak",
-            "Değişim",
-            "Akış"
-        ]
-    },
-    {
-        "id": "q3",
-        "question": "Tefekkuru, Teemmul den  ayiran temel fark nedir?",
-        "reference_answer": "Özel bir yarar veya çıkar gözetmesi.",
-        "key_concepts": [
-            "Tefekkür",
-            "Teemmül",
-            "Fark",
-            "Yarar"
-        ]
-    },
-    {
-        "id": "q4",
-        "question": "Engels belirttiği erkeklerin kadınları sistematik biçimde sömürme durumu  nedir?",
-        "reference_answer": "Üretim fazlasının oluşturduğu servetten ve devlet sosyal katmanlaşma ve mülkün erkekler tarafından kontrol edilmesi.",
-        "key_concepts": [
-            "Engels",
-            "Kadın",
-            "Sömürü",
-            "Mülkiyet",
-            "Erkek"
-        ]
-    },
-    {
-        "id": "q5",
-        "question": "Sokrates bilgiyi neden dusunceden ustun tutar?",
-        "reference_answer": "Öteki seçeneklerin (alternatiflerin) neden yanlış olduğunu bilmek.",
-        "key_concepts": [
-            "Sokrates",
-            "Bilgi",
-            "Düşünce",
-            "Yanlış",
-            "Alternatif"
-        ]
-    },
-    {
-        "id": "q6",
-        "question": "Amin Maalouf yazarina gore mixed blessing nedir?",
-        "reference_answer": "Karşı iktidar eksikliği / İki ucu keskin kılıç.",
-        "key_concepts": [
-            "Amin Maalouf",
-            "Mixed Blessing",
-            "İktidar"
-        ]
-    },
-    {
-        "id": "q7",
-        "question": "Derrida için metafizik yanılsamalar dilsel yapi icinde yok edilebilir mi?",
-        "reference_answer": "Yok edilemez.",
-        "key_concepts": [
-            "Derrida",
-            "Metafizik",
-            "Yanılsama",
-            "Dil",
-            "Yok edilemez"
-        ]
-    },
-    {
-        "id": "q8",
-        "question": "John Adams Amerikayi nasil bir mekan olarak gormustur",
-        "reference_answer": "Muazzam bir düzenin başlangıç mekanı.",
-        "key_concepts": [
-            "John Adams",
-            "Amerika",
-            "Mekan",
-            "Düzen"
-        ]
-    }
+  {
+    "id": "q1",
+    "question": "Hz. Ali'nin ibadet sınıflandırmasında \"tüccarların ibadeti\" neyi ifade eder?",
+    "reference_answer": "Karşılık beklentisiyle, çıkar veya ödül umarak yapılan ibadeti ifade eder.",
+    "expected_mode": "QUOTE",
+    "key_concepts": ["Hz. Ali", "ibadet", "tüccar", "karşılık"],
+    "must_quote": ["tüccarların ibadeti"],
+    "forbidden": ["durumunuza uygun bir tanım bulunamadı", "Couldn't find"]
+  },
+  {
+    "id": "q2",
+    "question": "Heraklit neden bir ırmağa iki kez girilmez der?",
+    "reference_answer": "Çünkü varlık ve hayat sürekli değişim içindedir; aynı ırmak ve aynı kişi sabit kalmaz.",
+    "expected_mode": "QUOTE",
+    "key_concepts": ["Heraklit", "ırmak", "değişim", "akış"],
+    "must_quote": ["iki kez girilmez"],
+    "forbidden": ["durumunuza uygun bir tanım bulunamadı", "Couldn't find"]
+  },
+  {
+    "id": "q3",
+    "question": "Tefekkürü, teemmülden ayıran temel fark nedir?",
+    "reference_answer": "Tefekkür daha amaçlı ve hakikate yönelen derin düşünmedir; teemmül ise daha genel, sakin ve seyir halinde düşünmeyi ifade eder.",
+    "expected_mode": "QUOTE",
+    "key_concepts": ["tefekkür", "teemmül", "fark", "düşünme"],
+    "forbidden": ["durumunuza uygun bir tanım bulunamadı", "Couldn't find"]
+  },
+  {
+    "id": "q4",
+    "question": "Engels'in belirttiği erkeklerin kadınları sistematik biçimde sömürme durumu nedir?",
+    "reference_answer": "Üretim fazlası, mülkiyet ve devlet gücünün erkekler lehine örgütlenmesiyle kadınların sistematik biçimde sömürülmesi durumudur.",
+    "expected_mode": "QUOTE",
+    "key_concepts": ["Engels", "kadın", "sömürü", "mülkiyet", "erkek"],
+    "forbidden": ["durumunuza uygun bir tanım bulunamadı", "Couldn't find"]
+  },
+  {
+    "id": "q5",
+    "question": "Sokrates bilgiyi neden düşünceden üstün tutar?",
+    "reference_answer": "Çünkü bilgi, yalnızca doğruya sahip olmayı değil, diğer seçeneklerin neden yanlış olduğunu da bilmeyi içerir.",
+    "expected_mode": "QUOTE",
+    "key_concepts": ["Sokrates", "bilgi", "düşünce", "alternatif", "yanlış"],
+    "forbidden": ["durumunuza uygun bir tanım bulunamadı", "Couldn't find"]
+  },
+  {
+    "id": "q6",
+    "question": "Amin Maalouf'a göre mixed blessing nedir?",
+    "reference_answer": "İki ucu keskin bir imkânı veya aynı anda hem nimet hem yük olan durumu ifade eder.",
+    "expected_mode": "QUOTE",
+    "key_concepts": ["Amin Maalouf", "mixed blessing", "iki ucu keskin"],
+    "forbidden": ["durumunuza uygun bir tanım bulunamadı", "doğrudan tanım bulunamadı", "Couldn't find"]
+  },
+  {
+    "id": "q7",
+    "question": "Derrida için metafizik yanılsamalar dilsel yapı içinde yok edilebilir mi?",
+    "reference_answer": "Hayır. Derrida'ya göre metafizik yanılsamalar dilin yapısı içinde tamamen yok edilemez.",
+    "expected_mode": "QUOTE",
+    "key_concepts": ["Derrida", "metafizik", "yanılsama", "dil"],
+    "must_quote": ["yok edilemez"],
+    "forbidden": ["durumunuza uygun bir tanım bulunamadı", "Couldn't find"]
+  },
+  {
+    "id": "q8",
+    "question": "John Adams Amerika'yı nasıl bir mekân olarak görmüştür?",
+    "reference_answer": "Amerika'yı büyük bir düzenin ve yeni bir başlangıcın mekânı olarak görmüştür.",
+    "expected_mode": "QUOTE",
+    "key_concepts": ["John Adams", "Amerika", "düzen", "başlangıç"],
+    "forbidden": ["durumunuza uygun bir tanım bulunamadı", "Couldn't find"]
+  },
+  {
+    "id": "q9",
+    "question": "Vicdan kavramını kısa ama net biçimde tanımlar mısın?",
+    "reference_answer": "Vicdan, iyiyi kötüden ayırma yeteneğinin özel adıdır.",
+    "expected_mode": "QUOTE",
+    "key_concepts": ["vicdan", "iyiyi kötüden ayırma", "tanım"],
+    "must_quote": ["iyiyi kötüden ayırma yeteneğinin özel bir adı vardır"],
+    "forbidden": ["durumunuza uygun bir tanım bulunamadı", "Couldn't find"]
+  },
+  {
+    "id": "q10",
+    "question": "Vicdan değişen bir şey midir?",
+    "reference_answer": "Notlarda iki yaklaşım vardır: biri vicdanı sosyal kanunlarla ilişkilendirir, diğeri değişmez bir kanun olarak görür; yani konu tek yönlü değil, tartışmalıdır.",
+    "expected_mode": "HYBRID",
+    "key_concepts": ["vicdan", "iki teori", "değişmez kanun", "sosyal kanun"],
+    "must_quote": ["vicdan için iki teori var"],
+    "must_synthesize": ["vicdan azabı"],
+    "forbidden": ["durumunuza uygun bir tanım bulunamadı", "doğrudan tanım bulunamadı", "Couldn't find"]
+  },
+  {
+    "id": "q11",
+    "question": "Sokrates vicdanı nasıl tanımlar?",
+    "reference_answer": "Sokrates vicdanı ilahi bir ses olarak tanımlar.",
+    "expected_mode": "QUOTE",
+    "key_concepts": ["Sokrates", "vicdan", "ilahi ses"],
+    "must_quote": ["ilahi bir ses"],
+    "forbidden": ["durumunuza uygun bir tanım bulunamadı", "Couldn't find"]
+  },
+  {
+    "id": "q12",
+    "question": "Vicdan ile diğer insanları anlamak arasında nasıl bir ilişki kuruluyor?",
+    "reference_answer": "İnsani bir vicdana sahip olmadan diğer insanları anlamanın mümkün olmadığı söylenir.",
+    "expected_mode": "HYBRID",
+    "key_concepts": ["vicdan", "insani vicdan", "diğer insanları anlamak"],
+    "must_quote": ["diğer insanları anlamak mümkün değildir"],
+    "forbidden": ["durumunuza uygun bir tanım bulunamadı", "Couldn't find"]
+  },
+  {
+    "id": "q13",
+    "question": "Din ve vicdan ilişkisi notlarda nasıl kuruluyor?",
+    "reference_answer": "Din yalnızca kişisel vicdanla sınırlı kalmalı; toplumsal yasalardan ayrı tutulmalıdır.",
+    "expected_mode": "HYBRID",
+    "key_concepts": ["din", "vicdan", "kişisel", "toplumsal yasalar"],
+    "must_quote": ["kişisel vicdanla sınırlı kalmalıdır"],
+    "forbidden": ["durumunuza uygun bir tanım bulunamadı", "Couldn't find"]
+  },
+  {
+    "id": "q14",
+    "question": "Vicdan azabı hangi bağlamda anlatılıyor?",
+    "reference_answer": "Ayrılık bağlamında, giden kişinin biraz vicdan azabı duyduğundan söz edilir.",
+    "expected_mode": "HYBRID",
+    "key_concepts": ["vicdan azabı", "ayrılmak", "ızdırap", "giden"],
+    "must_quote": ["Ayrılmak ne tuhaf"],
+    "forbidden": ["durumunuza uygun bir tanım bulunamadı", "Couldn't find"]
+  },
+  {
+    "id": "q15",
+    "question": "Vicdan bireysel mi yoksa toplumsal mı görülüyor?",
+    "reference_answer": "Notlarda vicdan hem sosyal kanunlarla ilişkilendirilen hem de değişmez bir kanun olarak görülen iki ayrı yaklaşım üzerinden tartışılır.",
+    "expected_mode": "HYBRID",
+    "key_concepts": ["vicdan", "bireysel", "toplumsal", "iki teori"],
+    "must_quote": ["vicdan için iki teori var"],
+    "must_synthesize": ["Toplumsal yasalardan ayrı tutulmalıdır"],
+    "forbidden": ["durumunuza uygun bir tanım bulunamadı", "Couldn't find"]
+  },
+  {
+    "id": "q16",
+    "question": "Vicdanın tanımı ile toplumsal boyutu birlikte nasıl açıklanabilir?",
+    "reference_answer": "Vicdan bir yandan iyiyi kötüden ayırma yeteneği olarak tanımlanır, öte yandan toplumsal yasalarla ilişkisi nedeniyle kişisel ve toplumsal boyutları birlikte tartışılır.",
+    "expected_mode": "HYBRID",
+    "key_concepts": ["vicdan", "tanım", "toplumsal boyut", "kişisel vicdan"],
+    "must_quote": ["iyiyi kötüden ayırma yeteneğinin özel bir adı vardır"],
+    "must_synthesize": ["kişisel vicdanla sınırlı kalmalıdır"],
+    "forbidden": ["durumunuza uygun bir tanım bulunamadı", "Couldn't find"]
+  },
+  {
+    "id": "q17",
+    "question": "Hz. Ali'nin söz ettiği ibadet türleri içinde tüccarların ibadeti hangi motivasyona dayanır?",
+    "reference_answer": "Ödül, karşılık veya çıkar beklentisine dayanan ibadettir.",
+    "expected_mode": "QUOTE",
+    "key_concepts": ["Hz. Ali", "ibadet", "ödül", "karşılık"],
+    "must_quote": ["tüccarların ibadeti"],
+    "forbidden": ["durumunuza uygun bir tanım bulunamadı", "Couldn't find"]
+  },
+  {
+    "id": "q18",
+    "question": "Heraklit'in ırmak örneği hangi temel düşünceyi anlatır?",
+    "reference_answer": "Her şeyin akış ve değişim içinde olduğunu anlatır.",
+    "expected_mode": "QUOTE",
+    "key_concepts": ["Heraklit", "ırmak", "akış", "değişim"],
+    "must_quote": ["ırmağa iki kez girilmez"],
+    "forbidden": ["durumunuza uygun bir tanım bulunamadı", "Couldn't find"]
+  },
+  {
+    "id": "q19",
+    "question": "Sokrates'e göre bilgi ile düşünce arasındaki üstünlük farkı neye dayanır?",
+    "reference_answer": "Bilgi, yalnızca doğru kanaati değil, yanlış alternatiflerin neden yanlış olduğunu da açıklayabildiği için üstündür.",
+    "expected_mode": "QUOTE",
+    "key_concepts": ["Sokrates", "bilgi", "düşünce", "yanlış alternatif"],
+    "forbidden": ["durumunuza uygun bir tanım bulunamadı", "Couldn't find"]
+  },
+  {
+    "id": "q20",
+    "question": "Derrida'nın dil ve metafizik ilişkisine göre yanılsamalar tamamen temizlenebilir mi?",
+    "reference_answer": "Hayır, dilin yapısı nedeniyle metafizik yanılsamalar tamamen temizlenemez.",
+    "expected_mode": "QUOTE",
+    "key_concepts": ["Derrida", "dil", "metafizik", "yanılsama"],
+    "must_quote": ["yok edilemez"],
+    "forbidden": ["durumunuza uygun bir tanım bulunamadı", "Couldn't find"]
+  },
+  {
+    "id": "q21",
+    "question": "John Adams'ın Amerika tasavvurunda öne çıkan fikir nedir?",
+    "reference_answer": "Amerika'nın büyük bir düzenin ve yeni bir siyasal başlangıcın mekânı olduğu fikri öne çıkar.",
+    "expected_mode": "QUOTE",
+    "key_concepts": ["John Adams", "Amerika", "başlangıç", "düzen"],
+    "forbidden": ["durumunuza uygun bir tanım bulunamadı", "Couldn't find"]
+  },
+  {
+    "id": "q22",
+    "question": "Engels'e göre kadınların sömürülmesi hangi tarihsel ve mülkiyet ilişkileriyle bağlantılıdır?",
+    "reference_answer": "Servetin, üretim fazlasının ve mülkiyetin erkekler tarafından denetlenmesiyle bağlantılıdır.",
+    "expected_mode": "QUOTE",
+    "key_concepts": ["Engels", "kadın", "mülkiyet", "servet", "üretim fazlası"],
+    "forbidden": ["durumunuza uygun bir tanım bulunamadı", "Couldn't find"]
+  },
+  {
+    "id": "q23",
+    "question": "Amin Maalouf'un mixed blessing ifadesi nasıl bir çelişkili durumu anlatır?",
+    "reference_answer": "Aynı anda hem imkan hem yük, yani iki ucu keskin bir durumu anlatır.",
+    "expected_mode": "QUOTE",
+    "key_concepts": ["Amin Maalouf", "mixed blessing", "çelişkili durum"],
+    "forbidden": ["durumunuza uygun bir tanım bulunamadı", "doğrudan tanım bulunamadı", "Couldn't find"]
+  },
+  {
+    "id": "q24",
+    "question": "Vicdanın doğası hakkında kısa bir tanım ve bir karşıt görüş birlikte verilebilir mi?",
+    "reference_answer": "Evet. Vicdan bir tanım olarak iyiyi kötüden ayırma yeteneği diye verilir; karşıt görüşte ise vicdanın sosyal kanunlarla ilişkili mi yoksa değişmez bir yasa mı olduğu tartışılır.",
+    "expected_mode": "HYBRID",
+    "key_concepts": ["vicdan", "tanım", "karşıt görüş", "iki teori"],
+    "must_quote": ["iyiyi kötüden ayırma yeteneğinin özel bir adı vardır"],
+    "must_synthesize": ["vicdan için iki teori var"],
+    "forbidden": ["durumunuza uygun bir tanım bulunamadı", "Couldn't find"]
+  }
 ]

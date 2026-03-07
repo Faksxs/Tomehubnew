@@ -60,6 +60,7 @@ from services.smart_search_service import (
     score_with_bm25,
     compute_rrf
 )
+from services.search_system.mix_policy import resolve_result_mix_policy
 
 # Import Graph Service
 from services.graph_service import get_graph_candidates, GraphRetrievalError
@@ -1444,7 +1445,11 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
             visibility_scope=visibility_scope,
             content_type=content_type,
             ingestion_type=ingestion_type,
-            result_mix_policy="lexical_then_semantic_tail",
+            result_mix_policy=resolve_result_mix_policy(
+                None,
+                fusion_mode=settings.RETRIEVAL_FUSION_MODE,
+                default_policy=settings.SEARCH_DEFAULT_RESULT_MIX_POLICY,
+            ),
             semantic_tail_cap=getattr(settings, "SEARCH_SMART_SEMANTIC_TAIL_CAP", 6),
         )
 
@@ -1716,7 +1721,11 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
                 limit=kw_limit,
                 offset=0,
                 session_id=session_id,
-                result_mix_policy="lexical_then_semantic_tail",
+                result_mix_policy=resolve_result_mix_policy(
+                    None,
+                    fusion_mode=settings.RETRIEVAL_FUSION_MODE,
+                    default_policy=settings.SEARCH_DEFAULT_RESULT_MIX_POLICY,
+                ),
                 semantic_tail_cap=getattr(settings, "SEARCH_SMART_SEMANTIC_TAIL_CAP", 6),
             )
             if kw_res:
@@ -1915,7 +1924,7 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
     # Network Classification (Phase 3)
     network_info = classify_network_status(question, final_chunks)
 
-    retrieval_fusion_mode = vec_meta.get("retrieval_fusion_mode", "concat")
+    retrieval_fusion_mode = vec_meta.get("retrieval_fusion_mode", settings.RETRIEVAL_FUSION_MODE)
     vector_retrieval_path = vec_meta.get("retrieval_path", "hybrid")
     retrieval_path_parts = [vector_retrieval_path]
     if graph_latency_budget_applied and not graph_skipped_by_intent:

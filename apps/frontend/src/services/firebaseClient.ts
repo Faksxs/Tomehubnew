@@ -9,10 +9,14 @@ const firebaseConfig = {
     messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
     appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
+
+// CRITICAL DEBUG: Verify if env vars are reaching the client
+console.log("Firebase Init - apiKey length:", firebaseConfig.apiKey?.length);
+console.log("Firebase Init - config keys:", Object.keys(firebaseConfig).filter(k => !!firebaseConfig[k]));
+
 // Initialize Firebase app (single instance)
 const app = initializeApp(firebaseConfig);
 
 // Export shared instances
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
-

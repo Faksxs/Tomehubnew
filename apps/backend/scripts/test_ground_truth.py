@@ -1,12 +1,16 @@
 
-import sys
-import os
+__test__ = False
+
 import json
+import os
+import sys
 import time
+from pathlib import Path
+
 from dotenv import load_dotenv
 
-# Add backend to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+backend_dir = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(backend_dir))
 
 from services.search_service import generate_answer
 
@@ -14,7 +18,7 @@ def test_ground_truth():
     print("\n[TEST] Starting Ground Truth Regression Suite...")
     
     # Load Golden Set
-    with open('backend/data/golden_test_set.json', 'r', encoding='utf-8') as f:
+    with open(backend_dir / 'data' / 'golden_test_set.json', 'r', encoding='utf-8') as f:
         test_cases = json.load(f)
         
     passed = 0
@@ -35,7 +39,13 @@ def test_ground_truth():
             # Using the UID found via find_user.py
             user_id = "vpq1p0UzcCSLAh1d18WgZZWPBE63" 
             
-            answer, sources = generate_answer(query, user_id)
+            response = generate_answer(query, user_id)
+            if isinstance(response, tuple) and len(response) == 3:
+                answer, sources, _meta = response
+            elif isinstance(response, tuple) and len(response) == 2:
+                answer, sources = response
+            else:
+                raise RuntimeError("Unexpected generate_answer response payload")
             duration = time.time() - start_time
             
             print(f"Response Time: {duration:.2f}s")
@@ -87,6 +97,5 @@ def test_ground_truth():
     print(f"\n[SUMMARY] {passed}/{total} Tests Passed")
     
 if __name__ == "__main__":
-    # Ensure env is loaded
-    load_dotenv(os.path.join(os.getcwd(), 'backend', '.env'))
+    load_dotenv(backend_dir / '.env')
     test_ground_truth()

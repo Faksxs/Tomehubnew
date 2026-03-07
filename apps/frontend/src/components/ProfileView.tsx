@@ -1,9 +1,10 @@
-import React from 'react';
-import { LogOut, User, ArrowLeft, Sparkles, Play, Square, Loader2 } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { LogOut, User, ArrowLeft, Sparkles, Play, Square, Loader2, BrainCircuit, RefreshCw, BookOpenText, NotebookTabs, MessagesSquare, CircleHelp } from 'lucide-react';
 import { MigrateToAI } from './MigrateToAI';
 import { ImportBooks } from './ImportBooks';
 import { ExportBooks } from './ExportBooks';
 import { LibraryItem } from '../types';
+import { getMemoryProfile, MemoryProfileResponse, refreshMemoryProfile } from '../services/backendApiService';
 
 interface ProfileViewProps {
     userId: string;
@@ -40,6 +41,77 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         (!b.generalNotes || b.generalNotes.length < 10) &&
         (!b.tags || b.tags.length === 0)
     ).length;
+
+    const [memoryProfile, setMemoryProfile] = useState<MemoryProfileResponse | null>(null);
+    const [memoryLoading, setMemoryLoading] = useState(true);
+    const [memoryRefreshing, setMemoryRefreshing] = useState(false);
+    const [memoryError, setMemoryError] = useState<string | null>(null);
+
+    useEffect(() => {
+        let isActive = true;
+
+        const loadProfile = async () => {
+            if (!userId) {
+                if (isActive) {
+                    setMemoryProfile(null);
+                    setMemoryLoading(false);
+                }
+                return;
+            }
+            try {
+                setMemoryLoading(true);
+                setMemoryError(null);
+                const profile = await getMemoryProfile(userId);
+                if (isActive) {
+                    setMemoryProfile(profile);
+                }
+            } catch (error) {
+                if (isActive) {
+                    const message = error instanceof Error ? error.message : 'Memory profile could not be loaded.';
+                    setMemoryError(message);
+                }
+            } finally {
+                if (isActive) {
+                    setMemoryLoading(false);
+                }
+            }
+        };
+
+        void loadProfile();
+        return () => {
+            isActive = false;
+        };
+    }, [userId]);
+
+    const handleRefreshMemory = async () => {
+        if (!userId || memoryRefreshing) return;
+        try {
+            setMemoryRefreshing(true);
+            setMemoryError(null);
+            const profile = await refreshMemoryProfile(userId, true);
+            setMemoryProfile(profile);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Memory profile could not be refreshed.';
+            setMemoryError(message);
+        } finally {
+            setMemoryRefreshing(false);
+        }
+    };
+
+    const evidenceCounts = useMemo(() => {
+        const counts = memoryProfile?.evidence_counts || {};
+        return {
+            notes: Number(counts.notes || 0),
+            messages: Number(counts.messages || 0),
+            sessions: Number(counts.sessions || 0),
+            reports: Number(counts.reports || 0),
+        };
+    }, [memoryProfile]);
+
+    const memorySignalCount = evidenceCounts.notes + evidenceCounts.messages + evidenceCounts.sessions + evidenceCounts.reports;
+    const lastRefreshLabel = memoryProfile?.last_refreshed_at
+        ? new Date(memoryProfile.last_refreshed_at).toLocaleString()
+        : 'Not refreshed yet';
 
     return (
         <div className="p-6 md:p-10 max-w-[1100px] w-full mx-auto animate-in fade-in slide-in-from-bottom-4">
@@ -148,6 +220,153 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                                 </div>
                             </div>
                         )}
+                    </div>
+                </div>
+            </div>
+
+            <div className="bg-[radial-gradient(circle_at_top_left,_rgba(20,184,166,0.18),_transparent_42%),linear-gradient(135deg,_rgba(15,23,42,0.96),_rgba(30,41,59,0.94))] rounded-2xl border border-slate-800 shadow-[0_30px_80px_-45px_rgba(15,23,42,0.85)] overflow-hidden mb-8">
+                <div className="p-6 md:p-8">
+                    <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+                        <div className="max-w-2xl">
+                            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-200">
+                                <BrainCircuit size={14} />
+                                Reading Memory
+                            </div>
+                            <h2 className="mt-4 text-2xl font-semibold text-white">Cross-session reading profile</h2>
+                            <p className="mt-2 text-sm leading-6 text-slate-300">
+                                TomeHub now compacts your recent notes, chats, and reports into a reusable memory layer for Explorer and future weekly summaries.
+                            </p>
+                        </div>
+
+                        <button
+                            onClick={handleRefreshMemory}
+                            disabled={memoryRefreshing || memoryLoading}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/14 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            {memoryRefreshing || memoryLoading ? (
+                                <Loader2 size={16} className="animate-spin" />
+                            ) : (
+                                <RefreshCw size={16} />
+                            )}
+                            Refresh Memory
+                        </button>
+                    </div>
+
+                    <div className="mt-6 grid gap-4 md:grid-cols-4">
+                        <div className="rounded-2xl border border-white/10 bg-white/6 p-4">
+                            <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-slate-400">
+                                <NotebookTabs size={14} />
+                                Notes
+                            </div>
+                            <div className="mt-3 text-3xl font-semibold text-white">{evidenceCounts.notes}</div>
+                        </div>
+                        <div className="rounded-2xl border border-white/10 bg-white/6 p-4">
+                            <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-slate-400">
+                                <MessagesSquare size={14} />
+                                Messages
+                            </div>
+                            <div className="mt-3 text-3xl font-semibold text-white">{evidenceCounts.messages}</div>
+                        </div>
+                        <div className="rounded-2xl border border-white/10 bg-white/6 p-4">
+                            <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-slate-400">
+                                <BookOpenText size={14} />
+                                Reports
+                            </div>
+                            <div className="mt-3 text-3xl font-semibold text-white">{evidenceCounts.reports}</div>
+                        </div>
+                        <div className="rounded-2xl border border-white/10 bg-white/6 p-4">
+                            <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-slate-400">
+                                <Sparkles size={14} />
+                                Signals
+                            </div>
+                            <div className="mt-3 text-3xl font-semibold text-white">{memorySignalCount}</div>
+                        </div>
+                    </div>
+
+                    <div className="mt-6 grid gap-4 lg:grid-cols-[1.45fr_0.95fr]">
+                        <div className="rounded-2xl border border-white/10 bg-white/6 p-5">
+                            <div className="flex items-center justify-between gap-3">
+                                <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">Current Profile</h3>
+                                <span className="text-xs text-slate-400">Last refresh: {lastRefreshLabel}</span>
+                            </div>
+                            {memoryLoading ? (
+                                <div className="mt-4 space-y-3">
+                                    <div className="h-4 w-3/4 animate-pulse rounded bg-white/10" />
+                                    <div className="h-4 w-full animate-pulse rounded bg-white/10" />
+                                    <div className="h-4 w-5/6 animate-pulse rounded bg-white/10" />
+                                </div>
+                            ) : memoryError ? (
+                                <div className="mt-4 rounded-xl border border-rose-400/30 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+                                    {memoryError}
+                                </div>
+                            ) : memoryProfile?.profile_summary ? (
+                                <p className="mt-4 text-sm leading-7 text-slate-200">
+                                    {memoryProfile.profile_summary}
+                                </p>
+                            ) : (
+                                <div className="mt-4 rounded-xl border border-dashed border-white/15 bg-slate-950/30 px-4 py-4 text-sm text-slate-300">
+                                    Memory profile is still thin. Add more highlights, personal notes, or Explorer chats, then refresh this panel.
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="rounded-2xl border border-white/10 bg-white/6 p-5">
+                            <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">
+                                <CircleHelp size={15} />
+                                Open Questions
+                            </h3>
+                            <div className="mt-4 space-y-3">
+                                {(memoryProfile?.open_questions || []).slice(0, 4).map((question) => (
+                                    <div
+                                        key={question}
+                                        className="rounded-xl border border-amber-300/20 bg-amber-200/10 px-4 py-3 text-sm leading-6 text-amber-50"
+                                    >
+                                        {question}
+                                    </div>
+                                ))}
+                                {!(memoryProfile?.open_questions || []).length && (
+                                    <div className="rounded-xl border border-dashed border-white/15 bg-slate-950/30 px-4 py-4 text-sm text-slate-300">
+                                        No recurring question has been promoted yet.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="mt-6 grid gap-4 lg:grid-cols-2">
+                        <div className="rounded-2xl border border-white/10 bg-white/6 p-5">
+                            <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">Active Themes</h3>
+                            <div className="mt-4 flex flex-wrap gap-2">
+                                {(memoryProfile?.active_themes || []).slice(0, 8).map((theme) => (
+                                    <span
+                                        key={theme}
+                                        className="rounded-full border border-emerald-300/25 bg-emerald-300/10 px-3 py-1.5 text-xs font-medium text-emerald-100"
+                                    >
+                                        {theme}
+                                    </span>
+                                ))}
+                                {!(memoryProfile?.active_themes || []).length && (
+                                    <span className="text-sm text-slate-400">Themes will appear after the first usable summary.</span>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-white/10 bg-white/6 p-5">
+                            <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">Recurring Sources</h3>
+                            <div className="mt-4 flex flex-wrap gap-2">
+                                {(memoryProfile?.recurring_sources || []).slice(0, 8).map((source) => (
+                                    <span
+                                        key={source}
+                                        className="rounded-full border border-sky-300/25 bg-sky-300/10 px-3 py-1.5 text-xs font-medium text-sky-100"
+                                    >
+                                        {source}
+                                    </span>
+                                ))}
+                                {!(memoryProfile?.recurring_sources || []).length && (
+                                    <span className="text-sm text-slate-400">Repeated books, authors, and references will show up here.</span>
+                                )}
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -153,15 +153,24 @@ class Settings:
         self.CACHE_L1_TTL = int(os.getenv("CACHE_L1_TTL", "600"))  # 10 minutes
         self.CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() == "true"
         
-        # Retrieval Fusion Mode (Phase-1)
+        # Retrieval Fusion Mode
         # - concat: strict bucket concatenation (exact > lemma > semantic)
         # - rrf: reciprocal rank fusion over bucket rankings
-        self.RETRIEVAL_FUSION_MODE = os.getenv("RETRIEVAL_FUSION_MODE", "concat").strip().lower()
+        self.RETRIEVAL_FUSION_MODE = os.getenv("RETRIEVAL_FUSION_MODE", "rrf").strip().lower()
         if self.RETRIEVAL_FUSION_MODE not in {"concat", "rrf"}:
             logger.warning(
-                f"Invalid RETRIEVAL_FUSION_MODE='{self.RETRIEVAL_FUSION_MODE}', falling back to 'concat'"
+                f"Invalid RETRIEVAL_FUSION_MODE='{self.RETRIEVAL_FUSION_MODE}', falling back to 'rrf'"
             )
-            self.RETRIEVAL_FUSION_MODE = "concat"
+            self.RETRIEVAL_FUSION_MODE = "rrf"
+        self.SEARCH_DEFAULT_RESULT_MIX_POLICY = (
+            os.getenv("SEARCH_DEFAULT_RESULT_MIX_POLICY", "auto").strip().lower()
+        )
+        if self.SEARCH_DEFAULT_RESULT_MIX_POLICY not in {"auto", "none", "lexical_then_semantic_tail"}:
+            logger.warning(
+                "Invalid SEARCH_DEFAULT_RESULT_MIX_POLICY='%s', falling back to 'auto'",
+                self.SEARCH_DEFAULT_RESULT_MIX_POLICY,
+            )
+            self.SEARCH_DEFAULT_RESULT_MIX_POLICY = "auto"
 
         # Router mode for strategy selection
         # - static: run all enabled strategies
@@ -618,6 +627,11 @@ class Settings:
         self.SENTRY_DSN = os.getenv("SENTRY_DSN")
         self.MEMORY_WARNING_THRESHOLD = float(os.getenv("MEMORY_WARNING_THRESHOLD", "75.0"))
         self.MEMORY_CRITICAL_THRESHOLD = float(os.getenv("MEMORY_CRITICAL_THRESHOLD", "85.0"))
+        self.MEMORY_PROFILE_MIN_REFRESH_MINUTES = int(
+            os.getenv("MEMORY_PROFILE_MIN_REFRESH_MINUTES", "30")
+        )
+        if self.MEMORY_PROFILE_MIN_REFRESH_MINUTES < 1:
+            self.MEMORY_PROFILE_MIN_REFRESH_MINUTES = 30
 
         # Rate Limiting (Task A3)
         self.RATE_LIMIT_GLOBAL = os.getenv("RATE_LIMIT_GLOBAL", "1000/minute")

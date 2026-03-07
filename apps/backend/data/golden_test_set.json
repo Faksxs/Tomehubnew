@@ -1,17 +1,70 @@
 {
-    "vicdan_degiskenlik": {
-        "query": "vicdan değişen bir şey midir",
-        "must_quote": [
-            "vicdan için iki teori var"
-        ],
-        "must_synthesize": [
-            "Ayrılmak ne tuhaf"
-        ],
-        "forbidden": [
-            "durumunuza uygun bir tanım bulunamadı",
-            "doğrudan tanım bulunamadı",
-            "Couldn't find"
-        ],
-        "expected_mode": "HYBRID"
-    }
+  "vicdan_degiskenlik": {
+    "query": "vicdan değişen bir şey midir",
+    "must_quote": [
+      "vicdan için iki teori var"
+    ],
+    "must_synthesize": [
+      "Ayrılmak ne tuhaf"
+    ],
+    "forbidden": [
+      "durumunuza uygun bir tanım bulunamadı",
+      "doğrudan tanım bulunamadı",
+      "Couldn't find"
+    ],
+    "expected_mode": "HYBRID"
+  },
+  "vicdan_tanimi": {
+    "query": "vicdan nedir",
+    "must_quote": [
+      "iyiyi kötüden ayırma yeteneğinin özel bir adı vardır"
+    ],
+    "forbidden": [
+      "durumunuza uygun bir tanım bulunamadı",
+      "Couldn't find"
+    ],
+    "expected_mode": "QUOTE"
+  },
+  "sokrates_vicdan": {
+    "query": "Sokrates vicdanı nasıl tanımlar",
+    "must_quote": [
+      "ilahi bir ses"
+    ],
+    "forbidden": [
+      "durumunuza uygun bir tanım bulunamadı",
+      "Couldn't find"
+    ],
+    "expected_mode": "QUOTE"
+  },
+  "din_vicdan_iliskisi": {
+    "query": "din ve vicdan ilişkisi nasıl kuruluyor",
+    "must_quote": [
+      "kişisel vicdanla sınırlı kalmalıdır"
+    ],
+    "forbidden": [
+      "durumunuza uygun bir tanım bulunamadı",
+      "Couldn't find"
+    ],
+    "expected_mode": "HYBRID"
+  },
+  "vicdan_azabi": {
+    "query": "vicdan azabı hangi bağlamda geçiyor",
+    "must_quote": [
+      "Ayrılmak ne tuhaf"
+    ],
+    "forbidden": [
+      "durumunuza uygun bir tanım bulunamadı",
+      "Couldn't find"
+    ],
+    "expected_mode": "HYBRID"
+  },
+  "maalouf_mixed_blessing": {
+    "query": "Amin Maalouf'a göre mixed blessing nedir",
+    "forbidden": [
+      "durumunuza uygun bir tanım bulunamadı",
+      "doğrudan tanım bulunamadı",
+      "Couldn't find"
+    ],
+    "expected_mode": "QUOTE"
+  }
 }

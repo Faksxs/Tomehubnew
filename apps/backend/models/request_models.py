@@ -502,6 +502,19 @@ class ChatResponse(BaseModel):
     metadata: Optional[dict] = None
 
 
+class MemoryProfileRefreshRequest(BaseModel):
+    firebase_uid: str = Field(..., min_length=1, max_length=_UID_MAX)
+    force: bool = False
+
+    @field_validator("firebase_uid", mode="before")
+    @classmethod
+    def normalize_uid(cls, value: Optional[str]) -> str:
+        uid = str(value or "").strip()
+        if not uid:
+            raise ValueError("firebase_uid cannot be empty")
+        return uid
+
+
 class ComparisonRequest(BaseModel):
     firebase_uid: str = Field(..., min_length=1, max_length=_UID_MAX)
     target_book_ids: List[str] = Field(default_factory=list, min_length=2, max_length=20)
