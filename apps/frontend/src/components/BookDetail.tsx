@@ -557,12 +557,12 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
         )}
 
         {/* Tab Content */}
-        <div className={`bg-[#F7F8FB] dark:bg-slate-900/50 min-h-[400px] ${isNote ? 'p-0 md:p-8' : 'p-2 md:p-8'}`}>
+        <div className={`${isNote ? 'bg-white dark:bg-slate-900 min-h-[400px]' : 'bg-[#F7F8FB] dark:bg-slate-900/50 min-h-[400px] p-2 md:p-8'}`}>
           {(activeTab === 'info' || isNote) && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
-              <div className={isNote ? "md:col-span-3" : "md:col-span-2 space-y-6"}>
+            <div className={isNote ? "" : "grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8"}>
+              <div className={isNote ? "w-full" : "md:col-span-2 space-y-6"}>
                 {/* Summary / Content */}
-                <div className={`bg-white dark:bg-slate-900 shadow-sm ${isNote ? 'p-4 md:p-6 rounded-none md:rounded-xl border-y border-x-0 md:border border-[#E6EAF2] dark:border-slate-800 min-h-[300px]' : 'p-2.5 md:p-6 rounded-xl border border-[#E6EAF2] dark:border-slate-800'}`}>
+                <div className={`bg-white dark:bg-slate-900 ${isNote ? 'p-3 md:p-6 min-h-[300px]' : 'shadow-sm p-2.5 md:p-6 rounded-xl border border-[#E6EAF2] dark:border-slate-800'}`}>
                   {!isNote && !isMedia && (
                     <div className="flex items-start justify-between gap-3 mb-3 md:mb-4">
                       <div className="flex items-center gap-2">

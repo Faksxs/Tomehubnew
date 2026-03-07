@@ -273,8 +273,8 @@ export const PersonalNoteEditor: React.FC<PersonalNoteEditorProps> = ({
 
 
   return (
-    <div className="rounded-xl border border-[#E6EAF2] dark:border-slate-700 bg-white dark:bg-slate-950 overflow-hidden">
-      <div className="flex flex-wrap items-center px-2 md:px-3 py-1.5 md:py-2 border-b border-[#E6EAF2] dark:border-slate-700 bg-[#F8FAFC] dark:bg-slate-900 gap-1 md:gap-1.5">
+    <div className="rounded-none md:rounded-xl border-y md:border border-[#E6EAF2] dark:border-slate-700 bg-white dark:bg-slate-950 overflow-hidden">
+      <div className="flex flex-wrap items-center px-2 md:px-3 py-1.5 md:py-2 border-b border-[#E6EAF2] dark:border-slate-700 bg-white md:bg-[#F8FAFC] dark:bg-slate-900 gap-1 md:gap-1.5">
         {/* All Formatting Tools in one wrapping flow */}
         <ToolbarButton active={!!editor?.isActive('heading', { level: 1 })} onClick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()} title="Heading 1">
           <Heading1 size={18} className="md:w-3.5 md:h-3.5" />

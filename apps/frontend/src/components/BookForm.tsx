@@ -657,7 +657,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
 
   return (
     <div className={`fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 overflow-y-auto ${isNote ? 'p-0 md:p-4' : 'p-4'}`}>
-      <div className={`bg-white dark:bg-slate-900 shadow-2xl w-full overflow-hidden flex flex-col ${isNote ? 'rounded-none min-h-[100dvh] md:min-h-0 md:rounded-xl max-w-3xl max-h-[100dvh] md:max-h-[94vh]' : 'rounded-xl max-w-2xl max-h-[90vh]'}`}>
+      <div className={`bg-white dark:bg-slate-900 shadow-2xl w-full flex flex-col ${isNote ? 'rounded-none min-h-[100dvh] md:min-h-0 md:rounded-xl max-w-3xl md:max-h-[94vh]' : 'rounded-xl max-w-2xl max-h-[90vh] overflow-hidden'}`}>
 
         <BookFormHeader
           isNote={isNote}
@@ -709,10 +709,10 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
 
         {/* Mode: Edit Form */}
         {mode === 'edit' && (
-          <form onSubmit={handleSubmit} className={`${isNote ? 'p-3 md:p-5' : 'p-6'} overflow-y-auto flex-1`}>
+          <form onSubmit={handleSubmit} className={`${isNote ? 'p-0 flex flex-col' : 'p-6 overflow-y-auto'} flex-1`}>
             {/* Basic Info */}
-            <div className={isNote ? 'space-y-2' : (isMedia ? 'space-y-3.5' : 'space-y-3.5')}>
-              <div className={`grid grid-cols-1 md:grid-cols-2 ${isNote ? 'gap-2' : (isMedia ? 'gap-3' : 'gap-x-4 gap-y-3')}`}>
+            <div className={isNote ? 'space-y-0 flex-1 flex flex-col' : (isMedia ? 'space-y-3.5' : 'space-y-3.5')}>
+              <div className={`grid grid-cols-1 md:grid-cols-2 ${isNote ? 'gap-0 p-3 md:p-5 border-b border-[#E6EAF2] dark:border-slate-800' : (isMedia ? 'gap-3' : 'gap-x-4 gap-y-3')}`}>
                 {isMedia && (
                   <>
                     <div>
@@ -757,7 +757,7 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                     name="title"
                     value={formData.title}
                     onChange={handleChange}
-                    className={`w-full border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 ${isNote ? 'py-1.5 text-sm' : 'py-2'} focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white`}
+                    className={`w-full border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 ${isNote ? 'py-1.5 text-base md:text-sm shadow-sm' : 'py-2'} focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white`}
                     placeholder={isNote ? "Note Title" : (isMedia ? 'e.g. The Matrix' : 'e.g. The Stranger')}
                   />
                 </div>
