@@ -354,7 +354,7 @@ export const PersonalNoteEditor: React.FC<PersonalNoteEditorProps> = ({
         </ToolbarButton>
       </div>
 
-      <div className="relative w-full overflow-x-auto bg-white dark:bg-slate-950 text-slate-900 dark:text-white" style={editorHeightStyle}>
+      <div className="relative bg-white dark:bg-slate-950 text-slate-900 dark:text-white" style={editorHeightStyle}>
         <EditorContent editor={editor} />
         {slashMenu && (
           <div className="absolute left-3 top-3 z-20 w-[min(420px,calc(100%-1.5rem))] rounded-lg border border-[#E6EAF2] dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl">

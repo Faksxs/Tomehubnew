@@ -166,18 +166,20 @@
 
 @media (max-width: 767px) {
   .personal-note-content table {
-    display: block;
+    display: table;
     width: 100%;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    table-layout: auto !important;
+    table-layout: fixed !important;
     font-size: 0.82rem;
   }
 
   .personal-note-content th,
   .personal-note-content td {
     padding: 0.25rem 0.35rem !important;
-    min-width: 80px;
+    max-width: 0;
+    /* Ensures content wraps and never overflows cell */
+    word-break: break-word;
+    overflow-wrap: break-word;
+    white-space: pre-wrap;
   }
 
   .personal-note-content h1 {
@@ -218,8 +220,6 @@
   line-height: 1.7;
   font-size: 0.95rem;
   color: #0f172a;
-  max-width: 100%;
-  overflow-x: auto;
 }
 
 @media (max-width: 767px) {
