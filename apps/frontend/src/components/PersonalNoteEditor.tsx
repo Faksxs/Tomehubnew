@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Bold, Heading1, Heading2, Italic, List, ListOrdered, CheckSquare, Underline as UnderlineIcon, Quote, Table2, Rows3, Columns3, Trash2, Palette, Eraser, SquareMinus } from 'lucide-react';
 import { EditorContent, useEditor } from '@tiptap/react';
-// @ts-ignore - BubbleMenu is sometimes not recognized as a named export by bundlers despite being present in the module
-import * as TiptapReact from '@tiptap/react';
-const BubbleMenu = (TiptapReact as any).BubbleMenu;
+
+// @ts-ignore - In this version of @tiptap/react, BubbleMenu is located in a sub-path
+import { BubbleMenu } from '@tiptap/react/menus';
 
 import { BubbleMenu as BubbleMenuExtension } from '@tiptap/extension-bubble-menu';
 import StarterKit from '@tiptap/starter-kit';
@@ -52,7 +52,6 @@ const editorExtensions = [
   StarterKit.configure({
     heading: { levels: [1, 2] },
   }),
-  Underline,
   TextStyle,
   Color,
   Table.configure({ resizable: true }),
@@ -346,7 +345,6 @@ export const PersonalNoteEditor: React.FC<PersonalNoteEditorProps> = ({
         {editor && (
           <BubbleMenu
             editor={editor}
-            tippyOptions={{ duration: 100 }}
             shouldShow={({ editor }) => editor.isActive('table')}
             className="flex items-center gap-0.5 p-1 rounded-lg border border-[#E6EAF2] dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md shadow-xl overflow-hidden"
           >
