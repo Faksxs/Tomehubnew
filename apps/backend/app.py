@@ -2559,10 +2559,16 @@ async def get_memory_profile_endpoint(
 ):
     firebase_uid = get_verified_uid(request, firebase_uid_from_jwt)
     try:
-        from services.memory_profile_service import get_memory_profile
+        from functools import partial
+        from services.memory_profile_service import get_memory_profile, refresh_memory_profile
 
         loop = asyncio.get_running_loop()
         profile = await loop.run_in_executor(None, get_memory_profile, firebase_uid)
+        if not profile:
+            profile = await loop.run_in_executor(
+                None,
+                partial(refresh_memory_profile, firebase_uid, force=False),
+            )
         if not profile:
             return {
                 "firebase_uid": firebase_uid,
