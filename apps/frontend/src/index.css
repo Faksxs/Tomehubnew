@@ -149,11 +149,11 @@
   gap: 0.5rem;
 }
 
-.personal-note-content ul[data-type='taskList'] li > label {
+.personal-note-content ul[data-type='taskList'] li>label {
   margin-top: 0.2rem;
 }
 
-.personal-note-content ul[data-type='taskList'] li > div {
+.personal-note-content ul[data-type='taskList'] li>div {
   flex: 1;
 }
 
@@ -162,6 +162,31 @@
   border-collapse: collapse;
   table-layout: fixed;
   margin: 0.5rem 0;
+}
+
+@media (max-width: 767px) {
+  .personal-note-content table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    table-layout: auto !important;
+    font-size: 0.82rem;
+  }
+
+  .personal-note-content th,
+  .personal-note-content td {
+    padding: 0.25rem 0.35rem !important;
+    min-width: 80px;
+  }
+
+  .personal-note-content h1 {
+    font-size: 1.25rem;
+  }
+
+  .personal-note-content h2 {
+    font-size: 1.05rem;
+  }
 }
 
 .personal-note-content th,
@@ -187,11 +212,30 @@
 
 .personal-note-prosemirror {
   min-height: var(--note-editor-min-height, 220px);
-  padding: 0.75rem 1rem;
+  padding: 0.5rem 0.75rem;
+  /* Slightly reduced mobile padding */
   outline: none;
   line-height: 1.7;
   font-size: 0.95rem;
   color: #0f172a;
+}
+
+@media (max-width: 767px) {
+  .personal-note-prosemirror {
+    font-size: 0.9rem;
+    padding: 0.5rem 0.5rem;
+  }
+}
+
+@media (max-width: 767px) {
+  .personal-note-render {
+    font-size: 0.88rem !important;
+    line-height: 1.55;
+  }
+
+  .personal-note-render p {
+    margin: 0.2rem 0;
+  }
 }
 
 .dark .personal-note-prosemirror {
