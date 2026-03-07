@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Bold, Heading1, Heading2, Italic, List, ListOrdered, CheckSquare, Underline as UnderlineIcon, Quote, Table2, Rows3, Columns3, Trash2, Palette, Eraser } from 'lucide-react';
+import { Bold, Heading1, Heading2, Italic, List, ListOrdered, CheckSquare, Underline as UnderlineIcon, Quote, Table2, Rows3, Columns3, Trash2, Palette, Eraser, SquareMinus } from 'lucide-react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
@@ -334,8 +334,14 @@ export const PersonalNoteEditor: React.FC<PersonalNoteEditorProps> = ({
         <ToolbarButton active={false} onClick={() => editor?.chain().focus().addRowAfter().run()} title="Add Row">
           <Rows3 size={18} className="md:w-3.5 md:h-3.5" />
         </ToolbarButton>
+        <ToolbarButton active={false} onClick={() => editor?.chain().focus().deleteRow().run()} title="Delete Row">
+          <SquareMinus size={18} className="md:w-3.5 md:h-3.5 text-red-500" />
+        </ToolbarButton>
         <ToolbarButton active={false} onClick={() => editor?.chain().focus().addColumnAfter().run()} title="Add Column">
           <Columns3 size={18} className="md:w-3.5 md:h-3.5" />
+        </ToolbarButton>
+        <ToolbarButton active={false} onClick={() => editor?.chain().focus().deleteColumn().run()} title="Delete Column">
+          <SquareMinus size={18} className="md:w-3.5 md:h-3.5 text-red-500 rotate-90" />
         </ToolbarButton>
         <ToolbarButton active={false} onClick={() => editor?.chain().focus().deleteTable().run()} title="Delete Table">
           <Trash2 size={18} className="md:w-3.5 md:h-3.5" />
