@@ -1070,16 +1070,18 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                         activeDraggedFolder={activeDraggedFolder}
                     />
                 ) : (
-                    <StandardLibraryGrid
-                        books={displayedBooks}
-                        activeTab={activeTab}
-                        isMediaTab={isMediaTab}
-                        libraryCardDarkBg={libraryCardDarkBg}
-                        onSelectBook={onSelectBook}
-                        onToggleFavorite={onToggleFavorite}
-                        onDeleteBook={onDeleteBook}
-                        getCoverUrlForGrid={getCoverUrlForGrid}
-                    />
+                    <div className="px-3 md:px-0">
+                        <StandardLibraryGrid
+                            books={displayedBooks}
+                            activeTab={activeTab}
+                            isMediaTab={isMediaTab}
+                            libraryCardDarkBg={libraryCardDarkBg}
+                            onSelectBook={onSelectBook}
+                            onToggleFavorite={onToggleFavorite}
+                            onDeleteBook={onDeleteBook}
+                            getCoverUrlForGrid={getCoverUrlForGrid}
+                        />
+                    </div>
                 )}
 
                 {/* Pagination Controls */}
@@ -1128,49 +1130,53 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
     const toggleFavoritesFilter = () => onStatusFilterChange(isFavoritesActive ? 'ALL' : 'FAVORITES');
 
     return (
-        <div className="max-w-6xl w-full mx-auto p-3 md:p-8 lg:p-10 animate-in fade-in duration-500">
+        <div className="max-w-6xl w-full mx-auto pb-24 pt-2 md:p-8 lg:p-10 animate-in fade-in duration-500">
             {/* Compact Header for Mobile (Hide in Dashboard) */}
             {!isStats && (
-                <LibraryPageHeader
-                    title={getTabLabel(activeTab)}
-                    subtitle={headerSubtitle}
-                    Icon={TabLogo}
-                    primaryActionLabel={primaryActionLabel}
-                    onPrimaryAction={handlePrimaryAction}
-                    onMobileMenuClick={onMobileMenuClick}
-                />
+                <div className="px-3 md:px-0">
+                    <LibraryPageHeader
+                        title={getTabLabel(activeTab)}
+                        subtitle={headerSubtitle}
+                        Icon={TabLogo}
+                        primaryActionLabel={primaryActionLabel}
+                        onPrimaryAction={handlePrimaryAction}
+                        onMobileMenuClick={onMobileMenuClick}
+                    />
+                </div>
             )}
             {/* Mobile Menu Trigger for Dashboard (Only button, no text) */}
             {/* Mobile Menu Trigger for Dashboard removed - moved inside Dashboard for alignment */}
 
             {/* Compact Filters for Mobile (Hide in Stats view) */}
             {!isStats && (
-                <LibraryFiltersBar
-                    searchPlaceholder={getSearchPlaceholder()}
-                    localInput={localInput}
-                    onLocalInputChange={setLocalInput}
-                    showSearchLoading={showSearchLoading}
-                    showFavoritesToggle={isNotesTab || isPersonalNotes}
-                    isFavoritesActive={isFavoritesActive}
-                    onToggleFavorites={toggleFavoritesFilter}
-                    showStandardFilters={!isNotesTab && !isPersonalNotes}
-                    statusFilter={statusFilter}
-                    onStatusChange={onStatusFilterChange}
-                    sortOption={sortOption}
-                    onSortChange={onSortOptionChange}
-                    showCategoryFilter={activeTab === 'BOOK'}
-                    categoryFilter={categoryFilter}
-                    categoryOptions={CATEGORIES}
-                    onCategoryChange={onCategoryFilterChange}
-                    showPublisherFilter={activeTab === 'ARTICLE'}
-                    publisherFilter={publisherFilter}
-                    onPublisherFilterChange={onPublisherFilterChange}
-                    showMediaTypeFilter={isMediaTab}
-                    mediaTypeFilter={mediaTypeFilter}
-                    onMediaTypeFilterChange={setMediaTypeFilter}
-                    isMediaTab={isMediaTab}
-                    onPageReset={() => onPageChange(1)}
-                />
+                <div className="px-3 md:px-0">
+                    <LibraryFiltersBar
+                        searchPlaceholder={getSearchPlaceholder()}
+                        localInput={localInput}
+                        onLocalInputChange={setLocalInput}
+                        showSearchLoading={showSearchLoading}
+                        showFavoritesToggle={isNotesTab || isPersonalNotes}
+                        isFavoritesActive={isFavoritesActive}
+                        onToggleFavorites={toggleFavoritesFilter}
+                        showStandardFilters={!isNotesTab && !isPersonalNotes}
+                        statusFilter={statusFilter}
+                        onStatusChange={onStatusFilterChange}
+                        sortOption={sortOption}
+                        onSortChange={onSortOptionChange}
+                        showCategoryFilter={activeTab === 'BOOK'}
+                        categoryFilter={categoryFilter}
+                        categoryOptions={CATEGORIES}
+                        onCategoryChange={onCategoryFilterChange}
+                        showPublisherFilter={activeTab === 'ARTICLE'}
+                        publisherFilter={publisherFilter}
+                        onPublisherFilterChange={onPublisherFilterChange}
+                        showMediaTypeFilter={isMediaTab}
+                        mediaTypeFilter={mediaTypeFilter}
+                        onMediaTypeFilterChange={setMediaTypeFilter}
+                        isMediaTab={isMediaTab}
+                        onPageReset={() => onPageChange(1)}
+                    />
+                </div>
             )}
 
             {/* Active Category Filter Pill */}

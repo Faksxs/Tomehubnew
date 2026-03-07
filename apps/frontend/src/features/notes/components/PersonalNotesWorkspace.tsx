@@ -204,7 +204,7 @@ export const PersonalNotesWorkspace: React.FC<PersonalNotesWorkspaceProps> = ({
                 />
 
                 <div className="space-y-3">
-                    <div className="lg:hidden flex gap-2">
+                    <div className="lg:hidden flex gap-2 px-3 md:px-0">
                         <button
                             onClick={onTogglePersonalPanel}
                             className="flex-1 px-3 py-2.5 bg-white dark:bg-slate-900 border border-[#E6EAF2] dark:border-slate-800 rounded-xl flex items-center justify-center gap-2 text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 shadow-sm active:scale-95 transition-all"
@@ -221,21 +221,23 @@ export const PersonalNotesWorkspace: React.FC<PersonalNotesWorkspaceProps> = ({
                         </button>
                     </div>
 
-                    <QuickCapturePanel
-                        isOpen={isQuickCaptureOpen}
-                        onToggleOpen={onToggleQuickCapture}
-                        quickCaptureCategory={quickCaptureCategory}
-                        onQuickCaptureCategoryChange={onQuickCaptureCategoryChange}
-                        selectedFolderName={selectedFolderName}
-                        showSelectedFolder={showSelectedFolder}
-                        quickNoteTitle={quickNoteTitle}
-                        onQuickNoteTitleChange={onQuickNoteTitleChange}
-                        quickNoteBody={quickNoteBody}
-                        onQuickNoteBodyChange={onQuickNoteBodyChange}
-                        onSave={onSaveQuickNote}
-                        canSave={canSaveQuickNote}
-                        autoFocus
-                    />
+                    <div className="px-3 md:px-0">
+                        <QuickCapturePanel
+                            isOpen={isQuickCaptureOpen}
+                            onToggleOpen={onToggleQuickCapture}
+                            quickCaptureCategory={quickCaptureCategory}
+                            onQuickCaptureCategoryChange={onQuickCaptureCategoryChange}
+                            selectedFolderName={selectedFolderName}
+                            showSelectedFolder={showSelectedFolder}
+                            quickNoteTitle={quickNoteTitle}
+                            onQuickNoteTitleChange={onQuickNoteTitleChange}
+                            quickNoteBody={quickNoteBody}
+                            onQuickNoteBodyChange={onQuickNoteBodyChange}
+                            onSave={onSaveQuickNote}
+                            canSave={canSaveQuickNote}
+                            autoFocus
+                        />
+                    </div>
 
                     <PersonalNotesGrid
                         notes={displayedBooks}

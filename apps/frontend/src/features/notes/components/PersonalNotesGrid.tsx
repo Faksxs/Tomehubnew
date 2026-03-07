@@ -45,7 +45,7 @@ export const PersonalNotesGrid: React.FC<PersonalNotesGridProps> = ({
     }
 
     return (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-2 md:gap-4">
+        <div className="grid grid-cols-1 xl:grid-cols-2 lg:gap-4 md:gap-4">
             {notes.map((note) => {
                 const notePreview = extractPersonalNoteText(note.generalNotes || '');
                 const resolvedFolderName = getResolvedNoteFolderName(note);
@@ -57,7 +57,7 @@ export const PersonalNotesGrid: React.FC<PersonalNotesGridProps> = ({
                                 ref={setNodeRef}
                                 style={isDragging ? undefined : style}
                                 onClick={() => onNoteClick(note)}
-                                className={`bg-white dark:bg-slate-800 p-2.5 md:p-5 rounded-xl border border-[#E6EAF2] dark:border-slate-800 hover:border-[#262D40]/20 dark:hover:border-[#262D40]/30 hover:shadow-md transition-all cursor-pointer flex flex-col group relative active:scale-[0.99] ${isDragging || activeDraggedNoteId === note.id ? 'opacity-60 ring-2 ring-[#CC561E]/40' : ''}`}
+                                className={`bg-white dark:bg-slate-800 p-4 md:p-5 rounded-none md:rounded-xl border-y md:border-x border-[#E6EAF2] dark:border-slate-800 hover:border-[#262D40]/20 dark:hover:border-[#262D40]/30 hover:shadow-md transition-all cursor-pointer flex flex-col group relative active:scale-[0.99] ${isDragging || activeDraggedNoteId === note.id ? 'opacity-60 ring-2 ring-[#CC561E]/40' : ''}`}
                             >
                                 <div className="absolute top-2 left-2 z-10">
                                     <button
