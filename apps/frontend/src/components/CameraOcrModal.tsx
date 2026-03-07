@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { X, Camera, Loader2, Check, RotateCcw, ScanLine } from 'lucide-react';
 import { extractTextFromImage } from '../services/ocrService';
 import { normalizeImageForOcr } from '../lib/ocrHelpers';
+import { useUiFeedback } from '../shared/ui/feedback/useUiFeedback';
 
 interface CameraOcrModalProps {
   open: boolean;
@@ -29,6 +30,7 @@ export const CameraOcrModal: React.FC<CameraOcrModalProps> = ({
   onErrorChange,
   onDraftChange,
 }) => {
+  const { showToast } = useUiFeedback();
   const [image, setImage] = useState<string | null>(null);
   const [sourceImageBlob, setSourceImageBlob] = useState<Blob | null>(null);
   const [selection, setSelection] = useState<SelectionRect | null>(null);
@@ -196,7 +198,11 @@ export const CameraOcrModal: React.FC<CameraOcrModalProps> = ({
       console.error('OCR Error:', error);
       const msg = 'Metin okunamadi. Isigi ve aciyi duzeltip tekrar deneyin.';
       onErrorChange(msg);
-      alert(msg);
+      showToast({
+        title: 'OCR failed',
+        description: msg,
+        tone: 'error',
+      });
     } finally {
       setIsProcessing(false);
       onProcessingChange(false);

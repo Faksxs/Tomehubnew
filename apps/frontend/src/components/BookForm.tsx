@@ -1,14 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { LibraryItem, PersonalNoteCategory, PhysicalStatus, ReadingStatus, ResourceType, ContentLanguageMode } from '../types';
-import { X, Loader2, Search, ChevronRight, Book as BookIcon, SkipForward, Image as ImageIcon, FileText, Globe, PenTool, Wand2, Sparkles, Calendar, Upload, Camera, Film, Tv, Plus } from 'lucide-react';
+import { X, Loader2, Search, Book as BookIcon, Image as ImageIcon, FileText, PenTool, Wand2, Sparkles, Calendar, Upload, Camera, Film, Tv } from 'lucide-react';
 import StarRating from './StarRating';
 import { BarcodeScanner } from './BarcodeScanner';
 import { searchResourcesAI, ItemDraft, generateTagsForNote } from '../services/geminiService';
 import { useAuth } from '../contexts/AuthContext';
 import { ingestDocument, extractMetadata, searchMedia, getMediaDetails, type MediaSearchItem } from '../services/backendApiService';
-import { PersonalNoteEditor } from './PersonalNoteEditor';
 import { extractPersonalNoteText, hasMeaningfulPersonalNoteContent } from '../lib/personalNoteRender';
 import { PERSONAL_NOTE_TEMPLATES, findPersonalNoteTemplate } from '../lib/personalNoteTemplates';
+import { BookFormHeader } from '../features/library/components/form/BookFormHeader';
+import { BookFormSearchStep } from '../features/library/components/form/BookFormSearchStep';
+import { BookFormFooter } from '../features/library/components/form/BookFormFooter';
+import { NoteEditorSection } from '../features/notes/components/NoteEditorSection';
+import { useUiFeedback } from '../shared/ui/feedback/useUiFeedback';
 
 
 interface BookFormProps {
@@ -22,6 +26,21 @@ interface BookFormProps {
   onSave: (item: Omit<LibraryItem, 'highlights'>) => void;
   onCancel: () => void;
 }
+
+const mapMediaResultsToDrafts = (results: MediaSearchItem[]): Array<ItemDraft & Partial<MediaSearchItem>> => {
+  return results.map((item) => ({
+    title: item.title,
+    originalTitle: item.originalTitle || undefined,
+    author: '',
+    summary: item.summary || undefined,
+    coverUrl: item.coverUrl || null,
+    publishedDate: item.year || '',
+    isbn: item.tmdbToken,
+    tmdbId: item.tmdbId,
+    tmdbKind: item.tmdbKind,
+    type: item.type,
+  })) as Array<ItemDraft & Partial<MediaSearchItem>>;
+};
 
 export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, noteDefaults, onSave, onCancel }) => {
   const mediaLibraryEnabled = import.meta.env.VITE_MEDIA_LIBRARY_ENABLED === 'true';
@@ -52,7 +71,10 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
   const [mediaPickerError, setMediaPickerError] = useState('');
   const [searchError, setSearchError] = useState('');
   const initKeyRef = useRef<string | null>(null);
+  const mediaSearchCacheRef = useRef(new Map<string, Array<ItemDraft & Partial<MediaSearchItem>>>());
+  const mediaSearchRequestIdRef = useRef(0);
   const { user } = useAuth();
+  const { showToast } = useUiFeedback();
 
   // Form State
   const [formData, setFormData] = useState({
@@ -172,20 +194,20 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
     try {
       if (isMedia && mediaLibraryEnabled) {
         const kind = resourceType === 'MOVIE' ? 'movie' : (resourceType === 'SERIES' ? 'tv' : 'multi');
+        const trimmedQuery = searchQuery.trim();
+        const cacheKey = `${kind}:${trimmedQuery.toLocaleLowerCase('tr-TR')}:1`;
+        const cached = mediaSearchCacheRef.current.get(cacheKey);
         setSearchPage(1);
-        const results = await searchMedia(searchQuery, kind, 1);
-        const mapped = results.map((item) => ({
-          title: item.title,
-          originalTitle: item.originalTitle || undefined,
-          author: '',
-          summary: item.summary || undefined,
-          coverUrl: item.coverUrl || null,
-          publishedDate: item.year || '',
-          isbn: item.tmdbToken,
-          tmdbId: item.tmdbId,
-          tmdbKind: item.tmdbKind,
-          type: item.type,
-        })) as Array<ItemDraft & Partial<MediaSearchItem>>;
+        if (cached) {
+          setSearchResults(cached);
+          setHasMoreResults(cached.length >= 10);
+          return;
+        }
+        const requestId = ++mediaSearchRequestIdRef.current;
+        const results = await searchMedia(trimmedQuery, kind, 1);
+        if (requestId !== mediaSearchRequestIdRef.current) return;
+        const mapped = mapMediaResultsToDrafts(results);
+        mediaSearchCacheRef.current.set(cacheKey, mapped);
         setSearchResults(mapped);
         setHasMoreResults(results.length >= 10);
         return;
@@ -220,24 +242,19 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
     try {
       const nextPage = searchPage + 1;
       const kind = resourceType === 'MOVIE' ? 'movie' : (resourceType === 'SERIES' ? 'tv' : 'multi');
-      const results = await searchMedia(searchQuery, kind, nextPage);
-
-      const mapped = results.map((item) => ({
-        title: item.title,
-        originalTitle: item.originalTitle || undefined,
-        author: '',
-        summary: item.summary || undefined,
-        coverUrl: item.coverUrl || null,
-        publishedDate: item.year || '',
-        isbn: item.tmdbToken,
-        tmdbId: item.tmdbId,
-        tmdbKind: item.tmdbKind,
-        type: item.type,
-      })) as Array<ItemDraft & Partial<MediaSearchItem>>;
+      const trimmedQuery = searchQuery.trim();
+      const cacheKey = `${kind}:${trimmedQuery.toLocaleLowerCase('tr-TR')}:${nextPage}`;
+      const cached = mediaSearchCacheRef.current.get(cacheKey);
+      const requestId = ++mediaSearchRequestIdRef.current;
+      const mapped = cached || mapMediaResultsToDrafts(await searchMedia(trimmedQuery, kind, nextPage));
+      if (!cached) {
+        mediaSearchCacheRef.current.set(cacheKey, mapped);
+      }
+      if (requestId !== mediaSearchRequestIdRef.current) return;
 
       setSearchResults(prev => [...prev, ...mapped]);
       setSearchPage(nextPage);
-      setHasMoreResults(results.length >= 10);
+      setHasMoreResults(mapped.length >= 10);
     } catch (error) {
       console.error("Load more failed:", error);
     } finally {
@@ -445,7 +462,11 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
           setIsExtractingMetadata(false);
         }
       } else {
-        alert('Please select a PDF file');
+        showToast({
+          title: 'PDF secilmedi',
+          description: 'Devam etmek icin once bir PDF dosyasi sec.',
+          tone: 'warning',
+        });
         e.target.value = '';
       }
     }
@@ -543,7 +564,11 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
         applyTemplateById(templateFromQuery.id);
         return;
       }
-      window.alert('Şablon eklemek için /task <şablon-adı> yaz. Örnek: /task kitap');
+      showToast({
+        title: 'Sablon bulunamadi',
+        description: 'Sablon eklemek icin /task <sablon-adi> yaz. Ornek: /task kitap',
+        tone: 'info',
+      });
       return;
     }
   };
@@ -634,168 +659,52 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
       <div className={`bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full overflow-hidden flex flex-col ${isNote ? 'max-w-3xl max-h-[94vh]' : 'max-w-2xl max-h-[90vh]'}`}>
 
-        {/* Header */}
-        <div className={`${isNote ? 'p-3 md:p-4' : 'p-5'} border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-900 z-10`}>
-          <h2 className={`${isNote ? 'text-lg' : 'text-xl'} font-bold text-slate-800 dark:text-white flex items-center gap-2`}>
-            {mode === 'search' ? (
-              <>
-                <Search className="text-[#CC561E]" size={24} />
-                Find {resourceType === 'ARTICLE' ? 'Article' : (isMedia ? 'Media' : 'Book')}
-              </>
-            ) : (
-              <>
-                {getIcon()}
-                {getTitle()}
-              </>
-            )}
-          </h2>
-          <button onClick={onCancel} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
-            <X size={isNote ? 20 : 24} />
-          </button>
-        </div>
+        <BookFormHeader
+          isNote={isNote}
+          mode={mode}
+          searchLabel={`Find ${resourceType === 'ARTICLE' ? 'Article' : (isMedia ? 'Media' : 'Book')}`}
+          editTitle={getTitle()}
+          editIcon={getIcon()}
+          onClose={onCancel}
+        />
 
         {/* Mode: Search */}
         {mode === 'search' && (
-          <div className="p-6 flex flex-col h-full overflow-y-auto">
-            {isMedia && mediaLibraryEnabled && (
-              <div className="mb-3">
-                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Type</label>
-                <select
-                  value={resourceType}
-                  onChange={(e) => setResourceType(e.target.value as ResourceType)}
-                  className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
-                >
-                  <option value="MOVIE">Movie</option>
-                  <option value="SERIES">Series</option>
-                </select>
-              </div>
-            )}
-            <form onSubmit={handleSearch} className="relative mb-4">
-              <input
-                autoFocus
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={isMedia ? "Enter title, director, cast..." : (resourceType === 'ARTICLE' ? "Enter Title, DOI, Author..." : "Enter Title, ISBN, Author...")}
-                className="w-full pl-5 pr-28 py-4 text-lg border-2 border-slate-200 dark:border-slate-700 rounded-xl focus:border-[#CC561E] dark:focus:border-[#CC561E] focus:ring-4 focus:ring-[#CC561E]/10 outline-none transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
-              />
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-                {resourceType === 'BOOK' && (
-                  <button
-                    type="button"
-                    onClick={() => setShowScanner(true)}
-                    className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 p-2 rounded-lg hover:bg-[#CC561E]/10 hover:text-[#CC561E] dark:hover:bg-[#CC561E]/20 dark:hover:text-[#f3a47b] transition-colors"
-                    title="Scan ISBN barcode with camera"
-                  >
-                    <Camera size={20} />
-                  </button>
-                )}
-                <button
-                  type="submit"
-                  disabled={isSearching || !searchQuery.trim()}
-                  className="bg-[#CC561E] text-white p-2 rounded-lg hover:bg-[#b34b1a] disabled:opacity-50 disabled:hover:bg-[#CC561E] transition-colors"
-                >
-                  {isSearching ? <Loader2 className="animate-spin" size={20} /> : <Search size={20} />}
-                </button>
-              </div>
-            </form>
-
-            {showScanner && (
-              <BarcodeScanner
-                onDetected={(code) => {
-                  setShowScanner(false);
-                  setSearchQuery(code);
-                  // Auto-trigger search with the scanned ISBN
-                  setIsSearching(true);
-                  setSearchResults([]);
-                  setSearchError('');
-                  searchResourcesAI(code, resourceType)
-                    .then((results) => setSearchResults(results))
-                    .catch((err) => {
-                      console.error('Barcode search failed:', err);
-                      const message = err instanceof Error ? err.message : 'Barcode search failed';
-                      setSearchError(message);
-                    })
-                    .finally(() => setIsSearching(false));
-                }}
-                onClose={() => setShowScanner(false)}
-              />
-            )}
-
-            {mediaPickerError && (
-              <p className="mt-2 text-xs text-red-600 dark:text-red-400">{mediaPickerError}</p>
-            )}
-            {!isMedia && searchError && (
-              <p className="mt-2 text-xs text-red-600 dark:text-red-400">{searchError}</p>
-            )}
-            <div className="space-y-3 flex-1 mt-6">
-              {searchResults.length > 0 ? (
-                <>
-                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Matches Found</p>
-                  {searchResults.map((draft, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => selectItem(draft)}
-                      className="w-full text-left p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-[#CC561E]/50 dark:hover:border-[#CC561E]/50 hover:shadow-md hover:bg-[rgba(204,86,30,0.05)] dark:hover:bg-[rgba(204,86,30,0.1)] transition-all group flex justify-between items-center"
-                    >
-                      <div>
-                        <h3 className="font-bold text-slate-900 dark:text-white">
-                          {draft.originalTitle && draft.originalTitle.trim().toLowerCase() !== draft.title.trim().toLowerCase()
-                            ? `${draft.title} (${draft.originalTitle})`
-                            : draft.title}
-                        </h3>
-                        <p className="text-slate-600 dark:text-slate-400 text-sm">{draft.author}</p>
-                        <div className="flex gap-3 mt-1 text-xs text-slate-400">
-                          {draft.publisher && <span>{draft.publisher}</span>}
-                          {draft.publishedDate && <span>{draft.publishedDate}</span>}
-                          {draft.isbn && <span className="font-mono tracking-tight">ISBN: {draft.isbn}</span>}
-                        </div>
-                      </div>
-                      <ChevronRight className="text-slate-300 dark:text-slate-600 group-hover:text-[#CC561E]" size={20} />
-                    </button>
-                  ))}
-
-                  {isMedia && hasMoreResults && (
-                    <button
-                      type="button"
-                      onClick={handleLoadMore}
-                      disabled={isSearching}
-                      className="w-full py-3 px-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-[#CC561E] hover:text-[#CC561E] dark:hover:border-[#f3a47b] dark:hover:text-[#f3a47b] transition-all flex items-center justify-center gap-2 font-medium"
-                    >
-                      {isSearching ? (
-                        <>
-                          <Loader2 size={18} className="animate-spin" />
-                          <span>Daha Fazla Yükleniyor...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Plus size={18} />
-                          <span>Daha Fazla Yükle</span>
-                        </>
-                      )}
-                    </button>
-                  )}
-                </>
-              ) : (
-                !isSearching && searchQuery && !(isMedia ? mediaPickerError : searchError) && (
-                  <div className="text-center py-10 text-slate-500">
-                    <p>{isMedia ? `No TMDb results found matching "${searchQuery}".` : `No AI results found matching "${searchQuery}".`}</p>
-                    <p className="text-sm mt-2">Try entering details manually.</p>
-                  </div>
-                )
-              )}
-            </div>
-
-            <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800 flex justify-center">
-              <button
-                onClick={() => setMode('edit')}
-                className="text-slate-500 dark:text-slate-400 hover:text-[#CC561E] dark:hover:text-[#f3a47b] text-sm font-medium flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-              >
-                <span>Don't see it? Enter details manually</span>
-                <SkipForward size={16} />
-              </button>
-            </div>
-          </div>
+          <BookFormSearchStep
+            isMedia={isMedia}
+            mediaLibraryEnabled={mediaLibraryEnabled}
+            resourceType={resourceType}
+            searchQuery={searchQuery}
+            onSearchQueryChange={setSearchQuery}
+            isSearching={isSearching}
+            onSubmitSearch={handleSearch}
+            onResourceTypeChange={setResourceType}
+            showScanner={showScanner}
+            onOpenScanner={() => setShowScanner(true)}
+            onCloseScanner={() => setShowScanner(false)}
+            onBarcodeDetected={(code) => {
+              setShowScanner(false);
+              setSearchQuery(code);
+              setIsSearching(true);
+              setSearchResults([]);
+              setSearchError('');
+              searchResourcesAI(code, resourceType)
+                .then((results) => setSearchResults(results))
+                .catch((err) => {
+                  console.error('Barcode search failed:', err);
+                  const message = err instanceof Error ? err.message : 'Barcode search failed';
+                  setSearchError(message);
+                })
+                .finally(() => setIsSearching(false));
+            }}
+            mediaPickerError={mediaPickerError}
+            searchError={searchError}
+            searchResults={searchResults}
+            onSelectItem={selectItem}
+            hasMoreResults={hasMoreResults}
+            onLoadMore={handleLoadMore}
+            onManualEntry={() => setMode('edit')}
+          />
         )}
 
         {/* Mode: Edit Form */}
@@ -804,7 +713,6 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
             {/* Basic Info */}
             <div className={isNote ? 'space-y-2' : (isMedia ? 'space-y-3.5' : 'space-y-3.5')}>
               <div className={`grid grid-cols-1 md:grid-cols-2 ${isNote ? 'gap-2' : (isMedia ? 'gap-3' : 'gap-x-4 gap-y-3')}`}>
-
                 {isMedia && (
                   <>
                     <div>
@@ -1144,17 +1052,34 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
               )}
 
               {isNote && (
-                <div>
-                  <label className={`block text-[12px] font-medium mb-0.5 ${noteLabelClass}`}>
-                    Sub-file (optional)
-                  </label>
-                  <input
-                    name="folderPath"
-                    value={formData.folderPath}
-                    onChange={handleChange}
-                    className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-sm focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
-                    placeholder="e.g. Sermon Ideas or Journal-2026-Week1"
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className={`block text-[12px] font-medium mb-0.5 ${noteLabelClass}`}>
+                      Sub-file (optional)
+                    </label>
+                    <input
+                      name="folderPath"
+                      value={formData.folderPath}
+                      onChange={handleChange}
+                      className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-sm focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                      placeholder="e.g. Sermon Ideas or Journal-2026-Week1"
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-[12px] font-medium mb-0.5 ${noteLabelClass}`}>
+                      Quick Template
+                    </label>
+                    <select
+                      onChange={(e) => applyTemplateById(e.target.value)}
+                      value=""
+                      className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-sm focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                    >
+                      <option value="" disabled>Select a template...</option>
+                      {PERSONAL_NOTE_TEMPLATES.map((t) => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               )}
 
@@ -1280,27 +1205,16 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
 
             <hr className={`${isNote ? 'my-2' : 'my-3'} border-slate-100 dark:border-slate-800`} />
 
-            {/* Notes Section moved UP for Personal Notes to prioritize writing */}
-            {
-              isNote && (
-                <div className="mb-4 flex-1 flex flex-col">
-                  <label className={`block text-sm font-medium mb-1 ${noteLabelClass}`}>
-                    Content
-                  </label>
-                  <PersonalNoteEditor
-                    value={formData.generalNotes}
-                    onChange={(next) => setFormData(prev => ({ ...prev, generalNotes: next }))}
-                    minHeight={420}
-                    onSlashCommand={handleSlashCommand}
-                    slashTemplateItems={PERSONAL_NOTE_TEMPLATES.map((template) => ({ id: template.id, label: template.name }))}
-                  />
-                  <p className={`mt-1 text-[10px] ${noteHelperClass}`}>
-                    Toolbar supports heading, bold, underline, bullet list, numbered list and checklist.
-                    Hızlı şablon için: /task &lt;şablon-adı&gt; (örn: /task kitap)
-                  </p>
-                </div>
-              )
-            }
+            {isNote && (
+              <NoteEditorSection
+                labelClass={noteLabelClass}
+                helperClass={noteHelperClass}
+                value={formData.generalNotes}
+                onChange={(next) => setFormData(prev => ({ ...prev, generalNotes: next }))}
+                onSlashCommand={handleSlashCommand}
+                slashTemplateItems={PERSONAL_NOTE_TEMPLATES.map((template) => ({ id: template.id, label: template.name }))}
+              />
+            )}
 
             {/* Status & Tags */}
             <div className={isNote ? 'space-y-2' : (isMedia ? 'space-y-3' : 'space-y-3.5')}>
@@ -1426,68 +1340,33 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
             <hr className={`${isNote ? 'my-2' : 'my-3'} border-slate-100 dark:border-slate-800`} />
 
             {/* Notes (Only for non-notes) */}
-            {
-              !isNote && (
-                <div className="mb-4 flex-1 flex flex-col">
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                    Summary
-                  </label>
-                  <textarea
-                    name="summaryText"
-                    rows={4}
-                    value={formData.summaryText}
-                    onChange={handleChange}
-                    className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] resize-none leading-relaxed flex-1 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
-                    placeholder={isMedia ? "Your review and key takeaways..." : "Your thoughts..."}
-                  />
-                </div>
-              )
-            }
-
-            <div className={`flex justify-between items-center ${isNote ? 'pt-1' : 'pt-2'} mt-auto`}>
-              {!initialData && !isNote && (
-                <button
-                  type="button"
-                  onClick={() => setMode('search')}
-                  className="text-sm text-slate-500 dark:text-slate-400 hover:text-[#CC561E] dark:hover:text-[#f3a47b] underline decoration-[#CC561E]/30 dark:decoration-[#CC561E]/50 hover:decoration-[#CC561E] dark:hover:decoration-[#CC561E]"
-                >
-                  Back to Search
-                </button>
-              )}
-              <div className="flex gap-3 ml-auto">
-                <button
-                  type="button"
-                  onClick={onCancel}
-                  className="px-5 py-2 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isIngesting}
-                  className="px-5 py-2 bg-[#CC561E] text-white hover:bg-[#b34b1a] rounded-lg shadow-lg shadow-[#CC561E]/20 transition-all font-medium flex items-center gap-2 active:scale-95"
-                >
-                  {isIngesting ? (
-                    <>
-                      <Loader2 size={18} className="animate-spin" />
-                      Ingesting PDF...
-                    </>
-                  ) : (
-                    <>
-                      Save {resourceType === 'ARTICLE'
-                        ? 'Article'
-                        : (resourceType === 'PERSONAL_NOTE'
-                          ? 'Note'
-                          : (resourceType === 'MOVIE' ? 'Movie' : (resourceType === 'SERIES' ? 'Series' : 'Book')))}
-                    </>
-                  )}
-                </button>
+            {!isNote && (
+              <div className="mb-4 flex-1 flex flex-col">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Summary
+                </label>
+                <textarea
+                  name="summaryText"
+                  rows={4}
+                  value={formData.summaryText}
+                  onChange={handleChange}
+                  className="w-full border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#CC561E] focus:border-[#CC561E] resize-none leading-relaxed flex-1 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                  placeholder={isMedia ? "Your review and key takeaways..." : "Your thoughts..."}
+                />
               </div>
-            </div>
-          </form >
+            )}
+
+            <BookFormFooter
+              initialData={initialData ? { id: initialData.id } : undefined}
+              isNote={isNote}
+              isIngesting={isIngesting}
+              resourceType={resourceType}
+              onBackToSearch={() => setMode('search')}
+              onCancel={onCancel}
+            />
+          </form>
         )}
-      </div >
-    </div >
+      </div>
+    </div>
   );
 };
-

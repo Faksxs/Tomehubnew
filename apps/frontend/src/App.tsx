@@ -6,18 +6,10 @@ import { HashRouter } from "react-router-dom";
 import {
   LibraryItem,
   Highlight,
-  ResourceType,
   PersonalNoteCategory,
   PersonalNoteFolder,
 } from "./types";
-import { BookList } from "./components/BookList";
-import { BookForm } from "./components/BookForm";
-import { BookDetail } from "./components/BookDetail";
 import { Sidebar } from "./components/Sidebar";
-import { ProfileView } from "./components/ProfileView";
-import SmartSearch from "./components/SmartSearch";
-import InsightsView from "./components/InsightsView";
-import logo from './assets/logo_v9.png';
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { LandingPage } from "./components/auth/LandingPage";
@@ -42,13 +34,16 @@ import {
 } from "./services/geminiService";
 import { useBatchEnrichment } from "./hooks/useBatchEnrichment";
 import { useLibrarySync } from "./hooks/useLibrarySync";
-
-import { RAGSearch } from "./components/RAGSearch";
-import { FlowContainer } from "./components/FlowContainer";
 import { CATEGORIES, MIN_CATEGORY_BOOKS_VISIBLE } from "./components/CategorySelector";
 import { prewarmFlowStartSession } from "./services/flowService";
 import { addTextItem, syncHighlights, syncPersonalNote, purgeResourceContent, searchMedia } from "./services/backendApiService";
 import { getPersonalNoteBackendType, getPersonalNoteCategory, isPersonalNote } from "./lib/personalNotePolicy";
+import { AppLoadingScreen } from "./features/app/components/AppLoadingScreen";
+import { AppMainContent } from "./features/app/components/AppMainContent";
+import { AppBookFormLayer } from "./features/app/components/AppBookFormLayer";
+import { AppTab } from "./features/app/types";
+import { useAppUiState } from "./features/app/hooks/useAppUiState";
+import { useUiFeedback } from "./shared/ui/feedback/useUiFeedback";
 
 
 // ----------------- LAYOUT (ANA UYGULAMA) -----------------
@@ -60,7 +55,10 @@ interface LayoutProps {
   onLogout: () => void;
 }
 
+const MEDIA_BACKEND_CACHE_KEY = "tomehub:media-backend-enabled:v1";
+
 const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
+  const { showToast, confirm } = useUiFeedback();
   // --- Sync logic extracted to useLibrarySync hook ---
   const {
     markPendingContentSync,
@@ -74,27 +72,43 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
 
   const [books, setBooks] = useState<LibraryItem[]>([]);
   const booksRef = useRef<LibraryItem[]>([]);
-  const [view, setView] = useState<"list" | "detail">("list");
-  const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingBookId, setEditingBookId] = useState<string | null>(null);
-  const [openToHighlights, setOpenToHighlights] = useState(false);
-  const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null);
-
-  const [activeTab, setActiveTab] = useState<
-    ResourceType | "NOTES" | "DASHBOARD" | "PROFILE" | "RAG_SEARCH" | "SMART_SEARCH" | "FLOW" | "INSIGHTS" | "INGEST"
-  >("DASHBOARD");
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const {
+    view,
+    selectedBookId,
+    isFormOpen,
+    editingBookId,
+    openToHighlights,
+    selectedHighlightId,
+    activeTab,
+    isSidebarOpen,
+    setIsSidebarOpen,
+    activeCategoryFilter,
+    setActiveCategoryFilter,
+    currentPage,
+    setCurrentPage,
+    listSearch,
+    setListSearch,
+    listStatusFilter,
+    setListStatusFilter,
+    listSortOption,
+    setListSortOption,
+    listPublisherFilter,
+    setListPublisherFilter,
+    personalNoteDraftDefaults,
+    handleTabChange,
+    handleNavigateToBooksWithCategory,
+    handleNavigateToBooksWithStatus,
+    openBookDetail,
+    openBookHighlights,
+    goBackFromDetail,
+    openCreateBookForm,
+    openPersonalNoteForm,
+    openEditForm,
+    closeForm,
+  } = useAppUiState();
   const [itemsLoading, setItemsLoading] = useState(true);
   const [lastDoc, setLastDoc] = useState<OracleListCursor | null>(null);
   const [hasMore, setHasMore] = useState(true);
-  const [activeCategoryFilter, setActiveCategoryFilter] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [listSearch, setListSearch] = useState('');
-  const [listStatusFilter, setListStatusFilter] = useState<string>('ALL');
-  const [listSortOption, setListSortOption] = useState<'date_desc' | 'date_asc' | 'title_asc'>('date_desc');
-  const [listPublisherFilter, setListPublisherFilter] = useState('');
-  const [personalNoteDraftDefaults, setPersonalNoteDraftDefaults] = useState<{ personalNoteCategory?: PersonalNoteCategory; personalFolderId?: string; folderPath?: string }>({});
   const [personalNoteFolders, setPersonalNoteFolders] = useState<PersonalNoteFolder[]>([]);
   const [didRunLegacyFolderMigration, setDidRunLegacyFolderMigration] = useState(false);
   const flowPrewarmStartedRef = useRef(false);
@@ -185,18 +199,35 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
       return;
     }
 
+    const cachedMediaBackendState = typeof window !== "undefined"
+      ? window.sessionStorage.getItem(MEDIA_BACKEND_CACHE_KEY)
+      : null;
+    if (cachedMediaBackendState === "true" || cachedMediaBackendState === "false") {
+      setMediaBackendEnabled(cachedMediaBackendState === "true");
+      return;
+    }
+
     let active = true;
     (async () => {
       try {
         await searchMedia("", "multi", 1);
-        if (active) setMediaBackendEnabled(true);
+        if (active) {
+          setMediaBackendEnabled(true);
+          if (typeof window !== "undefined") {
+            window.sessionStorage.setItem(MEDIA_BACKEND_CACHE_KEY, "true");
+          }
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message.toLowerCase() : "";
         const disabledOnServer =
           message.includes("media library is disabled") ||
           message.includes("disabled on backend");
         if (active) {
-          setMediaBackendEnabled(!disabledOnServer);
+          const nextValue = !disabledOnServer;
+          setMediaBackendEnabled(nextValue);
+          if (typeof window !== "undefined") {
+            window.sessionStorage.setItem(MEDIA_BACKEND_CACHE_KEY, String(nextValue));
+          }
         }
       }
     })();
@@ -328,8 +359,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
 
       // 2) Önce UI'da göster (kullanıcı beklemesin)
       setBooks((prev) => [newItem, ...prev]);
-      setIsFormOpen(false);
-      setPersonalNoteDraftDefaults({});
+      closeForm();
 
       // 3) Ham halini Firestore'a kaydet (veri kaybolmasın)
       let saveSucceeded = false;
@@ -346,7 +376,11 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
 
       if (!saveSucceeded) {
         setBooks((prev) => prev.filter((item) => item.id !== newItem.id));
-        window.alert(`Item kaydedilemedi: ${saveErrorMessage || "Bilinmeyen hata"}`);
+        showToast({
+          title: "Item kaydedilemedi",
+          description: saveErrorMessage || "Bilinmeyen hata",
+          tone: "error",
+        });
         return;
       }
       const itemForPostSave: LibraryItem = canonicalItemId !== optimisticItemId
@@ -488,18 +522,16 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
         })();
       }
     },
-    [patchItemForUser, refreshLibraryFromServer, runWithMutationLock, syncPersonalNoteToBackend, userId]
+    [closeForm, patchItemForUser, refreshLibraryFromServer, runWithMutationLock, syncPersonalNoteToBackend, userId]
   );
 
   const handleOpenPersonalNoteForm = useCallback((defaults?: { category?: PersonalNoteCategory; folderId?: string; folderPath?: string }) => {
-    setPersonalNoteDraftDefaults({
-      personalNoteCategory: defaults?.category || 'DAILY',
-      personalFolderId: defaults?.folderId,
+    openPersonalNoteForm({
+      category: defaults?.category,
+      folderId: defaults?.folderId,
       folderPath: defaults?.folderPath || buildFolderPath(defaults?.folderId),
     });
-    setEditingBookId(null);
-    setIsFormOpen(true);
-  }, [buildFolderPath]);
+  }, [buildFolderPath, openPersonalNoteForm]);
 
   const handleQuickCreatePersonalNote = useCallback((payload: { title: string; content: string; category: PersonalNoteCategory; folderId?: string; folderPath?: string }) => {
     handleAddBook({
@@ -525,8 +557,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     if (!previousItem) return;
     const updatedItem: LibraryItem = { ...previousItem, ...itemData };
 
-    setIsFormOpen(false);
-    setEditingBookId(null);
+    closeForm();
 
     const isPendingPersonalNote = isPersonalNote(updatedItem);
     markPendingContentSync(isPendingPersonalNote ? "PERSONAL_NOTE" : "ITEM", updatedItem);
@@ -557,7 +588,11 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     if (!metadataSaveSucceeded || !personalNoteSyncSucceeded) {
       clearPendingContentSync(updatedItem.id);
       const details = [metadataErrorMessage, noteSyncErrorMessage].filter(Boolean).join(" | ");
-      window.alert(`Changes could not be saved.${details ? `\n${details}` : ""}`);
+      showToast({
+        title: "Changes could not be saved",
+        description: details || "Unknown error",
+        tone: "error",
+      });
       return;
     }
 
@@ -566,10 +601,17 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     } catch (err) {
       console.warn("Post-update refresh failed:", err);
     }
-  }, [clearPendingContentSync, editingBookId, markPendingContentSync, refreshLibraryFromServer, runWithMutationLock, syncPersonalNoteToBackend, userId]);
+  }, [clearPendingContentSync, closeForm, editingBookId, markPendingContentSync, refreshLibraryFromServer, runWithMutationLock, syncPersonalNoteToBackend, userId]);
 
   const handleDeleteBook = useCallback(async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this item?")) return;
+    const confirmed = await confirm({
+      title: "Delete this item?",
+      description: "This action will remove the item from your library and linked search content.",
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      tone: "danger",
+    });
+    if (!confirmed) return;
     const deletedItem = books.find((b) => b.id === id);
     if (!deletedItem) return;
 
@@ -578,8 +620,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     setBooks((prev) => prev.filter((b) => b.id !== id));
 
     if (selectedBookId === id) {
-      setSelectedBookId(null);
-      setView("list");
+      goBackFromDetail();
     }
 
     let firestoreDeleteSucceeded = false;
@@ -597,7 +638,11 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     if (!firestoreDeleteSucceeded) {
       unmarkRecentlyDeleted(id);
       setBooks((prev) => [deletedItem, ...prev]);
-      window.alert(`Delete failed: ${deleteErrorMessage || "Unknown error"}`);
+      showToast({
+        title: "Delete failed",
+        description: deleteErrorMessage || "Unknown error",
+        tone: "error",
+      });
       return;
     }
 
@@ -613,10 +658,17 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     } catch (err) {
       console.warn("Post-delete refresh failed:", err);
     }
-  }, [books, clearPendingContentSync, markRecentlyDeleted, refreshLibraryFromServer, runWithMutationLock, selectedBookId, unmarkRecentlyDeleted, userId]);
+  }, [books, clearPendingContentSync, confirm, goBackFromDetail, markRecentlyDeleted, refreshLibraryFromServer, runWithMutationLock, selectedBookId, showToast, unmarkRecentlyDeleted, userId]);
 
   const handleBulkDelete = useCallback(async (ids: string[]) => {
-    if (!window.confirm(`Are you sure you want to delete ${ids.length} items?`)) return;
+    const confirmed = await confirm({
+      title: `${ids.length} item silinsin mi?`,
+      description: "Silinen item'lar library'den ve bagli arama iceriginden kaldirilacak.",
+      confirmLabel: "Delete all",
+      cancelLabel: "Cancel",
+      tone: "danger",
+    });
+    if (!confirmed) return;
     const deletedItems = books.filter((b) => ids.includes(b.id));
     if (deletedItems.length === 0) return;
 
@@ -627,8 +679,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     setBooks((prev) => prev.filter((b) => !ids.includes(b.id)));
 
     if (selectedBookId && ids.includes(selectedBookId)) {
-      setSelectedBookId(null);
-      setView("list");
+      goBackFromDetail();
     }
 
     let firestoreDeleteSucceeded = false;
@@ -646,7 +697,11 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     if (!firestoreDeleteSucceeded) {
       ids.forEach((id) => unmarkRecentlyDeleted(id));
       setBooks((prev) => [...deletedItems, ...prev]);
-      window.alert(`Bulk delete failed: ${deleteErrorMessage || "Unknown error"}`);
+      showToast({
+        title: "Bulk delete failed",
+        description: deleteErrorMessage || "Unknown error",
+        tone: "error",
+      });
       return;
     }
 
@@ -664,7 +719,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     } catch (err) {
       console.warn("Post-bulk-delete refresh failed:", err);
     }
-  }, [books, clearPendingContentSync, markRecentlyDeleted, refreshLibraryFromServer, runWithMutationLock, selectedBookId, unmarkRecentlyDeleted, userId]);
+  }, [books, clearPendingContentSync, confirm, goBackFromDetail, markRecentlyDeleted, refreshLibraryFromServer, runWithMutationLock, selectedBookId, showToast, unmarkRecentlyDeleted, userId]);
 
   const handleUpdateHighlights = useCallback(async (highlights: Highlight[]) => {
     if (!selectedBookId) return;
@@ -695,7 +750,11 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
 
     if (!syncSucceeded) {
       clearPendingContentSync(updatedItem.id);
-      window.alert(`Highlight changes could not be saved.${syncErrorMessage ? `\n${syncErrorMessage}` : ""}`);
+      showToast({
+        title: "Highlight changes could not be saved",
+        description: syncErrorMessage || "Unknown error",
+        tone: "error",
+      });
       return;
     }
 
@@ -705,7 +764,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
       console.warn("Post-highlight refresh failed:", err);
     }
   }
-    , [clearPendingContentSync, markPendingContentSync, refreshLibraryFromServer, runWithMutationLock, selectedBookId, userId]);
+    , [clearPendingContentSync, markPendingContentSync, refreshLibraryFromServer, runWithMutationLock, selectedBookId, showToast, userId]);
 
   const handleToggleFavorite = useCallback(async (id: string) => {
     // 1. Find and update the item
@@ -741,9 +800,13 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
         return newBooks;
       });
       const msg = err instanceof Error ? err.message : String(err);
-      window.alert(`Favorite update failed. Previous value was restored.\n${msg}`);
+      showToast({
+        title: "Favorite update failed",
+        description: msg,
+        tone: "error",
+      });
     }
-  }, [books, clearPendingContentSync, markPendingContentSync, patchItemForUser, refreshLibraryFromServer, runWithMutationLock, userId]);
+  }, [books, clearPendingContentSync, markPendingContentSync, patchItemForUser, refreshLibraryFromServer, runWithMutationLock, showToast, userId]);
 
   const handleToggleHighlightFavorite = useCallback(async (bookId: string, highlightId: string) => {
     // 1. Find and update the item
@@ -791,16 +854,20 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
         return newBooks;
       });
       const msg = err instanceof Error ? err.message : String(err);
-      window.alert(`Highlight favorite update failed. Previous value was restored.\n${msg}`);
+      showToast({
+        title: "Highlight favorite update failed",
+        description: msg,
+        tone: "error",
+      });
     }
-  }, [books, refreshLibraryFromServer, runWithMutationLock, userId]);
+  }, [books, refreshLibraryFromServer, runWithMutationLock, showToast, userId]);
 
   useEffect(() => {
     if (mediaLibraryEnabled) return;
     if (activeTab === "MOVIE" || activeTab === "SERIES") {
-      setActiveTab("DASHBOARD");
+      handleTabChange("DASHBOARD");
     }
-  }, [activeTab, mediaLibraryEnabled]);
+  }, [activeTab, handleTabChange, mediaLibraryEnabled]);
 
   const handleUpdateBookForEnrichment = useCallback((updatedBook: LibraryItem) => {
     setBooks((prev) => prev.map((b) => {
@@ -849,50 +916,8 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   const handleNavigateToLinkedNote = useCallback((noteId: string) => {
     const exists = booksRef.current.some((book) => book.id === noteId);
     if (!exists) return;
-    setSelectedBookId(noteId);
-    setOpenToHighlights(false);
-    setSelectedHighlightId(null);
-    setView("detail");
-  }, []);
-
-  const handleTabChange = useCallback((newTab: ResourceType | "NOTES" | "DASHBOARD" | "PROFILE" | "RAG_SEARCH" | "SMART_SEARCH" | "FLOW" | "INSIGHTS" | "INGEST") => {
-    setActiveTab(newTab);
-    setView("list");
-    setSelectedBookId(null);
-    setCurrentPage(1);
-    setListSearch('');
-    setListStatusFilter('ALL');
-    setListPublisherFilter('');
-    if (newTab !== "BOOK") {
-      setActiveCategoryFilter(null);
-    }
-  }, []);
-
-  const handleNavigateToBooksWithCategory = useCallback((category: string) => {
-    setActiveCategoryFilter(category);
-    setListStatusFilter('ALL');
-    setActiveTab("BOOK");
-    setView("list");
-    setSelectedBookId(null);
-    setCurrentPage(1);
-    setListSearch('');
-    setListPublisherFilter('');
-    setOpenToHighlights(false);
-    setSelectedHighlightId(null);
-  }, []);
-
-  const handleNavigateToBooksWithStatus = useCallback((status: string) => {
-    setListStatusFilter(status);
-    setActiveCategoryFilter(null);
-    setActiveTab("BOOK");
-    setView("list");
-    setSelectedBookId(null);
-    setCurrentPage(1);
-    setListSearch('');
-    setListPublisherFilter('');
-    setOpenToHighlights(false);
-    setSelectedHighlightId(null);
-  }, []);
+    openBookDetail(noteId);
+  }, [openBookDetail]);
 
   const handleLoadMore = useCallback(async () => {
     if (!lastDoc) return;
@@ -1195,11 +1220,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   }, [books, didRunLegacyFolderMigration, itemsLoading, personalNoteFolders, userId]);
 
   if (itemsLoading && books.length === 0) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500">
-        Loading your library from cloud...
-      </div>
-    );
+    return <AppLoadingScreen message="Loading your library from cloud..." />;
   }
 
   return (
@@ -1213,136 +1234,87 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
         onClose={() => setIsSidebarOpen(false)}
       />
 
-      {/* Main Content Shell (Warm Gray + Noise) */}
-      <main className="flex-1 flex flex-col h-full w-full relative overflow-y-auto transition-all duration-300 bg-[#F7F8FB] dark:bg-[#0b0e14] noise-bg
-">
-        {activeTab === "PROFILE" ? (
-          <ProfileView
-            email={userEmail}
-            userId={userId}
-            onLogout={onLogout}
-            onBack={() => handleTabChange("DASHBOARD")}
-            books={books}
-            onStartEnrichment={startEnrichment}
-            onStopEnrichment={stopEnrichment}
-            isEnriching={isEnriching}
-            enrichmentStats={enrichmentStats}
-          />
-        ) : activeTab === "SMART_SEARCH" ? (
-          <SmartSearch userId={userId} onBack={() => handleTabChange("DASHBOARD")} books={books} />
-        ) : activeTab === "RAG_SEARCH" ? (
-          <RAGSearch userId={userId} userEmail={userEmail} onBack={() => handleTabChange("DASHBOARD")} books={books} />
-        ) : activeTab === "FLOW" ? (
-          <FlowContainer
-            firebaseUid={userId}
-            anchorType="topic"
-            anchorId="General Discovery" // Default anchor if user just clicks sidebar
-            categoryOptions={flowVisibleCategories}
-            onClose={() => handleTabChange("DASHBOARD")}
-          />
-        ) : activeTab === "INSIGHTS" ? (
-          <InsightsView
-            items={books}
-            onBack={() => handleTabChange("DASHBOARD")}
-          />
-        ) : view === "list" ? (
-          <BookList
-            books={books}
-            activeTab={activeTab}
-            mediaLibraryEnabled={mediaLibraryEnabled}
-            userId={userId}
-            categoryFilter={activeCategoryFilter}
-            onCategoryFilterChange={setActiveCategoryFilter}
-            onCategoryNavigate={handleNavigateToBooksWithCategory}
-            onStatusNavigate={handleNavigateToBooksWithStatus}
-            onSelectBook={(book) => {
-              setSelectedBookId(book.id);
-              setOpenToHighlights(false); // Default to info tab
-              setView("detail");
-            }}
-            onSelectBookWithTab={(book, tab, highlightId) => {
-              setSelectedBookId(book.id);
-              setOpenToHighlights(tab === 'highlights'); // Open to highlights tab if specified
-              setSelectedHighlightId(highlightId || null); // Store highlight ID to auto-edit
-              setView("detail");
-            }}
-            onAddBook={() => {
-              setPersonalNoteDraftDefaults({});
-              setEditingBookId(null);
-              setIsFormOpen(true);
-            }}
-            personalNoteFolders={personalNoteFolders}
-            onCreatePersonalFolder={handleCreatePersonalFolder}
-            onRenamePersonalFolder={handleRenamePersonalFolder}
-            onDeletePersonalFolder={handleDeletePersonalFolder}
-            onMovePersonalFolder={handleMovePersonalFolder}
-            onMovePersonalNote={handleMovePersonalNote}
-            onAddPersonalNote={({ category, folderId, folderPath }) => {
-              handleOpenPersonalNoteForm({ category, folderId, folderPath });
-            }}
-            onQuickCreatePersonalNote={handleQuickCreatePersonalNote}
-            onMobileMenuClick={() => setIsSidebarOpen(true)}
-            onDeleteBook={handleDeleteBook}
-            onDeleteMultiple={handleBulkDelete}
-            onToggleFavorite={handleToggleFavorite}
-            onToggleHighlightFavorite={handleToggleHighlightFavorite}
-            currentPage={currentPage}
-            onPageChange={setCurrentPage}
-            searchQuery={listSearch}
-            onSearchChange={setListSearch}
-            statusFilter={listStatusFilter}
-            onStatusFilterChange={setListStatusFilter}
-            sortOption={listSortOption as any}
-            onSortOptionChange={setListSortOption as any}
-            publisherFilter={listPublisherFilter}
-            onPublisherFilterChange={setListPublisherFilter}
-            onTabChange={handleTabChange}
-          />
-        ) : (
-          selectedBook && (
-            <BookDetail
-              book={selectedBook}
-              initialTab={openToHighlights ? 'highlights' : 'info'}
-              autoEditHighlightId={selectedHighlightId || undefined}
-              onBack={() => {
-                setSelectedBookId(null);
-                setOpenToHighlights(false); // Reset state
-                setSelectedHighlightId(null); // Reset highlight ID
-                setView("list");
-              }}
-              onEdit={() => {
-                setEditingBookId(selectedBook.id);
-                setIsFormOpen(true);
-              }}
-              onDelete={() => handleDeleteBook(selectedBook.id)}
-              onUpdateHighlights={handleUpdateHighlights}
-              onBookUpdated={handleUpdateBookForEnrichment}
-            />
-          )
-        )}
+      <main className="flex-1 flex flex-col h-full w-full relative overflow-y-auto transition-all duration-300 bg-[#F7F8FB] dark:bg-[#0b0e14] noise-bg">
+        <AppMainContent
+          activeTab={activeTab}
+          view={view}
+          userId={userId}
+          userEmail={userEmail}
+          onLogout={onLogout}
+          books={books}
+          selectedBook={selectedBook}
+          openToHighlights={openToHighlights}
+          selectedHighlightId={selectedHighlightId}
+          mediaLibraryEnabled={mediaLibraryEnabled}
+          flowVisibleCategories={flowVisibleCategories}
+          activeCategoryFilter={activeCategoryFilter}
+          personalNoteFolders={personalNoteFolders}
+          currentPage={currentPage}
+          listSearch={listSearch}
+          listStatusFilter={listStatusFilter}
+          listSortOption={listSortOption}
+          listPublisherFilter={listPublisherFilter}
+          isEnriching={isEnriching}
+          enrichmentStats={enrichmentStats}
+          onStartEnrichment={startEnrichment}
+          onStopEnrichment={stopEnrichment}
+          onBackToDashboard={() => handleTabChange("DASHBOARD")}
+          onSelectBook={(book) => openBookDetail(book.id)}
+          onSelectBookWithTab={(book, tab, highlightId) => {
+            if (tab === 'highlights') {
+              openBookHighlights(book.id, highlightId);
+              return;
+            }
+            openBookDetail(book.id);
+          }}
+          onAddBook={openCreateBookForm}
+          onAddPersonalNote={({ category, folderId, folderPath }) => {
+            handleOpenPersonalNoteForm({ category, folderId, folderPath });
+          }}
+          onQuickCreatePersonalNote={handleQuickCreatePersonalNote}
+          onCreatePersonalFolder={handleCreatePersonalFolder}
+          onRenamePersonalFolder={handleRenamePersonalFolder}
+          onDeletePersonalFolder={handleDeletePersonalFolder}
+          onMovePersonalFolder={handleMovePersonalFolder}
+          onMovePersonalNote={handleMovePersonalNote}
+          onMobileMenuClick={() => setIsSidebarOpen(true)}
+          onDeleteBook={handleDeleteBook}
+          onDeleteMultiple={handleBulkDelete}
+          onToggleFavorite={handleToggleFavorite}
+          onToggleHighlightFavorite={handleToggleHighlightFavorite}
+          onPageChange={setCurrentPage}
+          onSearchChange={setListSearch}
+          onStatusFilterChange={setListStatusFilter}
+          onSortOptionChange={setListSortOption}
+          onPublisherFilterChange={setListPublisherFilter}
+          onCategoryFilterChange={setActiveCategoryFilter}
+          onCategoryNavigate={handleNavigateToBooksWithCategory}
+          onStatusNavigate={handleNavigateToBooksWithStatus}
+          onTabChange={handleTabChange}
+          onBackFromDetail={goBackFromDetail}
+          onEditSelectedBook={() => {
+            if (!selectedBook) return;
+            openEditForm(selectedBook.id);
+          }}
+          onDeleteSelectedBook={() => {
+            if (!selectedBook) return;
+            handleDeleteBook(selectedBook.id);
+          }}
+          onUpdateHighlights={handleUpdateHighlights}
+          onBookUpdated={handleUpdateBookForEnrichment}
+        />
       </main>
 
-      {isFormOpen && (
-        <BookForm
-          initialType={
-            editingBook
-              ? editingBook.type
-              : activeTab === "NOTES" || activeTab === "DASHBOARD" || activeTab === "PROFILE" || activeTab === "RAG_SEARCH" || activeTab === "SMART_SEARCH" || activeTab === "FLOW"
-                ? "BOOK"
-                : (activeTab as ResourceType)
-          }
-          initialData={editingBook}
-          noteDefaults={!editingBook && (activeTab === "PERSONAL_NOTE")
-            ? personalNoteDraftDefaults
-            : undefined}
-          onSave={editingBookId ? handleUpdateBook : handleAddBook}
-          onCancel={() => {
-            setIsFormOpen(false);
-            setEditingBookId(null);
-            setPersonalNoteDraftDefaults({});
-          }}
-        />
-      )}
+      <AppBookFormLayer
+        isOpen={isFormOpen}
+        editingBook={editingBook}
+        editingBookId={editingBookId}
+        activeTab={activeTab}
+        personalNoteDraftDefaults={personalNoteDraftDefaults}
+        onSave={handleAddBook}
+        onUpdate={handleUpdateBook}
+        onClose={closeForm}
+      />
     </div>
   );
 };
@@ -1353,11 +1325,7 @@ const AppContent: React.FC = () => {
   const { user, loading, loginWithGoogle, logout } = useAuth();
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-slate-500">
-        Loading...
-      </div>
-    );
+    return <AppLoadingScreen message="Loading..." />;
   }
 
   if (!user) {

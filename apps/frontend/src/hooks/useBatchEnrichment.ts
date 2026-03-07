@@ -6,6 +6,7 @@ import {
     mergeEnrichedDraftIntoItem
 } from '../services/geminiService';
 import { saveItemForUser } from '../services/oracleLibraryService';
+import { useUiFeedback } from '../shared/ui/feedback/useUiFeedback';
 
 interface BatchEnrichmentStats {
     total: number;
@@ -19,6 +20,7 @@ export const useBatchEnrichment = (
     userId: string,
     onUpdateBook: (book: LibraryItem) => void
 ) => {
+    const { showToast } = useUiFeedback();
     const [isEnriching, setIsEnriching] = useState(false);
     const [stats, setStats] = useState<BatchEnrichmentStats>({
         total: 0,
@@ -39,7 +41,11 @@ export const useBatchEnrichment = (
         );
 
         if (candidates.length === 0) {
-            alert("No books found that need enrichment!");
+            showToast({
+                title: 'No books need enrichment',
+                description: 'Summary or tags are already present for eligible books.',
+                tone: 'info',
+            });
             return;
         }
 
@@ -120,8 +126,7 @@ export const useBatchEnrichment = (
 
         setIsEnriching(false);
         setStats(prev => ({ ...prev, currentBookTitle: undefined }));
-
-    }, [userId, onUpdateBook]);
+    }, [onUpdateBook, showToast, userId]);
 
     const stopEnrichment = useCallback(() => {
         stopRef.current = true;
