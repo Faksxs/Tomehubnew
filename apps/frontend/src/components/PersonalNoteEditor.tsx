@@ -87,7 +87,7 @@ export const PersonalNoteEditor: React.FC<PersonalNoteEditorProps> = ({
   minHeight = 220,
   onSlashCommand,
   slashTemplateItems = [],
-  maxSlashSuggestions = 8,
+  maxSlashSuggestions = 20,
 }) => {
   const normalizeForSearch = (input: string): string =>
     String(input || '')

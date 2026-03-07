@@ -108,10 +108,16 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
     const stats = useMemo(() => {
         const now = Date.now();
         const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
+        const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
 
         // Tag Stats & Co-occurrence
         const tagMap = new Map<string, { label: string; count: number }>();
         const pairMap = new Map<string, number>();
+        const itemsWithTime: Array<{ item: LibraryItem; addedMs: number; lastHighlightMs: number }> = [];
+        const highlightActivity: number[] = [];
+        let ingestedCount = 0;
+        let totalReadable = 0;
+        let unexplored = 0;
 
         items.forEach(item => {
             const tags = Array.from(new Set((item.tags || []).map(t => t.trim()).filter(Boolean)));
@@ -130,6 +136,22 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
                     pairMap.set(pair, (pairMap.get(pair) || 0) + 1);
                 }
             }
+
+            const readable = item.type !== 'PERSONAL_NOTE';
+            if (readable) {
+                totalReadable += 1;
+                if ((item.highlights?.length || 0) === 0) unexplored += 1;
+            }
+            if (item.isIngested) ingestedCount += 1;
+
+            const addedMs = normalizeDate(item.addedAt);
+            let lastHighlightMs = 0;
+            (item.highlights || []).forEach((highlight) => {
+                const createdAtMs = normalizeDate(highlight.createdAt);
+                highlightActivity.push(createdAtMs);
+                if (createdAtMs > lastHighlightMs) lastHighlightMs = createdAtMs;
+            });
+            itemsWithTime.push({ item, addedMs, lastHighlightMs });
         });
 
         const sortedTags = Array.from(tagMap.values()).sort((a, b) => b.count - a.count);
@@ -137,12 +159,6 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
         const orphanCount = sortedTags.filter(t => t.count <= 2).length;
 
         // Rust index calculation
-        const itemsWithTime = items.map(item => ({
-            item,
-            addedMs: normalizeDate(item.addedAt),
-            lastHighlightMs: Math.max(...(item.highlights || []).map(h => normalizeDate(h.createdAt)), 0)
-        }));
-
         const coldItems = itemsWithTime.filter(i =>
             i.item.type !== 'PERSONAL_NOTE' &&
             i.addedMs < now - ninetyDaysMs &&
@@ -152,46 +168,44 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
         // Activity over last 30 days (Daily)
         let last30DaysBooks = 0;
         let last30DaysHighlights = 0;
-        const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
         const heatmapData: Record<string, number> = {};
 
         const dailyActivity = (() => {
             const data = [];
+            const dataIndex = new Map<string, { date: string; books: number; insights: number; label: string }>();
             const nowTime = new Date();
             for (let i = 29; i >= 0; i--) {
                 const d = new Date(nowTime);
                 d.setDate(d.getDate() - i);
                 const dateStr = d.toISOString().split('T')[0];
-                data.push({
+                const entry = {
                     date: dateStr,
                     books: 0,
                     insights: 0,
                     label: d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })
-                });
+                };
+                data.push(entry);
+                dataIndex.set(dateStr, entry);
             }
 
             itemsWithTime.forEach(i => {
                 const date = new Date(i.addedMs).toISOString().split('T')[0];
                 heatmapData[date] = (heatmapData[date] || 0) + 1;
                 if (i.addedMs >= thirtyDaysAgo) last30DaysBooks++;
-                const entry = data.find(d => d.date === date);
+                const entry = dataIndex.get(date);
                 if (entry) entry.books++;
             });
 
-            items.flatMap(item => item.highlights || []).forEach(h => {
-                const ms = normalizeDate(h.createdAt);
+            highlightActivity.forEach((ms) => {
                 const date = new Date(ms).toISOString().split('T')[0];
                 heatmapData[date] = (heatmapData[date] || 0) + 1;
                 if (ms >= thirtyDaysAgo) last30DaysHighlights++;
-                const entry = data.find(d => d.date === date);
+                const entry = dataIndex.get(date);
                 if (entry) entry.insights++;
             });
 
             return data;
         })();
-
-        const totalReadable = items.filter(i => i.type !== 'PERSONAL_NOTE').length;
-        const unexplored = items.filter(i => i.type !== 'PERSONAL_NOTE' && (i.highlights?.length || 0) === 0).length;
 
         return {
             topTags,
@@ -206,7 +220,8 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
             heatmapData,
             totalReadable,
             unexplored,
-            ingestRatio: totalReadable > 0 ? Math.round((items.filter(i => i.isIngested).length / totalReadable) * 100) : 0,
+            ingestedCount,
+            ingestRatio: totalReadable > 0 ? Math.round((ingestedCount / totalReadable) * 100) : 0,
             pairs: Array.from(pairMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 15)
         };
     }, [items]);
@@ -245,7 +260,7 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
                         { label: 'Pulse', value: `+${stats.last30DaysBooks + stats.last30DaysHighlights}`, sub: '30 Day Activity', color: 'text-primary', icon: Activity },
                         { label: 'T-Profile', value: stats.tScore, sub: `${stats.orphanCount} Orphans`, color: 'text-[#F63049]', icon: TrendingUp },
                         { label: 'Rust Index', value: `${stats.rustPercent}%`, sub: `${stats.totalReadable - stats.coldItems.length} Active Nodes`, color: 'text-orange-500', icon: Zap },
-                        { label: 'Intellect', value: `${stats.ingestRatio}%`, sub: `${items.filter(i => i.isIngested).length} Ingested`, color: 'text-indigo-500', icon: Sparkles },
+                        { label: 'Intellect', value: `${stats.ingestRatio}%`, sub: `${stats.ingestedCount} Ingested`, color: 'text-indigo-500', icon: Sparkles },
                     ].map((s, i) => (
                         <motion.div
                             key={i}

@@ -719,8 +719,6 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                         border: 1px solid rgba(148, 163, 184, 0.22);
                         background: rgba(255, 255, 255, 0.9);
                         cursor: pointer;
-                        touch-action: manipulation;
-                        -webkit-tap-highlight-color: transparent;
                     }
 
                     .dark .flow-mobile-action-btn {

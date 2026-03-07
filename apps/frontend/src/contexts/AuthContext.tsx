@@ -13,6 +13,7 @@ import {
     signOut,
 } from "firebase/auth";
 import { auth, googleProvider } from "../services/firebaseClient";
+import { useUiFeedback } from "../shared/ui/feedback/useUiFeedback";
 
 interface AuthContextValue {
     user: User | null;
@@ -26,6 +27,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     children,
 }) => {
+    const { showToast } = useUiFeedback();
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
 
@@ -60,11 +62,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         } catch (error: any) {
             console.error("Login with Google failed:", error);
             if (error.code === 'auth/popup-blocked') {
-                alert("Giriş penceresi engellendi. Lütfen Safari veya Chrome gibi bir tarayıcıda açın veya pop-uplara izin verin.");
+                showToast({
+                    title: "Giris penceresi engellendi",
+                    description: "Lutfen Safari veya Chrome gibi bir tarayicida acin ya da pop-up izni verin.",
+                    tone: "warning",
+                });
             } else if (error.code === 'auth/cancelled-popup-request') {
                 // Ignore user cancellation
             } else {
-                alert("Giriş hatası: " + (error.message || "Bilinmeyen bir hata oluştu."));
+                showToast({
+                    title: "Giris hatasi",
+                    description: error.message || "Bilinmeyen bir hata olustu.",
+                    tone: "error",
+                });
             }
         }
     };

@@ -5,6 +5,7 @@ import { generateTagsForNote } from '../services/geminiService';
 import { isInsightType, normalizeHighlightType } from '../lib/highlightType';
 import { CameraOcrModal } from './CameraOcrModal';
 import { appendRecognizedText, shouldEnableMobileCameraOcr } from '../lib/ocrHelpers';
+import { useUiFeedback } from '../shared/ui/feedback/useUiFeedback';
 
 interface HighlightSectionProps {
   highlights: Highlight[];
@@ -14,6 +15,7 @@ interface HighlightSectionProps {
 }
 
 export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, onUpdate, autoEditHighlightId, isMedia = false }) => {
+  const { confirm } = useUiFeedback();
   // State for managing the form
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -162,10 +164,16 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
     handleCancel();
   };
 
-  const handleDelete = (id: string) => {
-    if (window.confirm('Delete this item?')) {
-      onUpdate(highlights.filter(h => h.id !== id));
-    }
+  const handleDelete = async (id: string) => {
+    const accepted = await confirm({
+      title: 'Delete this item?',
+      description: 'This highlight or note entry will be removed from the current item.',
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
+      tone: 'danger',
+    });
+    if (!accepted) return;
+    onUpdate(highlights.filter(h => h.id !== id));
   };
 
   const formatTimestamp = (minutes?: number): string => {

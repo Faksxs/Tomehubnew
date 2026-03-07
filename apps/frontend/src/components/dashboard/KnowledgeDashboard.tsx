@@ -82,11 +82,67 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
     };
 
     // --- DATA PROCESSING (LEVEL A) ---
-    const books = items.filter(i => i.type === 'BOOK');
-    const cinema = items.filter(i => i.type === 'MOVIE' || i.type === 'SERIES');
-    const articles = items.filter(i => i.type === 'ARTICLE');
-    const personalNotes = items.filter(i => i.type === 'PERSONAL_NOTE');
-    const allHighlights = items.flatMap(i => i.highlights || []);
+    const baseStats = useMemo(() => {
+        const books: LibraryItem[] = [];
+        const cinema: LibraryItem[] = [];
+        const articles: LibraryItem[] = [];
+        const personalNotes: LibraryItem[] = [];
+        const allHighlights = [];
+        let finishedCount = 0;
+        let readingCount = 0;
+        let toReadCount = 0;
+        let cinemaWatchlistCount = 0;
+        let cinemaWatchingCount = 0;
+        let cinemaWatchedCount = 0;
+
+        items.forEach((item) => {
+            if (item.type === 'BOOK') books.push(item);
+            if (item.type === 'MOVIE' || item.type === 'SERIES') cinema.push(item);
+            if (item.type === 'ARTICLE') articles.push(item);
+            if (item.type === 'PERSONAL_NOTE') personalNotes.push(item);
+            allHighlights.push(...(item.highlights || []));
+
+            if (item.type !== 'PERSONAL_NOTE' && item.type !== 'MOVIE' && item.type !== 'SERIES') {
+                if (item.readingStatus === 'Finished') finishedCount += 1;
+                if (item.readingStatus === 'Reading') readingCount += 1;
+                if (item.readingStatus === 'To Read') toReadCount += 1;
+            }
+
+            if (item.type === 'MOVIE' || item.type === 'SERIES') {
+                if (item.readingStatus === 'To Read') cinemaWatchlistCount += 1;
+                if (item.readingStatus === 'Reading') cinemaWatchingCount += 1;
+                if (item.readingStatus === 'Finished') cinemaWatchedCount += 1;
+            }
+        });
+
+        return {
+            books,
+            cinema,
+            articles,
+            personalNotes,
+            allHighlights,
+            finishedCount,
+            readingCount,
+            toReadCount,
+            cinemaWatchlistCount,
+            cinemaWatchingCount,
+            cinemaWatchedCount,
+        };
+    }, [items]);
+
+    const {
+        books,
+        cinema,
+        articles,
+        personalNotes,
+        allHighlights,
+        finishedCount,
+        readingCount,
+        toReadCount,
+        cinemaWatchlistCount,
+        cinemaWatchingCount,
+        cinemaWatchedCount,
+    } = baseStats;
 
     const statsA = [
         { label: 'All Notes', value: allHighlights.length, icon: HighlightsLogo, tab: 'NOTES' },
@@ -96,16 +152,6 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
         { label: 'Articles', value: articles.length, icon: ArticlesLogo, tab: 'ARTICLE' },
     ];
 
-    // --- DATA PROCESSING (LEVEL B) ---
-    const readableItems = items.filter(i => i.type !== 'PERSONAL_NOTE' && i.type !== 'MOVIE' && i.type !== 'SERIES');
-    const finishedCount = readableItems.filter(i => i.readingStatus === 'Finished').length;
-    const readingCount = readableItems.filter(i => i.readingStatus === 'Reading').length;
-    const toReadCount = readableItems.filter(i => i.readingStatus === 'To Read').length;
-
-    // --- DATA PROCESSING (CINEMA STATS) ---
-    const cinemaWatchlistCount = cinema.filter(i => i.readingStatus === 'To Read').length;
-    const cinemaWatchingCount = cinema.filter(i => i.readingStatus === 'Reading').length;
-    const cinemaWatchedCount = cinema.filter(i => i.readingStatus === 'Finished').length;
     const advancedStats = useMemo(() => {
         const now = Date.now();
         const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
