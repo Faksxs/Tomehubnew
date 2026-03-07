@@ -62,9 +62,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, mediaL
           <img
             src={logo}
             alt="TomeHub Icon"
-            className="h-[68px] w-auto object-contain brightness-110 drop-shadow-[0_8px_22px_rgba(204,86,30,0.28)] lg:h-[77px]"
+            className="h-[50px] w-auto object-contain brightness-110 drop-shadow-[0_8px_22px_rgba(204,86,30,0.28)] lg:h-[77px]"
           />
-          <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/55">
+          <div className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[8.5px] font-semibold uppercase tracking-[0.22em] text-white/55">
             Personal Knowledge OS
           </div>
 
@@ -81,32 +81,32 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, mediaL
             Workspace
           </div>
           <div className="space-y-1.5">
-          {menuItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => {
-                  onTabChange(item.id as any);
-                  onClose();
-                }}
-                className={`w-full flex items-center gap-3 rounded-2xl px-3 py-2.5 text-[13px] font-medium transition-all duration-200 group lg:py-3 lg:text-sm ${isActive
-                  ? 'border border-white/10 bg-white/[0.09] text-white shadow-[0_8px_24px_rgba(0,0,0,0.18)]'
-                  : 'border border-transparent text-white/70 hover:border-white/5 hover:bg-white/[0.045] hover:text-white'
-                  }`}
-              >
-                <Icon
-                  className={`h-[18px] w-[18px] transition-colors lg:h-5 lg:w-5 ${item.id === 'MOVIE'
-                    ? 'text-[#CC561E]'
-                    : (isActive ? 'text-[#CC561E]' : 'text-white/60 group-hover:text-white')
+            {menuItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    onTabChange(item.id as any);
+                    onClose();
+                  }}
+                  className={`w-full flex items-center gap-3 rounded-2xl px-3 py-2.5 text-[13px] font-medium transition-all duration-200 group lg:py-3 lg:text-sm ${isActive
+                    ? 'border border-white/10 bg-white/[0.09] text-white shadow-[0_8px_24px_rgba(0,0,0,0.18)]'
+                    : 'border border-transparent text-white/70 hover:border-white/5 hover:bg-white/[0.045] hover:text-white'
                     }`}
-                />
-                <span className="flex-1 text-left">{item.label}</span>
-                {isActive ? <span className="h-2 w-2 rounded-full bg-[#CC561E] shadow-[0_0_12px_rgba(204,86,30,0.75)]" /> : null}
-              </button>
-            );
-          })}
+                >
+                  <Icon
+                    className={`h-[18px] w-[18px] transition-colors lg:h-5 lg:w-5 ${item.id === 'MOVIE'
+                      ? 'text-[#CC561E]'
+                      : (isActive ? 'text-[#CC561E]' : 'text-white/60 group-hover:text-white')
+                      }`}
+                  />
+                  <span className="flex-1 text-left">{item.label}</span>
+                  {isActive ? <span className="h-2 w-2 rounded-full bg-[#CC561E] shadow-[0_0_12px_rgba(204,86,30,0.75)]" /> : null}
+                </button>
+              );
+            })}
           </div>
         </nav>
 
@@ -148,10 +148,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, mediaL
 
         <div className="p-4 border-t border-white/10">
           <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.08] via-white/[0.04] to-transparent p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-            <p className="mb-1 text-[13px] font-medium text-white/78">My Personal Library</p>
+            <p className="mb-1 text-[11.5px] font-medium text-white/78">My Personal Library</p>
             <div className="flex items-center gap-2">
               <div className="h-2 w-2 rounded-full bg-[#CC561E] animate-pulse" />
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/50">Online</p>
+              <p className="text-[9.5px] font-semibold uppercase tracking-[0.18em] text-white/50">Online</p>
             </div>
           </div>
         </div>
