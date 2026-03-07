@@ -34,6 +34,8 @@ export const QuickCapturePanel: React.FC<QuickCapturePanelProps> = ({
     canSave,
     autoFocus = false,
 }) => {
+    const desktopControlsClass = isOpen ? 'flex' : 'hidden lg:flex';
+
     return (
         <div className={`bg-white dark:bg-slate-900 border border-[#E6EAF2] dark:border-slate-800 rounded-2xl overflow-hidden ${!isOpen ? 'hidden lg:block' : 'block'}`}>
             <div
@@ -51,10 +53,12 @@ export const QuickCapturePanel: React.FC<QuickCapturePanelProps> = ({
                     Quick Capture
                 </h4>
 
-                {(isOpen || window.innerWidth >= 1024) && (
+                <div
+                    className={`items-center gap-2 flex-1 lg:flex-none justify-between lg:justify-end ${desktopControlsClass}`}
+                    onClick={(e) => e.stopPropagation()}
+                >
                     <div
-                        className={`flex items-center gap-2 flex-1 lg:flex-none justify-between lg:justify-end ${!isOpen ? 'hidden lg:flex' : 'flex'}`}
-                        onClick={(e) => e.stopPropagation()}
+                        className="flex items-center gap-2 flex-1 justify-between lg:justify-end"
                     >
                         <span className="lg:hidden text-[11px] font-bold text-slate-500 uppercase tracking-wider">Quick Capture</span>
                         <div className="flex items-center gap-2">
@@ -74,7 +78,7 @@ export const QuickCapturePanel: React.FC<QuickCapturePanelProps> = ({
                             )}
                         </div>
                     </div>
-                )}
+                </div>
             </div>
 
             {isOpen && (
@@ -99,7 +103,7 @@ export const QuickCapturePanel: React.FC<QuickCapturePanelProps> = ({
                         <button
                             onClick={onSave}
                             disabled={!canSave}
-                            className="px-4 py-2 rounded-lg bg-[#262D40] text-white text-sm md:text-base disabled:opacity-40"
+                            className="w-full sm:w-auto px-4 py-2.5 rounded-lg bg-[#262D40] text-white text-sm md:text-base disabled:opacity-40"
                         >
                             Save Quick Note
                         </button>

@@ -166,6 +166,7 @@
 
 .personal-note-content .tableWrapper {
   width: 100%;
+  max-width: 100%;
 }
 
 @media (max-width: 767px) {
@@ -189,7 +190,7 @@
   .personal-note-content th,
   .personal-note-content td {
     padding: 0.25rem 0.35rem !important;
-    min-width: 7.5rem !important;
+    min-width: 8.5rem !important;
     width: auto !important;
     word-break: break-word;
     overflow-wrap: break-word;
@@ -198,7 +199,7 @@
 
   .personal-note-content colgroup col {
     width: auto !important;
-    min-width: 7.5rem !important;
+    min-width: 8.5rem !important;
   }
 
   .personal-note-content h1 {
@@ -239,6 +240,8 @@
   line-height: 1.7;
   font-size: 0.95rem;
   color: #0f172a;
+  overflow-wrap: anywhere;
+  touch-action: pan-y pinch-zoom;
 }
 
 @media (max-width: 767px) {
@@ -266,6 +269,13 @@
 
 .dark .personal-note-prosemirror {
   color: #e2e8f0;
+}
+
+.personal-note-prosemirror .tableWrapper {
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  max-width: 100%;
 }
 
 .personal-note-prosemirror .selectedCell::after {

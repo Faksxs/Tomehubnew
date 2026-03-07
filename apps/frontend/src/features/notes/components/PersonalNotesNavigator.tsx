@@ -104,8 +104,14 @@ export const PersonalNotesNavigator: React.FC<PersonalNotesNavigatorProps> = ({
     DraggableWrapper,
 }) => {
     return (
-        <aside className={`bg-white dark:bg-slate-900 border border-[#E6EAF2] dark:border-slate-800 rounded-xl p-3 md:p-4 h-fit ${isOpen ? 'block' : 'hidden lg:block'}`}>
-            <div className="flex items-center justify-between mb-3">
+        <>
+        <div
+            className={`fixed inset-0 z-30 bg-slate-950/35 backdrop-blur-[1px] transition-opacity duration-200 lg:hidden ${isOpen ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+            onClick={onClose}
+            aria-hidden={!isOpen}
+        />
+        <aside className={`fixed inset-y-0 left-0 z-40 w-[min(88vw,340px)] overflow-y-auto border-r border-[#E6EAF2] bg-white p-3 shadow-2xl transition-transform duration-200 dark:border-white/10 dark:bg-slate-900 lg:static lg:z-auto lg:w-auto lg:translate-x-0 lg:overflow-visible lg:rounded-xl lg:border lg:p-4 lg:shadow-none ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} ${!isOpen ? 'pointer-events-none lg:pointer-events-auto' : ''}`}>
+            <div className="sticky top-0 -mx-3 mb-3 flex items-center justify-between border-b border-[#E6EAF2] bg-white px-3 py-3 dark:border-white/10 dark:bg-slate-900 lg:static lg:mx-0 lg:border-b-0 lg:px-0 lg:py-0">
                 <h3 className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500 flex items-center gap-2">
                     <ListFilter size={14} />
                     Note Space
@@ -298,5 +304,6 @@ export const PersonalNotesNavigator: React.FC<PersonalNotesNavigatorProps> = ({
                 ))}
             </div>
         </aside>
+        </>
     );
 };

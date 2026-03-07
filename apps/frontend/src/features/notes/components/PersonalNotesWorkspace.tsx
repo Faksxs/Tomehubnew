@@ -44,6 +44,7 @@ interface PersonalNotesWorkspaceProps {
     onDragEnd: (event: DragEndEvent) => void;
     isPersonalPanelOpen: boolean;
     onTogglePersonalPanel: () => void;
+    onClosePersonalPanel: () => void;
     allNotesVisibleCount: number;
     favoriteNotesVisibleCount: number;
     recentNotesVisibleCount: number;
@@ -105,6 +106,7 @@ export const PersonalNotesWorkspace: React.FC<PersonalNotesWorkspaceProps> = ({
     onDragEnd,
     isPersonalPanelOpen,
     onTogglePersonalPanel,
+    onClosePersonalPanel,
     allNotesVisibleCount,
     favoriteNotesVisibleCount,
     recentNotesVisibleCount,
@@ -169,7 +171,7 @@ export const PersonalNotesWorkspace: React.FC<PersonalNotesWorkspaceProps> = ({
             <div className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] gap-4 md:gap-6">
                 <PersonalNotesNavigator
                     isOpen={isPersonalPanelOpen}
-                    onClose={onTogglePersonalPanel}
+                    onClose={onClosePersonalPanel}
                     allNotesVisibleCount={allNotesVisibleCount}
                     favoriteNotesVisibleCount={favoriteNotesVisibleCount}
                     recentNotesVisibleCount={recentNotesVisibleCount}
@@ -203,11 +205,11 @@ export const PersonalNotesWorkspace: React.FC<PersonalNotesWorkspaceProps> = ({
                     DraggableWrapper={DraggableWrapper}
                 />
 
-                <div className="space-y-3">
-                    <div className="lg:hidden flex gap-2 px-3 md:px-0">
+                <div className="min-w-0 space-y-3">
+                    <div className="sticky top-2 z-10 lg:hidden flex gap-2 px-3 md:px-0">
                         <button
                             onClick={onTogglePersonalPanel}
-                            className="flex-1 px-3 py-2.5 bg-white dark:bg-slate-900 border border-[#E6EAF2] dark:border-slate-800 rounded-xl flex items-center justify-center gap-2 text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 shadow-sm active:scale-95 transition-all"
+                            className={`flex-1 px-3 py-2.5 border rounded-xl flex items-center justify-center gap-2 text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95 transition-all backdrop-blur-sm ${isPersonalPanelOpen ? 'bg-[#CC561E]/10 border-[#CC561E]/30 text-[#CC561E]' : 'bg-white/95 dark:bg-slate-900/95 border-[#E6EAF2] dark:border-slate-800 text-slate-600 dark:text-slate-400'}`}
                         >
                             <ListFilter size={14} />
                             Navigator
@@ -238,16 +240,17 @@ export const PersonalNotesWorkspace: React.FC<PersonalNotesWorkspaceProps> = ({
                             autoFocus
                         />
                     </div>
-
-                    <PersonalNotesGrid
-                        notes={displayedBooks}
-                        activeDraggedNoteId={activeDraggedNoteId}
-                        onNoteClick={onNoteClick}
-                        onToggleFavorite={onToggleFavorite}
-                        onDeleteNote={onDeleteNote}
-                        getResolvedNoteFolderName={getResolvedNoteFolderName}
-                        DraggableWrapper={DraggableWrapper}
-                    />
+                    <div className="px-3 md:px-0">
+                        <PersonalNotesGrid
+                            notes={displayedBooks}
+                            activeDraggedNoteId={activeDraggedNoteId}
+                            onNoteClick={onNoteClick}
+                            onToggleFavorite={onToggleFavorite}
+                            onDeleteNote={onDeleteNote}
+                            getResolvedNoteFolderName={getResolvedNoteFolderName}
+                            DraggableWrapper={DraggableWrapper}
+                        />
+                    </div>
                 </div>
             </div>
 
