@@ -78,9 +78,9 @@ export const PERSONAL_NOTE_TEMPLATES: PersonalNoteTemplate[] = [
     id: "website_bookmark",
     name: "Website Bookmark",
     suggestedTitle: "Website Bookmark",
-    defaultCategory: "IDEAS",
-    defaultTags: ["website", "bookmark", "link", "reference"],
-    htmlContent: `<h2>Source</h2><ul><li>Title: </li><li>URL: </li><li>Site: </li><li>Saved on: </li></ul><h2>Why I Saved This</h2><p></p><h2>Key Points</h2><ul><li><p></p></li><li><p></p></li><li><p></p></li></ul><h2>Useful Quotes or Snippets</h2><blockquote><p></p></blockquote><h2>Next Action</h2><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p>Revisit / use this later</p></div></li></ul>`,
+    defaultCategory: "BOOKMARK",
+    defaultTags: ["website", "bookmark", "link"],
+    htmlContent: `<ul><li><p>URL: </p></li><li><p>Note: </p></li></ul>`,
   },
 ];
 
