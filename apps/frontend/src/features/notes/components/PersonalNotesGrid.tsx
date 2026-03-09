@@ -47,7 +47,7 @@ export const PersonalNotesGrid: React.FC<PersonalNotesGridProps> = ({
     return (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 md:gap-4">
             {notes.map((note) => {
-                const notePreview = extractPersonalNoteText(note.generalNotes || '');
+                const notePreview = extractPersonalNoteText(note.generalNotes || (note.highlights && note.highlights.length > 0 ? note.highlights[0].text : ''));
                 const resolvedFolderName = getResolvedNoteFolderName(note);
 
                 return (
@@ -98,7 +98,7 @@ export const PersonalNotesGrid: React.FC<PersonalNotesGridProps> = ({
 
                                 <h3 className="font-bold text-sm md:text-base text-slate-900 dark:text-white mb-2 leading-tight pl-8 pr-8">{note.title}</h3>
                                 <div className="text-slate-600 dark:text-slate-300 text-xs md:text-sm whitespace-pre-wrap leading-relaxed max-h-[180px] overflow-hidden relative font-lora mb-3">
-                                    {notePreview || <span className="italic text-slate-400 dark:text-slate-500">Empty</span>}
+                                    {notePreview || <span className="italic text-slate-400 dark:text-slate-500">No content added</span>}
                                     {notePreview.length > 140 && (
                                         <div className="absolute bottom-0 inset-x-0 h-8 bg-gradient-to-t from-white dark:from-slate-800 to-transparent" />
                                     )}

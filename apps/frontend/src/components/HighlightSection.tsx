@@ -1,5 +1,6 @@
 ﻿import React, { useState } from 'react';
 import { Highlight } from '../types';
+import { extractPersonalNoteText } from '../lib/personalNoteRender';
 import { Plus, Trash2, Quote, MapPin, FileText, Edit2, Save, X, StickyNote, Calendar, Sparkles, Loader2, Hash, Camera } from 'lucide-react';
 import { generateTagsForNote } from '../services/geminiService';
 import { isInsightType, normalizeHighlightType } from '../lib/highlightType';
@@ -444,7 +445,7 @@ export const HighlightSection: React.FC<HighlightSectionProps> = ({ highlights, 
                 </div>
                 <div className="flex-1">
                   <p className={`text-sm md:text-lg leading-relaxed mb-2 md:mb-3 pr-0 md:pr-16 whitespace-pre-wrap font-lora ${isNote ? 'text-slate-700 dark:text-slate-300' : 'text-slate-900 dark:text-white'}`}>
-                    {h.text}
+                    {extractPersonalNoteText(h.text || '')}
                   </p>
 
                   <div className="flex flex-wrap items-center gap-2 md:gap-3 text-[10px] md:text-xs text-slate-500 dark:text-slate-400 mb-2">

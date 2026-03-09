@@ -333,19 +333,6 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
 
             const resolvedFolderId = getResolvedNoteFolderId(book);
             if (resolvedFolderId) {
-                folderCounts.set(resolvedFolderId, (folderCounts.get(resolvedFolderId) || 0) + 1);
-            } else {
-                rootNoteCounts[category] += 1;
-            }
-
-            if (category === 'PRIVATE') return;
-            nonPrivatePersonalNotes.push(book);
-            if (book.isFavorite) favoriteCount += 1;
-
-            const seenInNote = new Set<string>();
-            (book.tags || []).forEach((rawTag) => {
-                const trimmed = rawTag.trim();
-                if (!trimmed) return;
                 const key = normalizeTagKey(trimmed);
                 if (seenInNote.has(key)) return;
                 seenInNote.add(key);
@@ -356,890 +343,890 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                 }
                 entry.noteIds.add(book.id);
             });
+    });
+
+    const recentVisibleNoteIds = [...nonPrivatePersonalNotes]
+        .sort((a, b) => b.addedAt - a.addedAt)
+        .slice(0, 20)
+        .map((note) => note.id);
+
+    const topTagEntries = [...tagMap.entries()]
+        .map(([key, value]) => ({ key, label: value.label || key, count: value.noteIds.size }))
+        .sort((a, b) => (b.count - a.count) || a.label.localeCompare(b.label))
+        .slice(0, 10);
+
+    const categoryFolderMap: Record<PersonalNoteCategory, Array<{ id: string; name: string; count: number; order: number }>> = {
+        PRIVATE: [],
+        DAILY: [],
+        IDEAS: [],
+    };
+
+    personalNoteFolders.forEach((folder) => {
+        categoryFolderMap[folder.category].push({
+            id: folder.id,
+            name: folder.name,
+            order: folder.order,
+            count: folderCounts.get(folder.id) || 0,
         });
+    });
 
-        const recentVisibleNoteIds = [...nonPrivatePersonalNotes]
-            .sort((a, b) => b.addedAt - a.addedAt)
-            .slice(0, 20)
-            .map((note) => note.id);
+    (['PRIVATE', 'DAILY', 'IDEAS'] as PersonalNoteCategory[]).forEach((category) => {
+        categoryFolderMap[category].sort((a, b) => (a.order - b.order) || a.name.localeCompare(b.name));
+    });
 
-        const topTagEntries = [...tagMap.entries()]
-            .map(([key, value]) => ({ key, label: value.label || key, count: value.noteIds.size }))
-            .sort((a, b) => (b.count - a.count) || a.label.localeCompare(b.label))
-            .slice(0, 10);
-
-        const categoryFolderMap: Record<PersonalNoteCategory, Array<{ id: string; name: string; count: number; order: number }>> = {
-            PRIVATE: [],
-            DAILY: [],
-            IDEAS: [],
-        };
-
-        personalNoteFolders.forEach((folder) => {
-            categoryFolderMap[folder.category].push({
-                id: folder.id,
-                name: folder.name,
-                order: folder.order,
-                count: folderCounts.get(folder.id) || 0,
-            });
-        });
-
-        (['PRIVATE', 'DAILY', 'IDEAS'] as PersonalNoteCategory[]).forEach((category) => {
-            categoryFolderMap[category].sort((a, b) => (a.order - b.order) || a.name.localeCompare(b.name));
-        });
-
-        return {
-            allPersonalNotes,
-            nonPrivatePersonalNotes,
-            allNotesVisibleCount: nonPrivatePersonalNotes.length,
-            favoriteNotesVisibleCount: favoriteCount,
-            recentVisibleNoteIds,
-            recentVisibleNoteIdSet: new Set(recentVisibleNoteIds),
-            recentNotesVisibleCount: recentVisibleNoteIds.length,
-            topTagEntries,
-            noteCategoryCounts,
-            categoryFolderMap,
-            rootNoteCounts,
-        };
-    }, [books, personalNoteFolders, legacyFolderLookup]);
-
-    // --- PAGE SIZE CONFIGURATION ---
-    const itemsPerPage = useMemo(() => {
-        switch (activeTab) {
-            case 'BOOK': return 24;
-            case 'MOVIE': return 24;
-            case 'ARTICLE': return 24;
-            case 'PERSONAL_NOTE': return 30;
-            case 'NOTES': return 50;
-            default: return 24;
-        }
-    }, [activeTab]);
-
-    // --- PERFORMANCE OPTIMIZATION: DEBOUNCING ---
-    // Updates the actual search query 300ms after the user STOPS typing.
-    // This prevents the heavy filtering logic from running on every keystroke.
-    const [localInput, setLocalInput] = useState(searchQuery);
-    const showSearchLoading = localInput !== searchQuery || isSearchPending;
-
-    useEffect(() => {
-        if (searchDebounceTimerRef.current !== null) {
-            window.clearTimeout(searchDebounceTimerRef.current);
-            searchDebounceTimerRef.current = null;
-        }
-
-        if (localInput === searchQuery) return;
-
-        const nextQuery = localInput;
-        searchDebounceTimerRef.current = window.setTimeout(() => {
-            searchDebounceTimerRef.current = null;
-            startSearchTransition(() => {
-                onSearchChange(nextQuery);
-                onPageChange(1); // Reset pagination on new search
-            });
-        }, 300);
-
-        return () => {
-            if (searchDebounceTimerRef.current !== null) {
-                window.clearTimeout(searchDebounceTimerRef.current);
-                searchDebounceTimerRef.current = null;
-            }
-        };
-    }, [localInput, searchQuery, onSearchChange, onPageChange, startSearchTransition]);
-
-    // Keep local input in sync if searchQuery is reset from parent (e.g. tab change)
-    useEffect(() => {
-        setLocalInput(searchQuery);
-    }, [searchQuery]);
-
-    // Pagination reset on tab change is handled in App.tsx
-
-    // Filters are now controlled by props, reset is handled in App.tsx handleTabChange
-
-    // --- FILTER & ENRICH LOGIC ---
-    const filteredBooks = useMemo(() => {
-        if (isNotesTab || isStats) return [];
-
-        const term = normalizeSearchText(deferredSearchQuery);
-        const normalizedCategoryFilter = categoryFilter ? normalizeSearchText(categoryFilter) : '';
-        const normalizedPublisherFilter = publisherFilter ? normalizeSearchText(publisherFilter) : '';
-        const recentNoteIdsForFilter = (isPersonalNotes && noteSmartFilter === 'RECENT')
-            ? personalNotesData.recentVisibleNoteIdSet
-            : null;
-
-        const result = books.filter(book => {
-            const indexed = itemSearchIndex.get(book.id);
-            if (!indexed) return false;
-            const matchesTabType = isMediaTab
-                ? (book.type === 'MOVIE' || book.type === 'SERIES')
-                : (book.type === activeTab);
-            if (!matchesTabType) return false;
-            if (isMediaTab && mediaTypeFilter !== 'ALL' && book.type !== mediaTypeFilter) {
-                return false;
-            }
-            if (isPersonalNotes) {
-                const noteCategory = getPersonalNoteCategory(book);
-                if (noteCategoryFilter === 'ALL' && noteCategory === 'PRIVATE') {
-                    return false;
-                }
-                if (noteCategoryFilter !== 'ALL' && noteCategory !== noteCategoryFilter) {
-                    return false;
-                }
-                if (noteFolderFilter !== 'ALL') {
-                    const resolvedFolderId = getResolvedNoteFolderId(book);
-                    if (noteFolderFilter === '__ROOT__') {
-                        if (resolvedFolderId) return false;
-                    } else if (resolvedFolderId !== noteFolderFilter) {
-                        return false;
-                    }
-                }
-                if (noteSmartFilter === 'FAVORITES' && !book.isFavorite) {
-                    return false;
-                }
-                if (noteSmartFilter === 'RECENT' && !recentNoteIdsForFilter?.has(book.id)) {
-                    return false;
-                }
-                if (noteTagFilter && !indexed.normalizedTagKeys.has(noteTagFilter)) {
-                    return false;
-                }
-            }
-            if (normalizedCategoryFilter) {
-                const hasCategory = indexed.normalizedTags.some((tag) => tag === normalizedCategoryFilter);
-                if (!hasCategory) return false;
-            }
-            // 2. Status Filter (Fastest check first)
-            let matchesStatus = true;
-            if (statusFilter !== 'ALL') {
-                if (statusFilter === 'HIGHLIGHTS') {
-                    // Filter for items with highlights
-                    matchesStatus = book.highlights && book.highlights.length > 0;
-                } else if (statusFilter === 'FAVORITES') {
-                    // Filter for favorited items
-                    matchesStatus = book.isFavorite === true;
-                } else if (['To Read', 'Reading', 'Finished'].includes(statusFilter)) {
-                    matchesStatus = book.readingStatus === statusFilter;
-                } else {
-                    if (activeTab === 'BOOK') {
-                        matchesStatus = book.status === statusFilter;
-                    } else {
-                        matchesStatus = false;
-                    }
-                }
-            }
-            if (!matchesStatus) return false;
-
-            // 3. Publisher Filter
-            if (publisherFilter && activeTab === 'ARTICLE') {
-                if (!normalizeSearchText(book.publisher || '').includes(normalizedPublisherFilter)) {
-                    return false;
-                }
-            }
-
-            // 4. Search Term (Slowest check, do last)
-            if (!term) return true;
-
-            // Check indexed fields (Title, Author, ISBN) first
-            if (indexed.normalizedTitle.includes(term)) return true;
-            if (indexed.normalizedAuthor.includes(term)) return true;
-
-            // Type specific efficient checks
-            if (activeTab === 'BOOK') {
-                if (indexed.normalizedIsbn.includes(term)) return true;
-                if (indexed.normalizedCode.includes(term)) return true;
-                // Books tab should stay strict: do not match by notes/tags.
-                return false;
-            }
-
-            if (isMediaTab) {
-                if (indexed.normalizedPublicationYear.includes(term)) return true;
-                if (indexed.normalizedOriginalTitle.includes(term)) return true;
-                if (indexed.normalizedSummary.includes(term)) return true;
-                if (indexed.normalizedCast.some((name) => name.includes(term))) return true;
-                if (indexed.normalizedUrl.includes(term)) return true;
-            }
-
-            // Deep search (Notes, Tags) - only if primary fields failed
-            if (indexed.normalizedTags.some((tag) => tag.includes(term))) return true;
-            if (indexed.normalizedNotes.includes(term)) return true;
-
-            if (isPersonalNote(book)) {
-                if (indexed.normalizedCategory.includes(term)) return true;
-                if (indexed.normalizedFolderName.includes(term)) return true;
-            }
-
-            return false;
-        });
-
-        // Apply Sorting
-        return result.sort((a, b) => {
-            if (sortOption === 'title_asc') {
-                return a.title.localeCompare(b.title);
-            } else if (sortOption === 'date_asc') {
-                // Oldest first
-                return a.addedAt - b.addedAt;
-            }
-            // Default: Date Added (Newest first)
-            return b.addedAt - a.addedAt;
-        });
-
-    }, [activeTab, books, categoryFilter, deferredSearchQuery, isMediaTab, isNotesTab, isPersonalNotes, isStats, itemSearchIndex, mediaTypeFilter, noteCategoryFilter, noteFolderFilter, noteSmartFilter, noteTagFilter, personalNotesData.recentVisibleNoteIdSet, publisherFilter, sortOption, statusFilter]);
-
-    const {
+    return {
         allPersonalNotes,
-        allNotesVisibleCount,
-        favoriteNotesVisibleCount,
+        nonPrivatePersonalNotes,
+        allNotesVisibleCount: nonPrivatePersonalNotes.length,
+        favoriteNotesVisibleCount: favoriteCount,
         recentVisibleNoteIds,
-        recentNotesVisibleCount,
+        recentVisibleNoteIdSet: new Set(recentVisibleNoteIds),
+        recentNotesVisibleCount: recentVisibleNoteIds.length,
         topTagEntries,
         noteCategoryCounts,
         categoryFolderMap,
         rootNoteCounts,
-    } = personalNotesData;
+    };
+}, [books, personalNoteFolders, legacyFolderLookup]);
 
-    useEffect(() => {
-        if (noteFolderFilter === 'ALL' || noteFolderFilter === '__ROOT__') return;
-        const folderCategory = (['PRIVATE', 'DAILY', 'IDEAS'] as PersonalNoteCategory[]).find((category) =>
-            categoryFolderMap[category].some((folder) => folder.id === noteFolderFilter)
-        );
-        if (!folderCategory) return;
-        const selectedIndex = categoryFolderMap[folderCategory].findIndex((folder) => folder.id === noteFolderFilter);
-        if (selectedIndex < 0) return;
-        setVisibleFolderCounts((prev) => {
-            const needed = selectedIndex + 1;
-            if (prev[folderCategory] >= needed) return prev;
-            return { ...prev, [folderCategory]: needed };
+// --- PAGE SIZE CONFIGURATION ---
+const itemsPerPage = useMemo(() => {
+    switch (activeTab) {
+        case 'BOOK': return 24;
+        case 'MOVIE': return 24;
+        case 'ARTICLE': return 24;
+        case 'PERSONAL_NOTE': return 30;
+        case 'NOTES': return 50;
+        default: return 24;
+    }
+}, [activeTab]);
+
+// --- PERFORMANCE OPTIMIZATION: DEBOUNCING ---
+// Updates the actual search query 300ms after the user STOPS typing.
+// This prevents the heavy filtering logic from running on every keystroke.
+const [localInput, setLocalInput] = useState(searchQuery);
+const showSearchLoading = localInput !== searchQuery || isSearchPending;
+
+useEffect(() => {
+    if (searchDebounceTimerRef.current !== null) {
+        window.clearTimeout(searchDebounceTimerRef.current);
+        searchDebounceTimerRef.current = null;
+    }
+
+    if (localInput === searchQuery) return;
+
+    const nextQuery = localInput;
+    searchDebounceTimerRef.current = window.setTimeout(() => {
+        searchDebounceTimerRef.current = null;
+        startSearchTransition(() => {
+            onSearchChange(nextQuery);
+            onPageChange(1); // Reset pagination on new search
         });
-    }, [noteFolderFilter, categoryFolderMap]);
+    }, 300);
 
-    const flattenedHighlights = useMemo(
-        () => books.flatMap((book) => book.highlights.map((highlight) => ({ ...highlight, source: book }))),
-        [books]
-    );
+    return () => {
+        if (searchDebounceTimerRef.current !== null) {
+            window.clearTimeout(searchDebounceTimerRef.current);
+            searchDebounceTimerRef.current = null;
+        }
+    };
+}, [localInput, searchQuery, onSearchChange, onPageChange, startSearchTransition]);
 
-    // --- AGGREGATE HIGHLIGHTS ---
-    const filteredHighlights = useMemo(() => {
-        if (!isNotesTab) return [];
+// Keep local input in sync if searchQuery is reset from parent (e.g. tab change)
+useEffect(() => {
+    setLocalInput(searchQuery);
+}, [searchQuery]);
 
-        const term = normalizeSearchText(deferredSearchQuery);
+// Pagination reset on tab change is handled in App.tsx
 
-        return flattenedHighlights
-            .filter(item => {
-                // 1. Status Filter
-                if (statusFilter === 'FAVORITES') {
-                    if (!item.isFavorite) return false;
+// Filters are now controlled by props, reset is handled in App.tsx handleTabChange
+
+// --- FILTER & ENRICH LOGIC ---
+const filteredBooks = useMemo(() => {
+    if (isNotesTab || isStats) return [];
+
+    const term = normalizeSearchText(deferredSearchQuery);
+    const normalizedCategoryFilter = categoryFilter ? normalizeSearchText(categoryFilter) : '';
+    const normalizedPublisherFilter = publisherFilter ? normalizeSearchText(publisherFilter) : '';
+    const recentNoteIdsForFilter = (isPersonalNotes && noteSmartFilter === 'RECENT')
+        ? personalNotesData.recentVisibleNoteIdSet
+        : null;
+
+    const result = books.filter(book => {
+        const indexed = itemSearchIndex.get(book.id);
+        if (!indexed) return false;
+        const matchesTabType = isMediaTab
+            ? (book.type === 'MOVIE' || book.type === 'SERIES')
+            : (book.type === activeTab);
+        if (!matchesTabType) return false;
+        if (isMediaTab && mediaTypeFilter !== 'ALL' && book.type !== mediaTypeFilter) {
+            return false;
+        }
+        if (isPersonalNotes) {
+            const noteCategory = getPersonalNoteCategory(book);
+            if (noteCategoryFilter === 'ALL' && noteCategory === 'PRIVATE') {
+                return false;
+            }
+            if (noteCategoryFilter !== 'ALL' && noteCategory !== noteCategoryFilter) {
+                return false;
+            }
+            if (noteFolderFilter !== 'ALL') {
+                const resolvedFolderId = getResolvedNoteFolderId(book);
+                if (noteFolderFilter === '__ROOT__') {
+                    if (resolvedFolderId) return false;
+                } else if (resolvedFolderId !== noteFolderFilter) {
+                    return false;
                 }
-
-                if (!term) return true;
-                return includesNormalized(item.text || '', term) ||
-                    includesNormalized(item.comment || '', term) ||
-                    includesNormalized(item.source.title || '', term) ||
-                    includesNormalized(item.source.author || '', term) ||
-                    !!(item.tags && item.tags.some(t => includesNormalized(t, term)));
-            })
-            .sort((a, b) => b.createdAt - a.createdAt);
-    }, [deferredSearchQuery, flattenedHighlights, isNotesTab, statusFilter]);
-
-    // --- STATS CALCULATION ---
-    const stats = useMemo(() => {
-        if (isNotesTab) {
-            return {
-                total: filteredHighlights.length,
-                reading: 0,
-                toRead: 0
-            };
+            }
+            if (noteSmartFilter === 'FAVORITES' && !book.isFavorite) {
+                return false;
+            }
+            if (noteSmartFilter === 'RECENT' && !recentNoteIdsForFilter?.has(book.id)) {
+                return false;
+            }
+            if (noteTagFilter && !indexed.normalizedTagKeys.has(noteTagFilter)) {
+                return false;
+            }
         }
-        let reading = 0;
-        let toRead = 0;
-        filteredBooks.forEach((book) => {
-            if (book.readingStatus === 'Reading') reading += 1;
-            if (book.readingStatus === 'To Read') toRead += 1;
-        });
+        if (normalizedCategoryFilter) {
+            const hasCategory = indexed.normalizedTags.some((tag) => tag === normalizedCategoryFilter);
+            if (!hasCategory) return false;
+        }
+        // 2. Status Filter (Fastest check first)
+        let matchesStatus = true;
+        if (statusFilter !== 'ALL') {
+            if (statusFilter === 'HIGHLIGHTS') {
+                // Filter for items with highlights
+                matchesStatus = book.highlights && book.highlights.length > 0;
+            } else if (statusFilter === 'FAVORITES') {
+                // Filter for favorited items
+                matchesStatus = book.isFavorite === true;
+            } else if (['To Read', 'Reading', 'Finished'].includes(statusFilter)) {
+                matchesStatus = book.readingStatus === statusFilter;
+            } else {
+                if (activeTab === 'BOOK') {
+                    matchesStatus = book.status === statusFilter;
+                } else {
+                    matchesStatus = false;
+                }
+            }
+        }
+        if (!matchesStatus) return false;
+
+        // 3. Publisher Filter
+        if (publisherFilter && activeTab === 'ARTICLE') {
+            if (!normalizeSearchText(book.publisher || '').includes(normalizedPublisherFilter)) {
+                return false;
+            }
+        }
+
+        // 4. Search Term (Slowest check, do last)
+        if (!term) return true;
+
+        // Check indexed fields (Title, Author, ISBN) first
+        if (indexed.normalizedTitle.includes(term)) return true;
+        if (indexed.normalizedAuthor.includes(term)) return true;
+
+        // Type specific efficient checks
+        if (activeTab === 'BOOK') {
+            if (indexed.normalizedIsbn.includes(term)) return true;
+            if (indexed.normalizedCode.includes(term)) return true;
+            // Books tab should stay strict: do not match by notes/tags.
+            return false;
+        }
+
+        if (isMediaTab) {
+            if (indexed.normalizedPublicationYear.includes(term)) return true;
+            if (indexed.normalizedOriginalTitle.includes(term)) return true;
+            if (indexed.normalizedSummary.includes(term)) return true;
+            if (indexed.normalizedCast.some((name) => name.includes(term))) return true;
+            if (indexed.normalizedUrl.includes(term)) return true;
+        }
+
+        // Deep search (Notes, Tags) - only if primary fields failed
+        if (indexed.normalizedTags.some((tag) => tag.includes(term))) return true;
+        if (indexed.normalizedNotes.includes(term)) return true;
+
+        if (isPersonalNote(book)) {
+            if (indexed.normalizedCategory.includes(term)) return true;
+            if (indexed.normalizedFolderName.includes(term)) return true;
+        }
+
+        return false;
+    });
+
+    // Apply Sorting
+    return result.sort((a, b) => {
+        if (sortOption === 'title_asc') {
+            return a.title.localeCompare(b.title);
+        } else if (sortOption === 'date_asc') {
+            // Oldest first
+            return a.addedAt - b.addedAt;
+        }
+        // Default: Date Added (Newest first)
+        return b.addedAt - a.addedAt;
+    });
+
+}, [activeTab, books, categoryFilter, deferredSearchQuery, isMediaTab, isNotesTab, isPersonalNotes, isStats, itemSearchIndex, mediaTypeFilter, noteCategoryFilter, noteFolderFilter, noteSmartFilter, noteTagFilter, personalNotesData.recentVisibleNoteIdSet, publisherFilter, sortOption, statusFilter]);
+
+const {
+    allPersonalNotes,
+    allNotesVisibleCount,
+    favoriteNotesVisibleCount,
+    recentVisibleNoteIds,
+    recentNotesVisibleCount,
+    topTagEntries,
+    noteCategoryCounts,
+    categoryFolderMap,
+    rootNoteCounts,
+} = personalNotesData;
+
+useEffect(() => {
+    if (noteFolderFilter === 'ALL' || noteFolderFilter === '__ROOT__') return;
+    const folderCategory = (['PRIVATE', 'DAILY', 'IDEAS'] as PersonalNoteCategory[]).find((category) =>
+        categoryFolderMap[category].some((folder) => folder.id === noteFolderFilter)
+    );
+    if (!folderCategory) return;
+    const selectedIndex = categoryFolderMap[folderCategory].findIndex((folder) => folder.id === noteFolderFilter);
+    if (selectedIndex < 0) return;
+    setVisibleFolderCounts((prev) => {
+        const needed = selectedIndex + 1;
+        if (prev[folderCategory] >= needed) return prev;
+        return { ...prev, [folderCategory]: needed };
+    });
+}, [noteFolderFilter, categoryFolderMap]);
+
+const flattenedHighlights = useMemo(
+    () => books.flatMap((book) => book.highlights.map((highlight) => ({ ...highlight, source: book }))),
+    [books]
+);
+
+// --- AGGREGATE HIGHLIGHTS ---
+const filteredHighlights = useMemo(() => {
+    if (!isNotesTab) return [];
+
+    const term = normalizeSearchText(deferredSearchQuery);
+
+    return flattenedHighlights
+        .filter(item => {
+            // 1. Status Filter
+            if (statusFilter === 'FAVORITES') {
+                if (!item.isFavorite) return false;
+            }
+
+            if (!term) return true;
+            return includesNormalized(item.text || '', term) ||
+                includesNormalized(item.comment || '', term) ||
+                includesNormalized(item.source.title || '', term) ||
+                includesNormalized(item.source.author || '', term) ||
+                !!(item.tags && item.tags.some(t => includesNormalized(t, term)));
+        })
+        .sort((a, b) => b.createdAt - a.createdAt);
+}, [deferredSearchQuery, flattenedHighlights, isNotesTab, statusFilter]);
+
+// --- STATS CALCULATION ---
+const stats = useMemo(() => {
+    if (isNotesTab) {
         return {
-            total: filteredBooks.length,
-            reading,
-            toRead
+            total: filteredHighlights.length,
+            reading: 0,
+            toRead: 0
         };
-    }, [isNotesTab, filteredHighlights.length, filteredBooks]);
-
-    const getTabLabel = (type: ResourceType | 'NOTES' | 'DASHBOARD' | 'INSIGHTS' | 'INGEST' | 'FLOW' | 'RAG_SEARCH' | 'SMART_SEARCH' | 'PROFILE') => {
-        switch (type) {
-            case 'BOOK': return 'Books';
-            case 'MOVIE': return 'Cinema';
-            case 'SERIES': return 'Series';
-            case 'ARTICLE': return 'Articles';
-            case 'PERSONAL_NOTE': return 'Personal Notes';
-            case 'NOTES': return 'All Notes';
-            case 'DASHBOARD': return 'Dashboard';
-            case 'INSIGHTS': return 'Insights';
-            case 'INGEST': return 'Ingest';
-            case 'FLOW': return 'Flux';
-            case 'RAG_SEARCH': return 'LogosChat';
-            case 'SMART_SEARCH': return 'Smart Search';
-            case 'PROFILE': return 'Profile';
-        }
+    }
+    let reading = 0;
+    let toRead = 0;
+    filteredBooks.forEach((book) => {
+        if (book.readingStatus === 'Reading') reading += 1;
+        if (book.readingStatus === 'To Read') toRead += 1;
+    });
+    return {
+        total: filteredBooks.length,
+        reading,
+        toRead
     };
+}, [isNotesTab, filteredHighlights.length, filteredBooks]);
 
-    const getSearchPlaceholder = () => {
-        if (isNotesTab) return "Search quotes...";
-        if (activeTab === 'PERSONAL_NOTE') return "Search notes...";
-        if (isMediaTab) return "Search title, director, cast...";
-        if (activeTab === 'ARTICLE') return "Search title, author...";
-        return "Search title, author, ISBN...";
-    };
+const getTabLabel = (type: ResourceType | 'NOTES' | 'DASHBOARD' | 'INSIGHTS' | 'INGEST' | 'FLOW' | 'RAG_SEARCH' | 'SMART_SEARCH' | 'PROFILE') => {
+    switch (type) {
+        case 'BOOK': return 'Books';
+        case 'MOVIE': return 'Cinema';
+        case 'SERIES': return 'Series';
+        case 'ARTICLE': return 'Articles';
+        case 'PERSONAL_NOTE': return 'Personal Notes';
+        case 'NOTES': return 'All Notes';
+        case 'DASHBOARD': return 'Dashboard';
+        case 'INSIGHTS': return 'Insights';
+        case 'INGEST': return 'Ingest';
+        case 'FLOW': return 'Flux';
+        case 'RAG_SEARCH': return 'LogosChat';
+        case 'SMART_SEARCH': return 'Smart Search';
+        case 'PROFILE': return 'Profile';
+    }
+};
 
-    const categoryLabel = (category: PersonalNoteCategory) => {
-        switch (category) {
-            case 'PRIVATE': return 'Private';
-            case 'DAILY': return 'Daily';
-            case 'IDEAS': return 'Ideas';
-            default: return category;
-        }
-    };
+const getSearchPlaceholder = () => {
+    if (isNotesTab) return "Search quotes...";
+    if (activeTab === 'PERSONAL_NOTE') return "Search notes...";
+    if (isMediaTab) return "Search title, director, cast...";
+    if (activeTab === 'ARTICLE') return "Search title, author...";
+    return "Search title, author, ISBN...";
+};
 
-    const handleCreateFolder = async (category: PersonalNoteCategory) => {
-        const folderName = await prompt({
-            title: `${categoryLabel(category)} klasor adi`,
-            description: 'Yeni klasor adi gir.',
-            placeholder: 'Klasor adi',
-            confirmLabel: 'Olustur',
-            cancelLabel: 'Vazgec',
-            validate: (value) => value ? null : 'Klasor adi bos olamaz.',
-        });
-        if (!folderName) return;
-        const created = await onCreatePersonalFolder?.(category, folderName);
-        if (!created) return;
+const categoryLabel = (category: PersonalNoteCategory) => {
+    switch (category) {
+        case 'PRIVATE': return 'Private';
+        case 'DAILY': return 'Daily';
+        case 'IDEAS': return 'Ideas';
+        default: return category;
+    }
+};
+
+const handleCreateFolder = async (category: PersonalNoteCategory) => {
+    const folderName = await prompt({
+        title: `${categoryLabel(category)} klasor adi`,
+        description: 'Yeni klasor adi gir.',
+        placeholder: 'Klasor adi',
+        confirmLabel: 'Olustur',
+        cancelLabel: 'Vazgec',
+        validate: (value) => value ? null : 'Klasor adi bos olamaz.',
+    });
+    if (!folderName) return;
+    const created = await onCreatePersonalFolder?.(category, folderName);
+    if (!created) return;
+    setNoteSmartFilter('NONE');
+    setNoteTagFilter(null);
+    setNoteCategoryFilter(category);
+    setNoteFolderFilter(created.id);
+    onPageChange(1);
+};
+
+const handleRenameFolder = async (folderId: string, currentName: string) => {
+    const nextName = await prompt({
+        title: 'Yeni klasor adi',
+        description: 'Klasor icin guncel adi gir.',
+        placeholder: 'Klasor adi',
+        defaultValue: currentName,
+        confirmLabel: 'Kaydet',
+        cancelLabel: 'Vazgec',
+        validate: (value) => value ? null : 'Klasor adi bos olamaz.',
+    });
+    if (!nextName || nextName === currentName) return;
+    await onRenamePersonalFolder?.(folderId, nextName);
+};
+
+const handleDeleteFolder = async (folderId: string) => {
+    const ok = await confirm({
+        title: 'Bu klasor silinsin mi?',
+        description: 'Icindeki notlar kategori kokune tasinacak.',
+        confirmLabel: 'Sil',
+        cancelLabel: 'Vazgec',
+        tone: 'danger',
+    });
+    if (!ok) return;
+    const deleted = await onDeletePersonalFolder?.(folderId);
+    if (!deleted) return;
+    if (noteFolderFilter === folderId) {
         setNoteSmartFilter('NONE');
         setNoteTagFilter(null);
-        setNoteCategoryFilter(category);
-        setNoteFolderFilter(created.id);
-        onPageChange(1);
-    };
-
-    const handleRenameFolder = async (folderId: string, currentName: string) => {
-        const nextName = await prompt({
-            title: 'Yeni klasor adi',
-            description: 'Klasor icin guncel adi gir.',
-            placeholder: 'Klasor adi',
-            defaultValue: currentName,
-            confirmLabel: 'Kaydet',
-            cancelLabel: 'Vazgec',
-            validate: (value) => value ? null : 'Klasor adi bos olamaz.',
-        });
-        if (!nextName || nextName === currentName) return;
-        await onRenamePersonalFolder?.(folderId, nextName);
-    };
-
-    const handleDeleteFolder = async (folderId: string) => {
-        const ok = await confirm({
-            title: 'Bu klasor silinsin mi?',
-            description: 'Icindeki notlar kategori kokune tasinacak.',
-            confirmLabel: 'Sil',
-            cancelLabel: 'Vazgec',
-            tone: 'danger',
-        });
-        if (!ok) return;
-        const deleted = await onDeletePersonalFolder?.(folderId);
-        if (!deleted) return;
-        if (noteFolderFilter === folderId) {
-            setNoteSmartFilter('NONE');
-            setNoteTagFilter(null);
-            setNoteFolderFilter('__ROOT__');
-        }
-    };
-
-    const scheduleUndoMove = (noteId: string, category: PersonalNoteCategory, folderId?: string) => {
-        if (undoMove) {
-            window.clearTimeout(undoMove.timeoutId);
-        }
-        const timeoutId = window.setTimeout(() => {
-            setUndoMove(null);
-        }, 5000);
-        setUndoMove({ noteId, category, folderId, timeoutId });
-    };
-
-    const performMove = async (
-        noteId: string,
-        targetCategory: PersonalNoteCategory,
-        targetFolderId?: string,
-        withUndo: boolean = true
-    ) => {
-        const note = allPersonalNotes.find((n) => n.id === noteId);
-        if (!note) return;
-        const prevCategory = getPersonalNoteCategory(note);
-        const prevFolderId = getResolvedNoteFolderId(note);
-        const moved = await onMovePersonalNote?.(noteId, targetCategory, targetFolderId);
-        if (moved && withUndo) {
-            scheduleUndoMove(noteId, prevCategory, prevFolderId);
-        }
-    };
-
-    const resolveDropCategory = (overId: string): PersonalNoteCategory | undefined => {
-        if (overId.startsWith('cat-root:')) {
-            return overId.replace('cat-root:', '') as PersonalNoteCategory;
-        }
-        if (overId.startsWith('cat-group:')) {
-            return overId.replace('cat-group:', '') as PersonalNoteCategory;
-        }
-        if (overId.startsWith('folder:')) {
-            const folderId = overId.replace('folder:', '');
-            return folderById.get(folderId)?.category;
-        }
-        return undefined;
-    };
-
-    const performFolderMove = async (
-        folderId: string,
-        targetCategory: PersonalNoteCategory
-    ) => {
-        const folder = folderById.get(folderId);
-        if (!folder || folder.category === targetCategory) return;
-        const moved = await onMovePersonalFolder?.(folderId, targetCategory);
-        if (moved && noteFolderFilter === folderId) {
-            setNoteCategoryFilter(targetCategory);
-            onPageChange(1);
-        }
-    };
-
-    const handleDragStart = (event: DragStartEvent) => {
-        const activeId = String(event.active.id);
-        if (activeId.startsWith('note:')) {
-            setActiveDraggedNoteId(activeId.replace('note:', ''));
-            setActiveDraggedFolderId(null);
-            return;
-        }
-        if (activeId.startsWith('folder-item:')) {
-            setActiveDraggedFolderId(activeId.replace('folder-item:', ''));
-            setActiveDraggedNoteId(null);
-        }
-    };
-
-    const handleDragCancel = () => {
-        setActiveDraggedNoteId(null);
-        setActiveDraggedFolderId(null);
-    };
-
-    const handleDragEnd = async (event: DragEndEvent) => {
-        setActiveDraggedNoteId(null);
-        setActiveDraggedFolderId(null);
-        const activeId = String(event.active.id || '');
-        const overId = String(event.over?.id || '');
-        if (!overId) return;
-
-        if (activeId.startsWith('note:')) {
-            const noteId = activeId.replace('note:', '');
-            const targetCategory = resolveDropCategory(overId);
-            if (!targetCategory) return;
-            const targetFolderId = overId.startsWith('folder:') ? overId.replace('folder:', '') : undefined;
-            await performMove(noteId, targetCategory, targetFolderId, true);
-            return;
-        }
-
-        if (activeId.startsWith('folder-item:')) {
-            const folderId = activeId.replace('folder-item:', '');
-            const targetCategory = resolveDropCategory(overId);
-            if (!targetCategory) return;
-            await performFolderMove(folderId, targetCategory);
-        }
-    };
-
-    const handleQuickCapture = () => {
-        const content = quickNoteBody;
-        if (!hasMeaningfulPersonalNoteContent(content)) return;
-        const folderId = noteFolderFilter === 'ALL' || noteFolderFilter === '__ROOT__' ? undefined : noteFolderFilter;
-        const folderCategory = folderId ? folderById.get(folderId)?.category : undefined;
-        const category: PersonalNoteCategory = folderCategory || quickCaptureCategory;
-        const folderPath = folderId ? folderById.get(folderId)?.name : undefined;
-        onQuickCreatePersonalNote?.({
-            title: quickNoteTitle.trim() || 'Quick Note',
-            content,
-            category,
-            folderId,
-            folderPath,
-        });
-        setQuickNoteTitle('');
-        setQuickNoteBody('');
-    };
-
-    // --- RENDER LOGIC: PAGINATION ---
-    const totalItems = isNotesTab ? filteredHighlights.length : filteredBooks.length;
-    const totalPages = Math.ceil(totalItems / itemsPerPage);
-    const libraryCardDarkBg = (activeTab === 'ARTICLE') ? 'dark:bg-slate-800' : 'dark:bg-slate-900';
-
-    const displayedBooks = useMemo(() => {
-        const start = (currentPage - 1) * itemsPerPage;
-        return filteredBooks.slice(start, start + itemsPerPage);
-    }, [filteredBooks, currentPage, itemsPerPage]);
-
-    const displayedHighlights = useMemo(() => {
-        const start = (currentPage - 1) * itemsPerPage;
-        return filteredHighlights.slice(start, start + itemsPerPage);
-    }, [filteredHighlights, currentPage, itemsPerPage]);
-
-    const activeDraggedNote = useMemo(() => {
-        if (!activeDraggedNoteId) return null;
-        return allPersonalNotes.find((note) => note.id === activeDraggedNoteId) || null;
-    }, [allPersonalNotes, activeDraggedNoteId]);
-
-    const activeDraggedFolder = useMemo(() => {
-        if (!activeDraggedFolderId) return null;
-        return folderById.get(activeDraggedFolderId) || null;
-    }, [folderById, activeDraggedFolderId]);
-
-    const resetPersonalNotesSelection = () => {
-        setNoteSmartFilter('NONE');
-        setNoteTagFilter(null);
-        setNoteCategoryFilter('ALL');
-        setNoteFolderFilter('ALL');
-        onPageChange(1);
-    };
-
-    const selectFavoritePersonalNotes = () => {
-        setNoteSmartFilter('FAVORITES');
-        setNoteTagFilter(null);
-        setNoteCategoryFilter('ALL');
-        setNoteFolderFilter('ALL');
-        onPageChange(1);
-    };
-
-    const selectRecentPersonalNotes = () => {
-        setNoteSmartFilter('RECENT');
-        setNoteTagFilter(null);
-        setNoteCategoryFilter('ALL');
-        setNoteFolderFilter('ALL');
-        onPageChange(1);
-    };
-
-    const clearPersonalNoteTagFilter = () => {
-        setNoteTagFilter(null);
-        onPageChange(1);
-    };
-
-    const selectPersonalNoteTag = (tagKey: string) => {
-        setNoteTagFilter(tagKey);
-        onPageChange(1);
-    };
-
-    const selectPersonalNoteCategory = (category: PersonalNoteCategory) => {
-        setNoteSmartFilter('NONE');
-        setNoteTagFilter(null);
-        setNoteCategoryFilter(category);
-        setNoteFolderFilter('ALL');
-        onPageChange(1);
-    };
-
-    const selectUnfiledPersonalNotes = (category: PersonalNoteCategory) => {
-        setNoteSmartFilter('NONE');
-        setNoteTagFilter(null);
-        setNoteCategoryFilter(category);
         setNoteFolderFilter('__ROOT__');
+    }
+};
+
+const scheduleUndoMove = (noteId: string, category: PersonalNoteCategory, folderId?: string) => {
+    if (undoMove) {
+        window.clearTimeout(undoMove.timeoutId);
+    }
+    const timeoutId = window.setTimeout(() => {
+        setUndoMove(null);
+    }, 5000);
+    setUndoMove({ noteId, category, folderId, timeoutId });
+};
+
+const performMove = async (
+    noteId: string,
+    targetCategory: PersonalNoteCategory,
+    targetFolderId?: string,
+    withUndo: boolean = true
+) => {
+    const note = allPersonalNotes.find((n) => n.id === noteId);
+    if (!note) return;
+    const prevCategory = getPersonalNoteCategory(note);
+    const prevFolderId = getResolvedNoteFolderId(note);
+    const moved = await onMovePersonalNote?.(noteId, targetCategory, targetFolderId);
+    if (moved && withUndo) {
+        scheduleUndoMove(noteId, prevCategory, prevFolderId);
+    }
+};
+
+const resolveDropCategory = (overId: string): PersonalNoteCategory | undefined => {
+    if (overId.startsWith('cat-root:')) {
+        return overId.replace('cat-root:', '') as PersonalNoteCategory;
+    }
+    if (overId.startsWith('cat-group:')) {
+        return overId.replace('cat-group:', '') as PersonalNoteCategory;
+    }
+    if (overId.startsWith('folder:')) {
+        const folderId = overId.replace('folder:', '');
+        return folderById.get(folderId)?.category;
+    }
+    return undefined;
+};
+
+const performFolderMove = async (
+    folderId: string,
+    targetCategory: PersonalNoteCategory
+) => {
+    const folder = folderById.get(folderId);
+    if (!folder || folder.category === targetCategory) return;
+    const moved = await onMovePersonalFolder?.(folderId, targetCategory);
+    if (moved && noteFolderFilter === folderId) {
+        setNoteCategoryFilter(targetCategory);
         onPageChange(1);
-    };
+    }
+};
 
-    const togglePersonalFolderCollapse = (category: PersonalNoteCategory) => {
-        setCollapsedFolderCategories((prev) => ({ ...prev, [category]: !prev[category] }));
-    };
+const handleDragStart = (event: DragStartEvent) => {
+    const activeId = String(event.active.id);
+    if (activeId.startsWith('note:')) {
+        setActiveDraggedNoteId(activeId.replace('note:', ''));
+        setActiveDraggedFolderId(null);
+        return;
+    }
+    if (activeId.startsWith('folder-item:')) {
+        setActiveDraggedFolderId(activeId.replace('folder-item:', ''));
+        setActiveDraggedNoteId(null);
+    }
+};
 
-    const loadMorePersonalFolders = (category: PersonalNoteCategory) => {
-        setVisibleFolderCounts((prev) => ({
-            ...prev,
-            [category]: prev[category] + FOLDER_PAGE_SIZE,
-        }));
-    };
+const handleDragCancel = () => {
+    setActiveDraggedNoteId(null);
+    setActiveDraggedFolderId(null);
+};
 
-    const selectPersonalFolder = (category: PersonalNoteCategory, folderId: string) => {
-        setNoteSmartFilter('NONE');
-        setNoteTagFilter(null);
-        setNoteCategoryFilter(category);
-        setNoteFolderFilter(folderId);
-        onPageChange(1);
-    };
+const handleDragEnd = async (event: DragEndEvent) => {
+    setActiveDraggedNoteId(null);
+    setActiveDraggedFolderId(null);
+    const activeId = String(event.active.id || '');
+    const overId = String(event.over?.id || '');
+    if (!overId) return;
 
-    const togglePersonalPanel = () => {
-        setIsPersonalPanelOpen((prev) => {
-            const next = !prev;
-            if (isMobileViewport && next) {
-                setIsQuickCaptureOpen(false);
-            }
-            return next;
-        });
-    };
+    if (activeId.startsWith('note:')) {
+        const noteId = activeId.replace('note:', '');
+        const targetCategory = resolveDropCategory(overId);
+        if (!targetCategory) return;
+        const targetFolderId = overId.startsWith('folder:') ? overId.replace('folder:', '') : undefined;
+        await performMove(noteId, targetCategory, targetFolderId, true);
+        return;
+    }
 
-    const toggleQuickCapture = () => {
-        setIsQuickCaptureOpen((prev) => {
-            const next = !prev;
-            if (isMobileViewport && next) {
-                setIsPersonalPanelOpen(false);
-            }
-            return next;
-        });
-    };
+    if (activeId.startsWith('folder-item:')) {
+        const folderId = activeId.replace('folder-item:', '');
+        const targetCategory = resolveDropCategory(overId);
+        if (!targetCategory) return;
+        await performFolderMove(folderId, targetCategory);
+    }
+};
 
-    const handleHighlightSelect = (highlight: (typeof displayedHighlights)[number]) => {
-        if (onSelectBookWithTab) {
-            onSelectBookWithTab(highlight.source, 'highlights', highlight.id);
-        } else {
-            onSelectBook(highlight.source);
+const handleQuickCapture = () => {
+    const content = quickNoteBody;
+    if (!hasMeaningfulPersonalNoteContent(content)) return;
+    const folderId = noteFolderFilter === 'ALL' || noteFolderFilter === '__ROOT__' ? undefined : noteFolderFilter;
+    const folderCategory = folderId ? folderById.get(folderId)?.category : undefined;
+    const category: PersonalNoteCategory = folderCategory || quickCaptureCategory;
+    const folderPath = folderId ? folderById.get(folderId)?.name : undefined;
+    onQuickCreatePersonalNote?.({
+        title: quickNoteTitle.trim() || 'Quick Note',
+        content,
+        category,
+        folderId,
+        folderPath,
+    });
+    setQuickNoteTitle('');
+    setQuickNoteBody('');
+};
+
+// --- RENDER LOGIC: PAGINATION ---
+const totalItems = isNotesTab ? filteredHighlights.length : filteredBooks.length;
+const totalPages = Math.ceil(totalItems / itemsPerPage);
+const libraryCardDarkBg = (activeTab === 'ARTICLE') ? 'dark:bg-slate-800' : 'dark:bg-slate-900';
+
+const displayedBooks = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredBooks.slice(start, start + itemsPerPage);
+}, [filteredBooks, currentPage, itemsPerPage]);
+
+const displayedHighlights = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredHighlights.slice(start, start + itemsPerPage);
+}, [filteredHighlights, currentPage, itemsPerPage]);
+
+const activeDraggedNote = useMemo(() => {
+    if (!activeDraggedNoteId) return null;
+    return allPersonalNotes.find((note) => note.id === activeDraggedNoteId) || null;
+}, [allPersonalNotes, activeDraggedNoteId]);
+
+const activeDraggedFolder = useMemo(() => {
+    if (!activeDraggedFolderId) return null;
+    return folderById.get(activeDraggedFolderId) || null;
+}, [folderById, activeDraggedFolderId]);
+
+const resetPersonalNotesSelection = () => {
+    setNoteSmartFilter('NONE');
+    setNoteTagFilter(null);
+    setNoteCategoryFilter('ALL');
+    setNoteFolderFilter('ALL');
+    onPageChange(1);
+};
+
+const selectFavoritePersonalNotes = () => {
+    setNoteSmartFilter('FAVORITES');
+    setNoteTagFilter(null);
+    setNoteCategoryFilter('ALL');
+    setNoteFolderFilter('ALL');
+    onPageChange(1);
+};
+
+const selectRecentPersonalNotes = () => {
+    setNoteSmartFilter('RECENT');
+    setNoteTagFilter(null);
+    setNoteCategoryFilter('ALL');
+    setNoteFolderFilter('ALL');
+    onPageChange(1);
+};
+
+const clearPersonalNoteTagFilter = () => {
+    setNoteTagFilter(null);
+    onPageChange(1);
+};
+
+const selectPersonalNoteTag = (tagKey: string) => {
+    setNoteTagFilter(tagKey);
+    onPageChange(1);
+};
+
+const selectPersonalNoteCategory = (category: PersonalNoteCategory) => {
+    setNoteSmartFilter('NONE');
+    setNoteTagFilter(null);
+    setNoteCategoryFilter(category);
+    setNoteFolderFilter('ALL');
+    onPageChange(1);
+};
+
+const selectUnfiledPersonalNotes = (category: PersonalNoteCategory) => {
+    setNoteSmartFilter('NONE');
+    setNoteTagFilter(null);
+    setNoteCategoryFilter(category);
+    setNoteFolderFilter('__ROOT__');
+    onPageChange(1);
+};
+
+const togglePersonalFolderCollapse = (category: PersonalNoteCategory) => {
+    setCollapsedFolderCategories((prev) => ({ ...prev, [category]: !prev[category] }));
+};
+
+const loadMorePersonalFolders = (category: PersonalNoteCategory) => {
+    setVisibleFolderCounts((prev) => ({
+        ...prev,
+        [category]: prev[category] + FOLDER_PAGE_SIZE,
+    }));
+};
+
+const selectPersonalFolder = (category: PersonalNoteCategory, folderId: string) => {
+    setNoteSmartFilter('NONE');
+    setNoteTagFilter(null);
+    setNoteCategoryFilter(category);
+    setNoteFolderFilter(folderId);
+    onPageChange(1);
+};
+
+const togglePersonalPanel = () => {
+    setIsPersonalPanelOpen((prev) => {
+        const next = !prev;
+        if (isMobileViewport && next) {
+            setIsQuickCaptureOpen(false);
         }
-    };
+        return next;
+    });
+};
 
-    const renderContent = () => {
-        if (isStats) {
-            return (
-                <React.Suspense fallback={
-                    <CenteredLoadingState />
-                }>
-                    <KnowledgeDashboard
-                        items={books}
-                        userId={userId}
-                        onCategorySelect={(cat) => onCategoryNavigate?.(cat)}
-                        onStatusSelect={(status) => onStatusNavigate?.(status)}
-                        onNavigateToTab={(tab) => onTabChange?.(tab as any)}
-                        onNavigateToTabWithStatus={(tab, status) => {
-                            // Dashboard navigation needs to land on the tab *and* apply status after App tab-change resets filters.
-                            onCategoryFilterChange(null);
-                            onTabChange?.(tab as any);
-                            onStatusFilterChange(status);
-                        }}
-                        onMobileMenuClick={onMobileMenuClick}
-                    />
-                </React.Suspense>
-            );
+const toggleQuickCapture = () => {
+    setIsQuickCaptureOpen((prev) => {
+        const next = !prev;
+        if (isMobileViewport && next) {
+            setIsPersonalPanelOpen(false);
         }
+        return next;
+    });
+};
 
-        // Loading State for Search (Debounce visual)
-        if (showSearchLoading) {
-            return <CenteredLoadingState label="Searching library..." />;
-        }
+const handleHighlightSelect = (highlight: (typeof displayedHighlights)[number]) => {
+    if (onSelectBookWithTab) {
+        onSelectBookWithTab(highlight.source, 'highlights', highlight.id);
+    } else {
+        onSelectBook(highlight.source);
+    }
+};
 
-        if (isNotesTab) {
-            return (
-                <NotesHighlightsView
-                    highlights={displayedHighlights}
-                    searchQuery={searchQuery}
-                    currentPage={currentPage}
-                    totalPages={totalPages}
-                    onPageChange={onPageChange}
-                    onSelectHighlight={handleHighlightSelect}
-                    onToggleHighlightFavorite={onToggleHighlightFavorite}
-                />
-            );
-        }
-
-        // PERSONAL NOTES & LIBRARY GRID
-        if (displayedBooks.length === 0 && !isPersonalNotes) {
-            const emptyIcon = activeTab === 'BOOK'
-                ? <BookIcon size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" />
-                : activeTab === 'MOVIE'
-                    ? <Film size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" />
-                    : activeTab === 'ARTICLE'
-                        ? <FileText size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" />
-                        : (activeTab as any) === 'PERSONAL_NOTE'
-                            ? <PenTool size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" />
-                            : <Globe size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" />;
-            return (
-                <EmptyStatePanel
-                    icon={emptyIcon}
-                    title={`No ${getTabLabel(activeTab).toLowerCase()} found`}
-                    message={searchQuery ? "Try a different search term." : "Adjust filters or add a new item."}
-                />
-            );
-        }
-
+const renderContent = () => {
+    if (isStats) {
         return (
-            <div className="pb-10 md:pb-20">
-                {isPersonalNotes ? (
-                    <PersonalNotesWorkspace
-                        dndSensors={dndSensors}
-                        collisionDetection={closestCenter}
-                        onDragStart={handleDragStart}
-                        onDragCancel={handleDragCancel}
-                        onDragEnd={handleDragEnd}
-                        isPersonalPanelOpen={isPersonalPanelOpen}
-                        onTogglePersonalPanel={togglePersonalPanel}
-                        onClosePersonalPanel={() => setIsPersonalPanelOpen(false)}
-                        allNotesVisibleCount={allNotesVisibleCount}
-                        favoriteNotesVisibleCount={favoriteNotesVisibleCount}
-                        recentNotesVisibleCount={recentNotesVisibleCount}
-                        noteCategoryFilter={noteCategoryFilter}
-                        noteFolderFilter={noteFolderFilter}
-                        noteSmartFilter={noteSmartFilter}
-                        noteTagFilter={noteTagFilter}
-                        isTopTagsOpen={isTopTagsOpen}
-                        onToggleTopTags={() => setIsTopTagsOpen((prev) => !prev)}
-                        topTagEntries={topTagEntries}
-                        noteCategoryCounts={noteCategoryCounts}
-                        rootNoteCounts={rootNoteCounts}
-                        categoryFolderMap={categoryFolderMap}
-                        collapsedFolderCategories={collapsedFolderCategories}
-                        visibleFolderCounts={visibleFolderCounts}
-                        onSelectAllNotes={resetPersonalNotesSelection}
-                        onSelectFavorites={selectFavoritePersonalNotes}
-                        onSelectRecent={selectRecentPersonalNotes}
-                        onClearTagFilter={clearPersonalNoteTagFilter}
-                        onSelectTag={selectPersonalNoteTag}
-                        onSelectCategory={selectPersonalNoteCategory}
-                        onCreateFolder={handleCreateFolder}
-                        onSelectUnfiled={selectUnfiledPersonalNotes}
-                        onToggleCategoryCollapse={togglePersonalFolderCollapse}
-                        onLoadMoreFolders={loadMorePersonalFolders}
-                        onSelectFolder={selectPersonalFolder}
-                        onRenameFolder={handleRenameFolder}
-                        onDeleteFolder={handleDeleteFolder}
-                        categoryLabel={categoryLabel}
-                        DroppableZone={DroppableZone}
-                        DraggableWrapper={DraggableWrapper}
-                        isQuickCaptureOpen={isQuickCaptureOpen}
-                        onToggleQuickCapture={toggleQuickCapture}
-                        quickCaptureCategory={quickCaptureCategory}
-                        onQuickCaptureCategoryChange={setQuickCaptureCategory}
-                        selectedFolderName={folderById.get(noteFolderFilter)?.name || noteFolderFilter}
-                        showSelectedFolder={noteSmartFilter === 'NONE' && noteFolderFilter !== 'ALL' && noteFolderFilter !== '__ROOT__'}
-                        quickNoteTitle={quickNoteTitle}
-                        onQuickNoteTitleChange={setQuickNoteTitle}
-                        quickNoteBody={quickNoteBody}
-                        onQuickNoteBodyChange={setQuickNoteBody}
-                        onSaveQuickNote={handleQuickCapture}
-                        canSaveQuickNote={hasMeaningfulPersonalNoteContent(quickNoteBody)}
-                        displayedBooks={displayedBooks}
-                        activeDraggedNoteId={activeDraggedNoteId}
-                        onNoteClick={handleNoteCardClick}
-                        onToggleFavorite={onToggleFavorite}
-                        onDeleteNote={onDeleteBook}
-                        getResolvedNoteFolderName={getResolvedNoteFolderName}
-                        activeDraggedNote={activeDraggedNote}
-                        activeDraggedFolder={activeDraggedFolder}
-                    />
-                ) : (
-                    <div className="px-3 md:px-0">
-                        <StandardLibraryGrid
-                            books={displayedBooks}
-                            activeTab={activeTab}
-                            isMediaTab={isMediaTab}
-                            libraryCardDarkBg={libraryCardDarkBg}
-                            onSelectBook={onSelectBook}
-                            onToggleFavorite={onToggleFavorite}
-                            onDeleteBook={onDeleteBook}
-                            getCoverUrlForGrid={getCoverUrlForGrid}
-                        />
-                    </div>
-                )}
-
-                {/* Pagination Controls */}
-                <PaginationControls
-                    currentPage={currentPage}
-                    totalPages={totalPages}
-                    onPageChange={onPageChange}
+            <React.Suspense fallback={
+                <CenteredLoadingState />
+            }>
+                <KnowledgeDashboard
+                    items={books}
+                    userId={userId}
+                    onCategorySelect={(cat) => onCategoryNavigate?.(cat)}
+                    onStatusSelect={(status) => onStatusNavigate?.(status)}
+                    onNavigateToTab={(tab) => onTabChange?.(tab as any)}
+                    onNavigateToTabWithStatus={(tab, status) => {
+                        // Dashboard navigation needs to land on the tab *and* apply status after App tab-change resets filters.
+                        onCategoryFilterChange(null);
+                        onTabChange?.(tab as any);
+                        onStatusFilterChange(status);
+                    }}
+                    onMobileMenuClick={onMobileMenuClick}
                 />
-            </div>
+            </React.Suspense>
         );
-    };
+    }
 
-    const getTabLogo = (tab: ResourceType | 'NOTES' | 'DASHBOARD' | 'INSIGHTS' | 'INGEST' | 'FLOW' | 'RAG_SEARCH' | 'SMART_SEARCH' | 'PROFILE') => {
-        switch (tab) {
-            case 'DASHBOARD': return KnowledgeBaseLogo;
-            case 'NOTES': return HighlightsLogo;
-            case 'BOOK': return BooksLogo;
-            case 'MOVIE': return BooksLogo;
-            case 'ARTICLE': return ArticlesLogo;
-            case 'PERSONAL_NOTE': return NotesLogo;
-            default: return Library;
-        }
-    };
+    // Loading State for Search (Debounce visual)
+    if (showSearchLoading) {
+        return <CenteredLoadingState label="Searching library..." />;
+    }
 
-    const TabLogo = getTabLogo(activeTab);
-    const headerSubtitle = isNotesTab
-        ? `${stats.total} Highlights`
-        : (isPersonalNotes
-            ? `${stats.total} Notes`
-            : `${stats.total} Items • ${stats.reading} ${isMediaTab ? 'Watching' : 'Reading'}`);
-    const primaryActionLabel = activeTab === 'ARTICLE'
-        ? 'Add Article'
-        : (activeTab === 'PERSONAL_NOTE' ? 'Add Note' : (isMediaTab ? 'Add Media' : 'Add Book'));
-    const handlePrimaryAction = () => {
-        if (isPersonalNotes && onAddPersonalNote) {
-            const category: PersonalNoteCategory = noteCategoryFilter === 'ALL' ? 'DAILY' : noteCategoryFilter;
-            const folderId = noteFolderFilter === 'ALL' || noteFolderFilter === '__ROOT__'
-                ? undefined
-                : noteFolderFilter;
-            onAddPersonalNote({ category, folderId, folderPath: folderId ? folderById.get(folderId)?.name : undefined });
-            return;
-        }
-        onAddBook();
-    };
-    const isFavoritesActive = statusFilter === 'FAVORITES';
-    const toggleFavoritesFilter = () => onStatusFilterChange(isFavoritesActive ? 'ALL' : 'FAVORITES');
+    if (isNotesTab) {
+        return (
+            <NotesHighlightsView
+                highlights={displayedHighlights}
+                searchQuery={searchQuery}
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={onPageChange}
+                onSelectHighlight={handleHighlightSelect}
+                onToggleHighlightFavorite={onToggleHighlightFavorite}
+            />
+        );
+    }
+
+    // PERSONAL NOTES & LIBRARY GRID
+    if (displayedBooks.length === 0 && !isPersonalNotes) {
+        const emptyIcon = activeTab === 'BOOK'
+            ? <BookIcon size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" />
+            : activeTab === 'MOVIE'
+                ? <Film size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" />
+                : activeTab === 'ARTICLE'
+                    ? <FileText size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" />
+                    : (activeTab as any) === 'PERSONAL_NOTE'
+                        ? <PenTool size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" />
+                        : <Globe size={24} className="text-slate-300 dark:text-slate-600 md:w-8 md:h-8" />;
+        return (
+            <EmptyStatePanel
+                icon={emptyIcon}
+                title={`No ${getTabLabel(activeTab).toLowerCase()} found`}
+                message={searchQuery ? "Try a different search term." : "Adjust filters or add a new item."}
+            />
+        );
+    }
 
     return (
-        <div className="max-w-6xl w-full mx-auto pb-24 pt-2 md:p-8 lg:p-10 animate-in fade-in duration-500">
-            {/* Compact Header for Mobile (Hide in Dashboard) */}
-            {!isStats && (
+        <div className="pb-10 md:pb-20">
+            {isPersonalNotes ? (
+                <PersonalNotesWorkspace
+                    dndSensors={dndSensors}
+                    collisionDetection={closestCenter}
+                    onDragStart={handleDragStart}
+                    onDragCancel={handleDragCancel}
+                    onDragEnd={handleDragEnd}
+                    isPersonalPanelOpen={isPersonalPanelOpen}
+                    onTogglePersonalPanel={togglePersonalPanel}
+                    onClosePersonalPanel={() => setIsPersonalPanelOpen(false)}
+                    allNotesVisibleCount={allNotesVisibleCount}
+                    favoriteNotesVisibleCount={favoriteNotesVisibleCount}
+                    recentNotesVisibleCount={recentNotesVisibleCount}
+                    noteCategoryFilter={noteCategoryFilter}
+                    noteFolderFilter={noteFolderFilter}
+                    noteSmartFilter={noteSmartFilter}
+                    noteTagFilter={noteTagFilter}
+                    isTopTagsOpen={isTopTagsOpen}
+                    onToggleTopTags={() => setIsTopTagsOpen((prev) => !prev)}
+                    topTagEntries={topTagEntries}
+                    noteCategoryCounts={noteCategoryCounts}
+                    rootNoteCounts={rootNoteCounts}
+                    categoryFolderMap={categoryFolderMap}
+                    collapsedFolderCategories={collapsedFolderCategories}
+                    visibleFolderCounts={visibleFolderCounts}
+                    onSelectAllNotes={resetPersonalNotesSelection}
+                    onSelectFavorites={selectFavoritePersonalNotes}
+                    onSelectRecent={selectRecentPersonalNotes}
+                    onClearTagFilter={clearPersonalNoteTagFilter}
+                    onSelectTag={selectPersonalNoteTag}
+                    onSelectCategory={selectPersonalNoteCategory}
+                    onCreateFolder={handleCreateFolder}
+                    onSelectUnfiled={selectUnfiledPersonalNotes}
+                    onToggleCategoryCollapse={togglePersonalFolderCollapse}
+                    onLoadMoreFolders={loadMorePersonalFolders}
+                    onSelectFolder={selectPersonalFolder}
+                    onRenameFolder={handleRenameFolder}
+                    onDeleteFolder={handleDeleteFolder}
+                    categoryLabel={categoryLabel}
+                    DroppableZone={DroppableZone}
+                    DraggableWrapper={DraggableWrapper}
+                    isQuickCaptureOpen={isQuickCaptureOpen}
+                    onToggleQuickCapture={toggleQuickCapture}
+                    quickCaptureCategory={quickCaptureCategory}
+                    onQuickCaptureCategoryChange={setQuickCaptureCategory}
+                    selectedFolderName={folderById.get(noteFolderFilter)?.name || noteFolderFilter}
+                    showSelectedFolder={noteSmartFilter === 'NONE' && noteFolderFilter !== 'ALL' && noteFolderFilter !== '__ROOT__'}
+                    quickNoteTitle={quickNoteTitle}
+                    onQuickNoteTitleChange={setQuickNoteTitle}
+                    quickNoteBody={quickNoteBody}
+                    onQuickNoteBodyChange={setQuickNoteBody}
+                    onSaveQuickNote={handleQuickCapture}
+                    canSaveQuickNote={hasMeaningfulPersonalNoteContent(quickNoteBody)}
+                    displayedBooks={displayedBooks}
+                    activeDraggedNoteId={activeDraggedNoteId}
+                    onNoteClick={handleNoteCardClick}
+                    onToggleFavorite={onToggleFavorite}
+                    onDeleteNote={onDeleteBook}
+                    getResolvedNoteFolderName={getResolvedNoteFolderName}
+                    activeDraggedNote={activeDraggedNote}
+                    activeDraggedFolder={activeDraggedFolder}
+                />
+            ) : (
                 <div className="px-3 md:px-0">
-                    <LibraryPageHeader
-                        title={getTabLabel(activeTab)}
-                        subtitle={headerSubtitle}
-                        Icon={TabLogo}
-                        primaryActionLabel={primaryActionLabel}
-                        onPrimaryAction={handlePrimaryAction}
-                        onMobileMenuClick={onMobileMenuClick}
-                    />
-                </div>
-            )}
-            {/* Mobile Menu Trigger for Dashboard (Only button, no text) */}
-            {/* Mobile Menu Trigger for Dashboard removed - moved inside Dashboard for alignment */}
-
-            {/* Compact Filters for Mobile (Hide in Stats view) */}
-            {!isStats && (
-                <div className="px-3 md:px-0">
-                    <LibraryFiltersBar
-                        searchPlaceholder={getSearchPlaceholder()}
-                        localInput={localInput}
-                        onLocalInputChange={setLocalInput}
-                        showSearchLoading={showSearchLoading}
-                        showFavoritesToggle={isNotesTab || isPersonalNotes}
-                        isFavoritesActive={isFavoritesActive}
-                        onToggleFavorites={toggleFavoritesFilter}
-                        showStandardFilters={!isNotesTab && !isPersonalNotes}
-                        statusFilter={statusFilter}
-                        onStatusChange={onStatusFilterChange}
-                        sortOption={sortOption}
-                        onSortChange={onSortOptionChange}
-                        showCategoryFilter={activeTab === 'BOOK'}
-                        categoryFilter={categoryFilter}
-                        categoryOptions={CATEGORIES}
-                        onCategoryChange={onCategoryFilterChange}
-                        showPublisherFilter={activeTab === 'ARTICLE'}
-                        publisherFilter={publisherFilter}
-                        onPublisherFilterChange={onPublisherFilterChange}
-                        showMediaTypeFilter={isMediaTab}
-                        mediaTypeFilter={mediaTypeFilter}
-                        onMediaTypeFilterChange={setMediaTypeFilter}
+                    <StandardLibraryGrid
+                        books={displayedBooks}
+                        activeTab={activeTab}
                         isMediaTab={isMediaTab}
-                        onPageReset={() => onPageChange(1)}
+                        libraryCardDarkBg={libraryCardDarkBg}
+                        onSelectBook={onSelectBook}
+                        onToggleFavorite={onToggleFavorite}
+                        onDeleteBook={onDeleteBook}
+                        getCoverUrlForGrid={getCoverUrlForGrid}
                     />
                 </div>
             )}
 
-            {/* Active Category Filter Pill */}
-            {activeTab === 'BOOK' && !isStats && categoryFilter && (
-                <ActiveCategoryFilterPill
-                    category={categoryFilter}
-                    onClear={() => onCategoryFilterChange?.(null)}
-                />
-            )}
-
-            {/* Content Views */}
-            {renderContent()}
-
-            {isPersonalNotes && undoMove && (
-                <NoteMoveUndoToast
-                    onUndo={() => {
-                        window.clearTimeout(undoMove.timeoutId);
-                        const target = undoMove;
-                        setUndoMove(null);
-                        performMove(target.noteId, target.category, target.folderId, false);
-                    }}
-                />
-            )}
+            {/* Pagination Controls */}
+            <PaginationControls
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={onPageChange}
+            />
         </div>
     );
+};
+
+const getTabLogo = (tab: ResourceType | 'NOTES' | 'DASHBOARD' | 'INSIGHTS' | 'INGEST' | 'FLOW' | 'RAG_SEARCH' | 'SMART_SEARCH' | 'PROFILE') => {
+    switch (tab) {
+        case 'DASHBOARD': return KnowledgeBaseLogo;
+        case 'NOTES': return HighlightsLogo;
+        case 'BOOK': return BooksLogo;
+        case 'MOVIE': return BooksLogo;
+        case 'ARTICLE': return ArticlesLogo;
+        case 'PERSONAL_NOTE': return NotesLogo;
+        default: return Library;
+    }
+};
+
+const TabLogo = getTabLogo(activeTab);
+const headerSubtitle = isNotesTab
+    ? `${stats.total} Highlights`
+    : (isPersonalNotes
+        ? `${stats.total} Notes`
+        : `${stats.total} Items • ${stats.reading} ${isMediaTab ? 'Watching' : 'Reading'}`);
+const primaryActionLabel = activeTab === 'ARTICLE'
+    ? 'Add Article'
+    : (activeTab === 'PERSONAL_NOTE' ? 'Add Note' : (isMediaTab ? 'Add Media' : 'Add Book'));
+const handlePrimaryAction = () => {
+    if (isPersonalNotes && onAddPersonalNote) {
+        const category: PersonalNoteCategory = noteCategoryFilter === 'ALL' || noteCategoryFilter === 'PRIVATE' ? noteCategoryFilter === 'PRIVATE' ? 'PRIVATE' : 'DAILY' : noteCategoryFilter;
+        const folderId = noteFolderFilter === 'ALL' || noteFolderFilter === '__ROOT__'
+            ? undefined
+            : noteFolderFilter;
+        onAddPersonalNote({ category, folderId, folderPath: folderId ? folderById.get(folderId)?.name : undefined });
+        return;
+    }
+    onAddBook();
+};
+const isFavoritesActive = statusFilter === 'FAVORITES';
+const toggleFavoritesFilter = () => onStatusFilterChange(isFavoritesActive ? 'ALL' : 'FAVORITES');
+
+return (
+    <div className="max-w-6xl w-full mx-auto pb-24 pt-2 md:p-8 lg:p-10 animate-in fade-in duration-500">
+        {/* Compact Header for Mobile (Hide in Dashboard) */}
+        {!isStats && (
+            <div className="px-3 md:px-0">
+                <LibraryPageHeader
+                    title={getTabLabel(activeTab)}
+                    subtitle={headerSubtitle}
+                    Icon={TabLogo}
+                    primaryActionLabel={primaryActionLabel}
+                    onPrimaryAction={handlePrimaryAction}
+                    onMobileMenuClick={onMobileMenuClick}
+                />
+            </div>
+        )}
+        {/* Mobile Menu Trigger for Dashboard (Only button, no text) */}
+        {/* Mobile Menu Trigger for Dashboard removed - moved inside Dashboard for alignment */}
+
+        {/* Compact Filters for Mobile (Hide in Stats view) */}
+        {!isStats && (
+            <div className="px-3 md:px-0">
+                <LibraryFiltersBar
+                    searchPlaceholder={getSearchPlaceholder()}
+                    localInput={localInput}
+                    onLocalInputChange={setLocalInput}
+                    showSearchLoading={showSearchLoading}
+                    showFavoritesToggle={isNotesTab || isPersonalNotes}
+                    isFavoritesActive={isFavoritesActive}
+                    onToggleFavorites={toggleFavoritesFilter}
+                    showStandardFilters={!isNotesTab && !isPersonalNotes}
+                    statusFilter={statusFilter}
+                    onStatusChange={onStatusFilterChange}
+                    sortOption={sortOption}
+                    onSortChange={onSortOptionChange}
+                    showCategoryFilter={activeTab === 'BOOK'}
+                    categoryFilter={categoryFilter}
+                    categoryOptions={CATEGORIES}
+                    onCategoryChange={onCategoryFilterChange}
+                    showPublisherFilter={activeTab === 'ARTICLE'}
+                    publisherFilter={publisherFilter}
+                    onPublisherFilterChange={onPublisherFilterChange}
+                    showMediaTypeFilter={isMediaTab}
+                    mediaTypeFilter={mediaTypeFilter}
+                    onMediaTypeFilterChange={setMediaTypeFilter}
+                    isMediaTab={isMediaTab}
+                    onPageReset={() => onPageChange(1)}
+                />
+            </div>
+        )}
+
+        {/* Active Category Filter Pill */}
+        {activeTab === 'BOOK' && !isStats && categoryFilter && (
+            <ActiveCategoryFilterPill
+                category={categoryFilter}
+                onClear={() => onCategoryFilterChange?.(null)}
+            />
+        )}
+
+        {/* Content Views */}
+        {renderContent()}
+
+        {isPersonalNotes && undoMove && (
+            <NoteMoveUndoToast
+                onUndo={() => {
+                    window.clearTimeout(undoMove.timeoutId);
+                    const target = undoMove;
+                    setUndoMove(null);
+                    performMove(target.noteId, target.category, target.folderId, false);
+                }}
+            />
+        )}
+    </div>
+);
 });
 const getCoverUrlForGrid = (coverUrl: string): string => {
     const raw = String(coverUrl || "").trim();

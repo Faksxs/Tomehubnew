@@ -4,6 +4,7 @@ import { ArticlesLogo } from '../../../components/ui/FeatureLogos';
 import { PaginationControls } from '../../../components/library/PaginationControls';
 import { EmptyStatePanel } from '../../../components/library/EmptyStatePanel';
 import { isInsightType } from '../../../lib/highlightType';
+import { extractPersonalNoteText } from '../../../lib/personalNoteRender';
 import { Highlight, LibraryItem } from '../../../types';
 
 type HighlightItem = Highlight & {
@@ -77,7 +78,7 @@ export const NotesHighlightsView: React.FC<NotesHighlightsViewProps> = ({
                                 )}
                             </div>
                             <p className={`text-[10px] md:text-base leading-relaxed mb-2 md:mb-4 whitespace-pre-wrap line-clamp-[8] md:line-clamp-none font-lora ${isNote ? 'text-slate-700 dark:text-slate-300' : 'text-slate-900 dark:text-slate-200'}`}>
-                                {highlight.text}
+                                {extractPersonalNoteText(highlight.text || '')}
                             </p>
 
                             {highlight.tags && highlight.tags.length > 0 && (

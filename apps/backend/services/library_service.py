@@ -509,6 +509,13 @@ def list_library_items(
                         cur.execute(sql_h, b3)
                         agg: dict[str, list[dict[str, Any]]] = {}
                         personal_note_body: dict[str, str] = {}
+                        item_meta = {
+                            str(item.get("id") or ""): {
+                                "type": str(item.get("type") or "").upper(),
+                                "category": str(item.get("personalNoteCategory") or "").upper(),
+                            }
+                            for item in rows
+                        }
                         for hr in cur.fetchall():
                             iid = str(hr[0] or "").strip()
                             if not iid:
@@ -517,7 +524,13 @@ def list_library_items(
                             text = safe_read_clob(hr[3]) if hr[3] is not None else ""
                             if not text:
                                 continue
-                            if src_type == "PERSONAL_NOTE":
+                            meta = item_meta.get(iid) or {}
+                            is_ideas_note_body = (
+                                meta.get("type") == "PERSONAL_NOTE"
+                                and meta.get("category") == "IDEAS"
+                                and src_type == "INSIGHT"
+                            )
+                            if src_type == "PERSONAL_NOTE" or is_ideas_note_body:
                                 personal_note_body[iid] = text
                                 continue
                             h_type = "insight" if src_type == "INSIGHT" else "highlight"
