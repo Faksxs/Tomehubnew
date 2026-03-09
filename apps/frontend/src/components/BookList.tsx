@@ -138,11 +138,13 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
         PRIVATE: true,
         DAILY: true,
         IDEAS: true,
+        BOOKMARK: true,
     });
     const [visibleFolderCounts, setVisibleFolderCounts] = useState<Record<PersonalNoteCategory, number>>({
         PRIVATE: FOLDER_PAGE_SIZE,
         DAILY: FOLDER_PAGE_SIZE,
         IDEAS: FOLDER_PAGE_SIZE,
+        BOOKMARK: FOLDER_PAGE_SIZE,
     });
     const [isPersonalPanelOpen, setIsPersonalPanelOpen] = useState(false);
     const [isQuickCaptureOpen, setIsQuickCaptureOpen] = useState(false);
@@ -161,8 +163,8 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
             setNoteSmartFilter('NONE');
             setNoteTagFilter(null);
             setIsTopTagsOpen(false);
-            setCollapsedFolderCategories({ PRIVATE: true, DAILY: true, IDEAS: true });
-            setVisibleFolderCounts({ PRIVATE: FOLDER_PAGE_SIZE, DAILY: FOLDER_PAGE_SIZE, IDEAS: FOLDER_PAGE_SIZE });
+            setCollapsedFolderCategories({ PRIVATE: true, DAILY: true, IDEAS: true, BOOKMARK: true });
+            setVisibleFolderCounts({ PRIVATE: FOLDER_PAGE_SIZE, DAILY: FOLDER_PAGE_SIZE, IDEAS: FOLDER_PAGE_SIZE, BOOKMARK: FOLDER_PAGE_SIZE });
             setQuickCaptureCategory('DAILY');
             setIsPersonalPanelOpen(false);
         }
@@ -481,7 +483,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
     }, [nonPrivatePersonalNotes]);
 
     const noteCategoryCounts = useMemo(() => {
-        const counts: Record<PersonalNoteCategory, number> = { PRIVATE: 0, DAILY: 0, IDEAS: 0 };
+        const counts: Record<PersonalNoteCategory, number> = { PRIVATE: 0, DAILY: 0, IDEAS: 0, BOOKMARK: 0 };
         allPersonalNotes.forEach((note) => {
             counts[getPersonalNoteCategory(note)] += 1;
         });
@@ -493,6 +495,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
             PRIVATE: [],
             DAILY: [],
             IDEAS: [],
+            BOOKMARK: [],
         };
         personalNoteFolders.forEach((folder) => {
             result[folder.category].push({
@@ -502,14 +505,14 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                 count: allPersonalNotes.filter((note) => getResolvedNoteFolderId(note) === folder.id).length,
             });
         });
-        (['PRIVATE', 'DAILY', 'IDEAS'] as PersonalNoteCategory[]).forEach((category) => {
+        (['PRIVATE', 'DAILY', 'IDEAS', 'BOOKMARK'] as PersonalNoteCategory[]).forEach((category) => {
             result[category].sort((a, b) => (a.order - b.order) || a.name.localeCompare(b.name));
         });
         return result;
     }, [allPersonalNotes, personalNoteFolders, legacyFolderLookup]);
 
     const rootNoteCounts = useMemo(() => {
-        const counts: Record<PersonalNoteCategory, number> = { PRIVATE: 0, DAILY: 0, IDEAS: 0 };
+        const counts: Record<PersonalNoteCategory, number> = { PRIVATE: 0, DAILY: 0, IDEAS: 0, BOOKMARK: 0 };
         allPersonalNotes.forEach((note) => {
             const category = getPersonalNoteCategory(note);
             if (!getResolvedNoteFolderId(note)) {
@@ -521,7 +524,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
 
     useEffect(() => {
         if (noteFolderFilter === 'ALL' || noteFolderFilter === '__ROOT__') return;
-        const folderCategory = (['PRIVATE', 'DAILY', 'IDEAS'] as PersonalNoteCategory[]).find((category) =>
+        const folderCategory = (['PRIVATE', 'DAILY', 'IDEAS', 'BOOKMARK'] as PersonalNoteCategory[]).find((category) =>
             categoryFolderMap[category].some((folder) => folder.id === noteFolderFilter)
         );
         if (!folderCategory) return;
@@ -605,6 +608,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
             case 'PRIVATE': return 'Private';
             case 'DAILY': return 'Daily';
             case 'IDEAS': return 'Ideas';
+            case 'BOOKMARK': return 'Bookmark';
             default: return category;
         }
     };
@@ -1106,7 +1110,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                             )}
                                         </div>
                                     </div>
-                                    {(['PRIVATE', 'DAILY', 'IDEAS'] as PersonalNoteCategory[]).map((category) => (
+                                    {(['PRIVATE', 'DAILY', 'IDEAS', 'BOOKMARK'] as PersonalNoteCategory[]).map((category) => (
                                         <DroppableZone key={category} id={`cat-group:${category}`}>
                                             {(isOverCategory) => (
                                                 <div className={`rounded-lg border p-2 ${isOverCategory ? 'border-[#CC561E]/40 bg-[#CC561E]/5' : 'border-[#E6EAF2] dark:border-slate-800'}`}>
@@ -1281,6 +1285,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                                         <option value="DAILY">Daily</option>
                                                         <option value="PRIVATE">Private</option>
                                                         <option value="IDEAS">Ideas</option>
+                                                        <option value="BOOKMARK">Bookmark</option>
                                                     </select>
                                                     {noteSmartFilter === 'NONE' && noteFolderFilter !== 'ALL' && noteFolderFilter !== '__ROOT__' && (
                                                         <span className="hidden sm:inline text-[11px] text-slate-400">

@@ -1,7 +1,7 @@
 ﻿import unittest
 from pydantic import ValidationError
 
-from models.request_models import SearchRequest, ChatRequest
+from models.request_models import ChatRequest, PersonalNoteSyncRequest, SearchRequest
 
 
 class RequestModelValidationTests(unittest.TestCase):
@@ -126,6 +126,15 @@ class RequestModelValidationTests(unittest.TestCase):
             target_book_ids=[" b1 ", "b1", "b2", ""],
         )
         self.assertEqual(req.target_book_ids, ["b1", "b2"])
+
+    def test_personal_note_sync_accepts_bookmark_category(self):
+        req = PersonalNoteSyncRequest(
+            firebase_uid="u1",
+            title="bookmark note",
+            author="Self",
+            category="bookmark",
+        )
+        self.assertEqual(req.category, "BOOKMARK")
 
 
 if __name__ == "__main__":

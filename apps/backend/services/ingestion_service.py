@@ -1396,8 +1396,8 @@ def sync_personal_note_for_item(
     """
     Keep Personal Note representation in Oracle AI store in sync with Firestore.
     - Always deletes existing PERSONAL_NOTE/INSIGHT rows for this note id
-    - Re-inserts for all categories when delete_only is False
-    - Keeps IDEAS as INSIGHT for backward-compatible retrieval; others use PERSONAL_NOTE
+    - Re-inserts only search-indexed categories when delete_only is False
+    - IDEAS stays indexed as INSIGHT; PRIVATE/DAILY/BOOKMARK remain local-only
     """
     deleted = 0
     inserted = 0
@@ -1428,6 +1428,8 @@ def sync_personal_note_for_item(
                 )
 
                 normalized_category = str(category or "PRIVATE").strip().upper()
+                if normalized_category not in {"PRIVATE", "DAILY", "IDEAS", "BOOKMARK"}:
+                    normalized_category = "PRIVATE"
                 if delete_only:
                     connection.commit()
                     _invalidate_search_cache(firebase_uid=firebase_uid, book_id=book_id)
@@ -1454,6 +1456,28 @@ def sync_personal_note_for_item(
                         entity_type="PERSONAL_NOTE",
                         event_type="note.synced",
                         payload={"deleted": deleted, "inserted": 0, "invalid_content": True, "category": normalized_category},
+                    )
+                    return {"success": True, "deleted": deleted, "inserted": 0}
+
+                if normalized_category in {"PRIVATE", "DAILY", "BOOKMARK"}:
+                    connection.commit()
+                    _invalidate_search_cache(firebase_uid=firebase_uid, book_id=book_id)
+                    maybe_trigger_epistemic_distribution_refresh_async(
+                        book_id=book_id,
+                        firebase_uid=firebase_uid,
+                        reason="sync_personal_note_local_only",
+                    )
+                    _emit_change_event_best_effort(
+                        firebase_uid=firebase_uid,
+                        item_id=book_id,
+                        entity_type="PERSONAL_NOTE",
+                        event_type="note.synced",
+                        payload={
+                            "deleted": deleted,
+                            "inserted": 0,
+                            "local_only": True,
+                            "category": normalized_category,
+                        },
                     )
                     return {"success": True, "deleted": deleted, "inserted": 0}
 

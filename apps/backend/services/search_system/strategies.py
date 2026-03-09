@@ -264,8 +264,10 @@ def _apply_visibility_filter(sql: str, params: Dict[str, Any], visibility_scope:
     scope = _normalize_visibility_scope(visibility_scope)
     if scope == "all":
         sql += " AND NVL(l.search_visibility, 'DEFAULT') <> 'NEVER_RETRIEVE' "
+        sql += " AND NOT (c.content_type = 'PERSONAL_NOTE' AND NVL(UPPER(l.personal_note_category), 'PRIVATE') IN ('PRIVATE', 'DAILY', 'BOOKMARK')) "
         return (sql, params)
     sql += " AND NVL(l.search_visibility, 'DEFAULT') = 'DEFAULT' "
+    sql += " AND NOT (c.content_type = 'PERSONAL_NOTE' AND NVL(UPPER(l.personal_note_category), 'PRIVATE') IN ('PRIVATE', 'DAILY', 'BOOKMARK')) "
     return (sql, params)
 
 

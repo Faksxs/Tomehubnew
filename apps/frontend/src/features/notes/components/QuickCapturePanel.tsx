@@ -70,6 +70,7 @@ export const QuickCapturePanel: React.FC<QuickCapturePanelProps> = ({
                                 <option value="DAILY">Daily</option>
                                 <option value="PRIVATE">Private</option>
                                 <option value="IDEAS">Ideas</option>
+                                <option value="BOOKMARK">Bookmark</option>
                             </select>
                             {showSelectedFolder && (
                                 <span className="hidden sm:inline text-[11px] text-slate-400">

@@ -832,10 +832,11 @@ export const BookForm: React.FC<BookFormProps> = ({ initialData, initialType, no
                         <option value="PRIVATE">Private</option>
                         <option value="DAILY">Daily</option>
                         <option value="IDEAS">Ideas</option>
+                        <option value="BOOKMARK">Bookmark</option>
                       </select>
                     </div>
                     <p className={`col-span-2 text-[10px] leading-tight ${noteHelperClass}`}>
-                      Private/Daily sadece local aramada kalir. Ideas AI aramalara da katilir.
+                      Private, Daily ve Bookmark sadece local aramada kalir. Ideas AI aramalara da katilir.
                     </p>
                   </div>
                 )}

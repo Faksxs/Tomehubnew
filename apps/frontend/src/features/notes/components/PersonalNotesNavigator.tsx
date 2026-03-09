@@ -66,7 +66,7 @@ interface PersonalNotesNavigatorProps {
     DraggableWrapper: DraggableWrapperComponent;
 }
 
-const NOTE_CATEGORIES: PersonalNoteCategory[] = ['PRIVATE', 'DAILY', 'IDEAS'];
+const NOTE_CATEGORIES: PersonalNoteCategory[] = ['PRIVATE', 'DAILY', 'IDEAS', 'BOOKMARK'];
 
 export const PersonalNotesNavigator: React.FC<PersonalNotesNavigatorProps> = ({
     isOpen,

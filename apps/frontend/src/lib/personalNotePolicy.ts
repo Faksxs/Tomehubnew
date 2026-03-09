@@ -6,6 +6,7 @@ export function normalizePersonalNoteCategory(value: unknown): PersonalNoteCateg
   const normalized = typeof value === 'string' ? value.trim().toUpperCase() : '';
   if (normalized === 'DAILY') return 'DAILY';
   if (normalized === 'IDEAS') return 'IDEAS';
+  if (normalized === 'BOOKMARK') return 'BOOKMARK';
   return DEFAULT_PERSONAL_NOTE_CATEGORY;
 }
 
@@ -20,6 +21,10 @@ export function getPersonalNoteCategory(item: LibraryItem): PersonalNoteCategory
 
 export function shouldSyncPersonalNoteToAI(item: LibraryItem): boolean {
   return isPersonalNote(item) && getPersonalNoteCategory(item) === 'IDEAS';
+}
+
+export function isLocalOnlyPersonalNoteCategory(category: PersonalNoteCategory): boolean {
+  return category === 'PRIVATE' || category === 'DAILY' || category === 'BOOKMARK';
 }
 
 export function getPersonalNoteBackendType(item: LibraryItem): 'INSIGHT' | 'PERSONAL_NOTE' {

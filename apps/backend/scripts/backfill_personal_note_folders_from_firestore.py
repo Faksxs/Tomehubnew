@@ -98,7 +98,7 @@ def _normalize_folder(doc_id: str, raw: Dict[str, Any]) -> dict[str, Any] | None
         return None
 
     category = str(raw.get("category") or "PRIVATE").strip().upper()
-    if category not in {"PRIVATE", "DAILY", "IDEAS"}:
+    if category not in {"PRIVATE", "DAILY", "IDEAS", "BOOKMARK"}:
         category = "PRIVATE"
 
     order = raw.get("order", raw.get("display_order", 0))

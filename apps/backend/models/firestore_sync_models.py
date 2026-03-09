@@ -177,7 +177,7 @@ def normalize_and_validate_item(item_id: str, raw: dict[str, Any]) -> StrictFire
     tags = _dedupe_labels((raw or {}).get("tags"))
     note_text = _strip_html(str((raw or {}).get("generalNotes") or ""))
     category = str((raw or {}).get("personalNoteCategory") or "PRIVATE").strip().upper() or "PRIVATE"
-    if category not in {"PRIVATE", "DAILY", "IDEAS"}:
+    if category not in {"PRIVATE", "DAILY", "IDEAS", "BOOKMARK"}:
         category = "PRIVATE"
 
     raw_highlights = (raw or {}).get("highlights")

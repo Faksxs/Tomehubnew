@@ -697,7 +697,7 @@ export interface SyncPersonalNoteRequest {
     author: string;
     content?: string;
     tags?: string[];
-    category?: 'PRIVATE' | 'DAILY' | 'IDEAS';
+    category?: 'PRIVATE' | 'DAILY' | 'IDEAS' | 'BOOKMARK';
     delete_only?: boolean;
 }
 

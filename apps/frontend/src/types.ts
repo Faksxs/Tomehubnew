@@ -1,7 +1,7 @@
 
 export type PhysicalStatus = 'On Shelf' | 'Lent Out' | 'Lost' | 'Digital';
 export type ReadingStatus = 'To Read' | 'Reading' | 'Finished';
-export type PersonalNoteCategory = 'PRIVATE' | 'DAILY' | 'IDEAS';
+export type PersonalNoteCategory = 'PRIVATE' | 'DAILY' | 'IDEAS' | 'BOOKMARK';
 
 export type ResourceType = 'BOOK' | 'ARTICLE' | 'PERSONAL_NOTE' | 'MOVIE' | 'SERIES';
 export type ContentLanguageMode = 'AUTO' | 'TR' | 'EN';

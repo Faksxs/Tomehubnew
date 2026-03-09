@@ -310,7 +310,7 @@ class PersonalNoteSyncRequest(BaseModel):
     @classmethod
     def normalize_category(cls, value: Optional[str]) -> str:
         category = str(value or "PRIVATE").strip().upper()
-        if category in {"DAILY", "IDEAS"}:
+        if category in {"DAILY", "IDEAS", "BOOKMARK"}:
             return category
         return "PRIVATE"
 

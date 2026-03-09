@@ -262,6 +262,38 @@ except Exception:
 
 def ensure_personal_note_folders_table() -> None:
     if _table_exists("TOMEHUB_PERSONAL_NOTE_FOLDERS"):
+        needs_upgrade = False
+        try:
+            with DatabaseManager.get_read_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT SEARCH_CONDITION_VC
+                        FROM USER_CONSTRAINTS
+                        WHERE TABLE_NAME = 'TOMEHUB_PERSONAL_NOTE_FOLDERS'
+                          AND CONSTRAINT_NAME = 'CHK_TH_PNF_CATEGORY'
+                        """
+                    )
+                    row = cur.fetchone()
+                    condition = str(row[0] or "").upper() if row else ""
+                    needs_upgrade = "BOOKMARK" not in condition
+        except Exception as e:
+            logger.debug("personal note folder constraint inspection failed: %s", e)
+
+        if needs_upgrade:
+            with DatabaseManager.get_write_connection() as conn:
+                with conn.cursor() as cur:
+                    try:
+                        cur.execute("ALTER TABLE TOMEHUB_PERSONAL_NOTE_FOLDERS DROP CONSTRAINT CHK_TH_PNF_CATEGORY")
+                    except Exception as e:
+                        msg = str(e).lower()
+                        if "nonexistent" not in msg and "ora-02443" not in msg:
+                            logger.debug("personal note folder constraint drop skipped: %s", e)
+                    cur.execute(
+                        "ALTER TABLE TOMEHUB_PERSONAL_NOTE_FOLDERS "
+                        "ADD CONSTRAINT CHK_TH_PNF_CATEGORY CHECK (CATEGORY IN ('PRIVATE','DAILY','IDEAS','BOOKMARK'))"
+                    )
+                conn.commit()
         return
     ddl = """
     CREATE TABLE TOMEHUB_PERSONAL_NOTE_FOLDERS (
@@ -276,7 +308,7 @@ def ensure_personal_note_folders_table() -> None:
         DELETED_AT TIMESTAMP NULL,
         CONSTRAINT PK_TH_PNF PRIMARY KEY (ID),
         CONSTRAINT UQ_TH_PNF_UID_ID UNIQUE (FIREBASE_UID, ID),
-        CONSTRAINT CHK_TH_PNF_CATEGORY CHECK (CATEGORY IN ('PRIVATE','DAILY','IDEAS')),
+        CONSTRAINT CHK_TH_PNF_CATEGORY CHECK (CATEGORY IN ('PRIVATE','DAILY','IDEAS','BOOKMARK')),
         CONSTRAINT CHK_TH_PNF_DELETED CHECK (IS_DELETED IN (0,1))
     )
     """
@@ -418,8 +450,9 @@ def list_library_items(
                     "status": str(r[9] or "On Shelf"),
                     "readingStatus": str(r[10] or "To Read"),
                     "tags": _safe_json_list(r[11]),
-                    # Personal note body now comes from content table (PERSONAL_NOTE rows).
-                    "generalNotes": "",
+                    # Personal note body primarily comes from content table. For local-only
+                    # categories we fall back to the library summary metadata.
+                    "generalNotes": safe_read_clob(r[12]) if (str(r[1] or "").strip().upper() == "PERSONAL_NOTE" and r[12] is not None) else "",
                     "summaryText": safe_read_clob(r[12]) if r[12] is not None else "",
                     "contentLanguageMode": str(r[13] or "AUTO"),
                     "contentLanguageResolved": str(r[14]).lower() if r[14] else None,
@@ -549,7 +582,7 @@ def list_library_items(
                         for item in rows:
                             item["highlights"] = agg.get(item["id"], [])
                             if item.get("type") == "PERSONAL_NOTE":
-                                item["generalNotes"] = personal_note_body.get(item["id"], "")
+                                item["generalNotes"] = personal_note_body.get(item["id"], item.get("generalNotes", ""))
                     except Exception as e:
                         logger.warning(f"list_library_items highlight query failed: {e}")
 
@@ -564,7 +597,7 @@ def list_library_items(
 
 def _clean_folder_payload(payload: dict[str, Any]) -> dict[str, Any]:
     category = str(payload.get("category") or "PRIVATE").strip().upper()
-    if category not in {"PRIVATE", "DAILY", "IDEAS"}:
+    if category not in {"PRIVATE", "DAILY", "IDEAS", "BOOKMARK"}:
         category = "PRIVATE"
     name = str(payload.get("name") or "").strip()
     if not name:
@@ -659,7 +692,7 @@ def patch_personal_note_folder(firebase_uid: str, folder_id: str, patch: dict[st
         sets.append("NAME = :p_name")
     if "category" in patch:
         category = str(patch.get("category") or "PRIVATE").strip().upper()
-        if category not in {"PRIVATE", "DAILY", "IDEAS"}:
+        if category not in {"PRIVATE", "DAILY", "IDEAS", "BOOKMARK"}:
             category = "PRIVATE"
         binds["p_category"] = category
         sets.append("CATEGORY = :p_category")
@@ -743,7 +776,10 @@ def upsert_library_item(firebase_uid: str, item_id: str, payload: dict[str, Any]
     author = str(payload.get("author") or "Unknown Author").strip() or "Unknown Author"
 
     summary_value = payload.get("summaryText")
-    if item_type != "PERSONAL_NOTE" and (summary_value is None or str(summary_value) == ""):
+    if item_type == "PERSONAL_NOTE":
+        if summary_value is None or str(summary_value) == "":
+            summary_value = payload.get("generalNotes")
+    elif summary_value is None or str(summary_value) == "":
         summary_value = payload.get("generalNotes")
 
     normalized_tags = _normalize_item_tags(payload.get("tags") or [])
