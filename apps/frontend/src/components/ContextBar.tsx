@@ -20,7 +20,7 @@ export const ContextBar: React.FC<ContextBarProps> = ({ state }) => {
     return (
         <div className="sticky top-0 z-10 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm border-b border-[#CC561E]/10 dark:border-slate-700 shadow-sm transition-all">
             <div
-                className="max-w-4xl mx-auto px-4 py-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50"
+                className="w-full mx-auto px-2 md:px-4 py-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50"
                 onClick={() => setIsExpanded(!isExpanded)}
             >
                 <div className="flex items-center justify-between">

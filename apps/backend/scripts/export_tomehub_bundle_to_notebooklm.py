@@ -84,6 +84,39 @@ def _fetch_library_item(owner_uid: str, item_id: str) -> dict[str, Any] | None:
     }
 
 
+def _fetch_library_items(owner_uid: str, limit: int = 200) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    with DatabaseManager.get_read_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT ITEM_ID, ITEM_TYPE, TITLE, AUTHOR, SUMMARY_TEXT, TAGS_JSON,
+                       SEARCH_VISIBILITY, PERSONAL_NOTE_CATEGORY, RATING
+                FROM TOMEHUB_LIBRARY_ITEMS
+                WHERE FIREBASE_UID = :p_uid
+                  AND NVL(IS_DELETED, 0) = 0
+                ORDER BY NVL(UPDATED_AT, CREATED_AT) DESC, ITEM_ID DESC
+                FETCH FIRST :p_limit ROWS ONLY
+                """,
+                {"p_uid": owner_uid, "p_limit": int(limit)},
+            )
+            for row in cursor.fetchall():
+                rows.append(
+                    {
+                        "item_id": str(row[0]),
+                        "item_type": _normalize_text(row[1]),
+                        "title": _normalize_text(row[2]),
+                        "author": _normalize_text(row[3]),
+                        "summary_text": _normalize_text(row[4], 1200),
+                        "tags": _parse_tags(row[5]),
+                        "search_visibility": _normalize_text(row[6]),
+                        "personal_note_category": _normalize_text(row[7]),
+                        "rating": row[8],
+                    }
+                )
+    return rows
+
+
 def _fetch_content_rows(
     *,
     owner_uid: str,
@@ -421,6 +454,72 @@ def build_topic_bundle(owner_uid: str, query: str, include_private_notes: bool, 
     return "\n".join(lines).strip() + "\n", metadata
 
 
+def build_library_index_bundle(owner_uid: str, max_items: int) -> tuple[str, dict[str, Any]]:
+    items = _fetch_library_items(owner_uid, limit=max_items)
+    lines = [
+        "# TomeHub Library Index",
+        "",
+        f"- Generated At: {datetime.now(UTC).isoformat()}",
+        f"- Item Count: {len(items)}",
+        "",
+        "## Items",
+        "",
+    ]
+    for item in items:
+        lines.extend(
+            [
+                f"### {item['title'] or item['item_id']}",
+                f"- Item ID: {item['item_id']}",
+                f"- Author: {item['author']}",
+                f"- Item Type: {item['item_type']}",
+                f"- Search Visibility: {item['search_visibility']}",
+            ]
+        )
+        if item.get("personal_note_category"):
+            lines.append(f"- Personal Note Category: {item['personal_note_category']}")
+        if item.get("rating") is not None:
+            lines.append(f"- Rating: {item['rating']}")
+        if item.get("tags"):
+            lines.append(f"- Tags: {', '.join(item['tags'])}")
+        lines.append("")
+        if item.get("summary_text"):
+            lines.extend([item["summary_text"], ""])
+
+    metadata = {
+        "bundle_type": "library_index",
+        "item_count": len(items),
+    }
+    return "\n".join(lines).strip() + "\n", metadata
+
+
+def build_all_books_bundles(
+    owner_uid: str,
+    *,
+    include_pdf_chunks: bool,
+    per_book_limit: int,
+    max_books: int,
+) -> list[tuple[str, str, dict[str, Any]]]:
+    active_item_ids = _fetch_distinct_item_ids_for_types(
+        owner_uid=owner_uid,
+        content_types=("HIGHLIGHT", "INSIGHT", "PERSONAL_NOTE"),
+        limit=max_books,
+    )
+    bundles: list[tuple[str, str, dict[str, Any]]] = []
+    for item_id in active_item_ids:
+        item = _fetch_library_item(owner_uid, item_id)
+        if not item:
+            continue
+        markdown, metadata = build_book_bundle(
+            owner_uid,
+            item["item_id"],
+            include_pdf_chunks,
+            per_book_limit,
+        )
+        title_base = item["title"] or item["item_id"]
+        bundles.append((f"TomeHub Book - {title_base[:80]}", markdown, metadata))
+    return bundles
+
+
 def write_markdown_file(content: str, output_path: str | None) -> str:
     if output_path:
         target = Path(output_path)
@@ -432,6 +531,32 @@ def write_markdown_file(content: str, output_path: str | None) -> str:
     os.close(fd)
     Path(temp_path).write_text(content, encoding="utf-8")
     return temp_path
+
+
+def write_markdown_files(
+    bundles: list[tuple[str, str, dict[str, Any]]],
+    output_dir: str | None,
+) -> list[dict[str, Any]]:
+    if output_dir:
+        target_dir = Path(output_dir)
+        target_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        target_dir = Path(tempfile.mkdtemp(prefix="tomehub_bundle_batch_"))
+
+    written: list[dict[str, Any]] = []
+    for idx, (title, content, metadata) in enumerate(bundles, start=1):
+        safe_slug = "".join(ch.lower() if ch.isalnum() else "-" for ch in title).strip("-")
+        safe_slug = "-".join(part for part in safe_slug.split("-") if part)[:80] or f"bundle-{idx}"
+        path = target_dir / f"{idx:03d}_{safe_slug}.md"
+        path.write_text(content, encoding="utf-8")
+        written.append(
+            {
+                "title": title,
+                "path": str(path),
+                "metadata": metadata,
+            }
+        )
+    return written
 
 
 def maybe_add_to_notebooklm(
@@ -458,6 +583,23 @@ def maybe_add_to_notebooklm(
         print(completed.stdout.strip())
 
 
+def maybe_add_many_to_notebooklm(
+    *,
+    notebooklm_path: str,
+    notebook_id: str | None,
+    written_files: list[dict[str, Any]],
+) -> None:
+    if not notebook_id:
+        return
+    for entry in written_files:
+        maybe_add_to_notebooklm(
+            notebooklm_path=notebooklm_path,
+            notebook_id=notebook_id,
+            markdown_path=entry["path"],
+            title=entry["title"],
+        )
+
+
 def resolve_owner_uid_from_api_key(api_key: str) -> str:
     record = resolve_external_api_key(api_key)
     if record is None:
@@ -469,16 +611,18 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Export TomeHub bundles to Markdown and optionally add them to NotebookLM."
     )
-    parser.add_argument("--api-key", required=True, help="TomeHub external API key")
+    parser.add_argument("--api-key", default=None, help="TomeHub external API key")
+    parser.add_argument("--owner-uid", default=None, help="Direct owner Firebase UID for local export workflows")
     parser.add_argument(
         "--bundle",
         required=True,
-        choices=("book", "highlights", "notes", "topic"),
+        choices=("book", "highlights", "notes", "topic", "library-index", "all-books"),
         help="Bundle type to export",
     )
     parser.add_argument("--item-id", default=None, help="Library item id for book/highlights/notes bundles")
     parser.add_argument("--query", default=None, help="Topic query for topic bundles")
     parser.add_argument("--limit", type=int, default=120, help="Max rows to fetch")
+    parser.add_argument("--max-books", type=int, default=50, help="Max library items for all-books/library-index")
     parser.add_argument("--include-private-notes", action="store_true", help="Allow private notes in topic bundle")
     parser.add_argument("--include-pdf-chunks", action="store_true", help="Append related PDF/EPUB/PDF_CHUNK rows")
     parser.add_argument("--output", default=None, help="Write markdown bundle to this file")
@@ -487,7 +631,12 @@ def main() -> int:
     parser.add_argument("--notebooklm-path", default=DEFAULT_NOTEBOOKLM_PATH)
     args = parser.parse_args()
 
-    owner_uid = resolve_owner_uid_from_api_key(args.api_key)
+    owner_uid = str(args.owner_uid or "").strip()
+    if not owner_uid:
+        api_key = str(args.api_key or "").strip()
+        if not api_key:
+            raise RuntimeError("Either --owner-uid or --api-key is required")
+        owner_uid = resolve_owner_uid_from_api_key(api_key)
     limit = max(1, min(int(args.limit), 500))
 
     try:
@@ -496,12 +645,91 @@ def main() -> int:
                 raise RuntimeError("--item-id is required for bundle=book")
             markdown, metadata = build_book_bundle(owner_uid, args.item_id, args.include_pdf_chunks, limit)
             title = args.title or f"TomeHub Book - {args.item_id}"
+            markdown_path = write_markdown_file(markdown, args.output)
+            maybe_add_to_notebooklm(
+                notebooklm_path=args.notebooklm_path,
+                notebook_id=args.notebook_id,
+                markdown_path=markdown_path,
+                title=title,
+            )
+            output_payload: dict[str, Any] = {
+                "saved_markdown": markdown_path,
+                "title": title,
+                "notebook_id": args.notebook_id,
+                "metadata": metadata,
+                "added_to_notebooklm": bool(args.notebook_id),
+            }
         elif args.bundle == "highlights":
             markdown, metadata = build_highlights_bundle(owner_uid, args.item_id, args.include_pdf_chunks, limit)
             title = args.title or f"TomeHub Highlights - {args.item_id or 'all'}"
+            markdown_path = write_markdown_file(markdown, args.output)
+            maybe_add_to_notebooklm(
+                notebooklm_path=args.notebooklm_path,
+                notebook_id=args.notebook_id,
+                markdown_path=markdown_path,
+                title=title,
+            )
+            output_payload = {
+                "saved_markdown": markdown_path,
+                "title": title,
+                "notebook_id": args.notebook_id,
+                "metadata": metadata,
+                "added_to_notebooklm": bool(args.notebook_id),
+            }
         elif args.bundle == "notes":
             markdown, metadata = build_notes_bundle(owner_uid, args.item_id, args.include_pdf_chunks, limit)
             title = args.title or f"TomeHub Notes - {args.item_id or 'all'}"
+            markdown_path = write_markdown_file(markdown, args.output)
+            maybe_add_to_notebooklm(
+                notebooklm_path=args.notebooklm_path,
+                notebook_id=args.notebook_id,
+                markdown_path=markdown_path,
+                title=title,
+            )
+            output_payload = {
+                "saved_markdown": markdown_path,
+                "title": title,
+                "notebook_id": args.notebook_id,
+                "metadata": metadata,
+                "added_to_notebooklm": bool(args.notebook_id),
+            }
+        elif args.bundle == "library-index":
+            markdown, metadata = build_library_index_bundle(owner_uid, max(1, min(int(args.max_books), 500)))
+            title = args.title or "TomeHub Library Index"
+            markdown_path = write_markdown_file(markdown, args.output)
+            maybe_add_to_notebooklm(
+                notebooklm_path=args.notebooklm_path,
+                notebook_id=args.notebook_id,
+                markdown_path=markdown_path,
+                title=title,
+            )
+            output_payload = {
+                "saved_markdown": markdown_path,
+                "title": title,
+                "notebook_id": args.notebook_id,
+                "metadata": metadata,
+                "added_to_notebooklm": bool(args.notebook_id),
+            }
+        elif args.bundle == "all-books":
+            bundles = build_all_books_bundles(
+                owner_uid,
+                include_pdf_chunks=args.include_pdf_chunks,
+                per_book_limit=limit,
+                max_books=max(1, min(int(args.max_books), 500)),
+            )
+            written_files = write_markdown_files(bundles, args.output)
+            maybe_add_many_to_notebooklm(
+                notebooklm_path=args.notebooklm_path,
+                notebook_id=args.notebook_id,
+                written_files=written_files,
+            )
+            output_payload = {
+                "bundle": "all-books",
+                "notebook_id": args.notebook_id,
+                "file_count": len(written_files),
+                "files": written_files,
+                "added_to_notebooklm": bool(args.notebook_id),
+            }
         else:
             if not args.query:
                 raise RuntimeError("--query is required for bundle=topic")
@@ -513,28 +741,22 @@ def main() -> int:
                 limit,
             )
             title = args.title or f"TomeHub Topic - {args.query[:80]}"
-
-        markdown_path = write_markdown_file(markdown, args.output)
-        maybe_add_to_notebooklm(
-            notebooklm_path=args.notebooklm_path,
-            notebook_id=args.notebook_id,
-            markdown_path=markdown_path,
-            title=title,
-        )
-
-        print(
-            json.dumps(
-                {
-                    "saved_markdown": markdown_path,
-                    "title": title,
-                    "notebook_id": args.notebook_id,
-                    "metadata": metadata,
-                    "added_to_notebooklm": bool(args.notebook_id),
-                },
-                ensure_ascii=True,
-                indent=2,
+            markdown_path = write_markdown_file(markdown, args.output)
+            maybe_add_to_notebooklm(
+                notebooklm_path=args.notebooklm_path,
+                notebook_id=args.notebook_id,
+                markdown_path=markdown_path,
+                title=title,
             )
-        )
+            output_payload = {
+                "saved_markdown": markdown_path,
+                "title": title,
+                "notebook_id": args.notebook_id,
+                "metadata": metadata,
+                "added_to_notebooklm": bool(args.notebook_id),
+            }
+
+        print(json.dumps(output_payload, ensure_ascii=True, indent=2))
         return 0
     finally:
         DatabaseManager.close_pool()

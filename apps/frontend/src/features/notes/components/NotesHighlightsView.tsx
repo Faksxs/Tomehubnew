@@ -41,7 +41,7 @@ export const NotesHighlightsView: React.FC<NotesHighlightsViewProps> = ({
 
     return (
         <div className="pb-10 md:pb-20">
-            <div className="columns-1 sm:columns-2 lg:columns-3 gap-2 md:gap-6 space-y-2 md:space-y-6">
+            <div className="columns-2 sm:columns-2 lg:columns-3 gap-2 md:gap-6 space-y-2 md:space-y-6">
                 {highlights.map((highlight, idx) => {
                     const isNote = isInsightType(highlight.type);
 
@@ -49,7 +49,7 @@ export const NotesHighlightsView: React.FC<NotesHighlightsViewProps> = ({
                         <div
                             key={`${highlight.id}-${idx}`}
                             onClick={() => onSelectHighlight(highlight)}
-                            className={`break-inside-avoid p-2.5 md:p-6 rounded-xl border hover:shadow-md transition-all group cursor-pointer relative flex flex-col active:scale-[0.99] ${isNote
+                            className={`break-inside-avoid p-2 md:p-6 rounded-xl border hover:shadow-md transition-all group cursor-pointer relative flex flex-col active:scale-[0.99] ${isNote
                                 ? 'bg-white dark:bg-slate-800 border-[#E6EAF2] dark:border-slate-700 hover:border-[#262D40]/12 dark:hover:border-[#262D40]/30'
                                 : 'bg-white dark:bg-slate-800 border-[#E6EAF2] dark:border-slate-700 hover:border-[#262D40]/12 dark:hover:border-[#262D40]/30'
                                 }`}
@@ -76,7 +76,7 @@ export const NotesHighlightsView: React.FC<NotesHighlightsViewProps> = ({
                                     <Quote className="text-[#262D40]/82 fill-[#262D40]/85 w-4 h-4 md:w-6 md:h-6" />
                                 )}
                             </div>
-                            <p className={`text-xs md:text-base leading-relaxed mb-2 md:mb-4 whitespace-pre-wrap line-clamp-[8] md:line-clamp-none font-lora ${isNote ? 'text-slate-700 dark:text-slate-300' : 'text-slate-900 dark:text-slate-200'}`}>
+                            <p className={`text-[10px] md:text-base leading-relaxed mb-2 md:mb-4 whitespace-pre-wrap line-clamp-[8] md:line-clamp-none font-lora ${isNote ? 'text-slate-700 dark:text-slate-300' : 'text-slate-900 dark:text-slate-200'}`}>
                                 {highlight.text}
                             </p>
 

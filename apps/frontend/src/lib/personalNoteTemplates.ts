@@ -69,10 +69,10 @@ export const PERSONAL_NOTE_TEMPLATES: PersonalNoteTemplate[] = [
   {
     id: "shopping_list",
     name: "Alışveriş Listesi",
-    suggestedTitle: "Alışveriş",
+    suggestedTitle: "Alışveriş Listesi",
     defaultCategory: "DAILY",
     defaultTags: ["alışveriş", "liste", "ev"],
-    htmlContent: `<h2>🛒 Market</h2><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li></ul><h2>🏠 Ev / Diğer</h2><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li></ul><h2>📌 Notlar</h2><p></p>`,
+    htmlContent: `<div class="tableWrapper"><table><tbody><tr><th style="text-align: left;">🔥 Öncelikli</th></tr><tr><td><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li></ul></td></tr><tr><th style="text-align: left;">🥬 Gıda</th></tr><tr><td><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li></ul></td></tr><tr><th style="text-align: left;">🧴 Temizlik</th></tr><tr><td><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li></ul></td></tr><tr><th style="text-align: left;">📦 Diğer</th></tr><tr><td><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li></ul></td></tr></tbody></table></div>`,
   },
   {
     id: "website_bookmark",

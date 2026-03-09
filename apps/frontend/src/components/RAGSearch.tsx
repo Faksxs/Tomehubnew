@@ -30,7 +30,7 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack,
     // If Explorer mode is active, render the dedicated chat component
     if (mode === 'EXPLORER') {
         return (
-            <div className="max-w-[1100px] w-full mx-auto p-6 animate-fade-in space-y-4">
+            <div className="max-w-[1100px] w-full mx-auto p-0 md:p-6 animate-fade-in space-y-4">
                 <div className="flex justify-start">
                     <button
                         onClick={onBack}
