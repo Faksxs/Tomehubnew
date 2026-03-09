@@ -447,6 +447,11 @@ from routes import ai_routes
 app.include_router(ai_routes.router)
 logger.info("Router registered", extra={"route_count": len(ai_routes.router.routes)})
 
+# Include External API Router (isolated read-only access)
+from routes import external_api_routes
+app.include_router(external_api_routes.router)
+logger.info("Router registered", extra={"route_count": len(external_api_routes.router.routes)})
+
 # Prometheus Instrumentation (must be AFTER all routers are added)
 from prometheus_fastapi_instrumentator import Instrumentator
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")

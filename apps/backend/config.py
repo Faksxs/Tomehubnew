@@ -53,6 +53,34 @@ class Settings:
         self.DEV_UNSAFE_AUTH_BYPASS = (
             os.getenv("DEV_UNSAFE_AUTH_BYPASS", "false").strip().lower() == "true"
         )
+
+        # External read-only API (separate from Firebase JWT user auth)
+        self.EXTERNAL_API_ENABLED = (
+            os.getenv("EXTERNAL_API_ENABLED", "false").strip().lower() == "true"
+        )
+        self.EXTERNAL_API_KEY_PEPPER = os.getenv("EXTERNAL_API_KEY_PEPPER", "").strip()
+        self.EXTERNAL_API_DEFAULT_SCOPES = _parse_csv(
+            os.getenv("EXTERNAL_API_DEFAULT_SCOPES", "search:read")
+        )
+        self.EXTERNAL_API_MAX_LIMIT = int(os.getenv("EXTERNAL_API_MAX_LIMIT", "12"))
+        if self.EXTERNAL_API_MAX_LIMIT < 1:
+            self.EXTERNAL_API_MAX_LIMIT = 12
+        if self.EXTERNAL_API_MAX_LIMIT > 50:
+            self.EXTERNAL_API_MAX_LIMIT = 50
+        self.EXTERNAL_API_MAX_SNIPPET_CHARS = int(
+            os.getenv("EXTERNAL_API_MAX_SNIPPET_CHARS", "1200")
+        )
+        if self.EXTERNAL_API_MAX_SNIPPET_CHARS < 200:
+            self.EXTERNAL_API_MAX_SNIPPET_CHARS = 1200
+        if self.EXTERNAL_API_MAX_SNIPPET_CHARS > 4000:
+            self.EXTERNAL_API_MAX_SNIPPET_CHARS = 4000
+        self.EXTERNAL_API_MAX_TAGS_PER_RESULT = int(
+            os.getenv("EXTERNAL_API_MAX_TAGS_PER_RESULT", "8")
+        )
+        if self.EXTERNAL_API_MAX_TAGS_PER_RESULT < 0:
+            self.EXTERNAL_API_MAX_TAGS_PER_RESULT = 8
+        if self.EXTERNAL_API_MAX_TAGS_PER_RESULT > 20:
+            self.EXTERNAL_API_MAX_TAGS_PER_RESULT = 20
         
         # AI
         self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -140,6 +168,10 @@ class Settings:
             raise ValueError("CRITICAL: DB_PASSWORD is missing from environment variables.")
         if not self.GEMINI_API_KEY:
             raise ValueError("CRITICAL: GEMINI_API_KEY is missing from environment variables.")
+        if self.EXTERNAL_API_ENABLED and not self.EXTERNAL_API_KEY_PEPPER:
+            raise ValueError(
+                "CRITICAL: EXTERNAL_API_KEY_PEPPER is required when EXTERNAL_API_ENABLED=true."
+            )
 
         # CORS
         # Default to localhost if not set, but allow overriding via env var
@@ -638,6 +670,7 @@ class Settings:
         self.RATE_LIMIT_SEARCH = os.getenv("RATE_LIMIT_SEARCH", "100/minute")
         self.RATE_LIMIT_CHAT = os.getenv("RATE_LIMIT_CHAT", "50/minute")
         self.RATE_LIMIT_INGEST = os.getenv("RATE_LIMIT_INGEST", "10/minute")
+        self.RATE_LIMIT_EXTERNAL_SEARCH = os.getenv("RATE_LIMIT_EXTERNAL_SEARCH", "30/minute")
         self.RATE_LIMIT_AI_ENRICH = os.getenv("RATE_LIMIT_AI_ENRICH", "10/minute")
         self.RATE_LIMIT_AI_COVER = os.getenv("RATE_LIMIT_AI_COVER", "20/minute")
         self.RATE_LIMIT_AI_ANALYZE = os.getenv("RATE_LIMIT_AI_ANALYZE", "5/minute")

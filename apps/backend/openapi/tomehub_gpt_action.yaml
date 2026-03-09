@@ -1,0 +1,183 @@
+openapi: 3.1.0
+info:
+  title: TomeHub Search Action
+  version: 1.0.0
+  description: Read-only TomeHub retrieval for a custom GPT. Use this action to search TomeHub notes, highlights, insights, books, and optional PDF chunks.
+servers:
+  - url: https://api.tomehub.nl
+paths:
+  /ext/v1/health:
+    get:
+      operationId: getTomeHubHealth
+      summary: Check TomeHub action health
+      description: Returns whether the external TomeHub action endpoint is enabled.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Health response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service:
+                    type: string
+                  enabled:
+                    type: boolean
+                  version:
+                    type: string
+  /ext/v1/search:
+    post:
+      operationId: searchTomeHub
+      summary: Search TomeHub knowledge
+      description: Search TomeHub and return read-only evidence snippets. Use for grounded answers about the user's TomeHub library, notes, highlights, insights, and stored text.
+      security:
+        - bearerAuth: []
+      x-openai-isConsequential: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - query
+              properties:
+                query:
+                  type: string
+                  description: Natural language search query to run against TomeHub.
+                book_id:
+                  type:
+                    - string
+                    - "null"
+                  description: Optional item id to scope retrieval to one book or resource.
+                resource_type:
+                  type:
+                    - string
+                    - "null"
+                  description: Optional resource type such as BOOK, ALL_NOTES, PERSONAL_NOTE, MOVIE, or SERIES.
+                mode:
+                  type: string
+                  enum:
+                    - STANDARD
+                    - EXPLORER
+                  default: STANDARD
+                  description: STANDARD is faster. EXPLORER may broaden retrieval.
+                include_private_notes:
+                  type: boolean
+                  default: false
+                  description: Set true only when the answer requires private notes and the action key has that scope.
+                content_type:
+                  type:
+                    - string
+                    - "null"
+                  description: Optional content type filter such as PDF, EPUB, PDF_CHUNK, HIGHLIGHT, INSIGHT, or PERSONAL_NOTE.
+                ingestion_type:
+                  type:
+                    - string
+                    - "null"
+                  description: Optional ingestion type filter when available.
+                limit:
+                  type: integer
+                  minimum: 1
+                  maximum: 12
+                  default: 8
+                  description: Maximum number of evidence snippets to return.
+                offset:
+                  type: integer
+                  minimum: 0
+                  maximum: 10000
+                  default: 0
+                  description: Pagination offset.
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        chunk_id:
+                          type:
+                            - integer
+                            - "null"
+                        item_id:
+                          type:
+                            - string
+                            - "null"
+                        title:
+                          type: string
+                        snippet:
+                          type: string
+                        page_number:
+                          type:
+                            - number
+                            - "null"
+                        source_type:
+                          type:
+                            - string
+                            - "null"
+                        score:
+                          type: number
+                        tags:
+                          type: array
+                          items:
+                            type: string
+                        summary:
+                          type:
+                            - string
+                            - "null"
+                        comment:
+                          type:
+                            - string
+                            - "null"
+                  timestamp:
+                    type: string
+                    format: date-time
+                  metadata:
+                    type: object
+                    properties:
+                      query:
+                        type: string
+                      mode:
+                        type: string
+                      intent:
+                        type:
+                          - string
+                          - "null"
+                      confidence:
+                        type:
+                          - number
+                          - "null"
+                      result_count:
+                        type: integer
+                      visibility_scope:
+                        type: string
+                      search_log_id:
+                        type:
+                          - integer
+                          - "null"
+                      retrieval_path:
+                        type:
+                          - string
+                          - "null"
+        "401":
+          description: Invalid or missing API key
+        "403":
+          description: Missing required scope
+        "404":
+          description: External API disabled
+        "500":
+          description: Server error
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: APIKey
