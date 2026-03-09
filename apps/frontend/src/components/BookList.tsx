@@ -314,7 +314,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
             }
             if (isPersonalNotes) {
                 const noteCategory = getPersonalNoteCategory(book);
-                if (noteCategoryFilter === 'ALL' && noteCategory === 'PRIVATE') {
+                if (noteCategoryFilter === 'ALL' && (noteCategory === 'PRIVATE' || noteCategory === 'BOOKMARK')) {
                     return false;
                 }
                 if (noteCategoryFilter !== 'ALL' && noteCategory !== noteCategoryFilter) {
@@ -437,7 +437,10 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
     );
 
     const nonPrivatePersonalNotes = useMemo(
-        () => allPersonalNotes.filter((note) => getPersonalNoteCategory(note) !== 'PRIVATE'),
+        () => allPersonalNotes.filter((note) => {
+            const category = getPersonalNoteCategory(note);
+            return category !== 'PRIVATE' && category !== 'BOOKMARK';
+        }),
         [allPersonalNotes]
     );
 

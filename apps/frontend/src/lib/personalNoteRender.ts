@@ -85,6 +85,54 @@ export const extractPersonalNoteText = (raw: string): string => {
 export const hasMeaningfulPersonalNoteContent = (raw: string): boolean =>
   extractPersonalNoteText(raw).trim().length > 0;
 
+export interface BookmarkPreviewData {
+  url: string;
+  domain: string;
+  note: string;
+}
+
+export const extractBookmarkPreviewData = (raw: string): BookmarkPreviewData => {
+  const text = extractPersonalNoteText(raw);
+  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+
+  let url = "";
+  let note = "";
+  let inNote = false;
+  const noteLines: string[] = [];
+
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    if (lower.startsWith("url:")) {
+      url = line.slice(line.indexOf(":") + 1).trim();
+      inNote = false;
+      continue;
+    }
+    if (lower.startsWith("note:")) {
+      const initialNote = line.slice(line.indexOf(":") + 1).trim();
+      if (initialNote) noteLines.push(initialNote);
+      inNote = true;
+      continue;
+    }
+    if (inNote) {
+      noteLines.push(line);
+    }
+  }
+
+  note = noteLines.join(" ").trim();
+
+  let domain = "";
+  if (url) {
+    try {
+      const normalizedUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+      domain = new URL(normalizedUrl).hostname.replace(/^www\./i, "");
+    } catch {
+      domain = "";
+    }
+  }
+
+  return { url, domain, note };
+};
+
 export const toPersonalNotePreviewHtml = (raw: string): string => {
   if (!hasMeaningfulPersonalNoteContent(raw)) {
     return '<p class="text-slate-400 italic">No content added.</p>';

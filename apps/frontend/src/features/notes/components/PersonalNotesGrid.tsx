@@ -1,7 +1,7 @@
 import React from 'react';
-import { Calendar, GripVertical, PenTool, Star, Trash2 } from 'lucide-react';
+import { Calendar, GripVertical, Link2, PenTool, Star, Trash2 } from 'lucide-react';
 import { LibraryItem } from '../../../types';
-import { extractPersonalNoteText } from '../../../lib/personalNoteRender';
+import { extractBookmarkPreviewData, extractPersonalNoteText } from '../../../lib/personalNoteRender';
 import { getPersonalNoteCategory } from '../../../lib/personalNotePolicy';
 
 type DraggableWrapperComponent = React.ComponentType<{
@@ -47,7 +47,10 @@ export const PersonalNotesGrid: React.FC<PersonalNotesGridProps> = ({
     return (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 md:gap-4">
             {notes.map((note) => {
+                const noteCategory = getPersonalNoteCategory(note);
+                const isBookmark = noteCategory === 'BOOKMARK';
                 const notePreview = extractPersonalNoteText(note.generalNotes || (note.highlights && note.highlights.length > 0 ? note.highlights[0].text : ''));
+                const bookmarkPreview = isBookmark ? extractBookmarkPreviewData(note.generalNotes || '') : null;
                 const resolvedFolderName = getResolvedNoteFolderName(note);
 
                 return (
@@ -97,16 +100,49 @@ export const PersonalNotesGrid: React.FC<PersonalNotesGridProps> = ({
                                 </div>
 
                                 <h3 className="font-bold text-sm md:text-base text-slate-900 dark:text-white mb-2 leading-tight pl-8 pr-8">{note.title}</h3>
-                                <div className="text-slate-600 dark:text-slate-300 text-xs md:text-sm whitespace-pre-wrap leading-relaxed max-h-[180px] overflow-hidden relative font-lora mb-3">
-                                    {notePreview || <span className="italic text-slate-400 dark:text-slate-500">No content added</span>}
-                                    {notePreview.length > 140 && (
-                                        <div className="absolute bottom-0 inset-x-0 h-8 bg-gradient-to-t from-white dark:from-slate-800 to-transparent" />
-                                    )}
-                                </div>
+                                {isBookmark ? (
+                                    <div className="mb-3 space-y-2">
+                                        {(bookmarkPreview?.domain || bookmarkPreview?.url) && (
+                                            <div className="rounded-lg border border-[#E6EAF2] dark:border-white/10 bg-[#F8FAFC] dark:bg-slate-900/70 px-3 py-2">
+                                                {bookmarkPreview?.domain && (
+                                                    <p className="text-[11px] md:text-xs font-semibold uppercase tracking-[0.14em] text-slate-400 mb-1">
+                                                        {bookmarkPreview.domain}
+                                                    </p>
+                                                )}
+                                                {bookmarkPreview?.url ? (
+                                                    <div className="flex items-start gap-2 text-xs md:text-sm text-slate-600 dark:text-slate-300">
+                                                        <Link2 size={13} className="mt-0.5 shrink-0 text-slate-400" />
+                                                        <p className="break-all leading-relaxed">{bookmarkPreview.url}</p>
+                                                    </div>
+                                                ) : (
+                                                    <p className="italic text-slate-400 dark:text-slate-500 text-xs md:text-sm">No URL added</p>
+                                                )}
+                                            </div>
+                                        )}
+                                        {bookmarkPreview?.note && (
+                                            <div className="text-slate-600 dark:text-slate-300 text-xs md:text-sm whitespace-pre-wrap leading-relaxed max-h-[96px] overflow-hidden relative font-lora">
+                                                <p>{bookmarkPreview.note}</p>
+                                                {bookmarkPreview.note.length > 120 && (
+                                                    <div className="absolute bottom-0 inset-x-0 h-8 bg-gradient-to-t from-white dark:from-slate-800 to-transparent" />
+                                                )}
+                                            </div>
+                                        )}
+                                        {!bookmarkPreview?.url && !bookmarkPreview?.note && (
+                                            <span className="italic text-slate-400 dark:text-slate-500 text-xs md:text-sm">No content added</span>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="text-slate-600 dark:text-slate-300 text-xs md:text-sm whitespace-pre-wrap leading-relaxed max-h-[180px] overflow-hidden relative font-lora mb-3">
+                                        {notePreview || <span className="italic text-slate-400 dark:text-slate-500">No content added</span>}
+                                        {notePreview.length > 140 && (
+                                            <div className="absolute bottom-0 inset-x-0 h-8 bg-gradient-to-t from-white dark:from-slate-800 to-transparent" />
+                                        )}
+                                    </div>
+                                )}
 
                                 <div className="mt-auto pt-2 flex flex-wrap gap-1.5 border-t border-slate-100 dark:border-white/10 items-center">
                                     <span className="px-2 py-0.5 bg-[#CC561E]/10 text-[#CC561E] text-[10px] md:text-xs rounded border border-[#CC561E]/20 font-semibold">
-                                        {getPersonalNoteCategory(note)}
+                                        {noteCategory}
                                     </span>
                                     {resolvedFolderName && (
                                         <span className="px-2 py-0.5 bg-[#F3F5FA] dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-[10px] md:text-xs rounded border border-[#E6EAF2] dark:border-slate-700 truncate max-w-[150px]">
