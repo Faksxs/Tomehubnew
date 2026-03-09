@@ -1,7 +1,7 @@
 import React from 'react';
 import { Calendar, GripVertical, Link2, PenTool, Star, Trash2 } from 'lucide-react';
 import { LibraryItem } from '../../../types';
-import { extractBookmarkPreviewData, extractPersonalNoteText } from '../../../lib/personalNoteRender';
+import { extractBookmarkPreviewData, toPersonalNoteCardPreviewHtml } from '../../../lib/personalNoteRender';
 import { getPersonalNoteCategory } from '../../../lib/personalNotePolicy';
 
 type DraggableWrapperComponent = React.ComponentType<{
@@ -49,7 +49,7 @@ export const PersonalNotesGrid: React.FC<PersonalNotesGridProps> = ({
             {notes.map((note) => {
                 const noteCategory = getPersonalNoteCategory(note);
                 const isBookmark = noteCategory === 'BOOKMARK';
-                const notePreview = extractPersonalNoteText(note.generalNotes || (note.highlights && note.highlights.length > 0 ? note.highlights[0].text : ''));
+                const notePreviewHtml = toPersonalNoteCardPreviewHtml(note.generalNotes || (note.highlights && note.highlights.length > 0 ? note.highlights[0].text : ''));
                 const bookmarkPreview = isBookmark ? extractBookmarkPreviewData(note.generalNotes || '') : null;
                 const resolvedFolderName = getResolvedNoteFolderName(note);
 
@@ -132,11 +132,12 @@ export const PersonalNotesGrid: React.FC<PersonalNotesGridProps> = ({
                                         )}
                                     </div>
                                 ) : (
-                                    <div className="text-slate-600 dark:text-slate-300 text-xs md:text-sm whitespace-pre-wrap leading-relaxed max-h-[180px] overflow-hidden relative font-lora mb-3">
-                                        {notePreview || <span className="italic text-slate-400 dark:text-slate-500">No content added</span>}
-                                        {notePreview.length > 140 && (
-                                            <div className="absolute bottom-0 inset-x-0 h-8 bg-gradient-to-t from-white dark:from-slate-800 to-transparent" />
-                                        )}
+                                    <div className="relative mb-3 overflow-hidden max-h-[180px]">
+                                        <div
+                                            className="text-slate-600 dark:text-slate-300 [&_ul]:pl-0 [&_li]:list-none [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_blockquote:last-child]:mb-0"
+                                            dangerouslySetInnerHTML={{ __html: notePreviewHtml }}
+                                        />
+                                        <div className="pointer-events-none absolute bottom-0 inset-x-0 h-10 bg-gradient-to-t from-white dark:from-slate-800 to-transparent" />
                                     </div>
                                 )}
 

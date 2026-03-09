@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { extractBookmarkPreviewData } from "./personalNoteRender";
+import { extractBookmarkPreviewData, toPersonalNoteCardPreviewHtml } from "./personalNoteRender";
 
 describe("personalNoteRender", () => {
   it("extracts bookmark url, domain, and note from minimal template text", () => {
@@ -16,5 +16,21 @@ describe("personalNoteRender", () => {
 
     expect(result.url).toBe("https://example.com");
     expect(result.note).toBe("");
+  });
+
+  it("builds structured card preview from checklist markdown", () => {
+    const result = toPersonalNoteCardPreviewHtml("## Priority\n- [ ] Buy apples\n- [x] Buy milk\nNote: check the bakery");
+
+    expect(result).toContain("Priority");
+    expect(result).toContain("&#9744;");
+    expect(result).toContain("&#9745;");
+    expect(result).toContain("check the bakery");
+  });
+
+  it("falls back to meaningful text when html preview is parsed without dom", () => {
+    const result = toPersonalNoteCardPreviewHtml("<table><tr><td>Priority</td></tr><tr><td>Groceries</td></tr><tr><td></td></tr></table>");
+
+    expect(result).toContain("Priority");
+    expect(result).toContain("Groceries");
   });
 });
