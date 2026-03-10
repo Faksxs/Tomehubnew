@@ -16,7 +16,15 @@ export const PERSONAL_NOTE_TEMPLATES: PersonalNoteTemplate[] = [
     suggestedTitle: "Günlük Plan",
     defaultCategory: "DAILY",
     defaultTags: ["günlük", "plan", "öncelik"],
-    htmlContent: `<h2>🎯 Bugünün 3 Önceliği</h2><ol><li><p></p></li><li><p></p></li><li><p></p></li></ol><h2>✅ Yapılacaklar</h2><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p>Sabah</p></div></li><li data-checked="false"><label><input type="checkbox"></label><div><p>Öğle</p></div></li><li data-checked="false"><label><input type="checkbox"></label><div><p>Akşam</p></div></li></ul><h2>💭 Günün Notu</h2><p></p>`,
+    htmlContent: `<h2>🎯 Bugünün En Önemli 3 Maddesi</h2><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li></ul><h2>📅 Zaman Planlı Görevler</h2><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p>09:00 - </p></div></li><li data-checked="false"><label><input type="checkbox"></label><div><p>13:00 - </p></div></li><li data-checked="false"><label><input type="checkbox"></label><div><p>18:00 - </p></div></li></ul><h2>✅ Diğer İşler</h2><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li></ul><h2>💭 Günün Notu</h2><p></p>`,
+  },
+  {
+    id: "weekly_focused_tasks",
+    name: "Haftalık Odak",
+    suggestedTitle: "Haftalık Plan",
+    defaultCategory: "DAILY",
+    defaultTags: ["haftalık", "plan", "hedef"],
+    htmlContent: `<h2>🌟 Haftanın Ana Hedefleri</h2><ul><li><p></p></li><li><p></p></li></ul><h2>🗓️ Günlük Odaklar</h2><div class="tableWrapper"><table><tbody><tr><th style="text-align: left;">Pazartesi / Salı</th><th style="text-align: left;">Çarşamba / Perşembe</th></tr><tr><td><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li></ul></td><td><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li></ul></td></tr><tr><th style="text-align: left;">Cuma / Cumartesi</th><th style="text-align: left;">Pazar</th></tr><tr><td><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li></ul></td><td><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p>Haftalık değerlendirme</p></div></li></ul></td></tr></tbody></table></div><h2>📝 Notlar ve Hatırlatmalar</h2><p></p>`,
   },
   {
     id: "book_note",
