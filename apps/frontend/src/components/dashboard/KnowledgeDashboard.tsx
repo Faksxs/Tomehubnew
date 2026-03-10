@@ -464,14 +464,11 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                     </button>
 
                     {showLevelC && (
-                        <div
-                            className="overflow-hidden animate-in fade-in duration-200"
-                            onClick={() => onNavigateToTab?.('INSIGHTS')}
-                        >
+                        <div className="overflow-hidden animate-in fade-in duration-200">
                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4 pt-0.5 md:pt-2">
 
                                 {/* 1. Pulse */}
-                                <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-colors cursor-pointer group">
+                                <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-colors group">
                                     <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
                                         <Activity size={10} className="text-[#FF4D4D]" /> Pulse
                                     </p>
@@ -482,7 +479,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                 </div>
 
                                 {/* 2. T-Profile */}
-                                <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-colors cursor-pointer group">
+                                <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-colors group">
                                     <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
                                         <TrendingUp size={10} className="text-[#F63049]" /> T-Profile
                                     </p>
@@ -493,7 +490,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                 </div>
 
                                 {/* 3. Forgetting Curve (Rust) */}
-                                <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-colors cursor-pointer group">
+                                <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-colors group">
                                     <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
                                         <Zap size={10} className="text-orange-400" /> Rust Index
                                     </p>
@@ -504,7 +501,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                 </div>
 
                                 {/* 4. Intellect Engine */}
-                                <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-colors cursor-pointer group">
+                                <div className="p-3 md:p-5 rounded-2xl border border-slate-800/20 dark:border-white/10 bg-card dark:bg-slate-900/50 flex flex-col gap-1.5 md:gap-3 shadow-lg hover:border-primary/40 transition-colors group">
                                     <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-400/80 flex items-center gap-1.5">
                                         <Sparkles size={10} className="text-primary" /> Intellect
                                     </p>
@@ -516,7 +513,7 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
 
                             </div>
                             <div className="mt-3 text-center">
-                                <p className="text-[9px] md:text-[10px] font-bold text-slate-500 uppercase tracking-widest animate-pulse">Click any card for full network analysis</p>
+                                <p className="text-[9px] md:text-[10px] font-bold text-slate-500 uppercase tracking-widest animate-pulse">Deep analytics snapshot</p>
                             </div>
                         </div>
                     )}
