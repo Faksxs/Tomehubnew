@@ -163,6 +163,10 @@ export const AppMainContent: React.FC<AppMainContentProps> = ({
         );
     }
 
+    if (activeTab === 'INSIGHTS') {
+        return <InsightsView items={books} onBack={onBackToDashboard} />;
+    }
+
     if (!selectedBook) {
         return (
             <BookList
