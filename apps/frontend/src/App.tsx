@@ -38,6 +38,7 @@ import { CATEGORIES, MIN_CATEGORY_BOOKS_VISIBLE } from "./components/CategorySel
 import { prewarmFlowStartSession } from "./services/flowService";
 import { addTextItem, syncHighlights, syncPersonalNote, purgeResourceContent, searchMedia } from "./services/backendApiService";
 import { getPersonalNoteBackendType, getPersonalNoteCategory, isPersonalNote } from "./lib/personalNotePolicy";
+import { buildLayer3ReportDraft, Layer3ReportDraftInput } from "./lib/layer3Report";
 import { AppLoadingScreen } from "./features/app/components/AppLoadingScreen";
 import { AppMainContent } from "./features/app/components/AppMainContent";
 import { AppBookFormLayer } from "./features/app/components/AppBookFormLayer";
@@ -381,7 +382,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
           description: saveErrorMessage || "Bilinmeyen hata",
           tone: "error",
         });
-        return;
+        return false;
       }
       const itemForPostSave: LibraryItem = canonicalItemId !== optimisticItemId
         ? { ...newItem, id: canonicalItemId }
@@ -521,6 +522,8 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
           }
         })();
       }
+
+      return true;
     },
     [closeForm, patchItemForUser, refreshLibraryFromServer, runWithMutationLock, syncPersonalNoteToBackend, userId]
   );
@@ -963,6 +966,48 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     }
   }, [personalNoteFolders, userId]);
 
+  const handleSaveLayer3Report = useCallback(async (payload: Layer3ReportDraftInput): Promise<boolean> => {
+    const existingReportsFolder = personalNoteFolders.find((folder) =>
+      folder.category === 'IDEAS' && folder.name.trim().toLocaleLowerCase('tr-TR') === 'reports'
+    );
+    const reportsFolder = existingReportsFolder || await handleCreatePersonalFolder('IDEAS', 'Reports');
+
+    if (!reportsFolder) {
+      showToast({
+        title: "Report kaydedilemedi",
+        description: "Ideas icindeki Reports klasoru olusturulamadi.",
+        tone: "error",
+      });
+      return false;
+    }
+
+    const reportDraft = buildLayer3ReportDraft(payload);
+    const saved = await handleAddBook({
+      type: 'PERSONAL_NOTE',
+      title: reportDraft.title,
+      author: 'Layer 3',
+      status: 'On Shelf',
+      readingStatus: 'Finished',
+      tags: reportDraft.tags,
+      generalNotes: reportDraft.htmlContent,
+      addedAt: Date.now(),
+      personalNoteCategory: 'IDEAS',
+      personalFolderId: reportsFolder.id,
+      folderPath: reportsFolder.name,
+    });
+
+    if (!saved) {
+      return false;
+    }
+
+    showToast({
+      title: "Report kaydedildi",
+      description: `Ideas / ${reportsFolder.name} icine eklendi.`,
+      tone: "success",
+    });
+    return true;
+  }, [handleAddBook, handleCreatePersonalFolder, personalNoteFolders, showToast]);
+
   const handleRenamePersonalFolder = useCallback(async (
     folderId: string,
     name: string
@@ -1272,6 +1317,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
             handleOpenPersonalNoteForm({ category, folderId, folderPath });
           }}
           onQuickCreatePersonalNote={handleQuickCreatePersonalNote}
+          onSaveLayer3Report={handleSaveLayer3Report}
           onCreatePersonalFolder={handleCreatePersonalFolder}
           onRenamePersonalFolder={handleRenamePersonalFolder}
           onDeletePersonalFolder={handleDeletePersonalFolder}

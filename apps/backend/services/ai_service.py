@@ -4,6 +4,7 @@ import json
 import asyncio
 import logging
 import re
+from urllib.parse import quote
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Dict, Any
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -22,6 +23,7 @@ from services.llm_client import (
     ROUTE_MODE_EXPLORER_QWEN_PILOT
 )
 from services.book_metadata_resolver_service import resolve_book_metadata_async
+from services.external_kb_service import _fetch_openalex
 from services.language_policy_service import (
     resolve_book_content_language,
     text_matches_target_language,
@@ -32,6 +34,7 @@ from utils.isbn_utils import equivalent_isbn_set, safe_isbn_from_input
 
 settings = Settings()
 _LLM_EXECUTOR = ThreadPoolExecutor(max_workers=8, thread_name_prefix="ai-llm")
+_ARTICLE_DOI_RE = re.compile(r"\b(10\.\d{4,}(?:\.\d+)*\/(?:(?![\"&'<>])\S)+)\b", re.IGNORECASE)
 
 
 async def _run_generate_text_async(wait_timeout_s: float, **kwargs: Any):
@@ -377,6 +380,64 @@ def _strip_isbn_from_ai_resource_results(payload: Any) -> List[Dict[str, Any]]:
     return cleaned
 
 
+def _extract_article_doi(query: str) -> Optional[str]:
+    match = _ARTICLE_DOI_RE.search(str(query or "").strip())
+    if not match:
+        return None
+    return str(match.group(1) or "").strip().rstrip(").,;")
+
+
+def _normalize_openalex_article_result(payload: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if not isinstance(payload, dict):
+        return []
+
+    title = str(payload.get("display_name") or "").strip()
+    if not title:
+        return []
+
+    authors = [
+        str(author.get("display_name") or "").strip()
+        for author in (payload.get("authors") or [])
+        if isinstance(author, dict) and str(author.get("display_name") or "").strip()
+    ]
+    concepts = [
+        str(concept.get("display_name") or "").strip()
+        for concept in (payload.get("concepts") or [])
+        if isinstance(concept, dict) and str(concept.get("display_name") or "").strip()
+    ]
+    doi = str(payload.get("doi") or "").strip()
+    url = f"https://doi.org/{quote(doi, safe='/')}" if doi else ""
+
+    return [
+        {
+            "title": title,
+            "author": ", ".join(authors[:3]) or "Unknown",
+            "publisher": "OpenAlex",
+            "isbn": "",
+            "translator": "",
+            "tags": concepts[:4],
+            "summary": f"DOI: {doi}" if doi else "OpenAlex result",
+            "publishedDate": "",
+            "url": url,
+            "coverUrl": None,
+        }
+    ]
+
+
+async def _resolve_article_metadata_async(query: str) -> List[Dict[str, Any]]:
+    normalized_query = str(query or "").strip()
+    if not normalized_query:
+        return []
+
+    doi = _extract_article_doi(normalized_query)
+    try:
+        payload = await asyncio.to_thread(_fetch_openalex, normalized_query, "", doi)
+    except Exception as e:
+        logger.warning("OpenAlex article resolver failed: %s", e)
+        return []
+    return _normalize_openalex_article_result(payload)
+
+
 def _language_mismatch_details(enriched_data: Dict[str, Any], target_lang: str) -> Dict[str, Any]:
     summary = str(enriched_data.get("summary") or "").strip()
     tags = enriched_data.get("tags") if isinstance(enriched_data.get("tags"), list) else []
@@ -629,6 +690,10 @@ async def search_resources_async(query: str, resource_type: str) -> List[Dict[st
         except Exception as e:
             logger.error(f"Book metadata resolver failed: {e}")
             return []
+    if normalized_type == "ARTICLE":
+        article_results = await _resolve_article_metadata_async(str(query or "").strip())
+        if article_results:
+            return article_results
 
     try:
         prompt = PROMPT_SEARCH_RESOURCES.format(query=query, resource_type=resource_type)

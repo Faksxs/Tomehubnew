@@ -1735,6 +1735,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                     {activeTab === 'BOOK' && (
                                         <optgroup label="Inventory">
                                             <option value="On Shelf">On Shelf</option>
+                                            <option value="Digital">Digital</option>
                                             <option value="Lent Out">Lent Out</option>
                                             <option value="Lost">Lost</option>
                                         </optgroup>

@@ -701,6 +701,8 @@ class Settings:
             if tag.strip()
         }
         self.EXTERNAL_KB_ENABLED = os.getenv("EXTERNAL_KB_ENABLED", "true").strip().lower() == "true"
+        self.OPENALEX_API_KEY = os.getenv("OPENALEX_API_KEY", "").strip()
+        self.OPENALEX_EMAIL = os.getenv("OPENALEX_EMAIL", "").strip()
         self.EXTERNAL_KB_OPENALEX_EXPLORER_ONLY = (
             os.getenv("EXTERNAL_KB_OPENALEX_EXPLORER_ONLY", "true").strip().lower() == "true"
         )

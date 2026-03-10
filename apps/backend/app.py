@@ -2221,7 +2221,19 @@ async def upsert_library_item_endpoint(
     try:
         verified_uid = get_verified_uid(request, firebase_uid_from_jwt)
         _ensure_media_resource_type_allowed(payload.type)
-        result = upsert_library_item(verified_uid, item_id, payload.model_dump())
+        payload_data = payload.model_dump()
+        result = upsert_library_item(verified_uid, item_id, payload_data)
+        if str(payload.type or "").strip().upper() == "ARTICLE":
+            maybe_trigger_external_enrichment_async(
+                book_id=str(result.get("item_id") or item_id),
+                firebase_uid=verified_uid,
+                title=payload.title,
+                author=payload.author,
+                tags=payload.tags,
+                mode_hint="INGEST",
+                item_type=payload.type,
+                source_url=payload.url,
+            )
         return {"success": True, **result}
     except HTTPException:
         raise

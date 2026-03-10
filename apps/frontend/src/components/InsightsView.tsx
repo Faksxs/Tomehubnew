@@ -23,15 +23,17 @@ interface InsightsViewProps {
 
 const PulseChart = ({ data }: { data: any[] }) => {
     // Max value is at least 1, and scaled to some sensible minimum
-    const maxVal = Math.max(...data.map(d => d.books + d.insights), 1);
+    const maxVal = Math.max(...data.map(d => d.books + d.insights + (d.cinema || 0) + (d.articles || 0)), 1);
 
     return (
         <div className="w-full h-44 flex flex-col justify-end gap-2 pt-4 group/chart">
             <div className="flex-1 flex items-end justify-between px-1 gap-1 min-h-0">
                 {data.map((d, i) => {
-                    const total = d.books + d.insights;
+                    const total = d.books + d.insights + (d.cinema || 0) + (d.articles || 0);
                     const bRatio = total > 0 ? (d.books / maxVal) : 0;
                     const iRatio = total > 0 ? (d.insights / maxVal) : 0;
+                    const cRatio = total > 0 ? ((d.cinema || 0) / maxVal) : 0;
+                    const aRatio = total > 0 ? ((d.articles || 0) / maxVal) : 0;
 
                     return (
                         <div key={i} className="flex-1 flex flex-col justify-end group/bar relative h-full">
@@ -41,12 +43,30 @@ const PulseChart = ({ data }: { data: any[] }) => {
                                 <div className="space-y-1">
                                     <p className="font-bold flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-primary" /> {d.books} Books</p>
                                     <p className="font-bold flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-primary/40" /> {d.insights} Highlights</p>
+                                    <p className="font-bold flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-indigo-500" /> {d.cinema || 0} Cinema</p>
+                                    <p className="font-bold flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {d.articles || 0} Articles</p>
                                 </div>
                             </div>
 
                             {/* Stacked Bar container */}
                             <div className="w-full flex flex-col justify-end overflow-hidden rounded-t-[2px] bg-slate-100 dark:bg-white/5 h-full transition-colors group-hover/bar:bg-slate-200 dark:group-hover/bar:bg-white/10 relative">
-                                {/* Insights Bar (Top) */}
+                                {/* Cinema Bar (Topmost) */}
+                                {d.cinema > 0 && (
+                                    <motion.div
+                                        initial={{ height: 0 }}
+                                        animate={{ height: `${cRatio * 100}%` }}
+                                        className="w-full bg-indigo-500/60 relative z-30"
+                                    />
+                                )}
+                                {/* Articles Bar */}
+                                {d.articles > 0 && (
+                                    <motion.div
+                                        initial={{ height: 0 }}
+                                        animate={{ height: `${aRatio * 100}%` }}
+                                        className="w-full bg-emerald-500/60 relative z-25"
+                                    />
+                                )}
+                                {/* Insights Bar */}
                                 {d.insights > 0 && (
                                     <motion.div
                                         initial={{ height: 0 }}
@@ -78,6 +98,14 @@ const PulseChart = ({ data }: { data: any[] }) => {
                     <div className="flex items-center gap-1.5">
                         <div className="w-2 h-2 rounded-[2px] bg-primary/40" />
                         <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider">Highlights</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-[2px] bg-indigo-500" />
+                        <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider">Cinema</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-[2px] bg-emerald-500" />
+                        <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider">Articles</span>
                     </div>
                 </div>
                 <div className="flex items-center gap-8 text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 dark:bg-white/5 px-3 py-1 rounded-full border border-slate-200 dark:border-white/5">
@@ -168,11 +196,13 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
         // Activity over last 30 days (Daily)
         let last30DaysBooks = 0;
         let last30DaysHighlights = 0;
+        let last30DaysCinema = 0;
+        let last30DaysArticles = 0;
         const heatmapData: Record<string, number> = {};
 
         const dailyActivity = (() => {
             const data = [];
-            const dataIndex = new Map<string, { date: string; books: number; insights: number; label: string }>();
+            const dataIndex = new Map<string, { date: string; books: number; cinema: number; articles: number; insights: number; label: string }>();
             const nowTime = new Date();
             for (let i = 29; i >= 0; i--) {
                 const d = new Date(nowTime);
@@ -182,6 +212,8 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
                     date: dateStr,
                     books: 0,
                     insights: 0,
+                    cinema: 0,
+                    articles: 0,
                     label: d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })
                 };
                 data.push(entry);
@@ -191,9 +223,19 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
             itemsWithTime.forEach(i => {
                 const date = new Date(i.addedMs).toISOString().split('T')[0];
                 heatmapData[date] = (heatmapData[date] || 0) + 1;
-                if (i.addedMs >= thirtyDaysAgo) last30DaysBooks++;
                 const entry = dataIndex.get(date);
-                if (entry) entry.books++;
+                
+                if (i.addedMs >= thirtyDaysAgo) {
+                    if (i.item.type === 'BOOK') last30DaysBooks++;
+                    else if (i.item.type === 'MOVIE' || i.item.type === 'SERIES') last30DaysCinema++;
+                    else if (i.item.type === 'ARTICLE') last30DaysArticles++;
+                }
+
+                if (entry) {
+                    if (i.item.type === 'BOOK') entry.books++;
+                    else if (i.item.type === 'MOVIE' || i.item.type === 'SERIES') entry.cinema++;
+                    else if (i.item.type === 'ARTICLE') entry.articles++;
+                }
             });
 
             highlightActivity.forEach((ms) => {
@@ -216,6 +258,8 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
             rustPercent: totalReadable > 0 ? Math.round((coldItems.length / totalReadable) * 100) : 0,
             last30DaysBooks,
             last30DaysHighlights,
+            last30DaysCinema,
+            last30DaysArticles,
             dailyActivity,
             heatmapData,
             totalReadable,
@@ -290,7 +334,7 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
                                 <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
                                     <Activity size={14} className="text-primary" /> Learning Pulse
                                 </h3>
-                                <div className="flex items-center gap-4 mt-1">
+                                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-1">
                                     <div className="flex items-baseline gap-1.5">
                                         <span className="text-lg font-black text-slate-700 dark:text-slate-200">{stats.last30DaysBooks}</span>
                                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Books</span>
@@ -299,6 +343,16 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
                                     <div className="flex items-baseline gap-1.5">
                                         <span className="text-lg font-black text-slate-700 dark:text-slate-200">{stats.last30DaysHighlights}</span>
                                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Highlights</span>
+                                    </div>
+                                    <div className="w-1 h-1 rounded-full bg-slate-300 dark:bg-white/10" />
+                                    <div className="flex items-baseline gap-1.5">
+                                        <span className="text-lg font-black text-slate-700 dark:text-slate-200">{stats.last30DaysCinema}</span>
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight text-indigo-500">Cinema</span>
+                                    </div>
+                                    <div className="w-1 h-1 rounded-full bg-slate-300 dark:bg-white/10" />
+                                    <div className="flex items-baseline gap-1.5">
+                                        <span className="text-lg font-black text-slate-700 dark:text-slate-200">{stats.last30DaysArticles}</span>
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight text-emerald-500">Articles</span>
                                     </div>
                                 </div>
                             </div>

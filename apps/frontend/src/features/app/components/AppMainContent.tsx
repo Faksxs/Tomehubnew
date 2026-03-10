@@ -8,6 +8,7 @@ import { FlowContainer } from '../../../components/FlowContainer';
 import InsightsView from '../../../components/InsightsView';
 import { Highlight, LibraryItem, PersonalNoteCategory, PersonalNoteFolder, ResourceType } from '../../../types';
 import { AppTab, AppView } from '../types';
+import { Layer3ReportDraftInput } from '../../../lib/layer3Report';
 
 interface AppMainContentProps {
     activeTab: AppTab;
@@ -44,6 +45,7 @@ interface AppMainContentProps {
     onAddBook: () => void;
     onAddPersonalNote: (defaults: { category: PersonalNoteCategory; folderId?: string; folderPath?: string }) => void;
     onQuickCreatePersonalNote: (payload: { title: string; content: string; category: PersonalNoteCategory; folderId?: string; folderPath?: string }) => void;
+    onSaveLayer3Report: (payload: Layer3ReportDraftInput) => Promise<boolean>;
     onCreatePersonalFolder: (category: PersonalNoteCategory, name: string) => Promise<PersonalNoteFolder | null>;
     onRenamePersonalFolder: (folderId: string, name: string) => Promise<boolean>;
     onDeletePersonalFolder: (folderId: string) => Promise<boolean>;
@@ -99,6 +101,7 @@ export const AppMainContent: React.FC<AppMainContentProps> = ({
     onAddBook,
     onAddPersonalNote,
     onQuickCreatePersonalNote,
+    onSaveLayer3Report,
     onCreatePersonalFolder,
     onRenamePersonalFolder,
     onDeletePersonalFolder,
@@ -145,7 +148,7 @@ export const AppMainContent: React.FC<AppMainContentProps> = ({
     }
 
     if (activeTab === 'RAG_SEARCH') {
-        return <RAGSearch userId={userId} userEmail={userEmail} onBack={onBackToDashboard} books={books} />;
+        return <RAGSearch userId={userId} userEmail={userEmail} onBack={onBackToDashboard} books={books} onSaveReport={onSaveLayer3Report} />;
     }
 
     if (activeTab === 'FLOW') {

@@ -5,17 +5,18 @@ import { searchLibrary, submitFeedback, SearchResponse } from '../services/backe
 import { ExplorerChat } from './ExplorerChat';
 import { ConcordanceView } from './ConcordanceView';
 import { getFriendlyApiErrorMessage } from '../services/apiClient';
-
 import { LibraryItem } from '../types';
+import { cleanLayer3Answer, Layer3ReportDraftInput } from '../lib/layer3Report';
 
 interface RAGSearchProps {
     userId: string;
     userEmail?: string | null;
     onBack?: () => void;
     books?: LibraryItem[];
+    onSaveReport: (payload: Layer3ReportDraftInput) => Promise<boolean>;
 }
 
-export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack, books = [] }) => {
+export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack, books = [], onSaveReport }) => {
     const [question, setQuestion] = useState('');
     const [isSearching, setIsSearching] = useState(false);
     const [result, setResult] = useState<SearchResponse | null>(null);
@@ -25,6 +26,8 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack,
     const [mode, setMode] = useState<'STANDARD' | 'EXPLORER'>('STANDARD');
     const [lastQuestion, setLastQuestion] = useState('');
     const [showConcordance, setShowConcordance] = useState(false);
+    const [isSavingReport, setIsSavingReport] = useState(false);
+    const [hasSavedReport, setHasSavedReport] = useState(false);
 
 
     // If Explorer mode is active, render the dedicated chat component
@@ -60,7 +63,7 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack,
                         </button>
                     </div>
                 </div>
-                <ExplorerChat userId={userId} onBack={() => setMode('STANDARD')} />
+                <ExplorerChat userId={userId} onBack={() => setMode('STANDARD')} onSaveReport={onSaveReport} />
             </div>
         );
     }
@@ -81,6 +84,7 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack,
         setError(null);
         setResult(null);
         setFeedbackStatus('none');
+        setHasSavedReport(false);
 
         try {
             const response = await searchLibrary(question, userId, 'STANDARD');
@@ -117,10 +121,29 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack,
         .map((match) => (match[1] || '').trim())
         .filter(Boolean)
         .join('\n\n');
-    const cleanAnswer = rawAnswer
-        .replace(/<think>[\s\S]*?<\/think>/gi, '')
-        .replace(/## AŞAMA 0:[\s\S]*?(?=##|$)/i, '')
-        .trim();
+    const cleanAnswer = cleanLayer3Answer(rawAnswer);
+
+    const handleSaveReport = async () => {
+        if (!result || !cleanAnswer || isSavingReport) return;
+        setIsSavingReport(true);
+        try {
+            const saved = await onSaveReport({
+                question: lastQuestion || question,
+                answer: cleanAnswer,
+                mode: 'STANDARD',
+                sources: result.sources?.map((source) => ({
+                    title: source.title,
+                    pageNumber: source.page_number,
+                })),
+                timestamp: result.timestamp,
+            });
+            if (saved) {
+                setHasSavedReport(true);
+            }
+        } finally {
+            setIsSavingReport(false);
+        }
+    };
 
     return (
         <div className={`max-w-[1100px] w-full mx-auto p-3 md:p-6 flex flex-col transition-all duration-1000 ease-in-out ${!result ? 'min-h-[70vh]' : 'space-y-6 md:space-y-8'}`}>
@@ -275,37 +298,55 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack,
                             </details>
                         )}
 
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 md:gap-4 pt-2.5 md:pt-4 border-t border-[#E6EAF2] dark:border-slate-700">
-                            <div className="flex items-center gap-2.5 md:gap-4">
-                                <span className="text-xs md:text-sm text-slate-500 dark:text-slate-400">Was this answer helpful?</span>
-                                <div className="flex items-center gap-1.5 md:gap-2">
+                        <div className="flex flex-col gap-3 pt-2.5 md:pt-4 border-t border-[#E6EAF2] dark:border-slate-700">
+                            <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex flex-wrap items-center gap-2.5 md:gap-4">
+                                    <span className="text-xs md:text-sm text-slate-500 dark:text-slate-400">Was this answer helpful?</span>
+                                    <div className="flex items-center gap-1.5 md:gap-2">
+                                        <button
+                                            onClick={() => handleFeedback(1)}
+                                            disabled={feedbackStatus !== 'none' || isSubmittingFeedback}
+                                            className={`p-1.5 md:p-2 rounded-lg transition-colors ${feedbackStatus === 'liked' ? 'bg-green-100 text-green-600' : 'text-slate-400 hover:text-green-600'}`}
+                                        >
+                                            <ThumbsUp className="w-4 h-4 md:w-5 md:h-5" />
+                                        </button>
+                                        <button
+                                            onClick={() => handleFeedback(0)}
+                                            disabled={feedbackStatus !== 'none' || isSubmittingFeedback}
+                                            className={`p-1.5 md:p-2 rounded-lg transition-colors ${feedbackStatus === 'disliked' ? 'bg-red-100 text-red-600' : 'text-slate-400 hover:text-red-600'}`}
+                                        >
+                                            <ThumbsDown className="w-4 h-4 md:w-5 md:h-5" />
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
                                     <button
-                                        onClick={() => handleFeedback(1)}
-                                        disabled={feedbackStatus !== 'none' || isSubmittingFeedback}
-                                        className={`p-1.5 md:p-2 rounded-lg transition-colors ${feedbackStatus === 'liked' ? 'bg-green-100 text-green-600' : 'text-slate-400 hover:text-green-600'}`}
+                                        type="button"
+                                        onClick={handleSaveReport}
+                                        disabled={isSavingReport || hasSavedReport || !cleanAnswer}
+                                        className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors sm:text-sm ${hasSavedReport
+                                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
+                                            : 'border-[#CC561E]/20 text-[#CC561E] hover:bg-[#CC561E]/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#CC561E]/30 dark:hover:bg-[#CC561E]/15'
+                                            }`}
                                     >
-                                        <ThumbsUp className="w-4 h-4 md:w-5 md:h-5" />
+                                        {isSavingReport ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <FileSearch className="h-4 w-4" />
+                                        )}
+                                        {hasSavedReport ? 'Saved to Reports' : 'Save as Report'}
                                     </button>
-                                    <button
-                                        onClick={() => handleFeedback(0)}
-                                        disabled={feedbackStatus !== 'none' || isSubmittingFeedback}
-                                        className={`p-1.5 md:p-2 rounded-lg transition-colors ${feedbackStatus === 'disliked' ? 'bg-red-100 text-red-600' : 'text-slate-400 hover:text-red-600'}`}
-                                    >
-                                        <ThumbsDown className="w-4 h-4 md:w-5 md:h-5" />
-                                    </button>
+                                    {result.metadata?.status === 'analytic' && result.metadata?.analytics?.contexts && result.metadata.analytics.contexts.length > 0 && (
+                                        <button
+                                            onClick={() => setShowConcordance(true)}
+                                            className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-bold text-[#CC561E] transition-colors hover:bg-orange-50 hover:text-[#b34b1a] dark:hover:bg-orange-900/10 md:gap-2 md:px-3 md:text-sm"
+                                        >
+                                            <LayoutPanelLeft size={14} className="md:w-4 md:h-4" />
+                                            See Contexts
+                                        </button>
+                                    )}
                                 </div>
                             </div>
-
-                            {/* Move Analytic Actions Here */}
-                            {result.metadata?.status === 'analytic' && result.metadata?.analytics?.contexts && result.metadata.analytics.contexts.length > 0 && (
-                                <button
-                                    onClick={() => setShowConcordance(true)}
-                                    className="flex items-center gap-1.5 md:gap-2 text-[#CC561E] hover:text-[#b34b1a] font-bold text-xs md:text-sm transition-colors py-1.5 md:py-2 px-2.5 md:px-3 hover:bg-orange-50 dark:hover:bg-orange-900/10 rounded-lg"
-                                >
-                                    <LayoutPanelLeft size={14} className="md:w-4 md:h-4" />
-                                    See Contexts
-                                </button>
-                            )}
                         </div>
                     </div>
 

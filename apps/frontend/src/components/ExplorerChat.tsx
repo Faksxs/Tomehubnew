@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, BookOpen, ChevronDown, ChevronUp, RotateCcw, MessageCircle, User, Bot, Compass, Brain, Gauge, Quote, ExternalLink } from 'lucide-react';
+import { Send, Loader2, BookOpen, ChevronDown, ChevronUp, RotateCcw, MessageCircle, User, Bot, Compass, Brain, Gauge, Quote, ExternalLink, FileSearch } from 'lucide-react';
 import { sendChatMessage } from '../services/backendApiService';
 import { ContextBar } from './ContextBar';
+import { cleanLayer3Answer, Layer3ReportDraftInput } from '../lib/layer3Report';
 
 interface Message {
     id: number;
@@ -30,9 +31,10 @@ interface Message {
 interface ExplorerChatProps {
     userId: string;
     onBack?: () => void;
+    onSaveReport: (payload: Layer3ReportDraftInput) => Promise<boolean>;
 }
 
-export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack }) => {
+export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack, onSaveReport }) => {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -40,6 +42,8 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack }) =>
     const [error, setError] = useState<string | null>(null);
     const [expandedSources, setExpandedSources] = useState<Set<number>>(new Set());
     const [expandedThinking, setExpandedThinking] = useState<Set<number>>(new Set());
+    const [savingReportId, setSavingReportId] = useState<number | null>(null);
+    const [savedReportIds, setSavedReportIds] = useState<Set<number>>(new Set());
     const [hoveredCitation, setHoveredCitation] = useState<{ id: number; messageId: number; x: number; y: number } | null>(null);
     const [scopeMode, setScopeMode] = useState<'AUTO' | 'BOOK_FIRST'>('AUTO');
 
@@ -157,15 +161,41 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack }) =>
         setSessionId(null);
         setError(null);
         setConversationState({});
+        setSavingReportId(null);
+        setSavedReportIds(new Set());
         inputRef.current?.focus();
     };
 
     // Clean answer: remove internal self-check sections and system tags
-    const cleanAnswer = (text: string) => {
-        return text
-            .replace(/\[DÜŞÜNCE SÜRECİ\][\s\S]*?\[\/DÜŞÜNCE SÜRECİ\]/, "")
-            .replace(/## AŞAMA 0:[\s\S]*?(?=##)/, "")
-            .trim();
+    const cleanAnswer = (text: string) => cleanLayer3Answer(text);
+
+    const handleSaveReport = async (message: Message) => {
+        if (message.role !== 'assistant') return;
+        const question = [...messages]
+            .reverse()
+            .find((entry) => entry.id < message.id && entry.role === 'user')
+            ?.content || conversationState.active_topic || 'Explorer research report';
+        const answer = cleanAnswer(message.content);
+        if (!answer || savingReportId === message.id) return;
+
+        setSavingReportId(message.id);
+        try {
+            const saved = await onSaveReport({
+                question,
+                answer,
+                mode: 'EXPLORER',
+                sources: message.sources?.map((source) => ({
+                    title: source.title,
+                    pageNumber: source.page_number,
+                })),
+                timestamp: message.timestamp,
+            });
+            if (saved) {
+                setSavedReportIds((prev) => new Set(prev).add(message.id));
+            }
+        } finally {
+            setSavingReportId((current) => (current === message.id ? null : current));
+        }
     };
 
     // Render text with in-text citation parsing [ID: X]
@@ -416,6 +446,27 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack }) =>
                                         </div>
                                     )}
                                 </div>
+
+                                {message.role === 'assistant' && (
+                                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSaveReport(message)}
+                                            disabled={savingReportId === message.id || savedReportIds.has(message.id) || !cleanAnswer(message.content)}
+                                            className={`inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${savedReportIds.has(message.id)
+                                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
+                                                : 'border-[#CC561E]/20 text-[#CC561E] hover:bg-[#CC561E]/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#CC561E]/30 dark:hover:bg-[#CC561E]/15'
+                                                }`}
+                                        >
+                                            {savingReportId === message.id ? (
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                            ) : (
+                                                <FileSearch className="h-4 w-4" />
+                                            )}
+                                            {savedReportIds.has(message.id) ? 'Saved to Reports' : 'Save as Report'}
+                                        </button>
+                                    </div>
+                                )}
 
                                 {/* Sources (for assistant messages) */}
                                 {message.role === 'assistant' && message.sources && message.sources.length > 0 && (

@@ -230,6 +230,46 @@ class Phase4SmokeEndpointsTests(unittest.TestCase):
         self.assertEqual(data["metadata"]["content_type_filter"], "NOTE")
         self.assertEqual(data["metadata"]["ingestion_type_filter"], "SYNC")
 
+    def test_article_upsert_triggers_external_enrichment(self):
+        with patch.object(
+            tomehub_app,
+            "upsert_library_item",
+            return_value={"success": True, "item_id": "article-1"},
+        ) as mock_upsert, patch.object(
+            tomehub_app,
+            "maybe_trigger_external_enrichment_async",
+            return_value=True,
+        ) as mock_external, patch.object(
+            tomehub_app,
+            "_allow_dev_unverified_auth",
+            return_value=True,
+        ):
+            resp = self.client.put(
+                "/api/library/items/article-1",
+                params={"firebase_uid": "u1"},
+                json={
+                    "id": "article-1",
+                    "type": "ARTICLE",
+                    "title": "OpenAlex Update",
+                    "author": "TomeHub",
+                    "url": "https://doi.org/10.1000/xyz123",
+                    "tags": [],
+                },
+            )
+
+        self.assertEqual(resp.status_code, 200, resp.text)
+        mock_upsert.assert_called_once()
+        mock_external.assert_called_once_with(
+            book_id="article-1",
+            firebase_uid="u1",
+            title="OpenAlex Update",
+            author="TomeHub",
+            tags=[],
+            mode_hint="INGEST",
+            item_type="ARTICLE",
+            source_url="https://doi.org/10.1000/xyz123",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

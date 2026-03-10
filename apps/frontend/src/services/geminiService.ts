@@ -119,35 +119,72 @@ const searchArticlesFromAPIs = async (query: string): Promise<ItemDraft[]> => {
 
   try {
     // 1. CrossRef API - Academic papers and journals (fast, no auth needed)
-    const crossrefUrl = `https://api.crossref.org/works?query=${encodeURIComponent(
-      query
-    )}&rows=5&select=title,author,publisher,published,DOI,abstract,URL`;
+    // Check if query is a DOI (e.g. 10.1234/xyz, doi:10.1234/xyz, https://doi.org/10.1234/xyz)
+    const doiMatch = query.match(/\b(10\.\d{4,}(?:\.\d+)*\/(?:(?!["&\'<>])\S)+)\b/);
+    const isDoi = !!doiMatch;
+    const cleanDoi = isDoi ? doiMatch[1] : '';
 
-    const crossrefPromise = fetch(crossrefUrl)
-      .then(res => res.ok ? res.json() : null)
-      .then(data => {
-        if (data?.message?.items) {
-          return data.message.items.map((item: any) => ({
-            title: Array.isArray(item.title) ? item.title[0] : item.title || "",
-            author: item.author?.[0]?.family
-              ? `${item.author[0].given || ""} ${item.author[0].family}`.trim()
-              : item.author?.[0]?.name || "Unknown",
-            publisher: item.publisher || item["container-title"]?.[0] || "",
-            isbn: "",
-            translator: "",
-            tags: item.subject || [],
-            summary: item.abstract || `DOI: ${item.DOI || ""}`,
-            publishedDate: item.published?.["date-parts"]?.[0]?.[0]?.toString() || "",
-            url: item.URL || (item.DOI ? `https://doi.org/${item.DOI}` : ""),
-            coverUrl: null,
-          } as ItemDraft));
-        }
-        return [];
-      })
-      .catch(() => []);
+    let crossrefResults: ItemDraft[] = [];
 
-    // Execute API call
-    const crossrefResults = await crossrefPromise;
+    if (isDoi) {
+      // Direct DOI lookup
+      const crossrefUrl = `https://api.crossref.org/works/${encodeURIComponent(cleanDoi)}`;
+      crossrefResults = await fetch(crossrefUrl)
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data?.message) {
+            const item = data.message;
+            return [{
+              title: Array.isArray(item.title) ? item.title[0] : (item.title || ""),
+              author: item.author?.[0]?.family
+                ? `${item.author[0].given || ""} ${item.author[0].family}`.trim()
+                : (item.author?.[0]?.name || "Unknown"),
+              publisher: item.publisher || item["container-title"]?.[0] || "",
+              isbn: "",
+              translator: "",
+              tags: item.subject || [],
+              summary: item.abstract || `DOI: ${item.DOI || ""}`,
+              publishedDate: item.published?.["date-parts"]?.[0]?.[0]?.toString() ||
+                item.created?.["date-parts"]?.[0]?.[0]?.toString() || "",
+              url: item.URL || (item.DOI ? `https://doi.org/${item.DOI}` : ""),
+              coverUrl: null,
+            } as ItemDraft];
+          }
+          return [];
+        })
+        .catch(() => []);
+    }
+
+    // Default or Fallback query search
+    if (!isDoi || crossrefResults.length === 0) {
+      const crossrefUrl = `https://api.crossref.org/works?query=${encodeURIComponent(
+        query
+      )}&rows=5&select=title,author,publisher,published,DOI,abstract,URL,created`;
+
+      crossrefResults = await fetch(crossrefUrl)
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data?.message?.items) {
+            return data.message.items.map((item: any) => ({
+              title: Array.isArray(item.title) ? item.title[0] : item.title || "",
+              author: item.author?.[0]?.family
+                ? `${item.author[0].given || ""} ${item.author[0].family}`.trim()
+                : item.author?.[0]?.name || "Unknown",
+              publisher: item.publisher || item["container-title"]?.[0] || "",
+              isbn: "",
+              translator: "",
+              tags: item.subject || [],
+              summary: item.abstract || `DOI: ${item.DOI || ""}`,
+              publishedDate: item.published?.["date-parts"]?.[0]?.[0]?.toString() ||
+                item.created?.["date-parts"]?.[0]?.[0]?.toString() || "",
+              url: item.URL || (item.DOI ? `https://doi.org/${item.DOI}` : ""),
+              coverUrl: null,
+            } as ItemDraft));
+          }
+          return [];
+        })
+        .catch(() => []);
+    }
     results.push(...crossrefResults);
 
     return results;

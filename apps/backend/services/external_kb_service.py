@@ -18,6 +18,7 @@ logger = get_logger("external_kb_service")
 
 _ACTIVE_LOCK = threading.Lock()
 _ACTIVE_KEYS: set[Tuple[str, str, str]] = set()
+_DOI_RE = re.compile(r"\b(10\.\d{4,}(?:\.\d+)*\/(?:(?![\"&'<>])\S)+)\b", re.IGNORECASE)
 
 _BACKFILL_LOCK = threading.Lock()
 _BACKFILL_STATUS: Dict[str, Any] = {
@@ -59,6 +60,29 @@ def compute_academic_scope(tags: List[str]) -> bool:
     source = set(_norm_tags(tags))
     target = {_norm(t) for t in (getattr(settings, "ACADEMIC_TAG_SET", set()) or set())}
     return bool(source and target and source.intersection(target))
+
+
+def _extract_doi(value: Any) -> Optional[str]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    match = _DOI_RE.search(text)
+    if not match:
+        return None
+    return str(match.group(1) or "").strip().rstrip(").,;")
+
+
+def _compute_academic_scope_for_item(
+    tags: Optional[List[str]],
+    *,
+    item_type: Optional[str] = None,
+    source_url: Optional[str] = None,
+) -> bool:
+    if compute_academic_scope(_norm_tags(tags)):
+        return True
+    if str(item_type or "").strip().upper() == "ARTICLE":
+        return True
+    return bool(_extract_doi(source_url))
 
 
 def _as_json(value: Any) -> str:
@@ -264,13 +288,26 @@ def _fetch_wikidata(title: str, author: Optional[str]) -> Optional[Dict[str, Any
     }
 
 
-def _fetch_openalex(title: str, author: Optional[str]) -> Optional[Dict[str, Any]]:
-    query = " ".join(x for x in [str(title or "").strip(), str(author or "").strip()] if x).strip()
+def _fetch_openalex(title: str, author: Optional[str], doi: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    query = str(doi or "").strip() or " ".join(x for x in [str(title or "").strip(), str(author or "").strip()] if x).strip()
     if not query:
         return None
     params = {"search": query, "per-page": 5}
+    openalex_email = str(getattr(settings, "OPENALEX_EMAIL", "") or "").strip()
+    openalex_api_key = str(getattr(settings, "OPENALEX_API_KEY", "") or "").strip()
+    if openalex_email:
+        params["mailto"] = openalex_email
+    if openalex_api_key:
+        params["api_key"] = openalex_api_key
     url = f"https://api.openalex.org/works?{urllib_parse.urlencode(params)}"
-    data = _http_get_json(url, timeout_sec=float(getattr(settings, "EXTERNAL_KB_OPENALEX_TIMEOUT_SEC", 3.0)))
+    headers: Optional[Dict[str, str]] = None
+    if openalex_api_key:
+        headers = {"Authorization": f"Bearer {openalex_api_key}"}
+    data = _http_get_json(
+        url,
+        timeout_sec=float(getattr(settings, "EXTERNAL_KB_OPENALEX_TIMEOUT_SEC", 3.0)),
+        headers=headers,
+    )
     rows = (data or {}).get("results", []) if isinstance(data, dict) else []
     if not rows:
         return None
@@ -449,18 +486,24 @@ def _split_title(raw_title: str) -> Tuple[str, str]:
 
 
 def _load_book_context(book_id: str, firebase_uid: str) -> Dict[str, Any]:
-    out = {"title": "", "author": "", "tags": []}
+    out = {"title": "", "author": "", "tags": [], "item_type": "", "source_url": ""}
     try:
         with DatabaseManager.get_read_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
-                    "SELECT TITLE, AUTHOR FROM TOMEHUB_LIBRARY_ITEMS WHERE ITEM_ID=:p_book AND FIREBASE_UID=:p_uid",
+                    """
+                    SELECT TITLE, AUTHOR, ITEM_TYPE, SOURCE_URL
+                    FROM TOMEHUB_LIBRARY_ITEMS
+                    WHERE ITEM_ID=:p_book AND FIREBASE_UID=:p_uid
+                    """,
                     {"p_book": book_id, "p_uid": firebase_uid},
                 )
                 row = cursor.fetchone()
                 if row:
                     out["title"] = str(row[0] or "").strip()
                     out["author"] = str(row[1] or "").strip()
+                    out["item_type"] = str(row[2] or "").strip().upper()
+                    out["source_url"] = str(row[3] or "").strip()
                 else:
                     cursor.execute(
                         """
@@ -976,11 +1019,29 @@ def upsert_external_graph(
     }
 
 
-def enrich_book_with_wikidata(book_id: str, firebase_uid: str, title: Optional[str], author: Optional[str], tags: Optional[List[str]]) -> Dict[str, Any]:
+def enrich_book_with_wikidata(
+    book_id: str,
+    firebase_uid: str,
+    title: Optional[str],
+    author: Optional[str],
+    tags: Optional[List[str]],
+    item_type: Optional[str] = None,
+    source_url: Optional[str] = None,
+) -> Dict[str, Any]:
     if not getattr(settings, "EXTERNAL_KB_ENABLED", False):
         return {"status": "disabled"}
-    context = _load_book_context(book_id, firebase_uid) if not title else {"title": title, "author": author, "tags": tags}
-    scope = compute_academic_scope(_norm_tags(tags if tags is not None else context.get("tags")))
+    context = _load_book_context(book_id, firebase_uid) if not title else {
+        "title": title,
+        "author": author,
+        "tags": tags,
+        "item_type": item_type,
+        "source_url": source_url,
+    }
+    scope = _compute_academic_scope_for_item(
+        tags if tags is not None else context.get("tags"),
+        item_type=item_type or context.get("item_type"),
+        source_url=source_url or context.get("source_url"),
+    )
     payload = _fetch_wikidata(str(context.get("title") or title or ""), str(context.get("author") or author or ""))
     if not payload:
         upsert_external_graph(book_id, firebase_uid, scope, provider_status={"wikidata_status": "NO_MATCH"})
@@ -997,18 +1058,36 @@ def enrich_book_with_openalex(
     author: Optional[str],
     tags: Optional[List[str]],
     mode_hint: Optional[str],
+    item_type: Optional[str] = None,
+    source_url: Optional[str] = None,
 ) -> Dict[str, Any]:
     if not getattr(settings, "EXTERNAL_KB_ENABLED", False):
         return {"status": "disabled"}
-    scope = compute_academic_scope(_norm_tags(tags))
+    context = _load_book_context(book_id, firebase_uid) if not title else {
+        "title": title,
+        "author": author,
+        "item_type": item_type,
+        "source_url": source_url,
+    }
+    effective_item_type = str(item_type or context.get("item_type") or "").strip().upper()
+    effective_source_url = str(source_url or context.get("source_url") or "").strip()
+    scope = _compute_academic_scope_for_item(tags, item_type=effective_item_type, source_url=effective_source_url)
     if not scope:
         upsert_external_graph(book_id, firebase_uid, False, provider_status={"openalex_status": "SKIPPED_NON_ACADEMIC"})
         return {"status": "skipped_non_academic", "academic_scope": False}
-    if getattr(settings, "EXTERNAL_KB_OPENALEX_EXPLORER_ONLY", True) and str(mode_hint or "").upper() != "EXPLORER":
+    allow_ingest_for_item = effective_item_type == "ARTICLE" or bool(_extract_doi(effective_source_url))
+    if (
+        getattr(settings, "EXTERNAL_KB_OPENALEX_EXPLORER_ONLY", True)
+        and str(mode_hint or "").upper() != "EXPLORER"
+        and not allow_ingest_for_item
+    ):
         upsert_external_graph(book_id, firebase_uid, True, provider_status={"openalex_status": "SKIPPED_BY_MODE"})
         return {"status": "skipped_by_mode", "academic_scope": True}
-    context = _load_book_context(book_id, firebase_uid) if not title else {"title": title, "author": author}
-    payload = _fetch_openalex(str(context.get("title") or title or ""), str(context.get("author") or author or ""))
+    payload = _fetch_openalex(
+        str(context.get("title") or title or ""),
+        str(context.get("author") or author or ""),
+        doi=_extract_doi(effective_source_url),
+    )
     if not payload:
         upsert_external_graph(book_id, firebase_uid, True, provider_status={"openalex_status": "NO_MATCH"})
         return {"status": "no_match", "academic_scope": True}
@@ -1017,40 +1096,80 @@ def enrich_book_with_openalex(
     return out
 
 
-def _run_external_enrichment(book_id: str, firebase_uid: str, title: Optional[str], author: Optional[str], tags: Optional[List[str]], mode_hint: str, force: bool) -> None:
-    context = {"title": title or "", "author": author or "", "tags": _norm_tags(tags)}
+def _run_external_enrichment(
+    book_id: str,
+    firebase_uid: str,
+    title: Optional[str],
+    author: Optional[str],
+    tags: Optional[List[str]],
+    mode_hint: str,
+    force: bool,
+    item_type: Optional[str] = None,
+    source_url: Optional[str] = None,
+) -> None:
+    context = {
+        "title": title or "",
+        "author": author or "",
+        "tags": _norm_tags(tags),
+        "item_type": str(item_type or "").strip().upper(),
+        "source_url": str(source_url or "").strip(),
+    }
     if not context["title"] or not context["tags"]:
         loaded = _load_book_context(book_id, firebase_uid)
         context["title"] = context["title"] or loaded.get("title") or ""
         context["author"] = context["author"] or loaded.get("author") or ""
+        context["item_type"] = context["item_type"] or str(loaded.get("item_type") or "").strip().upper()
+        context["source_url"] = context["source_url"] or str(loaded.get("source_url") or "").strip()
         if not context["tags"]:
             context["tags"] = _norm_tags(loaded.get("tags"))
     meta = get_external_meta(book_id, firebase_uid)
+    academic_scope = _compute_academic_scope_for_item(
+        context["tags"],
+        item_type=context["item_type"],
+        source_url=context["source_url"],
+    )
     if force or _is_stale(meta, "wikidata"):
-        enrich_book_with_wikidata(book_id, firebase_uid, context["title"], context["author"], context["tags"])
-    if compute_academic_scope(context["tags"]):
+        enrich_book_with_wikidata(
+            book_id,
+            firebase_uid,
+            context["title"],
+            context["author"],
+            context["tags"],
+            item_type=context["item_type"],
+            source_url=context["source_url"],
+        )
+    if academic_scope:
         if force or _is_stale(meta, "openalex"):
-            enrich_book_with_openalex(book_id, firebase_uid, context["title"], context["author"], context["tags"], mode_hint=mode_hint)
+            enrich_book_with_openalex(
+                book_id,
+                firebase_uid,
+                context["title"],
+                context["author"],
+                context["tags"],
+                mode_hint=mode_hint,
+                item_type=context["item_type"],
+                source_url=context["source_url"],
+            )
     else:
         upsert_external_graph(book_id, firebase_uid, False, provider_status={"openalex_status": "SKIPPED_NON_ACADEMIC"})
 
     if bool(getattr(settings, "EXTERNAL_KB_DBPEDIA_ENABLED", False)):
         if bool(getattr(settings, "EXTERNAL_KB_DBPEDIA_EXPLORER_ONLY", True)) and str(mode_hint or "").upper() != "EXPLORER":
-            upsert_external_graph(book_id, firebase_uid, compute_academic_scope(context["tags"]), provider_status={"dbpedia_status": "SKIPPED_BY_MODE"})
+            upsert_external_graph(book_id, firebase_uid, academic_scope, provider_status={"dbpedia_status": "SKIPPED_BY_MODE"})
         elif force or _is_stale(meta, "dbpedia"):
             dbpedia_payload = _fetch_dbpedia(context["title"], context["author"])
             if dbpedia_payload:
                 upsert_external_graph(
                     book_id,
                     firebase_uid,
-                    compute_academic_scope(context["tags"]),
+                    academic_scope,
                     dbpedia_payload=dbpedia_payload,
                 )
             else:
-                upsert_external_graph(book_id, firebase_uid, compute_academic_scope(context["tags"]), provider_status={"dbpedia_status": "NO_MATCH"})
+                upsert_external_graph(book_id, firebase_uid, academic_scope, provider_status={"dbpedia_status": "NO_MATCH"})
 
     if bool(getattr(settings, "EXTERNAL_KB_ORKG_ENABLED", False)):
-        if not compute_academic_scope(context["tags"]):
+        if not academic_scope:
             upsert_external_graph(book_id, firebase_uid, False, provider_status={"orkg_status": "SKIPPED_NON_ACADEMIC"})
         elif bool(getattr(settings, "EXTERNAL_KB_ORKG_EXPLORER_ONLY", True)) and str(mode_hint or "").upper() != "EXPLORER":
             upsert_external_graph(book_id, firebase_uid, True, provider_status={"orkg_status": "SKIPPED_BY_MODE"})
@@ -1070,6 +1189,8 @@ def maybe_trigger_external_enrichment_async(
     tags: Optional[List[str]] = None,
     mode_hint: str = "INGEST",
     force: bool = False,
+    item_type: Optional[str] = None,
+    source_url: Optional[str] = None,
 ) -> bool:
     if not getattr(settings, "EXTERNAL_KB_ENABLED", False):
         return False
@@ -1083,7 +1204,17 @@ def maybe_trigger_external_enrichment_async(
 
     def _worker() -> None:
         try:
-            _run_external_enrichment(str(book_id), str(firebase_uid), title, author, tags, str(mode_hint or "INGEST").upper(), bool(force))
+            _run_external_enrichment(
+                str(book_id),
+                str(firebase_uid),
+                title,
+                author,
+                tags,
+                str(mode_hint or "INGEST").upper(),
+                bool(force),
+                item_type=item_type,
+                source_url=source_url,
+            )
         except Exception as e:
             logger.warning("external_kb worker failed", extra={"book_id": book_id, "uid": firebase_uid, "error": str(e)})
         finally:

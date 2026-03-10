@@ -75,6 +75,14 @@ export const PERSONAL_NOTE_TEMPLATES: PersonalNoteTemplate[] = [
     htmlContent: `<div class="tableWrapper"><table><tbody><tr><th style="text-align: left;">🔥 Öncelikli</th></tr><tr><td><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li></ul></td></tr><tr><th style="text-align: left;">🥬 Gıda</th></tr><tr><td><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li></ul></td></tr><tr><th style="text-align: left;">🧴 Temizlik</th></tr><tr><td><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li></ul></td></tr><tr><th style="text-align: left;">📦 Diğer</th></tr><tr><td><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li></ul></td></tr></tbody></table></div>`,
   },
   {
+    id: "report_note",
+    name: "Research Report",
+    suggestedTitle: "Research Report",
+    defaultCategory: "IDEAS",
+    defaultTags: ["report", "research", "layer3"],
+    htmlContent: `<h1>Research Report</h1><h2>Research Question</h2><p></p><h2>Summary</h2><p></p><h2>Key Findings</h2><ul><li><p></p></li><li><p></p></li><li><p></p></li></ul><h2>Evidence / Sources</h2><ul><li><p></p></li></ul><h2>Open Questions</h2><ul><li><p></p></li></ul><h2>Next Steps</h2><ul data-type="taskList"><li data-checked="false"><label><input type="checkbox"></label><div><p></p></div></li></ul>`,
+  },
+  {
     id: "website_bookmark",
     name: "Website Bookmark",
     suggestedTitle: "Website Bookmark",
