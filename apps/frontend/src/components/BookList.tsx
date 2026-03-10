@@ -22,7 +22,8 @@ import {
     HighlightsLogo,
     BooksLogo,
     ArticlesLogo,
-    NotesLogo
+    NotesLogo,
+    TodoLogo
 } from './ui/FeatureLogos';
 import { isInsightType } from '../lib/highlightType';
 import { getPersonalNoteCategory, isPersonalNote } from '../lib/personalNotePolicy';
@@ -84,7 +85,7 @@ interface BookListProps {
     onMovePersonalFolder?: (folderId: string, targetCategory: PersonalNoteCategory) => Promise<boolean>;
     onSelectBook: (book: LibraryItem) => void;
     onSelectBookWithTab?: (book: LibraryItem, tab: 'info' | 'highlights', highlightId?: string) => void; // Optional: select book with specific tab and highlight
-    activeTab: ResourceType | 'NOTES' | 'DASHBOARD' | 'INSIGHTS' | 'INGEST' | 'FLOW' | 'RAG_SEARCH' | 'SMART_SEARCH' | 'PROFILE';
+    activeTab: ResourceType | 'NOTES' | 'DASHBOARD' | 'INSIGHTS' | 'INGEST' | 'FLOW' | 'RAG_SEARCH' | 'SMART_SEARCH' | 'PROFILE' | 'TODO';
     mediaLibraryEnabled?: boolean;
     onMobileMenuClick: () => void;
     userId: string;
@@ -107,7 +108,7 @@ interface BookListProps {
     onSortOptionChange: (val: any) => void;
     publisherFilter: string;
     onPublisherFilterChange: (val: string) => void;
-    onTabChange?: (tab: ResourceType | 'NOTES' | 'DASHBOARD' | 'INSIGHTS' | 'INGEST' | 'FLOW' | 'RAG_SEARCH' | 'SMART_SEARCH' | 'PROFILE') => void;
+    onTabChange?: (tab: ResourceType | 'NOTES' | 'DASHBOARD' | 'INSIGHTS' | 'INGEST' | 'FLOW' | 'RAG_SEARCH' | 'SMART_SEARCH' | 'PROFILE' | 'TODO') => void;
 }
 
 export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNoteFolders = [], onAddBook, onAddPersonalNote, onQuickCreatePersonalNote, onCreatePersonalFolder, onRenamePersonalFolder, onDeletePersonalFolder, onMovePersonalNote, onMovePersonalFolder, onSelectBook, onSelectBookWithTab, activeTab, mediaLibraryEnabled = false, onMobileMenuClick, onDeleteBook, onDeleteMultiple, onToggleFavorite, onToggleHighlightFavorite, userId, categoryFilter, onCategoryFilterChange, onCategoryNavigate, onStatusNavigate, currentPage, onPageChange, searchQuery, onSearchChange, statusFilter, onStatusFilterChange, sortOption, onSortOptionChange, publisherFilter, onPublisherFilterChange, onTabChange }) => {
@@ -580,7 +581,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
         };
     }, [isNotesTab, filteredHighlights.length, filteredBooks]);
 
-    const getTabLabel = (type: ResourceType | 'NOTES' | 'DASHBOARD' | 'INSIGHTS' | 'INGEST' | 'FLOW' | 'RAG_SEARCH' | 'SMART_SEARCH' | 'PROFILE') => {
+    const getTabLabel = (type: ResourceType | 'NOTES' | 'DASHBOARD' | 'INSIGHTS' | 'INGEST' | 'FLOW' | 'RAG_SEARCH' | 'SMART_SEARCH' | 'PROFILE' | 'TODO') => {
         switch (type) {
             case 'BOOK': return 'Books';
             case 'MOVIE': return 'Cinema';
@@ -589,6 +590,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
             case 'PERSONAL_NOTE': return 'Personal Notes';
             case 'NOTES': return 'All Notes';
             case 'DASHBOARD': return 'Dashboard';
+            case 'TODO': return 'Todo Board';
             case 'INSIGHTS': return 'Insights';
             case 'INGEST': return 'Ingest';
             case 'FLOW': return 'Flux';
@@ -1587,10 +1589,11 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
         );
     };
 
-    const getTabLogo = (tab: ResourceType | 'NOTES' | 'DASHBOARD' | 'INSIGHTS' | 'INGEST' | 'FLOW' | 'RAG_SEARCH' | 'SMART_SEARCH' | 'PROFILE') => {
+    const getTabLogo = (tab: ResourceType | 'NOTES' | 'DASHBOARD' | 'INSIGHTS' | 'INGEST' | 'FLOW' | 'RAG_SEARCH' | 'SMART_SEARCH' | 'PROFILE' | 'TODO') => {
         switch (tab) {
             case 'DASHBOARD': return KnowledgeBaseLogo;
             case 'NOTES': return HighlightsLogo;
+            case 'TODO': return TodoLogo;
             case 'BOOK': return BooksLogo;
             case 'MOVIE': return BooksLogo;
             case 'ARTICLE': return ArticlesLogo;

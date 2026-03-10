@@ -9,6 +9,7 @@ export type AppTab =
     | 'SMART_SEARCH'
     | 'FLOW'
     | 'INSIGHTS'
+    | 'TODO'
     | 'INGEST';
 
 export type AppView = 'list' | 'detail';

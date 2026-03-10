@@ -221,3 +221,17 @@ export const FluxLogo: React.FC<LogoProps> = ({ className, size = 24 }) => (
         <path d="M10 4V20" stroke="#CC561E" strokeWidth="1.5" strokeLinecap="round" strokeDasharray="2 4" strokeOpacity="0.5" />
     </svg>
 );
+
+export const TodoLogo: React.FC<LogoProps> = ({ className, size = 24 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+        {/* Main Checkbox Container */}
+        <rect x="3" y="3" width="18" height="18" rx="4" stroke="#CC561E" strokeWidth="2" fill="#CC561E" fillOpacity="0.05" />
+        
+        {/* Check Mark Path */}
+        <path d="M9 12L11 14L15 10" stroke="#CC561E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        
+        {/* Stylized Lines (List appearance) */}
+        <path d="M7 7H17" stroke="#CC561E" strokeWidth="1.5" strokeLinecap="round" strokeOpacity="0.3" />
+        <path d="M7 17H13" stroke="#CC561E" strokeWidth="1.5" strokeLinecap="round" strokeOpacity="0.3" />
+    </svg>
+);
