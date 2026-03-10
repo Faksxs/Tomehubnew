@@ -22,8 +22,7 @@ import {
     HighlightsLogo,
     BooksLogo,
     ArticlesLogo,
-    NotesLogo,
-    TodoLogo
+    NotesLogo
 } from './ui/FeatureLogos';
 import { isInsightType } from '../lib/highlightType';
 import { getPersonalNoteCategory, isPersonalNote } from '../lib/personalNotePolicy';
@@ -85,7 +84,7 @@ interface BookListProps {
     onMovePersonalFolder?: (folderId: string, targetCategory: PersonalNoteCategory) => Promise<boolean>;
     onSelectBook: (book: LibraryItem) => void;
     onSelectBookWithTab?: (book: LibraryItem, tab: 'info' | 'highlights', highlightId?: string) => void; // Optional: select book with specific tab and highlight
-    activeTab: ResourceType | 'NOTES' | 'DASHBOARD' | 'INSIGHTS' | 'INGEST' | 'FLOW' | 'RAG_SEARCH' | 'SMART_SEARCH' | 'PROFILE' | 'TODO';
+    activeTab: ResourceType | 'NOTES' | 'DASHBOARD' | 'INSIGHTS' | 'INGEST' | 'FLOW' | 'RAG_SEARCH' | 'SMART_SEARCH' | 'PROFILE';
     mediaLibraryEnabled?: boolean;
     onMobileMenuClick: () => void;
     userId: string;
@@ -108,7 +107,7 @@ interface BookListProps {
     onSortOptionChange: (val: any) => void;
     publisherFilter: string;
     onPublisherFilterChange: (val: string) => void;
-    onTabChange?: (tab: ResourceType | 'NOTES' | 'DASHBOARD' | 'INSIGHTS' | 'INGEST' | 'FLOW' | 'RAG_SEARCH' | 'SMART_SEARCH' | 'PROFILE' | 'TODO') => void;
+    onTabChange?: (tab: ResourceType | 'NOTES' | 'DASHBOARD' | 'INSIGHTS' | 'INGEST' | 'FLOW' | 'RAG_SEARCH' | 'SMART_SEARCH' | 'PROFILE') => void;
 }
 
 export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNoteFolders = [], onAddBook, onAddPersonalNote, onQuickCreatePersonalNote, onCreatePersonalFolder, onRenamePersonalFolder, onDeletePersonalFolder, onMovePersonalNote, onMovePersonalFolder, onSelectBook, onSelectBookWithTab, activeTab, mediaLibraryEnabled = false, onMobileMenuClick, onDeleteBook, onDeleteMultiple, onToggleFavorite, onToggleHighlightFavorite, userId, categoryFilter, onCategoryFilterChange, onCategoryNavigate, onStatusNavigate, currentPage, onPageChange, searchQuery, onSearchChange, statusFilter, onStatusFilterChange, sortOption, onSortOptionChange, publisherFilter, onPublisherFilterChange, onTabChange }) => {
@@ -581,22 +580,22 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
         };
     }, [isNotesTab, filteredHighlights.length, filteredBooks]);
 
-    const getTabLabel = (type: ResourceType | 'NOTES' | 'DASHBOARD' | 'INSIGHTS' | 'INGEST' | 'FLOW' | 'RAG_SEARCH' | 'SMART_SEARCH' | 'PROFILE' | 'TODO') => {
-        switch (type) {
-            case 'BOOK': return 'Books';
-            case 'MOVIE': return 'Cinema';
-            case 'SERIES': return 'Series';
-            case 'ARTICLE': return 'Articles';
+    const getTabLabel = (tab: any) => {
+        switch (tab) {
+            case 'DASHBOARD': return 'Knowledge Discovery';
+            case 'BOOK': return 'Bookshelf';
+            case 'ARTICLE': return 'Articles & Journals';
+            case 'WEBSITE': return 'Web Resources';
+            case 'NOTES': return 'Highlight Library';
             case 'PERSONAL_NOTE': return 'Personal Notes';
-            case 'NOTES': return 'All Notes';
-            case 'DASHBOARD': return 'Dashboard';
-            case 'TODO': return 'Todo Board';
+            case 'MOVIE': return 'Media Library';
+            case 'INGEST': return 'AI Ingestion Center';
+            case 'FLOW': return 'Discovery Flow';
+            case 'RAG_SEARCH': return 'Layer 3 Research';
+            case 'SMART_SEARCH': return 'Semantic Nexus';
             case 'INSIGHTS': return 'Insights';
-            case 'INGEST': return 'Ingest';
-            case 'FLOW': return 'Flux';
-            case 'RAG_SEARCH': return 'LogosChat';
-            case 'SMART_SEARCH': return 'Smart Search';
-            case 'PROFILE': return 'Profile';
+            case 'PROFILE': return 'User Profile';
+            default: return 'Library';
         }
     };
 
@@ -1589,15 +1588,19 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
         );
     };
 
-    const getTabLogo = (tab: ResourceType | 'NOTES' | 'DASHBOARD' | 'INSIGHTS' | 'INGEST' | 'FLOW' | 'RAG_SEARCH' | 'SMART_SEARCH' | 'PROFILE' | 'TODO') => {
+    const getTabLogo = (tab: any) => {
         switch (tab) {
             case 'DASHBOARD': return KnowledgeBaseLogo;
-            case 'NOTES': return HighlightsLogo;
-            case 'TODO': return TodoLogo;
             case 'BOOK': return BooksLogo;
-            case 'MOVIE': return BooksLogo;
             case 'ARTICLE': return ArticlesLogo;
+            case 'WEBSITE': return Globe;
+            case 'NOTES': return HighlightsLogo;
             case 'PERSONAL_NOTE': return NotesLogo;
+            case 'MOVIE': return Film;
+            case 'INGEST': return Zap;
+            case 'FLOW': return Zap;
+            case 'RAG_SEARCH': return Search;
+            case 'SMART_SEARCH': return Search;
             default: return Library;
         }
     };
@@ -1828,9 +1831,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
             )}
 
             {/* Content Views */}
-            {renderContent()}
-
-            {isPersonalNotes && undoMove && (
+            {renderContent()}            {isPersonalNotes && undoMove && (
                 <div className="fixed bottom-5 right-5 z-50 bg-[#262D40] text-white px-4 py-3 rounded-xl shadow-xl border border-white/10 flex items-center gap-3">
                     <span className="text-sm">Note moved.</span>
                     <button
@@ -1845,9 +1846,11 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                         Undo
                     </button>
                 </div>
-            )}                  </div>
+            )}
+        </div>
     );
 });
+
 const getCoverUrlForGrid = (coverUrl: string): string => {
     const raw = String(coverUrl || "").trim();
     if (!raw) return raw;

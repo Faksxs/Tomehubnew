@@ -6,7 +6,6 @@ import SmartSearch from '../../../components/SmartSearch';
 import { RAGSearch } from '../../../components/RAGSearch';
 import { FlowContainer } from '../../../components/FlowContainer';
 import InsightsView from '../../../components/InsightsView';
-import { TodoBoard } from '../../todo/components/TodoBoard';
 import { Highlight, LibraryItem, PersonalNoteCategory, PersonalNoteFolder, ResourceType } from '../../../types';
 import { AppTab, AppView } from '../types';
 import { Layer3ReportDraftInput } from '../../../lib/layer3Report';
@@ -164,20 +163,7 @@ export const AppMainContent: React.FC<AppMainContentProps> = ({
         );
     }
 
-    if (activeTab === 'INSIGHTS') {
-        return (
-            <InsightsView
-                items={books}
-                onBack={onBackToDashboard}
-            />
-        );
-    }
-
-    if (activeTab === 'TODO') {
-        return <TodoBoard onBack={onBackToDashboard} />;
-    }
-
-    if (view === 'list') {
+    if (!selectedBook) {
         return (
             <BookList
                 books={books}
