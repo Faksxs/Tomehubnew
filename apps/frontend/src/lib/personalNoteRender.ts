@@ -38,6 +38,39 @@ const sanitizeRichHtml = (raw: string): string => {
     });
   });
 
+  // Normalize desktop-authored TipTap tables for consistent preview on mobile and desktop.
+  doc.body.querySelectorAll('table').forEach((table) => {
+    table.removeAttribute('width');
+    table.removeAttribute('data-width');
+    table.style.removeProperty('width');
+    table.style.removeProperty('min-width');
+    table.style.removeProperty('max-width');
+
+    table.querySelectorAll('colgroup').forEach((colgroup) => colgroup.remove());
+    table.querySelectorAll<HTMLElement>('th, td, col').forEach((cell) => {
+      cell.removeAttribute('width');
+      cell.removeAttribute('data-width');
+      cell.removeAttribute('colwidth');
+      cell.style.removeProperty('width');
+      cell.style.removeProperty('min-width');
+      cell.style.removeProperty('max-width');
+    });
+
+    const parent = table.parentElement;
+    if (!parent) return;
+    if (parent.classList.contains('tableWrapper')) {
+      parent.style.removeProperty('width');
+      parent.style.removeProperty('min-width');
+      parent.style.removeProperty('max-width');
+      return;
+    }
+
+    const wrapper = doc.createElement('div');
+    wrapper.className = 'tableWrapper';
+    parent.insertBefore(wrapper, table);
+    wrapper.appendChild(table);
+  });
+
   return doc.body.innerHTML;
 };
 

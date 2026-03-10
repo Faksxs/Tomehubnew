@@ -15,7 +15,7 @@ describe('layer3Report', () => {
 
   it('builds a structured report draft with deduplicated sources', () => {
     const draft = buildLayer3ReportDraft({
-      question: 'How does layer 3 reporting work?',
+      question: 'Goldman ve Pascal kader analizini degerlendir',
       answer: '## Summary\nClear answer\n- Point A',
       mode: 'EXPLORER',
       sources: [
@@ -25,8 +25,8 @@ describe('layer3Report', () => {
       timestamp: '2026-03-10T09:15:00.000Z',
     });
 
-    expect(draft.title).toContain('How does layer 3 reporting work');
-    expect(draft.tags).toEqual(['report', 'layer3', 'explorer']);
+    expect(draft.title).toContain('Goldman ve Pascal kader analizini degerlendir');
+    expect(draft.tags).toEqual(['report', 'goldman', 'pascal']);
     expect(draft.htmlContent).toContain('<h2>Research Question</h2>');
     expect(draft.htmlContent).toContain('<h2>Final Answer</h2>');
     expect(draft.htmlContent).toContain('<h2>Summary</h2>');

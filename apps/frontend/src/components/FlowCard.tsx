@@ -6,6 +6,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { FlowCard as FlowCardType, FeedbackAction, sendFlowFeedback } from '../services/flowService';
 import { translateChunk, TranslationResponse } from '../services/backendApiService';
+import { extractPersonalNoteText } from '../lib/personalNoteRender';
 
 interface FlowCardProps {
     card: FlowCardType;
@@ -40,6 +41,11 @@ export const FlowCard: React.FC<FlowCardProps> = ({
     const [translateError, setTranslateError] = useState<string | null>(null);
     const translateTriggeredRef = useRef(false);
     const zone = ZONE_CONFIG[card.zone] || ZONE_CONFIG[1];
+    const plainContent = extractPersonalNoteText(card.content || '');
+    const contentParagraphs = plainContent
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
 
     const handleFeedback = async (action: FeedbackAction) => {
         try {
@@ -69,7 +75,7 @@ export const FlowCard: React.FC<FlowCardProps> = ({
             }
             const result = await translateChunk(
                 chunkIdNum,
-                card.content,
+                plainContent,
                 card.title,
                 card.author ?? '',
             );
@@ -81,7 +87,7 @@ export const FlowCard: React.FC<FlowCardProps> = ({
             setTranslateStatus('error');
             translateTriggeredRef.current = false;
         }
-    }, [card.chunk_id, card.content, card.title, card.author, translateStatus]);
+    }, [card.chunk_id, plainContent, card.title, card.author, translateStatus]);
 
     const handleExpandToggle = () => {
         const newExpanded = !isExpanded;
@@ -137,7 +143,13 @@ export const FlowCard: React.FC<FlowCardProps> = ({
 
             {/* Content with elegant typography */}
             <div className={`flow-card__content ${isExpanded ? 'expanded' : ''}`}>
-                <p>{card.content}</p>
+                {contentParagraphs.length > 0 ? (
+                    contentParagraphs.map((paragraph, index) => (
+                        <p key={`${card.chunk_id}-p-${index}`}>{paragraph}</p>
+                    ))
+                ) : (
+                    <p>{plainContent}</p>
+                )}
             </div>
 
             {/* Translation Panel */}

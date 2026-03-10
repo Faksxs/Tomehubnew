@@ -159,6 +159,7 @@
 
 .personal-note-content table {
   width: 100%;
+  max-width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
   margin: 0.5rem 0;
@@ -167,6 +168,9 @@
 .personal-note-content .tableWrapper {
   width: 100%;
   max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
 }
 
 @media (max-width: 767px) {
@@ -178,7 +182,7 @@
   }
 
   .personal-note-content .tableWrapper {
-    overflow-x: hidden !important;
+    overflow-x: auto !important;
     max-width: 100% !important;
     width: 100% !important;
     padding-bottom: 0.35rem;
@@ -194,6 +198,7 @@
   }
 
   .personal-note-content colgroup col {
+    width: auto !important;
     min-width: 0 !important;
   }
 
@@ -259,6 +264,7 @@
   .personal-note-render .tableWrapper {
     margin-left: -0.15rem;
     margin-right: -0.15rem;
+    padding-inline: 0.15rem;
   }
 }
 

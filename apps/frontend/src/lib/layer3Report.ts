@@ -20,6 +20,66 @@ export interface Layer3ReportDraft {
 }
 
 const REPORT_FALLBACK_TITLE = 'Research Report';
+const REPORT_STATIC_TAG = 'report';
+const REPORT_TAG_STOPWORDS = new Set([
+  'a',
+  'ama',
+  'analiz',
+  'analizi',
+  'analysis',
+  'analyze',
+  'answer',
+  'ara',
+  'arasinda',
+  'article',
+  'aslinda',
+  'bir',
+  'bu',
+  'bunu',
+  'cevap',
+  'cunku',
+  'da',
+  'daha',
+  'de',
+  'degerlendir',
+  'degil',
+  'diye',
+  'dolayisiyla',
+  'en',
+  'explorer',
+  'final',
+  'gibi',
+  'gore',
+  'gosterir',
+  'icin',
+  'ile',
+  'ise',
+  'karsi',
+  'layer',
+  'layer3',
+  'meta',
+  'mode',
+  'nasil',
+  'neden',
+  'ne',
+  'olan',
+  'olarak',
+  'olanak',
+  'once',
+  'oturum',
+  'question',
+  'report',
+  'research',
+  'sadece',
+  'save',
+  'sonuc',
+  'standard',
+  'text',
+  've',
+  'veya',
+  'yanit',
+  'yani',
+]);
 
 const escapeHtml = (value: string): string =>
   value
@@ -30,6 +90,14 @@ const escapeHtml = (value: string): string =>
     .replace(/'/g, '&#39;');
 
 const normalizeWhitespace = (value: string): string => value.replace(/\s+/g, ' ').trim();
+
+const normalizeTagToken = (value: string): string =>
+  value
+    .toLocaleLowerCase('tr-TR')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '')
+    .trim();
 
 const sanitizeQuestionForTitle = (question: string): string => {
   const sanitized = normalizeWhitespace(question).replace(/[?!.]+$/g, '');
@@ -50,6 +118,31 @@ const formatTimestamp = (timestamp?: string): string => {
     hour: '2-digit',
     minute: '2-digit',
   });
+};
+
+const buildReportTags = (question: string, answer: string): string[] => {
+  const scoreMap = new Map<string, number>();
+  const pushTokens = (text: string, baseScore: number) => {
+    const tokens = text.match(/[A-Za-zÀ-ÿ0-9]+/g) || [];
+    tokens.forEach((token, index) => {
+      const normalized = normalizeTagToken(token);
+      if (normalized.length < 3) return;
+      if (REPORT_TAG_STOPWORDS.has(normalized)) return;
+      const positionBoost = Math.max(0, 3 - Math.min(index, 3));
+      scoreMap.set(normalized, (scoreMap.get(normalized) || 0) + baseScore + positionBoost);
+    });
+  };
+
+  pushTokens(question, 5);
+  pushTokens(answer, 1);
+
+  return [...scoreMap.entries()]
+    .sort((a, b) => {
+      if (b[1] !== a[1]) return b[1] - a[1];
+      return a[0].localeCompare(b[0]);
+    })
+    .slice(0, 2)
+    .map(([tag]) => tag);
 };
 
 const flushList = (items: string[], htmlParts: string[]) => {
@@ -129,7 +222,7 @@ export const buildLayer3ReportDraft = ({
 
   return {
     title: sanitizeQuestionForTitle(cleanQuestion),
-    tags: ['report', 'layer3', mode === 'EXPLORER' ? 'explorer' : 'standard'],
+    tags: [REPORT_STATIC_TAG, ...buildReportTags(cleanQuestion, cleanAnswer)],
     htmlContent: [
       '<h1>Research Report</h1>',
       '<h2>Research Question</h2>',

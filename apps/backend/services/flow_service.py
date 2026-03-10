@@ -440,6 +440,7 @@ class FlowService:
                     """
                     params["p_strength"] = settings.CONCEPT_STRENGTH_MIN
                     sql, params = self._apply_resource_filter(sql, params, state.resource_type)
+                    sql, params = self._apply_personal_note_visibility_guard(sql, params, state.resource_type)
                     sql, params = self._apply_category_filter(sql, params, state.category)
                         
                     sql += " ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY "
@@ -472,6 +473,7 @@ class FlowService:
                         )
                     """
                     sql, params = self._apply_resource_filter(sql, params, state.resource_type)
+                    sql, params = self._apply_personal_note_visibility_guard(sql, params, state.resource_type)
                     sql, params = self._apply_category_filter(sql, params, state.category)
                         
                     sql += " ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY "
@@ -547,7 +549,7 @@ class FlowService:
         - ARTICLE/WEBSITE: strict source_type match
         """
         if resource_type == 'PERSONAL_NOTE':
-            sql += " AND content_type = 'PERSONAL_NOTE' "
+            sql += " AND content_type IN ('PERSONAL_NOTE', 'INSIGHT') "
         elif resource_type == 'ALL_NOTES':
             sql += " AND content_type IN ('HIGHLIGHT', 'INSIGHT') "
         elif resource_type == 'BOOK':
@@ -555,6 +557,47 @@ class FlowService:
         elif resource_type in ('ARTICLE',):
             sql += " AND content_type = :p_type "
             params["p_type"] = resource_type
+        return sql, params
+
+    @staticmethod
+    def _apply_personal_note_visibility_guard(
+        sql: str,
+        params: dict,
+        resource_type: Optional[str]
+    ) -> Tuple[str, dict]:
+        """
+        Flux should only surface IDEAS personal notes.
+
+        - PERSONAL_NOTE filter: only include rows linked to PERSONAL_NOTE library items
+          whose PERSONAL_NOTE_CATEGORY is IDEAS. This also allows legacy/IDEAS rows
+          stored as INSIGHT.
+        - All other filters: exclude PERSONAL_NOTE library items in PRIVATE/DAILY/BOOKMARK
+          so legacy indexed rows cannot leak into Flux.
+        """
+        alias = FlowService._resolve_content_table_alias(sql)
+        if resource_type == 'PERSONAL_NOTE':
+            sql += f"""
+                AND EXISTS (
+                    SELECT 1
+                    FROM TOMEHUB_LIBRARY_ITEMS li_flow_note
+                    WHERE li_flow_note.FIREBASE_UID = {alias}.firebase_uid
+                      AND li_flow_note.ITEM_ID = {alias}.item_id
+                      AND UPPER(li_flow_note.ITEM_TYPE) = 'PERSONAL_NOTE'
+                      AND NVL(UPPER(li_flow_note.PERSONAL_NOTE_CATEGORY), 'PRIVATE') = 'IDEAS'
+                )
+            """
+            return sql, params
+
+        sql += f"""
+            AND NOT EXISTS (
+                SELECT 1
+                FROM TOMEHUB_LIBRARY_ITEMS li_flow_note
+                WHERE li_flow_note.FIREBASE_UID = {alias}.firebase_uid
+                  AND li_flow_note.ITEM_ID = {alias}.item_id
+                  AND UPPER(li_flow_note.ITEM_TYPE) = 'PERSONAL_NOTE'
+                  AND NVL(UPPER(li_flow_note.PERSONAL_NOTE_CATEGORY), 'PRIVATE') IN ('PRIVATE', 'DAILY', 'BOOKMARK')
+            )
+        """
         return sql, params
 
     @staticmethod
@@ -650,6 +693,7 @@ class FlowService:
                         AND t.content_type IN ('HIGHLIGHT', 'INSIGHT')
                         AND DBMS_LOB.GETLENGTH(t.content_chunk) > 12
                     """
+                    sql, params = self._apply_personal_note_visibility_guard(sql, params, "ALL_NOTES")
                     sql, params = self._apply_category_filter(sql, params, category)
                     sql += """
                         ORDER BY
@@ -802,6 +846,7 @@ class FlowService:
                             params = {"p_uid": firebase_uid}
                             
                             sql, params = self._apply_resource_filter(sql, params, resource_type)
+                            sql, params = self._apply_personal_note_visibility_guard(sql, params, resource_type)
                             sql, params = self._apply_category_filter(sql, params, category)
                                 
                             sql += " ORDER BY DBMS_RANDOM.VALUE FETCH FIRST 1 ROW ONLY "
@@ -907,7 +952,7 @@ class FlowService:
              # Books = PDFs + Highlights
              sql += " AND content_type IN ('PDF','EPUB','PDF_CHUNK','BOOK','HIGHLIGHT','INSIGHT') "
         elif r_type == 'PERSONAL_NOTE':
-             sql += " AND content_type = 'PERSONAL_NOTE' "
+             sql += " AND content_type IN ('PERSONAL_NOTE', 'INSIGHT') "
         elif r_type in (None, 'ALL_NOTES', 'ALL'):
              # All Notes = Highlights/Insights ONLY
              sql += " AND content_type IN ('HIGHLIGHT','INSIGHT') "
@@ -916,6 +961,7 @@ class FlowService:
              params["p_type"] = r_type
              
         # Apply Category Filter
+        sql, params = self._apply_personal_note_visibility_guard(sql, params, r_type)
         sql, params = self._apply_category_filter(sql, params, category)
              
         sql += " ORDER BY distance ASC FETCH FIRST :p_limit ROWS ONLY "
@@ -982,7 +1028,7 @@ class FlowService:
              # Books = Highlights + PDFs
              sql += " AND content_type IN ('PDF','EPUB','PDF_CHUNK','BOOK','HIGHLIGHT','INSIGHT') "
         elif r_type == 'PERSONAL_NOTE':
-             sql += " AND content_type = 'PERSONAL_NOTE' "
+             sql += " AND content_type IN ('PERSONAL_NOTE', 'INSIGHT') "
         elif r_type in (None, 'ALL_NOTES', 'ALL'):
              # All Notes = Highlights/Insights ONLY
              sql += " AND content_type IN ('HIGHLIGHT','INSIGHT') "
@@ -991,6 +1037,7 @@ class FlowService:
              params["p_type"] = r_type
 
         # Apply Category Filter
+        sql, params = self._apply_personal_note_visibility_guard(sql, params, r_type)
         sql, params = self._apply_category_filter(sql, params, category)
 
         # Least globally seen first — zero-seen items float to top.
@@ -1015,7 +1062,7 @@ class FlowService:
              # Books = Highlights + PDFs
              sql += " AND content_type IN ('PDF','EPUB','PDF_CHUNK','BOOK','HIGHLIGHT','INSIGHT') "
         elif r_type == 'PERSONAL_NOTE':
-             sql += " AND content_type = 'PERSONAL_NOTE' "
+             sql += " AND content_type IN ('PERSONAL_NOTE', 'INSIGHT') "
         elif r_type in (None, 'ALL_NOTES', 'ALL'):
              # All Notes = Highlights/Insights ONLY
              sql += " AND content_type IN ('HIGHLIGHT','INSIGHT') "
@@ -1024,6 +1071,7 @@ class FlowService:
              params["p_type"] = r_type
 
         # Apply Category Filter
+        sql, params = self._apply_personal_note_visibility_guard(sql, params, r_type)
         sql, params = self._apply_category_filter(sql, params, category)
 
         sql += " ORDER BY DBMS_RANDOM.VALUE FETCH FIRST :p_limit ROWS ONLY "
@@ -1274,7 +1322,7 @@ class FlowService:
 
                     # Category specific filters
                     if resource_type == 'PERSONAL_NOTE':
-                         sql += " AND content_type = 'PERSONAL_NOTE' "
+                         sql += " AND content_type IN ('PERSONAL_NOTE', 'INSIGHT') "
                     elif resource_type == 'WEBSITE':
                          sql += " AND content_type = 'WEBSITE' "
                     elif resource_type == 'ARTICLE':
@@ -1285,6 +1333,7 @@ class FlowService:
                          params["p_type"] = resource_type
 
                     # Apply Category Filter
+                    sql, params = self._apply_personal_note_visibility_guard(sql, params, resource_type)
                     sql, params = self._apply_category_filter(sql, params, category)
                     sql += """
                         AND NOT EXISTS (
@@ -1368,6 +1417,7 @@ class FlowService:
                 """
                 # Apply filters
                 sql, params = self._apply_resource_filter(sql, params, resource_type)
+                sql, params = self._apply_personal_note_visibility_guard(sql, params, resource_type)
                 sql, params = self._apply_category_filter(sql, params, category)
                 
                 sql += " ORDER BY distance FETCH FIRST :p_limit ROWS ONLY "
@@ -1424,6 +1474,7 @@ class FlowService:
             )
         """
         sql, params = self._apply_resource_filter(sql, params, resource_type)
+        sql, params = self._apply_personal_note_visibility_guard(sql, params, resource_type)
         sql, params = self._apply_category_filter(sql, params, category)
             
         sql += " ORDER BY ABS(NVL(page_number, 1) - :p_page) FETCH FIRST :p_limit ROWS ONLY "
@@ -1500,6 +1551,9 @@ class FlowService:
             """
 
             sql, params = self._apply_resource_filter(sql, params, resource_type)
+            sql, params = self._apply_personal_note_visibility_guard(sql, params, resource_type)
+            sql, params = self._apply_personal_note_visibility_guard(sql, params, resource_type)
+            sql, params = self._apply_personal_note_visibility_guard(sql, params, resource_type)
             sql, params = self._apply_category_filter(sql, params, category)
                 
             sql += " ORDER BY DBMS_RANDOM.VALUE FETCH FIRST :p_limit ROWS ONLY "
@@ -1543,6 +1597,7 @@ class FlowService:
                 )
             """
             sql, params = self._apply_resource_filter(sql, params, resource_type)
+            sql, params = self._apply_personal_note_visibility_guard(sql, params, resource_type)
             sql, params = self._apply_category_filter(sql, params, category)
                 
             sql += " ORDER BY distance OFFSET :p_offset ROWS FETCH NEXT :p_limit ROWS ONLY "
@@ -1598,6 +1653,7 @@ class FlowService:
             )
         """
         sql, params = self._apply_resource_filter(sql, params, resource_type)
+        sql, params = self._apply_personal_note_visibility_guard(sql, params, resource_type)
         sql, params = self._apply_category_filter(sql, params, category)
             
         sql += " ORDER BY distance FETCH FIRST :p_limit ROWS ONLY "
@@ -1657,7 +1713,7 @@ class FlowService:
             """
             
             if resource_type == 'PERSONAL_NOTE':
-                sql += " AND ct.content_type = 'PERSONAL_NOTE' "
+                sql += " AND ct.content_type IN ('PERSONAL_NOTE', 'INSIGHT') "
             elif resource_type == 'ALL_NOTES':
                 sql += " AND ct.content_type IN ('HIGHLIGHT', 'INSIGHT') "
             elif resource_type == 'BOOK':
@@ -1666,6 +1722,7 @@ class FlowService:
                 sql += " AND ct.content_type = :p_type "
                 params["p_type"] = resource_type
             
+            sql, params = self._apply_personal_note_visibility_guard(sql, params, resource_type)
             sql, params = self._apply_category_filter(sql, params, category)
                 
             sql += " ORDER BY c.centrality_score DESC, DBMS_RANDOM.VALUE FETCH FIRST :p_limit ROWS ONLY "
@@ -1716,6 +1773,7 @@ class FlowService:
                 )
             """
             sql, params = self._apply_resource_filter(sql, params, resource_type)
+            sql, params = self._apply_personal_note_visibility_guard(sql, params, resource_type)
             sql, params = self._apply_category_filter(sql, params, category)
                 
             sql += " ORDER BY distance OFFSET :p_offset ROWS FETCH NEXT :p_limit ROWS ONLY "
