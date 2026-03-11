@@ -55,48 +55,6 @@ SEARCH_FUSION_MODE_TOTAL = Counter(
     labelnames=['fusion_mode']
 )
 
-# ODL secondary observability
-ODL_SHADOW_JOBS_TOTAL = Counter(
-    'tomehub_odl_shadow_jobs_total',
-    'ODL shadow ingestion jobs by status',
-    labelnames=['status']
-)
-
-ODL_SHADOW_JOB_DURATION_SECONDS = Histogram(
-    'tomehub_odl_shadow_job_duration_seconds',
-    'ODL shadow ingestion job duration in seconds',
-    labelnames=['status'],
-    buckets=(0.5, 1.0, 3.0, 5.0, 10.0, 20.0, 40.0, 80.0, 160.0, 300.0)
-)
-
-ODL_SHADOW_READY_COUNT = Gauge(
-    'tomehub_odl_shadow_ready_count',
-    'Latest READY chunk count for ODL shadow by user and item',
-    labelnames=['firebase_uid', 'item_id']
-)
-
-ODL_RESCUE_CALLS_TOTAL = Counter(
-    'tomehub_odl_rescue_calls_total',
-    'ODL rescue calls by trigger reason',
-    labelnames=['reason']
-)
-
-ODL_RESCUE_TIMEOUT_TOTAL = Counter(
-    'tomehub_odl_rescue_timeout_total',
-    'ODL rescue timeout count'
-)
-
-ODL_RESCUE_CANDIDATE_CONTRIBUTION_RATIO = Histogram(
-    'tomehub_odl_rescue_candidate_contribution_ratio',
-    'ODL candidate share inside top-k response',
-    buckets=(0.0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.75, 1.0)
-)
-
-ODL_RESCUE_LATENCY_DELTA_MS = Histogram(
-    'tomehub_odl_rescue_latency_delta_ms',
-    'Additional ODL rescue latency in milliseconds',
-    buckets=(1, 5, 10, 20, 40, 80, 120, 200, 300, 500, 1000)
-)
 
 SEARCH_RERANK_TOTAL = Counter(
     'tomehub_search_rerank_total',
@@ -298,6 +256,107 @@ INGESTION_LATENCY = Histogram(
     'Latency of document ingestion in seconds',
     labelnames=['status', 'source_type'],
     buckets=(1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0)
+)
+
+PDF_PARSE_TIME_SECONDS = Histogram(
+    'tomehub_pdf_parse_time_seconds',
+    'PDF parser runtime in seconds',
+    labelnames=['parser_engine', 'route', 'status'],
+    buckets=(0.5, 1.0, 3.0, 8.0, 15.0, 30.0, 60.0, 120.0, 300.0, 900.0)
+)
+
+PDF_PARSER_ENGINE_TOTAL = Counter(
+    'tomehub_pdf_parser_engine_total',
+    'PDF parser engine executions',
+    labelnames=['parser_engine', 'route']
+)
+
+PDF_PAGES_PROCESSED = Histogram(
+    'tomehub_pdf_pages_processed',
+    'Pages processed per PDF parse',
+    labelnames=['parser_engine', 'route'],
+    buckets=(1, 5, 20, 50, 100, 200, 300, 500, 800, 1200)
+)
+
+PDF_CHARS_EXTRACTED_TOTAL = Counter(
+    'tomehub_pdf_chars_extracted_total',
+    'Characters extracted from PDFs',
+    labelnames=['parser_engine', 'route']
+)
+
+PDF_GARBLED_RATIO = Histogram(
+    'tomehub_pdf_garbled_ratio',
+    'Estimated garbled-text ratio for parsed PDFs',
+    labelnames=['parser_engine', 'route'],
+    buckets=(0.0, 0.02, 0.05, 0.08, 0.12, 0.18, 0.25, 0.4, 0.6, 1.0)
+)
+
+PDF_CHUNK_COUNT = Histogram(
+    'tomehub_pdf_chunk_count',
+    'Chunk count emitted by PDF ingestion',
+    labelnames=['parser_engine', 'route'],
+    buckets=(0, 5, 10, 20, 40, 80, 120, 200, 300, 500, 800)
+)
+
+PDF_AVG_CHUNK_TOKENS = Histogram(
+    'tomehub_pdf_avg_chunk_tokens',
+    'Average chunk token estimate per ingested PDF',
+    labelnames=['parser_engine', 'route'],
+    buckets=(50, 100, 180, 240, 300, 350, 450, 600, 800)
+)
+
+PDF_HEADER_FOOTER_REMOVED_TOTAL = Counter(
+    'tomehub_pdf_header_footer_removed_total',
+    'Repeated header/footer lines removed during PDF post-processing',
+    labelnames=['parser_engine', 'route']
+)
+
+PDF_TOC_BIBLIOGRAPHY_PRUNED_TOTAL = Counter(
+    'tomehub_pdf_toc_bibliography_pruned_total',
+    'TOC, bibliography, and front-matter blocks pruned during PDF post-processing',
+    labelnames=['parser_engine', 'route']
+)
+
+PDF_PAGE_BOUNDARY_MERGE_TOTAL = Counter(
+    'tomehub_pdf_page_boundary_merge_total',
+    'Page-boundary paragraph merges',
+    labelnames=['parser_engine', 'route']
+)
+
+PDF_HYPHENATION_MERGE_TOTAL = Counter(
+    'tomehub_pdf_hyphenation_merge_total',
+    'Hyphenation merges performed during PDF reconstruction',
+    labelnames=['parser_engine', 'route']
+)
+
+PDF_TABLE_CHUNK_SPLIT_TOTAL = Counter(
+    'tomehub_pdf_table_chunk_split_total',
+    'Table chunks split during adaptive chunking',
+    labelnames=['parser_engine', 'route']
+)
+
+PDF_CLASSIFIER_ROUTE_TOTAL = Counter(
+    'tomehub_pdf_classifier_route_total',
+    'Classifier route decisions for PDF ingestion',
+    labelnames=['route']
+)
+
+PDF_FALLBACK_TRIGGERED_TOTAL = Counter(
+    'tomehub_pdf_fallback_triggered_total',
+    'Parser fallback events in PDF ingestion',
+    labelnames=['from_engine', 'to_engine', 'reason']
+)
+
+PDF_RETRY_AS_OCR_TOTAL = Counter(
+    'tomehub_pdf_retry_as_ocr_total',
+    'TEXT_NATIVE parses retried as OCR',
+    labelnames=['reason']
+)
+
+PDF_PARSE_SHARD_TOTAL = Counter(
+    'tomehub_pdf_parse_shard_total',
+    'Shard execution outcomes for OCR parsing',
+    labelnames=['parser_engine', 'status']
 )
 
 # AI Service (Gemini/Embedding) Latency (Histogram)
