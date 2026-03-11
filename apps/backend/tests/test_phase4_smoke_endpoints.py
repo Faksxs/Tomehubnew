@@ -1,4 +1,6 @@
 import unittest
+import importlib
+import inspect
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -193,6 +195,44 @@ class Phase4SmokeEndpointsTests(unittest.TestCase):
         data = resp.json()
         self.assertEqual(captured["kwargs"]["search_surface"], "PDF_ONLY")
         self.assertEqual(data["metadata"]["search_surface"], "PDF_ONLY")
+
+    def test_smart_search_service_contract_supports_phase4_filters(self):
+        from services.smart_search_service import perform_search as smart_perform_search
+
+        params = inspect.signature(smart_perform_search).parameters
+        self.assertIn("search_surface", params)
+        self.assertIn("content_type", params)
+        self.assertIn("ingestion_type", params)
+
+    def test_library_service_contract_supports_media_toggle(self):
+        from services.library_service import list_library_items
+
+        params = inspect.signature(list_library_items).parameters
+        self.assertIn("include_media", params)
+
+    def test_search_system_mix_policy_module_is_importable(self):
+        mod = importlib.import_module("services.search_system.mix_policy")
+        self.assertTrue(hasattr(mod, "resolve_result_mix_policy"))
+
+    def test_search_service_generate_answer_contract_supports_phase4_filters(self):
+        from services.search_service import generate_answer
+
+        params = inspect.signature(generate_answer).parameters
+        self.assertIn("visibility_scope", params)
+        self.assertIn("content_type", params)
+        self.assertIn("ingestion_type", params)
+
+    def test_dual_ai_orchestrator_contract_matches_chat_route(self):
+        from services.dual_ai_orchestrator import generate_evaluated_answer
+
+        params = inspect.signature(generate_evaluated_answer).parameters
+        self.assertIn("question", params)
+        self.assertIn("chunks", params)
+        self.assertIn("answer_mode", params)
+        self.assertIn("confidence_score", params)
+        self.assertIn("network_status", params)
+        self.assertIn("conversation_state", params)
+        self.assertIn("source_diversity_count", params)
 
     def test_search_phase4_filters_propagate_to_generate_answer(self):
         captured = {}
