@@ -37,12 +37,14 @@ _MATCH_PRIOR = {
 }
 
 _SOURCE_PRIOR = {
-    "HIGHLIGHT": 0.16,
-    "INSIGHT": 0.14,
-    "PERSONAL_NOTE": 0.08,
-    "BOOK": 0.03,
-    "ARTICLE": 0.03,
+    "BOOK": 0.18,
+    "ARTICLE": 0.14,
+    "HIGHLIGHT": 0.11,
+    "INSIGHT": 0.09,
+    "PERSONAL_NOTE": 0.04,
     "WEBSITE": 0.02,
+    "MOVIE": 0.01,
+    "SERIES": 0.01,
     "PDF": -0.02,
     "EPUB": -0.02,
     "PDF_CHUNK": -0.03,

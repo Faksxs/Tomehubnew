@@ -1,7 +1,12 @@
 ﻿import unittest
 
 from config import settings
-from services.search_system.orchestrator import SearchOrchestrator
+from services.search_system.orchestrator import (
+    SearchOrchestrator,
+    _clean_layer2_preview_text,
+    _is_layer2_report_noise,
+    _layer2_source_priority,
+)
 from services.search_system.strategies import (
     ExactMatchStrategy,
     LemmaMatchStrategy,
@@ -234,6 +239,92 @@ class TestSearchSemanticTailPolicy(unittest.TestCase):
         source_types = {str(r.get('source_type', '')).upper() for r in results}
         self.assertTrue(source_types.issubset({'PDF', 'PDF_CHUNK', 'BOOK_CHUNK', 'EPUB', 'ODL_SHADOW'}))
         self.assertNotIn('HIGHLIGHT', source_types)
+
+    def test_core_surface_suppresses_layer3_report_notes(self):
+        exact_rows = [
+            {
+                'id': 1,
+                'title': 'Goldman ve Pascal kader analizini değerlendir - Layer 3',
+                'content_chunk': '<h1>Research Report</h1><h2>Research Question</h2><p>Kader nedir?</p>',
+                'source_type': 'PERSONAL_NOTE',
+                'page_number': 1,
+                'tags': '["report","goldman","pascal"]',
+                'summary': '',
+                'comment': '',
+                'score': 100.0,
+                'match_type': 'exact_deaccented',
+            },
+            _row(2, 'Kader Üzerine Not', 'exact_deaccented', source_type='HIGHLIGHT', score=96.0),
+        ]
+
+        orch = SearchOrchestrator(embedding_fn=lambda _: [0.1], cache=None)
+        orch.expander = _DummyExpander()
+        orch.strategies = [
+            _FakeExact({'kader': exact_rows}),
+            _FakeLemma({}),
+            _FakeSemantic({}),
+        ]
+        orch._log_search = lambda *args, **kwargs: None
+
+        results, meta = orch.search(
+            query='kader',
+            firebase_uid='u1',
+            limit=20,
+            intent='SYNTHESIS',
+            result_mix_policy='lexical_then_semantic_tail',
+            semantic_tail_cap=6,
+            search_surface='CORE',
+        )
+
+        self.assertEqual([row['id'] for row in results], [2])
+        self.assertEqual(meta.get('report_noise_suppressed_count'), 1)
+
+    def test_preview_cleaner_strips_html_for_layer2_cards(self):
+        cleaned = _clean_layer2_preview_text('<h1>Research Report</h1><p>Kader <strong>analizi</strong></p>')
+        self.assertEqual(cleaned, 'Research Report\nKader analizi')
+        self.assertTrue(
+            _is_layer2_report_noise(
+                {
+                    'source_type': 'PERSONAL_NOTE',
+                    'title': 'Goldman ve Pascal - Layer 3',
+                    'content_chunk': '<h1>Research Report</h1><h2>Final Answer</h2>',
+                    'tags': '["report"]',
+                }
+            )
+        )
+
+    def test_layer2_source_priority_prefers_books_then_articles_then_ideas(self):
+        self.assertLess(_layer2_source_priority({'source_type': 'BOOK'}), _layer2_source_priority({'source_type': 'ARTICLE'}))
+        self.assertLess(_layer2_source_priority({'source_type': 'ARTICLE'}), _layer2_source_priority({'source_type': 'PERSONAL_NOTE'}))
+        self.assertLess(_layer2_source_priority({'source_type': 'HIGHLIGHT'}), _layer2_source_priority({'source_type': 'PERSONAL_NOTE'}))
+
+    def test_core_surface_orders_books_articles_then_ideas(self):
+        exact_rows = [
+            _row(1, 'Idea Row', 'exact_deaccented', source_type='PERSONAL_NOTE', score=99.0),
+            _row(2, 'Article Row', 'exact_deaccented', source_type='ARTICLE', score=98.0),
+            _row(3, 'Book Row', 'exact_deaccented', source_type='BOOK', score=97.0),
+        ]
+
+        orch = SearchOrchestrator(embedding_fn=lambda _: [0.1], cache=None)
+        orch.expander = _DummyExpander()
+        orch.strategies = [
+            _FakeExact({'kader': exact_rows}),
+            _FakeLemma({}),
+            _FakeSemantic({}),
+        ]
+        orch._log_search = lambda *args, **kwargs: None
+
+        results, _meta = orch.search(
+            query='kader',
+            firebase_uid='u1',
+            limit=20,
+            intent='SYNTHESIS',
+            result_mix_policy='lexical_then_semantic_tail',
+            semantic_tail_cap=6,
+            search_surface='CORE',
+        )
+
+        self.assertEqual([row['source_type'] for row in results], ['BOOK', 'ARTICLE', 'PERSONAL_NOTE'])
 
 
 if __name__ == '__main__':

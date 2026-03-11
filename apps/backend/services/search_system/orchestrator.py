@@ -1,6 +1,8 @@
 from typing import List, Dict, Any, Optional, Tuple
+from html import unescape
 import time
 import json
+import re
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 
 from .strategies import (
@@ -46,6 +48,59 @@ from config import settings
 logger = get_logger("search_orchestrator")
 SEMANTIC_MIX_POLICY_VERSION = "v5"
 _LAST_SEARCH_LOG_CLEANUP_TS = 0.0
+_HTML_BLOCK_TAG_RE = re.compile(r"(?i)</?(?:p|div|h[1-6]|li|ul|ol|br|table|tr|td|th)[^>]*>")
+_HTML_TAG_RE = re.compile(r"(?is)<[^>]+>")
+
+
+def _clean_layer2_preview_text(raw: Any) -> str:
+    text = str(raw or "")
+    if "<" not in text or ">" not in text:
+        return text.strip()
+    text = _HTML_BLOCK_TAG_RE.sub("\n", text)
+    text = _HTML_TAG_RE.sub(" ", text)
+    text = unescape(text)
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n[ \t]+", "\n", text)
+    text = re.sub(r"\n{2,}", "\n", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    return text.strip()
+
+
+def _is_layer2_report_noise(item: Dict[str, Any]) -> bool:
+    source_type = str(item.get("source_type", "") or "").strip().upper()
+    if source_type != "PERSONAL_NOTE":
+        return False
+
+    title_lc = str(item.get("title", "") or "").strip().lower()
+    content_lc = str(item.get("content_chunk", "") or "").strip().lower()
+    tags_lc = str(item.get("tags", "") or "").strip().lower()
+
+    if "<h1>research report" in content_lc:
+        return True
+    if "<h2>research question" in content_lc or "<h2>final answer" in content_lc:
+        return True
+    if ("layer 3" in title_lc or "layer3" in title_lc) and "report" in tags_lc:
+        return True
+    return False
+
+
+def _layer2_source_priority(item: Dict[str, Any]) -> float:
+    source_type = str(item.get("source_type", "") or "").strip().upper()
+    if source_type == "BOOK":
+        return 1.0
+    if source_type == "ARTICLE":
+        return 2.0
+    if source_type == "HIGHLIGHT":
+        return 3.0
+    if source_type == "INSIGHT":
+        return 4.0
+    if source_type == "PERSONAL_NOTE":
+        return 5.0
+    if item.get("comment") or item.get("personal_comment"):
+        return 5.5
+    if source_type in {"WEBSITE", "MOVIE", "SERIES"}:
+        return 6.0
+    return 7.0
 
 class SearchOrchestrator:
     """
@@ -656,11 +711,7 @@ class SearchOrchestrator:
 
         # Priority Helper
         def get_priority(item):
-            st = item.get('source_type', '')
-            if st == 'HIGHLIGHT': return 1
-            if st == 'INSIGHT': return 2
-            if item.get('comment') or item.get('personal_comment'): return 2.5
-            return 4
+            return _layer2_source_priority(item)
 
         def get_bucket_sort_key(item):
             try:
@@ -668,6 +719,12 @@ class SearchOrchestrator:
             except Exception:
                 score = 0.0
             return (get_priority(item), -score)
+
+        # Keep lexical head deterministic across fusion modes.
+        # Layer 2 should surface books/articles before idea-like notes when
+        # relevance is otherwise comparable.
+        bucket_exact.sort(key=get_bucket_sort_key)
+        bucket_lemma.sort(key=get_bucket_sort_key)
 
         fusion_mode = settings.RETRIEVAL_FUSION_MODE
         try:
@@ -694,6 +751,7 @@ class SearchOrchestrator:
                     if key not in candidate_pool:
                         copied = dict(item)
                         copied["_bucket_priority"] = bucket_priority
+                        copied["_source_priority"] = get_priority(copied)
                         if "match_type" not in copied:
                             copied["match_type"] = fallback_match
                         candidate_pool[key] = copied
@@ -713,13 +771,22 @@ class SearchOrchestrator:
                     continue
                 item["rrf_score"] = float(sc)
                 fused.append(item)
-            fused.sort(key=lambda x: (x.get("rrf_score", 0.0), -x.get("_bucket_priority", 9), x.get("score", 0.0)), reverse=True)
+            fused.sort(
+                key=lambda x: (
+                    x.get("rrf_score", 0.0),
+                    -x.get("_bucket_priority", 9),
+                    -x.get("_source_priority", 99.0),
+                    x.get("score", 0.0),
+                ),
+                reverse=True,
+            )
 
             # Strip helper fields
             final_list = []
             for item in fused:
                 clean = dict(item)
                 clean.pop("_bucket_priority", None)
+                clean.pop("_source_priority", None)
                 final_list.append(clean)
         else:
             # ---------------------------------------------------------
@@ -728,10 +795,6 @@ class SearchOrchestrator:
             # ---------------------------------------------------------
             final_list = []
             seen_ids = set()
-
-            # Sort Buckets Internally
-            bucket_exact.sort(key=get_bucket_sort_key)
-            bucket_lemma.sort(key=get_bucket_sort_key)
 
             def add_batch(batch, match_label):
                 for item in batch:
@@ -751,6 +814,7 @@ class SearchOrchestrator:
         semantic_tail_added = None
         semantic_tail_cap_value = None
         mix_policy_applied = None
+        report_noise_suppressed_count = 0
         pdf_like_suppressed_count = 0
         rerank_mode = "disabled"
         rerank_status = "disabled"
@@ -903,6 +967,16 @@ class SearchOrchestrator:
             semantic_tail_added = len(semantic_tail)
             final_list = lexical_list + semantic_tail
             mix_policy_applied = "lexical_then_semantic_tail"
+
+        if (
+            search_surface_effective == "CORE"
+            and not resource_type
+            and not content_type
+            and not book_id
+        ):
+            before_count = len(final_list)
+            final_list = [item for item in final_list if not _is_layer2_report_noise(item)]
+            report_noise_suppressed_count = max(0, before_count - len(final_list))
 
 
         def is_pdf_like_item(item: Dict[str, Any]) -> bool:
@@ -1186,6 +1260,10 @@ class SearchOrchestrator:
         # Pagination Slicing
         total_found = len(final_list)
         top_candidates = final_list[offset : offset + limit]
+        for item in top_candidates:
+            item["content_chunk"] = _clean_layer2_preview_text(item.get("content_chunk", ""))
+            if item.get("comment"):
+                item["comment"] = _clean_layer2_preview_text(item.get("comment", ""))
 
         duration = time.time() - start_time
 
@@ -1220,7 +1298,7 @@ class SearchOrchestrator:
             "noise_guard_applied": noise_guard_applied,
             "expansion_skipped_reason": expansion_skipped_reason,
             "strategy_timing_ms": strategy_timing_ms,
-
+            "report_noise_suppressed_count": report_noise_suppressed_count,
             "pdf_like_suppressed_count": pdf_like_suppressed_count,
             "wide_pool_mode": wide_pool_mode,
             "wide_pool_status": wide_pool_status,
@@ -1315,7 +1393,7 @@ class SearchOrchestrator:
                             "noise_guard_applied": noise_guard_applied,
                             "expansion_skipped_reason": expansion_skipped_reason,
                             "strategy_timing_ms": strategy_timing_ms,
-
+                            "report_noise_suppressed_count": report_noise_suppressed_count,
                             "pdf_like_suppressed_count": pdf_like_suppressed_count,
                             "wide_pool_mode": wide_pool_mode,
                             "wide_pool_status": wide_pool_status,
@@ -1396,7 +1474,7 @@ class SearchOrchestrator:
             "noise_guard_applied": noise_guard_applied,
             "expansion_skipped_reason": expansion_skipped_reason,
             "strategy_timing_ms": strategy_timing_ms,
-
+            "report_noise_suppressed_count": report_noise_suppressed_count,
             "pdf_like_suppressed_count": pdf_like_suppressed_count,
             "wide_pool_mode": wide_pool_mode,
             "wide_pool_status": wide_pool_status,

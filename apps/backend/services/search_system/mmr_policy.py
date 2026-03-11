@@ -56,7 +56,7 @@ def _sim_jaccard(a: set[str], b: set[str]) -> float:
 
 
 def _base_relevance(item: Dict[str, Any]) -> float:
-    for key in ("rerank_score", "blended_rank_score", "rrf_score", "score"):
+    for key in ("rerank_score", "blended_rank_score", "score", "rrf_score"):
         if key not in item:
             continue
         try:

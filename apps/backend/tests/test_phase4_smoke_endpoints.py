@@ -164,6 +164,7 @@ class Phase4SmokeEndpointsTests(unittest.TestCase):
         data = resp.json()
         self.assertEqual(data["total"], 1)
         self.assertEqual(captured["kwargs"]["visibility_scope"], "all")
+        self.assertEqual(captured["kwargs"]["result_mix_policy"], "lexical_then_semantic_tail")
         self.assertEqual(captured["kwargs"]["search_surface"], "CORE")
         self.assertEqual(captured["kwargs"]["content_type"], "HIGHLIGHT")
         self.assertEqual(captured["kwargs"]["ingestion_type"], "MANUAL")
@@ -193,6 +194,7 @@ class Phase4SmokeEndpointsTests(unittest.TestCase):
 
         self.assertEqual(resp.status_code, 200, resp.text)
         data = resp.json()
+        self.assertIsNone(captured["kwargs"]["result_mix_policy"])
         self.assertEqual(captured["kwargs"]["search_surface"], "PDF_ONLY")
         self.assertEqual(data["metadata"]["search_surface"], "PDF_ONLY")
 

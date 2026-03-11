@@ -1460,8 +1460,9 @@ async def perform_search(
         from services.smart_search_service import perform_search
         from functools import partial
         visibility_scope = "all" if request.include_private_notes else request.visibility_scope
+        requested_mix_policy = "lexical_then_semantic_tail" if request.search_surface == "CORE" else None
         result_mix_policy = resolve_result_mix_policy(
-            None,
+            requested_mix_policy,
             fusion_mode=settings.RETRIEVAL_FUSION_MODE,
             default_policy=settings.SEARCH_DEFAULT_RESULT_MIX_POLICY,
         )
