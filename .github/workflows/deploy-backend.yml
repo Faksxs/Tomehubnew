@@ -57,4 +57,4 @@ jobs:
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
-            /home/ubuntu/deploy_backend.sh
+            /home/ubuntu/deploy_backend.sh ${{ secrets.OCIR_REGISTRY }}/axrluoxw8q8k/tomehub/backend:${{ steps.meta.outputs.sha_tag }}
