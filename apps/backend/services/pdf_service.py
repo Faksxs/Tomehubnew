@@ -797,7 +797,7 @@ from services.ai_service import extract_metadata_from_text_async
 async def get_pdf_metadata(pdf_path: str) -> Dict[str, any]:
     """
     Extract metadata (title, author, page count) from a PDF file.
-    Combines PyPDF2 (for structure) and Gemini AI (for content analysis of Page 1).
+    Uses local PDF extraction plus Gemini AI for Page 1 content analysis.
     
     Args:
         pdf_path (str): Path to the PDF file
