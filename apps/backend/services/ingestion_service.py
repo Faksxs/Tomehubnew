@@ -32,8 +32,20 @@ corrector_service = LinguisticCorrectionService()
 from services.data_health_service import DataHealthService
 from services.data_cleaner_service import DataCleanerService
 from services.category_taxonomy_service import extract_book_categories_from_tags
+from services.chunk_quality_audit_service import should_skip_for_ingestion
+from services.ingestion_status_service import (
+    delete_ingested_file_row,
+    get_pdf_record,
+    mark_storage_delete_failed,
+    set_storage_delete_pending,
+)
+from services.object_storage_service import cleanup_pdf_artifacts
 from utils.text_utils import normalize_text, get_lemmas, get_lemma_frequencies
 from utils.tag_utils import prepare_labels
+import json
+from concurrent.futures import ThreadPoolExecutor
+from utils.logger import get_logger
+from config import settings
 import json
 from concurrent.futures import ThreadPoolExecutor
 from utils.logger import get_logger
@@ -50,7 +62,6 @@ from services.epistemic_distribution_service import (
     delete_epistemic_distribution,
     maybe_trigger_epistemic_distribution_refresh_async,
 )
-from services.odl_shadow_service import maybe_trigger_odl_shadow_ingestion_async
 import time
 
 # Phase 6: Semantic Classification at Ingest Time
@@ -74,14 +85,12 @@ from infrastructure.db_manager import DatabaseManager, acquire_lock
 def _runtime_log(message: str, level: str = "info") -> None:
     normalized = (level or "info").lower()
     msg = str(message)
-    if normalized == "info":
-        lowered = msg.lower()
-        if "[error]" in lowered:
-            normalized = "error"
-        elif "[warning]" in lowered or "[warn]" in lowered:
-            normalized = "warning"
-        elif "[debug]" in lowered:
-            normalized = "debug"
+    if "[error]" in lowered:
+        normalized = "error"
+    elif "[warning]" in lowered or "[warn]" in lowered:
+        normalized = "warning"
+    elif "[debug]" in lowered:
+        normalized = "debug"
     if normalized == "debug":
         if settings.DEBUG_VERBOSE_PIPELINE:
             logger.debug(msg)
@@ -600,6 +609,8 @@ def purge_item_content(
         return {"success": False, "deleted": 0, "error": "book_id required"}
 
     binds = {"p_uid": firebase_uid, "p_book": book_id}
+    pdf_record = get_pdf_record(book_id, firebase_uid)
+    retain_pdf_row = bool(pdf_record and pdf_record.get("object_key") and pdf_record.get("bucket_name"))
 
     try:
         with DatabaseManager.get_write_connection() as connection:
@@ -663,7 +674,6 @@ def purge_item_content(
 
                 aux_specs = (
                     ("index_state", "TOMEHUB_ITEM_INDEX_STATE", ("ITEM_ID", "BOOK_ID")),
-                    ("ingested_files", "TOMEHUB_INGESTED_FILES", ("BOOK_ID", "ITEM_ID")),
                     ("file_reports", "TOMEHUB_FILE_REPORTS", ("BOOK_ID", "ITEM_ID")),
                     ("external_meta", "TOMEHUB_EXTERNAL_BOOK_META", ("BOOK_ID", "ITEM_ID")),
                     ("external_edges", "TOMEHUB_EXTERNAL_EDGES", ("BOOK_ID", "ITEM_ID")),
@@ -694,7 +704,40 @@ def purge_item_content(
                             continue
                         raise
 
+                if not retain_pdf_row:
+                    try:
+                        ingested_cols = _table_columns(cursor, "TOMEHUB_INGESTED_FILES")
+                        if ingested_cols:
+                            ingested_id_col = "BOOK_ID" if "BOOK_ID" in ingested_cols else ("ITEM_ID" if "ITEM_ID" in ingested_cols else None)
+                            if ingested_id_col:
+                                cursor.execute(
+                                    f"""
+                                    DELETE FROM TOMEHUB_INGESTED_FILES
+                                    WHERE FIREBASE_UID = :p_uid
+                                      AND {ingested_id_col} = :p_book
+                                    """,
+                                    binds,
+                                )
+                                aux_deleted["ingested_files"] = cursor.rowcount or 0
+                    except Exception as aux_error:
+                        if not (_is_missing_table_error(aux_error) or _is_invalid_identifier_error(aux_error)):
+                            raise
+
             connection.commit()
+
+        if retain_pdf_row:
+            set_storage_delete_pending(book_id, firebase_uid)
+            try:
+                cleanup_pdf_artifacts(
+                    str(pdf_record.get("bucket_name")),
+                    str(pdf_record.get("object_key")),
+                    str(pdf_record.get("oci_output_prefix") or ""),
+                )
+                delete_ingested_file_row(book_id, firebase_uid)
+                aux_deleted["ingested_files"] = 1
+            except Exception as cleanup_error:
+                mark_storage_delete_failed(book_id, firebase_uid, str(cleanup_error))
+                logger.warning("PDF storage cleanup deferred after item purge: %s", cleanup_error)
 
         _invalidate_search_cache(firebase_uid=firebase_uid, book_id=book_id)
         delete_epistemic_distribution(book_id=book_id, firebase_uid=firebase_uid)
@@ -972,22 +1015,43 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str, book
                             except Exception:
                                 pass
 
+                    storage_text = str(decluttered_text or rule_cleaned_text or chunk_text).strip()
+                    quality_skip, quality_analysis = should_skip_for_ingestion(
+                        storage_text,
+                        title=title,
+                        author=author,
+                        page_number=chunk.get("page_num"),
+                    )
+                    if quality_skip:
+                        skip_chunk = True
+                        logger.info(
+                            "Chunk skipped by quality audit",
+                            extra={
+                                "chunk_index": idx,
+                                "page": chunk.get("page_num"),
+                                "flags": quality_analysis.get("flags", []),
+                            },
+                        )
+
+                    text_for_index = storage_text or str(chunk_text or "").strip()
+
                     return {
                         'index': idx,
                         'chunk': chunk,
-                        'text_used': chunk_text, # The (potentially repaired) text
+                        'text_used': text_for_index,
                         'repaired': repaired,
-                        'normalized': normalize_text(chunk_text),
-                        'lemmas': json.dumps(get_lemmas(chunk_text), ensure_ascii=False),
-                        'lemma_freqs': json.dumps(get_lemma_frequencies(decluttered_text), ensure_ascii=False),
-                        'classification': classify_passage_fast(chunk_text),
-                        'decluttered_text': decluttered_text,
+                        'normalized': normalize_text(text_for_index),
+                        'lemmas': json.dumps(get_lemmas(text_for_index), ensure_ascii=False),
+                        'lemma_freqs': json.dumps(get_lemma_frequencies(text_for_index), ensure_ascii=False),
+                        'classification': classify_passage_fast(text_for_index),
+                        'decluttered_text': text_for_index,
                         'skip': skip_chunk,
                         'data_cleaner_ai_used': use_ai_cleaner,
                         'data_cleaner_ai_reason': ai_cleaner_reason,
                         'data_cleaner_cache_hit': ai_cleaner_cache_hit,
                         'data_cleaner_noise_score': ai_noise_score,
                         'data_cleaner_noise_signals': ai_noise_assessment.get("signals", {}),
+                        'quality_analysis': quality_analysis,
                     }
 
                 # Filter out empty/short chunks before processing
@@ -1010,114 +1074,8 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str, book
                     if not valid_nlp_results:
                         continue
                         
-                    # 2. Batch Embedding generation (Using Repaired Text)
+                    # 2. Batch Embedding generation (Using stored/cleaned text)
                     batch_texts = [r['text_used'] for r in valid_nlp_results]
-                    embeddings = batch_get_embeddings(batch_texts)
-                    
-                    # 3. Database Insertion (Batch)
-                    for idx, res in enumerate(valid_nlp_results):
-                        chunk = res['chunk']
-                        embedding = embeddings[idx]
-                        
-                        if embedding is None:
-                            failed_embeddings += 1
-                            continue
-                            
-                        try:
-                            out_id = cursor.var(oracledb.NUMBER)
-                            cursor.execute(insert_sql, {
-                                "p_uid": firebase_uid,
-                                "p_type": "PDF" if file_ext == '.pdf' else "EPUB",
-                                "p_title": f"{title} - {author}",
-                                "p_content": res['decluttered_text'],
-                                "p_page": chunk.get('page_num', 0),
-                                "p_chunk_idx": res['index'],
-                                "p_vec": embedding,
-                                "p_book_id": book_id,
-                                "p_norm_content": res['normalized'],
-                                "p_lemmas": res['lemmas'],
-                                "p_token_freq": res['lemma_freqs'],
-                                "p_out_id": out_id
-                            })
-                            new_id = out_id.getvalue()
-                            if isinstance(new_id, list):
-                                new_id = new_id[0] if new_id else None
-                            successful_inserts += 1
-                        except Exception as e:
-                            _runtime_log(f"[FAILED] Chunk {res['index']} DB insert: {e}")
-                    
-                    _runtime_log(f"[PROGRESS] Processed {min(i + BATCH_SIZE, len(valid_chunks))}/{len(valid_chunks)} chunks...")
-
-                try:
-                    logger.info(
-                        "Data cleaner ingestion summary",
-                        extra={
-                            "title": title,
-                            "author": author,
-                            "valid_chunk_count": len(valid_chunks),
-                            "ai_enabled": data_cleaner_budget["ai_enabled"],
-                            "noise_threshold": data_cleaner_budget["noise_threshold"],
-                            "max_calls_per_book": data_cleaner_budget["max_calls_per_book"],
-                            "ai_calls_used": data_cleaner_budget["ai_calls_used"],
-                            "ai_calls_applied": data_cleaner_budget["ai_calls_applied"],
-                            "cache_hits": data_cleaner_budget["cache_hits"],
-                            "skip_low_noise": data_cleaner_budget["skip_low_noise"],
-                            "skip_budget": data_cleaner_budget["skip_budget"],
-                            "skip_disabled": data_cleaner_budget["skip_disabled"],
-                            "skip_too_short": data_cleaner_budget["skip_too_short"],
-                        },
-                    )
-                except Exception:
-                    pass
-                
-                # Step 4: Commit (Releases Lock)
-                # Fail Loud Check: Abort if "Swiss Cheese" (Too many missing embeddings)
-                total_processed = successful_inserts + failed_embeddings
-                if total_processed > 0:
-                    failure_rate = failed_embeddings / total_processed
-                    if failure_rate > 0.10: # >10% failure
-                        error_msg = f"Ingestion Aborted: High embedding failure rate ({failure_rate:.1%}). threshold=10%"
-                        logger.error(error_msg, extra={"failed": failed_embeddings, "total": total_processed})
-                        connection.rollback()
-                        raise Exception(error_msg)
-
-                _runtime_log(f"\n{'='*70}")
-                _runtime_log("Step 4: Committing to Database (Releases Lock)")
-                _runtime_log(f"{'='*70}")
-                
-                connection.commit()
-                logger.info("Ingestion complete (Lock Released)", extra={
-                    "successful_inserts": successful_inserts,
-                    "failed_embeddings": failed_embeddings,
-                    "book_id": book_id
-                })
-
-    except Exception as e:
-        logger.error("Database operation failed", extra={"error": str(e)})
-        # Context manager handles closing, no explicit rollback needed if we assume pool cleans up, 
-        # avoiding manually accessing 'connection' here since it might not be bound if get_connection fails
-        return False
-    
-    # Step 4.5: Trigger ODL shadow ingestion (non-critical, async, post-commit)
-    odl_shadow_triggered = False
-    if file_ext == ".pdf" and successful_inserts > 0:
-        try:
-            odl_shadow_triggered = maybe_trigger_odl_shadow_ingestion_async(
-                file_path=file_path,
-                title=title,
-                author=author,
-                firebase_uid=firebase_uid,
-                item_id=book_id,
-            )
-        except Exception as e:
-            logger.warning("ODL shadow trigger failed (non-critical)", extra={"error": str(e), "book_id": book_id})
-
-    # Step 5: Cleanup
-    _runtime_log(f"\n{'='*70}")
-    _runtime_log("Step 5: Cleaning Up File")
-    _runtime_log(f"{'='*70}")
-    
-    try:
         if successful_inserts > 0:
             if os.path.exists(file_path):
                 os.remove(file_path)
@@ -1239,13 +1197,292 @@ def ingest_text_item(
                     )
                     _runtime_log(f"[SUCCESS] Text Item Ingested: {title} (Type: {db_source_type})")
                     return True
-                
+
                 _runtime_log(f"[ERROR] Embedding was None for: {title}")
                 return False
-                
     except Exception as e:
         _runtime_log(f"Error: {e}")
         return False
+
+
+def ingest_pre_extracted_chunks(
+    *,
+    chunks: list[dict],
+    title: str,
+    author: str,
+    firebase_uid: str,
+    book_id: str,
+    source_type: str = "PDF",
+    categories: Optional[str] = None,
+    file_path: Optional[str] = None,
+    cleanup_file: bool = False,
+) -> bool:
+    if categories:
+        categories = ",".join([c.strip() for c in categories.replace("\n", ",").split(",") if c.strip()])
+
+    start_time = time.time()
+    file_ext = ".pdf" if str(source_type or "").upper() == "PDF" else ".epub"
+
+    if not chunks:
+        logger.error("Failed to persist pre-extracted chunks: chunk list is empty")
+        return False
+
+    successful_inserts = 0
+    failed_embeddings = 0
+    valid_chunks = []
+    data_cleaner_budget = {}
+
+    try:
+        with DatabaseManager.get_write_connection() as connection:
+            with connection.cursor() as cursor:
+                _mirror_book_registry_rows(
+                    cursor,
+                    book_id=book_id,
+                    title=title,
+                    author=author,
+                    firebase_uid=firebase_uid,
+                    categories=categories,
+                )
+
+                norm_title = title.lower().strip()
+                norm_author = author.lower().strip()
+                safe_key = hashlib.md5(f"{norm_title}_{norm_author}".encode("utf-8")).hexdigest()
+                lock_name = f"ingest_{firebase_uid}_{safe_key}"
+                logger.info("Acquiring ingestion lock...", extra={"lock": lock_name})
+                acquire_lock(cursor, lock_name, timeout=30)
+
+                if check_book_exists(title, author, firebase_uid, conn=connection):
+                    logger.info("Authoritative check found existing book. Deleting under lock.")
+                    delete_book_content(title, author, firebase_uid, conn=connection)
+
+                insert_sql = """
+                INSERT INTO TOMEHUB_CONTENT_V2
+                (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, lemma_tokens, token_freq)
+                VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm_content, :p_lemmas, :p_token_freq)
+                RETURNING id INTO :p_out_id
+                """
+
+                BATCH_SIZE = 50
+                data_cleaner_lock = threading.Lock()
+                data_cleaner_cache: dict[str, str] = {}
+                data_cleaner_budget = {
+                    "ai_enabled": bool(getattr(settings, "INGESTION_DATA_CLEANER_AI_ENABLED", True)),
+                    "noise_threshold": int(getattr(settings, "INGESTION_DATA_CLEANER_NOISE_THRESHOLD", 4) or 4),
+                    "max_calls_per_book": int(getattr(settings, "INGESTION_DATA_CLEANER_MAX_CALLS_PER_BOOK", 40) or 40),
+                    "min_chars_for_ai": int(getattr(settings, "INGESTION_DATA_CLEANER_MIN_CHARS_FOR_AI", 180) or 180),
+                    "cache_size": int(getattr(settings, "INGESTION_DATA_CLEANER_CACHE_SIZE", 256) or 0),
+                    "ai_calls_used": 0,
+                    "ai_calls_applied": 0,
+                    "cache_hits": 0,
+                    "skip_low_noise": 0,
+                    "skip_budget": 0,
+                    "skip_disabled": 0,
+                    "skip_too_short": 0,
+                }
+
+                def _data_cleaner_cache_key(text: str) -> str:
+                    payload = (text or "").encode("utf-8", errors="ignore")
+                    return hashlib.sha1(payload).hexdigest()
+
+                def process_single_chunk_nlp(idx_chunk_tuple):
+                    idx, chunk = idx_chunk_tuple
+                    chunk_text = chunk["text"]
+                    skip_chunk = False
+
+                    sis = chunk.get("sis", {})
+                    if sis and sis.get("decision") == "QUARANTINE":
+                        skip_chunk = True
+
+                    repaired_text = corrector_service.fix_text(chunk_text)
+                    repaired = False
+                    if repaired_text != chunk_text:
+                        chunk_text = repaired_text
+                        repaired = True
+
+                    rule_cleaned_text = DataCleanerService.strip_basic_patterns(chunk_text)
+                    use_ai_cleaner = False
+                    ai_cleaner_reason = "low_noise"
+                    ai_cleaner_cache_hit = False
+                    ai_noise_assessment = DataCleanerService.assess_noise(rule_cleaned_text, title=title, author=author)
+                    ai_noise_score = int(ai_noise_assessment.get("score", 0))
+                    try:
+                        DATA_CLEANER_NOISE_SCORE.observe(ai_noise_score)
+                    except Exception:
+                        pass
+
+                    decluttered_text = rule_cleaned_text
+                    if not data_cleaner_budget["ai_enabled"]:
+                        ai_cleaner_reason = "disabled"
+                        with data_cleaner_lock:
+                            data_cleaner_budget["skip_disabled"] += 1
+                    elif len(rule_cleaned_text) < int(data_cleaner_budget["min_chars_for_ai"]):
+                        ai_cleaner_reason = "too_short"
+                        with data_cleaner_lock:
+                            data_cleaner_budget["skip_too_short"] += 1
+                    elif ai_noise_score < int(data_cleaner_budget["noise_threshold"]):
+                        ai_cleaner_reason = "low_noise"
+                        with data_cleaner_lock:
+                            data_cleaner_budget["skip_low_noise"] += 1
+                    else:
+                        cache_key = _data_cleaner_cache_key(rule_cleaned_text)
+                        reserved_slot = False
+                        cached_value = None
+                        with data_cleaner_lock:
+                            if cache_key in data_cleaner_cache:
+                                cached_value = data_cleaner_cache.get(cache_key)
+                                data_cleaner_budget["cache_hits"] += 1
+                            elif data_cleaner_budget["ai_calls_used"] < int(data_cleaner_budget["max_calls_per_book"]):
+                                data_cleaner_budget["ai_calls_used"] += 1
+                                reserved_slot = True
+                            else:
+                                data_cleaner_budget["skip_budget"] += 1
+
+                        if cached_value is not None:
+                            decluttered_text = cached_value or rule_cleaned_text
+                            ai_cleaner_cache_hit = True
+                            ai_cleaner_reason = "cache_hit"
+                        elif reserved_slot:
+                            use_ai_cleaner = True
+                            ai_cleaner_reason = "applied"
+                            decluttered_text = DataCleanerService.clean_with_ai(
+                                rule_cleaned_text,
+                                title=title,
+                                author=author,
+                            )
+                            with data_cleaner_lock:
+                                data_cleaner_budget["ai_calls_applied"] += 1
+                                cache_size = int(data_cleaner_budget["cache_size"])
+                                if cache_size > 0:
+                                    if len(data_cleaner_cache) >= cache_size:
+                                        try:
+                                            oldest_key = next(iter(data_cleaner_cache))
+                                            data_cleaner_cache.pop(oldest_key, None)
+                                        except Exception:
+                                            data_cleaner_cache.clear()
+                                    data_cleaner_cache[cache_key] = decluttered_text
+
+                    storage_text = str(decluttered_text or rule_cleaned_text or chunk_text).strip()
+                    quality_skip, quality_analysis = should_skip_for_ingestion(
+                        storage_text,
+                        title=title,
+                        author=author,
+                        page_number=chunk.get("page_num"),
+                    )
+                    if quality_skip:
+                        skip_chunk = True
+
+                    text_for_index = storage_text or str(chunk_text or "").strip()
+                    return {
+                        "index": idx,
+                        "chunk": chunk,
+                        "text_used": text_for_index,
+                        "repaired": repaired,
+                        "normalized": normalize_text(text_for_index),
+                        "lemmas": json.dumps(get_lemmas(text_for_index), ensure_ascii=False),
+                        "lemma_freqs": json.dumps(get_lemma_frequencies(text_for_index), ensure_ascii=False),
+                        "classification": classify_passage_fast(text_for_index),
+                        "decluttered_text": text_for_index,
+                        "skip": skip_chunk,
+                        "data_cleaner_ai_used": use_ai_cleaner,
+                        "data_cleaner_ai_reason": ai_cleaner_reason,
+                        "data_cleaner_cache_hit": ai_cleaner_cache_hit,
+                        "data_cleaner_noise_score": ai_noise_score,
+                        "data_cleaner_noise_signals": ai_noise_assessment.get("signals", {}),
+                        "quality_analysis": quality_analysis,
+                    }
+
+                valid_chunks = [(i, c) for i, c in enumerate(chunks) if DataHealthService.validate_content(c.get("text"))]
+                if not valid_chunks:
+                    logger.warning("No valid chunks found after pre-extracted validation.")
+                    return False
+
+                for i in range(0, len(valid_chunks), BATCH_SIZE):
+                    batch = valid_chunks[i:i + BATCH_SIZE]
+                    with ThreadPoolExecutor(max_workers=5) as executor:
+                        nlp_results = list(executor.map(process_single_chunk_nlp, batch))
+
+                    valid_nlp_results = [r for r in nlp_results if not r.get("skip")]
+                    if not valid_nlp_results:
+                        continue
+
+                    batch_texts = [r["text_used"] for r in valid_nlp_results]
+                    embeddings = batch_get_embeddings(batch_texts)
+
+                    for idx, res in enumerate(valid_nlp_results):
+                        chunk = res["chunk"]
+                        embedding = embeddings[idx]
+                        if embedding is None:
+                            failed_embeddings += 1
+                            continue
+                        try:
+                            out_id = cursor.var(oracledb.NUMBER)
+                            cursor.execute(insert_sql, {
+                                "p_uid": firebase_uid,
+                                "p_type": "PDF" if file_ext == ".pdf" else "EPUB",
+                                "p_title": f"{title} - {author}",
+                                "p_content": res["decluttered_text"],
+                                "p_page": chunk.get("page_num", 0),
+                                "p_chunk_idx": res["index"],
+                                "p_vec": embedding,
+                                "p_book_id": book_id,
+                                "p_norm_content": res["normalized"],
+                                "p_lemmas": res["lemmas"],
+                                "p_token_freq": res["lemma_freqs"],
+                                "p_out_id": out_id,
+                            })
+                            successful_inserts += 1
+                        except Exception as exc:
+                            _runtime_log(f"[FAILED] Chunk {res['index']} DB insert: {exc}")
+
+                total_processed = successful_inserts + failed_embeddings
+                if total_processed > 0:
+                    failure_rate = failed_embeddings / total_processed
+                    if failure_rate > 0.10:
+                        error_msg = f"Ingestion Aborted: High embedding failure rate ({failure_rate:.1%}). threshold=10%"
+                        logger.error(error_msg, extra={"failed": failed_embeddings, "total": total_processed})
+                        connection.rollback()
+                        raise Exception(error_msg)
+
+                connection.commit()
+    except Exception as exc:
+        logger.error("Pre-extracted chunk ingestion failed", extra={"error": str(exc), "book_id": book_id})
+        return False
+
+    if cleanup_file and file_path:
+        try:
+            if successful_inserts > 0 and os.path.exists(file_path):
+                os.remove(file_path)
+        except Exception as exc:
+            _runtime_log(f"[ERROR] Failed to delete file: {exc}")
+
+    if successful_inserts == 0:
+        INGESTION_LATENCY.labels(status="fail", source_type=source_type).observe(time.time() - start_time)
+        logger.error("Pre-extracted ingestion failed: 0 chunks were successfully inserted")
+        return False
+
+    INGESTION_LATENCY.labels(status="success", source_type=source_type).observe(time.time() - start_time)
+    _invalidate_search_cache(firebase_uid=firebase_uid, book_id=book_id)
+    maybe_trigger_epistemic_distribution_refresh_async(book_id=book_id, firebase_uid=firebase_uid, reason="ingest_book")
+    _emit_change_event_best_effort(
+        firebase_uid=firebase_uid,
+        item_id=book_id,
+        entity_type="BOOK",
+        event_type="book.ingested",
+        payload={
+            "title": title,
+            "author": author,
+            "source_type": source_type,
+            "chunks_inserted": successful_inserts,
+            "data_cleaner": {
+                "ai_calls_used": data_cleaner_budget.get("ai_calls_used", 0),
+                "ai_calls_applied": data_cleaner_budget.get("ai_calls_applied", 0),
+                "cache_hits": data_cleaner_budget.get("cache_hits", 0),
+                "skip_low_noise": data_cleaner_budget.get("skip_low_noise", 0),
+                "skip_budget": data_cleaner_budget.get("skip_budget", 0),
+            },
+        },
+    )
+    return True
 
 def sync_highlights_for_item(
     firebase_uid: str,

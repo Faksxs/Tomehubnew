@@ -12,12 +12,21 @@ Date: 2026-01-07
 import os
 import base64
 import logging
-from typing import List, Dict, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 from dotenv import load_dotenv
 import oci
 import re
+import requests
 from config import settings
+from services.chunk_quality_audit_service import (
+    analyze_chunk_quality,
+    detect_repeated_margin_signatures,
+    is_reference_like,
+    looks_like_table_of_contents,
+    normalize_line_signature,
+    should_skip_for_ingestion,
+)
 
 # Load environment variables
 env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env')
@@ -352,6 +361,298 @@ class ChunkReconstructor:
         self._finalize_buffer()
 
 
+def clean_text_artifacts(text: str) -> str:
+    """
+    Conservative OCR cleanup. Keep this deterministic and low-risk.
+    """
+    if not text:
+        return text
+    text = re.sub(r"(?<=[A-Za-zÇĞİÖŞÜçğıöşü])1(?=[A-Za-zÇĞİÖŞÜçğıöşü])", "\u0131", text)
+    text = re.sub(r"(?<=[a-zçğıöşü])1\b", "\u0131", text)
+    text = re.sub(r"\b~ok\b", "\u00e7ok", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bi~in\b", "i\u00e7in", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bi~inde\b", "i\u00e7inde", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+_SENTENCE_END_RE = re.compile(r'[.!?…”"\')\]]\s*$')
+_CONTINUATION_START_RE = re.compile(
+    r'^(?:[-,;:)\]"\'“‘]|ve\b|veya\b|ama\b|ancak\b|fakat\b|ile\b|ki\b|de\b|da\b|gibi\b|icin\b|için\b)',
+    flags=re.IGNORECASE,
+)
+_HEADING_LIKE_RE = re.compile(r"^[A-Z0-9ÇĞİÖŞÜ][A-Z0-9ÇĞİÖŞÜ\s:;,'\"()/-]{3,}$")
+
+
+class BibliographyDetector:
+    """
+    Detect content that should not be embedded as body text.
+    """
+
+    @staticmethod
+    def is_bibliography_or_index(text: str) -> bool:
+        return is_reference_like(text) or looks_like_table_of_contents(text)
+
+
+def calculate_sis(text: str) -> dict:
+    """
+    Calculate Sentence Integrity Score (SIS) for a text chunk.
+    Returns a dict with score and decision.
+    """
+    if not text:
+        return {"score": 0.0, "decision": "QUARANTINE", "details": ["empty"]}
+
+    analysis = analyze_chunk_quality(text)
+    details = list(analysis.get("flags", []))
+    score = float(analysis.get("score", 0.0))
+
+    if analysis["bibliography_like"] or analysis["toc_like"] or analysis["page_artifact"]:
+        return {"score": 0.0, "decision": "QUARANTINE", "details": details or ["non_body"]}
+
+    if analysis["broken_start"] and analysis["broken_end"]:
+        score = min(score, 0.2)
+    elif analysis["broken_start"] or analysis["broken_end"]:
+        score = min(score, 0.45)
+
+    if analysis["short_fragment"] and analysis["ocr_noise"]:
+        score = min(score, 0.2)
+
+    score = round(max(0.0, min(1.0, score)), 2)
+    if score >= 0.65:
+        decision = "EMBED"
+    elif score >= 0.4:
+        decision = "REVIEW"
+    else:
+        decision = "QUARANTINE"
+
+    return {"score": score, "decision": decision, "details": details}
+
+
+def _prune_non_body_chunks(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    filtered: List[Dict[str, Any]] = []
+    for chunk in chunks or []:
+        text = re.sub(r"\s+", " ", str(chunk.get("text", "") or "")).strip()
+        if not text:
+            continue
+        page_num = int(chunk.get("page_num", 0) or 0)
+        skip, analysis = should_skip_for_ingestion(
+            text,
+            page_number=page_num,
+        )
+        # Keep body-like chunks, but prune obvious non-body material from raw extraction output.
+        if skip and (
+            analysis.get("front_matter_like")
+            or analysis.get("imprint_like")
+            or analysis.get("catalog_like")
+            or analysis.get("address_like")
+            or analysis.get("heading_like")
+            or analysis.get("orphan_fragment")
+            or analysis.get("page_artifact")
+            or analysis.get("bibliography_like")
+            or analysis.get("toc_like")
+        ):
+            continue
+        chunk["text"] = text
+        filtered.append(chunk)
+    return filtered
+
+
+class ChunkReconstructor:
+    """
+    Stateful class to buffer and reconstruct broken PDF chunks across pages.
+    """
+
+    def __init__(self):
+        self.buffer_chunk = None
+        self.final_chunks = []
+        self.merge_stats = 0
+
+    def add(self, new_chunk: dict):
+        text = re.sub(r"\s+", " ", str(new_chunk.get("text", "") or "")).strip()
+        if not text:
+            return
+        if BibliographyDetector.is_bibliography_or_index(text):
+            self._finalize_buffer()
+            return
+
+        new_chunk["text"] = text
+        if self.buffer_chunk:
+            if self._should_merge(self.buffer_chunk, new_chunk):
+                separator = "" if text.startswith("-") or self.buffer_chunk["text"].endswith("-") else " "
+                merged_text = (self.buffer_chunk["text"].rstrip("-") + separator + text.lstrip("-")).strip()
+                self.buffer_chunk["text"] = re.sub(r"\s+", " ", merged_text).strip()
+                self.buffer_chunk["confidence"] = min(self.buffer_chunk["confidence"], new_chunk["confidence"])
+                self.merge_stats += 1
+                return
+            self._finalize_buffer()
+
+        self.buffer_chunk = new_chunk
+
+    def _finalize_buffer(self):
+        if self.buffer_chunk:
+            text = re.sub(r"\s+", " ", str(self.buffer_chunk.get("text", "") or "")).strip()
+            if not text:
+                self.buffer_chunk = None
+                return
+            self.buffer_chunk["text"] = text
+            self.buffer_chunk["sis"] = calculate_sis(text)
+            self.final_chunks.append(self.buffer_chunk)
+            self.buffer_chunk = None
+
+    def flush(self):
+        self._finalize_buffer()
+
+    @staticmethod
+    def _looks_heading(text: str) -> bool:
+        value = str(text or "").strip()
+        if len(value) < 4 or len(value) > 120:
+            return False
+        if _SENTENCE_END_RE.search(value):
+            return False
+        return bool(_HEADING_LIKE_RE.match(value))
+
+    @staticmethod
+    def _needs_continuation(text: str) -> bool:
+        value = str(text or "").strip()
+        return bool(value) and not bool(_SENTENCE_END_RE.search(value))
+
+    @staticmethod
+    def _starts_as_continuation(text: str) -> bool:
+        value = str(text or "").strip()
+        if not value:
+            return False
+        return value[0].islower() or bool(_CONTINUATION_START_RE.match(value))
+
+    def _should_merge(self, buffer_chunk: Dict[str, Any], new_chunk: Dict[str, Any]) -> bool:
+        buffer_text = str(buffer_chunk.get("text", "") or "").strip()
+        next_text = str(new_chunk.get("text", "") or "").strip()
+        if not buffer_text or not next_text:
+            return False
+        if self._looks_heading(next_text) or self._looks_heading(buffer_text):
+            return False
+        if BibliographyDetector.is_bibliography_or_index(next_text):
+            return False
+
+        current_page = int(buffer_chunk.get("page_num", 0) or 0)
+        next_page = int(new_chunk.get("page_num", 0) or 0)
+        if next_page - current_page not in (0, 1):
+            return False
+
+        if next_page == current_page and self._needs_continuation(buffer_text):
+            return True
+        if buffer_text.endswith("-"):
+            return True
+        if self._needs_continuation(buffer_text) and self._starts_as_continuation(next_text):
+            return True
+        if next_page == current_page and len(buffer_text.split()) <= 6:
+            return True
+        return False
+
+
+def _collect_page_lines(page: Any) -> Dict[str, Any]:
+    lines: List[Dict[str, Any]] = []
+    if hasattr(page, "lines") and page.lines:
+        for line_idx, line in enumerate(page.lines):
+            cleaned_text = clean_text_artifacts(getattr(line, "text", ""))
+            if not cleaned_text:
+                continue
+            lines.append(
+                {
+                    "text": cleaned_text,
+                    "confidence": getattr(line, "confidence", 1.0) if hasattr(line, "confidence") else 1.0,
+                    "line_index": line_idx,
+                    "bbox": getattr(line, "bounding_polygon", None),
+                }
+            )
+    return {"page_num": getattr(page, "page_number", 0), "lines": lines}
+
+
+def _payload_get(mapping: Dict[str, Any], *keys: str):
+    for key in keys:
+        if key in mapping:
+            return mapping.get(key)
+    return None
+
+
+def _collect_page_lines_from_payload(page: Dict[str, Any]) -> Dict[str, Any]:
+    page_num = _payload_get(page, "page_number", "pageNumber") or 0
+    line_payloads = _payload_get(page, "lines") or []
+    if not line_payloads:
+        paragraphs = _payload_get(page, "paragraphs") or []
+        line_payloads = [
+            {"text": item.get("text", ""), "confidence": item.get("confidence", 1.0)}
+            for item in paragraphs
+            if isinstance(item, dict)
+        ]
+
+    lines: List[Dict[str, Any]] = []
+    for line_idx, line in enumerate(line_payloads):
+        if not isinstance(line, dict):
+            continue
+        cleaned_text = clean_text_artifacts(str(_payload_get(line, "text", "value") or ""))
+        if not cleaned_text:
+            continue
+        lines.append(
+            {
+                "text": cleaned_text,
+                "confidence": float(_payload_get(line, "confidence") or 1.0),
+                "line_index": line_idx,
+                "bbox": _payload_get(line, "boundingPolygon", "bounding_polygon"),
+            }
+        )
+    return {"page_num": int(page_num or 0), "lines": lines}
+
+
+def _extract_pages_from_payload(node: Any) -> List[Dict[str, Any]]:
+    pages: List[Dict[str, Any]] = []
+    if isinstance(node, dict):
+        direct_pages = _payload_get(node, "pages")
+        if isinstance(direct_pages, list):
+            for page in direct_pages:
+                if isinstance(page, dict):
+                    pages.append(page)
+        for value in node.values():
+            pages.extend(_extract_pages_from_payload(value))
+    elif isinstance(node, list):
+        for item in node:
+            pages.extend(_extract_pages_from_payload(item))
+    return pages
+
+
+def extract_pdf_content_from_async_output(payloads: List[Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:
+    page_entries: List[Dict[str, Any]] = []
+    for payload in payloads or []:
+        for page in _extract_pages_from_payload(payload):
+            page_entries.append(_collect_page_lines_from_payload(page))
+
+    if not page_entries:
+        return None
+
+    repeated_margin_signatures = detect_repeated_margin_signatures(page_entries)
+    reconstructor = ChunkReconstructor()
+    for page_entry in page_entries:
+        page_num = page_entry.get("page_num")
+        for line in page_entry.get("lines", []):
+            cleaned_text = str(line.get("text") or "").strip()
+            if not cleaned_text:
+                continue
+            signature = normalize_line_signature(cleaned_text)
+            if signature and signature in repeated_margin_signatures:
+                continue
+            reconstructor.add(
+                {
+                    "text": cleaned_text,
+                    "page_num": page_num,
+                    "type": "paragraph",
+                    "confidence": line.get("confidence", 1.0),
+                    "line_index": line.get("line_index", 0),
+                }
+            )
+    reconstructor.flush()
+    final_chunks = _prune_non_body_chunks(reconstructor.final_chunks)
+    return final_chunks or None
+
+
 def extract_pdf_content(pdf_path: str) -> Optional[List[Dict[str, any]]]:
     """
     Extract structured content from a PDF file using OCI Document Understanding.
@@ -421,40 +722,48 @@ def extract_pdf_content(pdf_path: str) -> Optional[List[Dict[str, any]]]:
         
         # Extract structured chunks using Smart Reconstructor
         reconstructor = ChunkReconstructor()
-        
         total_pages = len(response.data.pages)
         _runtime_log(f"[INFO] Processing {total_pages} pages...")
-        
-        for page in response.data.pages:
-            page_num = page.page_number
-            # print(f"[{datetime.now().strftime('%H:%M:%S')}] Processing page {page_num}/{total_pages}...")
-            
-            # Process lines (paragraphs)
-            if hasattr(page, 'lines') and page.lines:
-                for line_idx, line in enumerate(page.lines):
-                    cleaned_text = clean_text_artifacts(line.text)
-                    chunk = {
-                        'text': cleaned_text,
-                        'page_num': page_num,
-                        'type': 'paragraph',  # Default type
-                        'confidence': line.confidence if hasattr(line, 'confidence') else 1.0,
-                        'line_index': line_idx
-                    }
-                    
-                    # Add bounding box if available
-                    if hasattr(line, 'bounding_polygon'):
-                        chunk['bbox'] = {
-                            'points': [(p.x, p.y) for p in line.bounding_polygon.normalized_vertices]
-                        }
-                    
-                    # Feed to reconstructor
-                    reconstructor.add(chunk)
 
-            # Optional: Process words if needed (skipped for now)
+        page_entries = [_collect_page_lines(page) for page in response.data.pages]
+        repeated_margin_signatures = detect_repeated_margin_signatures(page_entries)
+        if repeated_margin_signatures:
+            _runtime_log(
+                f"[INFO] Detected {len(repeated_margin_signatures)} repeated header/footer signatures",
+                level="debug",
+            )
+
+        for page_entry in page_entries:
+            page_num = page_entry.get("page_num")
+            for line in page_entry.get("lines", []):
+                cleaned_text = str(line.get("text") or "").strip()
+                if not cleaned_text:
+                    continue
+                signature = normalize_line_signature(cleaned_text)
+                if signature and signature in repeated_margin_signatures:
+                    continue
+
+                chunk = {
+                    "text": cleaned_text,
+                    "page_num": page_num,
+                    "type": "paragraph",
+                    "confidence": line.get("confidence", 1.0),
+                    "line_index": line.get("line_index", 0),
+                }
+
+                if line.get("bbox") is not None:
+                    try:
+                        chunk["bbox"] = {
+                            "points": [(p.x, p.y) for p in line["bbox"].normalized_vertices]
+                        }
+                    except Exception:
+                        pass
+
+                reconstructor.add(chunk)
         
         # Finalize any remaining buffer
         reconstructor.flush()
-        final_chunks = reconstructor.final_chunks
+        final_chunks = _prune_non_body_chunks(reconstructor.final_chunks)
         
         _runtime_log(f"\n[{datetime.now().strftime('%H:%M:%S')}] Extraction complete!")
         _runtime_log(f"[SUCCESS] Extracted {len(final_chunks)} chunks from {total_pages} pages (Merged {reconstructor.merge_stats} splits)")
@@ -466,8 +775,9 @@ def extract_pdf_content(pdf_path: str) -> Optional[List[Dict[str, any]]]:
         _runtime_log(f"  Status: {e.status}")
         _runtime_log(f"  Code: {e.code}")
         _runtime_log(f"  Message: {e.message}")
-        _runtime_log(f"\n[INFO] Falling back to PyPDF2 extraction...")
-        return extract_pdf_with_pypdf2(pdf_path)
+        if e.status == 400 and ("Page count" in e.message or "LimitExceeded" in e.message):
+            _runtime_log(f"\n[ERROR] OCI 5-page limit exceeded or file too large. Please use Async Ingestion.")
+        return None
         
     except FileNotFoundError as e:
         _runtime_log(f"\n[{datetime.now().strftime('%H:%M:%S')}] [ERROR] File not found: {e}")
@@ -478,9 +788,8 @@ def extract_pdf_content(pdf_path: str) -> Optional[List[Dict[str, any]]]:
         return None
         
     except Exception as e:
-        _runtime_log(f"\n[{datetime.now().strftime('%H:%M:%S')}] [WARNING] Unexpected error with OCI: {e}")
-        _runtime_log(f"[INFO] Falling back to PyPDF2 extraction...")
-        return extract_pdf_with_pypdf2(pdf_path)
+        _runtime_log(f"\n[{datetime.now().strftime('%H:%M:%S')}] [ERROR] Unexpected error with OCI: {e}")
+        return None
 
 
 from services.ai_service import extract_metadata_from_text_async
@@ -505,32 +814,27 @@ async def get_pdf_metadata(pdf_path: str) -> Dict[str, any]:
     first_page_text = ""
     
     try:
-        from PyPDF2 import PdfReader
+        # 1. Use OCI to extract all text, which gives us pages and chunks
+        _runtime_log(f"[{datetime.now().strftime('%H:%M:%S')}] Requesting OCI Document Understanding for metadata parsing...")
+        chunks = extract_pdf_content(pdf_path)
         
-        reader = PdfReader(pdf_path)
-        metadata["page_count"] = len(reader.pages)
-        
-        # 1. Try PyPDF2 Metadata (often existing but messy)
-        info = reader.metadata
-        if info:
-            # Clean up PyPDF2 format (starts with /)
-            if info.get("/Title"): metadata["title"] = str(info.get("/Title")).strip()
-            if info.get("/Author"): metadata["author"] = str(info.get("/Author")).strip()
+        if chunks:
+            # Calculate page count from chunks
+            metadata["page_count"] = max((c.get("page_num", 1) for c in chunks), default=0)
             
-        # 2. Extract detailed text from First Page for AI Analysis
-        if len(reader.pages) > 0:
-            first_page_text = reader.pages[0].extract_text()
+            # Extract detailed text from First Page for AI Analysis
+            first_page_text = "\n".join([c.get("text", "") for c in chunks if c.get("page_num") == 1])
             
-        # 3. AI Enhancement (The "Robust" Step)
-        if first_page_text and len(first_page_text.strip()) > 50:
-            _runtime_log(f"[{datetime.now().strftime('%H:%M:%S')}] Sending PDF first page to AI for metadata extraction...")
-            ai_meta = await extract_metadata_from_text_async(first_page_text)
-            
-            # AI Authority: If AI finds a title, use it (usually cleaner than PDF metadata)
-            if ai_meta.get("title"):
-                metadata["title"] = ai_meta["title"]
-            if ai_meta.get("author"):
-                metadata["author"] = ai_meta["author"]
+            # 2. AI Enhancement (The "Robust" Step)
+            if first_page_text and len(first_page_text.strip()) > 50:
+                _runtime_log(f"[{datetime.now().strftime('%H:%M:%S')}] Sending PDF first page to AI for metadata extraction...")
+                ai_meta = await extract_metadata_from_text_async(first_page_text)
+                
+                # AI Authority: If AI finds a title, use it (usually cleaner than PDF metadata)
+                if ai_meta.get("title"):
+                    metadata["title"] = ai_meta["title"]
+                if ai_meta.get("author"):
+                    metadata["author"] = ai_meta["author"]
 
         _runtime_log(f"[SUCCESS] Extracted metadata (AI-Enhanced): {metadata}")
         
@@ -540,45 +844,6 @@ async def get_pdf_metadata(pdf_path: str) -> Dict[str, any]:
     return metadata
 
 
-def extract_pdf_with_pypdf2(pdf_path: str) -> Optional[List[Dict[str, any]]]:
-    """
-    Fallback PDF extraction using PyPDF2 when OCI is unavailable.
-    
-    Args:
-        pdf_path (str): Path to the PDF file
-    
-    Returns:
-        List[Dict] or None: List of content chunks
-    """
-    try:
-        from PyPDF2 import PdfReader
-        
-        _runtime_log(f"[{datetime.now().strftime('%H:%M:%S')}] Using PyPDF2 for extraction...")
-        reader = PdfReader(pdf_path)
-        chunks = []
-        
-        for page_num, page in enumerate(reader.pages, start=1):
-            text = page.extract_text()
-            if text and text.strip():
-                # Split into paragraphs
-                paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
-                
-                for idx, para in enumerate(paragraphs):
-                    if len(para) > 20:  # Skip very short fragments
-                        chunks.append({
-                            'text': para,
-                            'page_num': page_num,
-                            'type': 'paragraph',
-                            'confidence': 1.0,
-                            'line_index': idx
-                        })
-        
-        _runtime_log(f"[SUCCESS] PyPDF2 extracted {len(chunks)} chunks from {len(reader.pages)} pages")
-        return chunks if chunks else None
-        
-    except Exception as e:
-        _runtime_log(f"[ERROR] PyPDF2 extraction also failed: {e}")
-        return None
 
 
 def save_chunks_to_file(chunks: List[Dict], output_path: str) -> bool:

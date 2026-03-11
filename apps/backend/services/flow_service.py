@@ -23,6 +23,7 @@ from services.flow_session_service import (
     FlowSessionManager, get_flow_session_manager
 )
 from services.embedding_service import get_embedding, get_query_embedding
+from services.chunk_quality_audit_service import should_skip_for_flow
 from services.flow_text_repair_service import repair_for_flow_card
 from infrastructure.db_manager import DatabaseManager, safe_read_clob
 import oracledb  # For DatabaseError exception handling
@@ -945,6 +946,7 @@ class FlowService:
             FROM TOMEHUB_CONTENT_V2
             WHERE firebase_uid = :p_uid
             AND VEC_EMBEDDING IS NOT NULL
+            AND AI_ELIGIBLE = 1
             AND DBMS_LOB.GETLENGTH(content_chunk) > 12
             AND NOT EXISTS (SELECT 1 FROM TOMEHUB_FLOW_SEEN fs WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND fs.session_id = :p_sid)
         """
@@ -1016,6 +1018,7 @@ class FlowService:
                 GROUP BY chunk_id
             ) gs ON TO_CHAR(gs.chunk_id) = TO_CHAR(t.id)
             WHERE t.firebase_uid = :p_uid
+            AND t.AI_ELIGIBLE = 1
             AND DBMS_LOB.GETLENGTH(t.content_chunk) > 12
             AND NOT EXISTS (
                 SELECT 1 FROM TOMEHUB_FLOW_SEEN fs
@@ -1053,6 +1056,7 @@ class FlowService:
             SELECT id, content_chunk, title, content_type AS source_type, page_number
             FROM TOMEHUB_CONTENT_V2
             WHERE firebase_uid = :p_uid
+            AND AI_ELIGIBLE = 1
             AND DBMS_LOB.GETLENGTH(content_chunk) > 12
             AND NOT EXISTS (SELECT 1 FROM TOMEHUB_FLOW_SEEN fs WHERE fs.chunk_id = TOMEHUB_CONTENT_V2.id AND fs.session_id = :p_sid)
         """
@@ -1312,6 +1316,7 @@ class FlowService:
                         SELECT id, content_chunk, title, page_number, content_type AS source_type
                         FROM TOMEHUB_CONTENT_V2
                         WHERE firebase_uid = :p_uid
+                        AND AI_ELIGIBLE = 1
                     """
                     
                     params = {
@@ -1831,6 +1836,9 @@ class FlowService:
         skip_ids = skip_ids or set()
         for card in candidates:
             if card.chunk_id in skip_ids:
+                continue
+            if should_skip_for_flow(card.content, card.source_type):
+                logger.debug(f"Skipping low-quality Flow candidate: {card.chunk_id}")
                 continue
             # Check 1: Already shown in THIS session (Absolute exclusion)
             if self.session_manager.is_chunk_seen(session_id, card.chunk_id):
