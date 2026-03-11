@@ -63,7 +63,7 @@ from services.external_kb_service import (
 )
 from services.epistemic_distribution_service import get_epistemic_distribution
 from services.feedback_service import submit_feedback
-from services.pdf_service import get_pdf_metadata
+from services.pdf_metadata_service import get_pdf_metadata
 from services.ai_service import (
     enrich_book_async, 
     generate_tags_async, 
@@ -1844,7 +1844,12 @@ def _has_active_pdf_ingestion(book_id: str, firebase_uid: str) -> bool:
 
 def run_ingestion_background(temp_path: str, title: str, author: str, firebase_uid: str, book_id: str, categories: Optional[str] = None):
     """
-    Background task wrapper for book ingestion.
+    Background task wrapper for legacy book ingestion.
+
+    Note:
+    - PDF uploads on `/api/ingest` now use the PDF_V2 async path.
+    - This wrapper remains only for legacy/manual ingestion flows that still
+      call `ingest_book()`.
     """
     try:
         logger.info(f"Starting background ingestion for: {title}")
@@ -1930,6 +1935,7 @@ async def ingest_endpoint(
     firebase_uid: str = Form(...),
     book_id: Optional[str] = Form(None),
     tags: Optional[str] = Form(None),
+    force_ocr: bool = Form(False),
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
     # Log ingestion start
@@ -2017,6 +2023,7 @@ async def ingest_endpoint(
                 storage_status="STORED",
                 parse_path="PDF_V2",
                 parse_status="QUEUED",
+                routing_metrics_json=json.dumps({"force_ocr": bool(force_ocr)}),
                 storage_warning=storage_warning,
                 content_type="PDF",
                 mime_type="application/pdf",
@@ -2033,6 +2040,7 @@ async def ingest_endpoint(
                     categories=tags,
                     bucket_name=str(upload_info["bucket_name"]),
                     object_key=str(upload_info["object_key"]),
+                    force_ocr=bool(force_ocr),
                 )
             except RuntimeError:
                 cleanup_pdf_artifacts(
@@ -2054,7 +2062,8 @@ async def ingest_endpoint(
                 "storage_used_gb": quota["storage_used_gb"],
                 "storage_limit_gb": quota["storage_limit_gb"],
                 "pdf_available": True,
-                "parse_status": "QUEUED"
+                "parse_status": "QUEUED",
+                "force_ocr": bool(force_ocr),
             }
 
         if book_id:

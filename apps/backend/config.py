@@ -74,6 +74,12 @@ class Settings:
         self.PDF_OCR_LANGUAGES = os.getenv("PDF_OCR_LANGUAGES", "tr,en").strip() or "tr,en"
         self.PDF_CHUNK_SOFT_TOKEN_TARGET = int(os.getenv("PDF_CHUNK_SOFT_TOKEN_TARGET", "350"))
         self.PDF_CHUNK_HARD_TOKEN_CAP = int(os.getenv("PDF_CHUNK_HARD_TOKEN_CAP", "450"))
+        self.PDF_SENTENCE_CHUNKING_ENABLED = (
+            os.getenv("PDF_SENTENCE_CHUNKING_ENABLED", "true").strip().lower() == "true"
+        )
+        self.PDF_CHUNK_OVERLAP_TOKENS = int(os.getenv("PDF_CHUNK_OVERLAP_TOKENS", "20"))
+        if self.PDF_CHUNK_OVERLAP_TOKENS < 0:
+            self.PDF_CHUNK_OVERLAP_TOKENS = 0
         self.LLAMA_CLOUD_API_KEY = os.getenv("LLAMA_CLOUD_API_KEY", "").strip()
         self.LLAMA_PARSE_API_URL = os.getenv(
             "LLAMA_PARSE_API_URL",
