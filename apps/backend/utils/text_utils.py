@@ -65,6 +65,16 @@ _FALLBACK_SUFFIXES_ASCII = (
 )
 _LOGGER = logging.getLogger("text_utils")
 _MISSING_ANALYZER_WARNED = False
+_ZEYREK_TOKEN_RE = re.compile(r"[0-9A-Za-zÇĞİÖŞÜçğıöşü]+", re.UNICODE)
+
+
+def _zeyrek_regex_tokenize(text: str) -> list[str]:
+    """
+    Lightweight tokenizer for Zeyrek that does not depend on NLTK punkt data.
+    This keeps lemma extraction stable inside lean production images.
+    """
+    cleaned = str(text or "").replace("'", "").replace("’", " ")
+    return _ZEYREK_TOKEN_RE.findall(cleaned)
 
 
 def repair_common_mojibake(text: str) -> str:
@@ -149,8 +159,13 @@ import unidecode  # noqa: F401  # Kept for compatibility/import side effects in 
 
 try:
     import zeyrek
+    from zeyrek import morphology as _zeyrek_morphology
 
     _analyzer = zeyrek.MorphAnalyzer()
+    try:
+        _zeyrek_morphology._tokenize_text = _zeyrek_regex_tokenize
+    except Exception:
+        pass
     logging.getLogger("zeyrek").setLevel(logging.ERROR)
     logging.getLogger("zeyrek.rulebasedanalyzer").setLevel(logging.ERROR)
 except ImportError:

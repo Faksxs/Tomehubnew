@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 import app as tomehub_app
 from infrastructure.db_manager import DatabaseManager
+from models.flow_models import FlowCard, FlowNextResponse, FlowStartResponse
 
 
 class Phase4SmokeEndpointsTests(unittest.TestCase):
@@ -271,6 +272,117 @@ class Phase4SmokeEndpointsTests(unittest.TestCase):
         self.assertEqual(data["metadata"]["visibility_scope"], "all")
         self.assertEqual(data["metadata"]["content_type_filter"], "NOTE")
         self.assertEqual(data["metadata"]["ingestion_type_filter"], "SYNC")
+
+    def test_flow_start_route_smoke(self):
+        fake_card = FlowCard(
+            flow_id="f1",
+            chunk_id="123",
+            content="Metin",
+            title="Card One",
+            source_type="personal",
+            epistemic_level="B",
+            zone=1,
+        )
+
+        class _FakeFlowService:
+            def start_session(self, flow_request):
+                return FlowStartResponse(
+                    session_id="s1",
+                    initial_cards=[fake_card],
+                    topic_label="Kader",
+                )
+
+        with patch("routes.flow_routes.get_flow_service", return_value=_FakeFlowService()), patch(
+            "routes.flow_routes._prefetch_flow_batch",
+            return_value=None,
+        ):
+            resp = self.client.post(
+                "/api/flow/start",
+                json={
+                    "firebase_uid": "u1",
+                    "anchor_type": "topic",
+                    "anchor_id": "kader",
+                    "mode": "FOCUS",
+                    "horizon_value": 0.25,
+                },
+            )
+
+        self.assertEqual(resp.status_code, 200, resp.text)
+        data = resp.json()
+        self.assertEqual(data["session_id"], "s1")
+        self.assertEqual(data["topic_label"], "Kader")
+        self.assertEqual(data["initial_cards"][0]["chunk_id"], "123")
+
+    def test_flow_next_route_smoke(self):
+        fake_card = FlowCard(
+            flow_id="f2",
+            chunk_id="456",
+            content="Metin",
+            title="Card Two",
+            source_type="pdf_chunk",
+            epistemic_level="A",
+            zone=2,
+        )
+
+        class _FakeFlowService:
+            def get_next_batch(self, flow_request):
+                return FlowNextResponse(
+                    cards=[fake_card],
+                    has_more=False,
+                    session_state={"cards_shown": 1},
+                )
+
+        with patch("routes.flow_routes.get_flow_service", return_value=_FakeFlowService()), patch(
+            "routes.flow_routes._prefetch_flow_batch",
+            return_value=None,
+        ):
+            resp = self.client.post(
+                "/api/flow/next",
+                json={
+                    "firebase_uid": "u1",
+                    "session_id": "s1",
+                    "batch_size": 1,
+                },
+            )
+
+        self.assertEqual(resp.status_code, 200, resp.text)
+        data = resp.json()
+        self.assertEqual(data["cards"][0]["chunk_id"], "456")
+        self.assertFalse(data["has_more"])
+
+    def test_translate_route_smoke(self):
+        with patch(
+            "services.translation_service.translate_chunk",
+            return_value={"en": "Hello", "nl": "Hallo", "etymology": None, "cached": True},
+        ):
+            resp = self.client.post(
+                "/api/ai/translate/123",
+                json={
+                    "firebase_uid": "u1",
+                    "source_text": "Merhaba",
+                    "book_title": "Book",
+                    "book_author": "Author",
+                },
+            )
+
+        self.assertEqual(resp.status_code, 200, resp.text)
+        self.assertEqual(resp.json()["en"], "Hello")
+
+    def test_translate_route_surfaces_validation_detail(self):
+        with patch(
+            "services.translation_service.translate_chunk",
+            side_effect=ValueError("Translation payload invalid"),
+        ):
+            resp = self.client.post(
+                "/api/ai/translate/123",
+                json={
+                    "firebase_uid": "u1",
+                    "source_text": "Merhaba",
+                },
+            )
+
+        self.assertEqual(resp.status_code, 422, resp.text)
+        self.assertEqual(resp.json()["detail"], "Translation payload invalid")
 
     def test_article_upsert_triggers_external_enrichment(self):
         with patch.object(
