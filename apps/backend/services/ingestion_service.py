@@ -762,6 +762,15 @@ def purge_item_content(
 
 
 def ingest_book(file_path: str, title: str, author: str, firebase_uid: str, book_id: str = None, categories: Optional[str] = None) -> bool:
+    """
+    LEGACY ingestion entrypoint.
+
+    For PDF files this path still uses `services.pdf_service.extract_pdf_content`,
+    which is backed by OCI Document Understanding.
+    The active PDF ingestion architecture is PDF_V2 async ingestion
+    (`services.pdf_async_ingestion_service`) and should be preferred for all
+    current product flows.
+    """
     # Normalize categories: remove newlines and extra spaces
     if categories:
         categories = ",".join([c.strip() for c in categories.replace("\n", ",").split(",") if c.strip()])
@@ -875,9 +884,10 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str, book
                 data_cleaner_budget = {
                     "ai_enabled": bool(getattr(settings, "INGESTION_DATA_CLEANER_AI_ENABLED", True)),
                     "noise_threshold": int(getattr(settings, "INGESTION_DATA_CLEANER_NOISE_THRESHOLD", 4) or 4),
-                    "max_calls_per_book": int(getattr(settings, "INGESTION_DATA_CLEANER_MAX_CALLS_PER_BOOK", 40) or 40),
+                    "max_calls_per_minute": int(getattr(settings, "INGESTION_DATA_CLEANER_MAX_CALLS_PER_MINUTE", 35) or 35),
                     "min_chars_for_ai": int(getattr(settings, "INGESTION_DATA_CLEANER_MIN_CHARS_FOR_AI", 180) or 180),
                     "cache_size": int(getattr(settings, "INGESTION_DATA_CLEANER_CACHE_SIZE", 256) or 0),
+                    "call_timestamps": [],
                     "ai_calls_used": 0,
                     "ai_calls_applied": 0,
                     "cache_hits": 0,
@@ -963,18 +973,31 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str, book
                         except Exception:
                             pass
                     else:
+                        import time
                         cache_key = _data_cleaner_cache_key(rule_cleaned_text)
                         reserved_slot = False
                         cached_value = None
+                        wait_time = 0.0
                         with data_cleaner_lock:
                             if cache_key in data_cleaner_cache:
                                 cached_value = data_cleaner_cache.get(cache_key)
                                 data_cleaner_budget["cache_hits"] += 1
-                            elif data_cleaner_budget["ai_calls_used"] < int(data_cleaner_budget["max_calls_per_book"]):
+                            else:
+                                current_time = time.time()
+                                cutoff = current_time - 60.0
+                                timestamps = data_cleaner_budget["call_timestamps"]
+                                
+                                while timestamps and timestamps[0] < cutoff:
+                                    timestamps.pop(0)
+                                    
+                                max_cpm = int(data_cleaner_budget["max_calls_per_minute"])
+                                if len(timestamps) >= max_cpm:
+                                    wait_time = max(0.0, 60.0 - (current_time - timestamps[0]))
+                                    timestamps.pop(0)
+                                
+                                timestamps.append(current_time + wait_time)
                                 data_cleaner_budget["ai_calls_used"] += 1
                                 reserved_slot = True
-                            else:
-                                data_cleaner_budget["skip_budget"] += 1
 
                         if cached_value is not None:
                             decluttered_text = cached_value or rule_cleaned_text
@@ -985,6 +1008,8 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str, book
                             except Exception:
                                 pass
                         elif reserved_slot:
+                            if wait_time > 0:
+                                time.sleep(wait_time)
                             use_ai_cleaner = True
                             ai_cleaner_reason = "applied"
                             decluttered_text = DataCleanerService.clean_with_ai(
@@ -1259,7 +1284,6 @@ def ingest_pre_extracted_chunks(
                 INSERT INTO TOMEHUB_CONTENT_V2
                 (firebase_uid, content_type, title, content_chunk, page_number, chunk_index, vec_embedding, item_id, normalized_content, lemma_tokens, token_freq)
                 VALUES (:p_uid, :p_type, :p_title, :p_content, :p_page, :p_chunk_idx, :p_vec, :p_book_id, :p_norm_content, :p_lemmas, :p_token_freq)
-                RETURNING id INTO :p_out_id
                 """
 
                 BATCH_SIZE = 50
@@ -1268,9 +1292,10 @@ def ingest_pre_extracted_chunks(
                 data_cleaner_budget = {
                     "ai_enabled": bool(getattr(settings, "INGESTION_DATA_CLEANER_AI_ENABLED", True)),
                     "noise_threshold": int(getattr(settings, "INGESTION_DATA_CLEANER_NOISE_THRESHOLD", 4) or 4),
-                    "max_calls_per_book": int(getattr(settings, "INGESTION_DATA_CLEANER_MAX_CALLS_PER_BOOK", 40) or 40),
+                    "max_calls_per_minute": int(getattr(settings, "INGESTION_DATA_CLEANER_MAX_CALLS_PER_MINUTE", 35) or 35),
                     "min_chars_for_ai": int(getattr(settings, "INGESTION_DATA_CLEANER_MIN_CHARS_FOR_AI", 180) or 180),
                     "cache_size": int(getattr(settings, "INGESTION_DATA_CLEANER_CACHE_SIZE", 256) or 0),
+                    "call_timestamps": [],
                     "ai_calls_used": 0,
                     "ai_calls_applied": 0,
                     "cache_hits": 0,
@@ -1324,24 +1349,39 @@ def ingest_pre_extracted_chunks(
                         with data_cleaner_lock:
                             data_cleaner_budget["skip_low_noise"] += 1
                     else:
+                        import time
                         cache_key = _data_cleaner_cache_key(rule_cleaned_text)
                         reserved_slot = False
                         cached_value = None
+                        wait_time = 0.0
                         with data_cleaner_lock:
                             if cache_key in data_cleaner_cache:
                                 cached_value = data_cleaner_cache.get(cache_key)
                                 data_cleaner_budget["cache_hits"] += 1
-                            elif data_cleaner_budget["ai_calls_used"] < int(data_cleaner_budget["max_calls_per_book"]):
+                            else:
+                                current_time = time.time()
+                                cutoff = current_time - 60.0
+                                timestamps = data_cleaner_budget["call_timestamps"]
+                                
+                                while timestamps and timestamps[0] < cutoff:
+                                    timestamps.pop(0)
+                                    
+                                max_cpm = int(data_cleaner_budget["max_calls_per_minute"])
+                                if len(timestamps) >= max_cpm:
+                                    wait_time = max(0.0, 60.0 - (current_time - timestamps[0]))
+                                    timestamps.pop(0)
+                                
+                                timestamps.append(current_time + wait_time)
                                 data_cleaner_budget["ai_calls_used"] += 1
                                 reserved_slot = True
-                            else:
-                                data_cleaner_budget["skip_budget"] += 1
 
                         if cached_value is not None:
                             decluttered_text = cached_value or rule_cleaned_text
                             ai_cleaner_cache_hit = True
                             ai_cleaner_reason = "cache_hit"
                         elif reserved_slot:
+                            if wait_time > 0:
+                                time.sleep(wait_time)
                             use_ai_cleaner = True
                             ai_cleaner_reason = "applied"
                             decluttered_text = DataCleanerService.clean_with_ai(
@@ -1391,6 +1431,46 @@ def ingest_pre_extracted_chunks(
                         "quality_analysis": quality_analysis,
                     }
 
+                def _insert_chunk_batch(batch_rows: list[dict], chunk_indexes: list[int]) -> int:
+                    if not batch_rows:
+                        return 0
+                    try:
+                        cursor.executemany(
+                            insert_sql,
+                            batch_rows,
+                            batcherrors=True,
+                            arraydmlrowcounts=True,
+                        )
+                        batch_errors = list(cursor.getbatcherrors())
+                        failed_offsets = {int(err.offset) for err in batch_errors}
+                        for err in batch_errors:
+                            failed_chunk_index = (
+                                chunk_indexes[int(err.offset)]
+                                if 0 <= int(err.offset) < len(chunk_indexes)
+                                else "unknown"
+                            )
+                            _runtime_log(f"[FAILED] Chunk {failed_chunk_index} DB insert: {err}")
+
+                        inserted = 0
+                        for offset, row_count in enumerate(cursor.getarraydmlrowcounts()):
+                            if offset in failed_offsets:
+                                continue
+                            inserted += int(row_count or 0)
+                        return inserted
+                    except Exception as exc:
+                        logger.warning(
+                            "Batch insert failed for pre-extracted chunks; falling back to row-by-row inserts",
+                            extra={"error": str(exc), "batch_size": len(batch_rows), "book_id": book_id},
+                        )
+                        inserted = 0
+                        for chunk_index, row in zip(chunk_indexes, batch_rows):
+                            try:
+                                cursor.execute(insert_sql, row)
+                                inserted += 1
+                            except Exception as row_exc:
+                                _runtime_log(f"[FAILED] Chunk {chunk_index} DB insert: {row_exc}")
+                        return inserted
+
                 valid_chunks = [(i, c) for i, c in enumerate(chunks) if DataHealthService.validate_content(c.get("text"))]
                 if not valid_chunks:
                     logger.warning("No valid chunks found after pre-extracted validation.")
@@ -1407,32 +1487,30 @@ def ingest_pre_extracted_chunks(
 
                     batch_texts = [r["text_used"] for r in valid_nlp_results]
                     embeddings = batch_get_embeddings(batch_texts)
-
+                    insert_rows = []
+                    insert_chunk_indexes = []
                     for idx, res in enumerate(valid_nlp_results):
                         chunk = res["chunk"]
                         embedding = embeddings[idx]
                         if embedding is None:
                             failed_embeddings += 1
                             continue
-                        try:
-                            out_id = cursor.var(oracledb.NUMBER)
-                            cursor.execute(insert_sql, {
-                                "p_uid": firebase_uid,
-                                "p_type": "PDF" if file_ext == ".pdf" else "EPUB",
-                                "p_title": f"{title} - {author}",
-                                "p_content": res["decluttered_text"],
-                                "p_page": chunk.get("page_num", 0),
-                                "p_chunk_idx": res["index"],
-                                "p_vec": embedding,
-                                "p_book_id": book_id,
-                                "p_norm_content": res["normalized"],
-                                "p_lemmas": res["lemmas"],
-                                "p_token_freq": res["lemma_freqs"],
-                                "p_out_id": out_id,
-                            })
-                            successful_inserts += 1
-                        except Exception as exc:
-                            _runtime_log(f"[FAILED] Chunk {res['index']} DB insert: {exc}")
+                        insert_rows.append({
+                            "p_uid": firebase_uid,
+                            "p_type": "PDF" if file_ext == ".pdf" else "EPUB",
+                            "p_title": f"{title} - {author}",
+                            "p_content": res["decluttered_text"],
+                            "p_page": chunk.get("page_num", 0),
+                            "p_chunk_idx": res["index"],
+                            "p_vec": embedding,
+                            "p_book_id": book_id,
+                            "p_norm_content": res["normalized"],
+                            "p_lemmas": res["lemmas"],
+                            "p_token_freq": res["lemma_freqs"],
+                        })
+                        insert_chunk_indexes.append(int(res["index"]))
+
+                    successful_inserts += _insert_chunk_batch(insert_rows, insert_chunk_indexes)
 
                 total_processed = successful_inserts + failed_embeddings
                 if total_processed > 0:

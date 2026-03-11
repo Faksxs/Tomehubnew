@@ -42,6 +42,7 @@ export const FlowCard: React.FC<FlowCardProps> = ({
     const translateTriggeredRef = useRef(false);
     const zone = ZONE_CONFIG[card.zone] || ZONE_CONFIG[1];
     const plainContent = extractPersonalNoteText(card.content || '');
+    const canTranslate = /^\d+$/.test(String(card.chunk_id || '').trim());
     const contentParagraphs = plainContent
         .split('\n')
         .map((line) => line.trim())
@@ -64,6 +65,11 @@ export const FlowCard: React.FC<FlowCardProps> = ({
 
     const triggerTranslation = useCallback(async () => {
         if (translateTriggeredRef.current || translateStatus === 'ready') return;
+        if (!canTranslate) {
+            setTranslateError('Translation is unavailable for derived flow cards.');
+            setTranslateStatus('error');
+            return;
+        }
         translateTriggeredRef.current = true;
         setTranslateStatus('loading');
         setTranslateError(null);
@@ -87,7 +93,7 @@ export const FlowCard: React.FC<FlowCardProps> = ({
             setTranslateStatus('error');
             translateTriggeredRef.current = false;
         }
-    }, [card.chunk_id, plainContent, card.title, card.author, translateStatus]);
+    }, [canTranslate, card.chunk_id, plainContent, card.title, card.author, translateStatus]);
 
     const handleExpandToggle = () => {
         const newExpanded = !isExpanded;
@@ -227,7 +233,12 @@ export const FlowCard: React.FC<FlowCardProps> = ({
                         <button
                             className={`feedback-btn translate-btn ${showTranslation ? 'active translate' : ''} ${translateStatus === 'ready' ? 'has-translation' : ''}`}
                             onClick={handleTranslateToggle}
-                            title={translateStatus === 'ready' ? 'Toggle Translation' : 'Translate to EN & NL'}
+                            title={
+                                !canTranslate
+                                    ? 'Translation unavailable for derived cards'
+                                    : (translateStatus === 'ready' ? 'Toggle Translation' : 'Translate to EN & NL')
+                            }
+                            disabled={!canTranslate}
                         >
                             <span className="btn-icon">🌐</span>
                             {translateStatus === 'loading' && (

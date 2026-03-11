@@ -2,7 +2,14 @@
 """
 TomeHub PDF Service
 ===================
-Handles PDF text extraction using OCI Document Understanding service.
+LEGACY PDF extraction path backed by OCI Document Understanding.
+This module is retained temporarily for compatibility and manual recovery flows.
+The active production PDF ingestion path is PDF_V2 (PyMuPDF/LlamaParse) via
+`services.pdf_async_ingestion_service`.
+
+Do not extend this module for new PDF ingest work unless explicitly needed for
+legacy maintenance.
+
 Extracts structured content with page numbers, text types, and metadata.
 
 Author: TomeHub Team
@@ -655,7 +662,7 @@ def extract_pdf_content_from_async_output(payloads: List[Dict[str, Any]]) -> Opt
 
 def extract_pdf_content(pdf_path: str) -> Optional[List[Dict[str, any]]]:
     """
-    Extract structured content from a PDF file using OCI Document Understanding.
+    LEGACY: Extract structured content from a PDF file using OCI Document Understanding.
     Includes Smart Chunk Reconstruction and SIS Scoring.
     """
     _runtime_log(f"\n[{datetime.now().strftime('%H:%M:%S')}] Starting PDF extraction (Smart Mode)...")
@@ -792,56 +799,16 @@ def extract_pdf_content(pdf_path: str) -> Optional[List[Dict[str, any]]]:
         return None
 
 
-from services.ai_service import extract_metadata_from_text_async
+from services.pdf_metadata_service import get_pdf_metadata as get_active_pdf_metadata
 
 async def get_pdf_metadata(pdf_path: str) -> Dict[str, any]:
     """
-    Extract metadata (title, author, page count) from a PDF file.
-    Uses local PDF extraction plus Gemini AI for Page 1 content analysis.
-    
-    Args:
-        pdf_path (str): Path to the PDF file
-        
-    Returns:
-        Dict: Metadata dictionary containing title, author, and page_count
-    """
-    metadata = {
-        "title": None,
-        "author": None,
-        "page_count": 0
-    }
-    
-    first_page_text = ""
-    
-    try:
-        # 1. Use OCI to extract all text, which gives us pages and chunks
-        _runtime_log(f"[{datetime.now().strftime('%H:%M:%S')}] Requesting OCI Document Understanding for metadata parsing...")
-        chunks = extract_pdf_content(pdf_path)
-        
-        if chunks:
-            # Calculate page count from chunks
-            metadata["page_count"] = max((c.get("page_num", 1) for c in chunks), default=0)
-            
-            # Extract detailed text from First Page for AI Analysis
-            first_page_text = "\n".join([c.get("text", "") for c in chunks if c.get("page_num") == 1])
-            
-            # 2. AI Enhancement (The "Robust" Step)
-            if first_page_text and len(first_page_text.strip()) > 50:
-                _runtime_log(f"[{datetime.now().strftime('%H:%M:%S')}] Sending PDF first page to AI for metadata extraction...")
-                ai_meta = await extract_metadata_from_text_async(first_page_text)
-                
-                # AI Authority: If AI finds a title, use it (usually cleaner than PDF metadata)
-                if ai_meta.get("title"):
-                    metadata["title"] = ai_meta["title"]
-                if ai_meta.get("author"):
-                    metadata["author"] = ai_meta["author"]
+    DEPRECATED compatibility wrapper.
 
-        _runtime_log(f"[SUCCESS] Extracted metadata (AI-Enhanced): {metadata}")
-        
-    except Exception as e:
-        _runtime_log(f"[ERROR] Metadata extraction failed: {e}")
-        
-    return metadata
+    Metadata extraction has been moved to `services.pdf_metadata_service` so that
+    `/api/extract-metadata` no longer depends on the OCI legacy PDF pipeline.
+    """
+    return await get_active_pdf_metadata(pdf_path)
 
 
 

@@ -5,6 +5,7 @@ from services.chunk_render_service import render_document_chunks, summarize_chun
 from services.ingestion_status_service import is_active_parse_status
 from services.paragraph_reconstruction_service import reconstruct_document
 from services.pdf_classifier_service import decide_route
+from services.pdf_async_ingestion_service import _resolve_processing_route
 from services.pdf_parser_adapters import LlamaParseAdapter, _canonicalize_ocr_payload, _parse_language_values
 
 
@@ -53,6 +54,12 @@ def test_decide_route_prefers_text_native_when_preflight_is_clean():
         }
     )
     assert route == "TEXT_NATIVE"
+
+
+def test_force_ocr_overrides_text_native_route():
+    classifier_result = SimpleNamespace(route="TEXT_NATIVE")
+    assert _resolve_processing_route(classifier_result, force_ocr=False) == "TEXT_NATIVE"
+    assert _resolve_processing_route(classifier_result, force_ocr=True) == "IMAGE_SCAN"
 
 
 def test_reconstruct_document_merges_page_boundary_continuation():
@@ -125,6 +132,40 @@ def test_render_document_chunks_keeps_context_prefix():
     assert chunks[0]["context_prefix"] == "Bolum 1"
     assert chunks[0]["rendered_context_prefix"].startswith("## Bolum 1")
     assert metrics["chunk_count"] >= 1
+
+
+def test_render_document_chunks_prefers_sentence_boundaries(monkeypatch):
+    monkeypatch.setattr("services.chunk_render_service.settings.PDF_SENTENCE_CHUNKING_ENABLED", True)
+    monkeypatch.setattr("services.chunk_render_service.settings.PDF_CHUNK_OVERLAP_TOKENS", 0)
+    monkeypatch.setattr("services.chunk_render_service.settings.PDF_CHUNK_SOFT_TOKEN_TARGET", 12)
+    monkeypatch.setattr("services.chunk_render_service.settings.PDF_CHUNK_HARD_TOKEN_CAP", 18)
+
+    doc = _document(
+        [
+            CanonicalBlock(
+                block_id="b1",
+                page_number=1,
+                block_type="body",
+                text=(
+                    "Birinci cumle burada biter. "
+                    "Ikinci cumle de burada tamamlanir. "
+                    "Ucuncu cumle ayrica yeterince uzundur. "
+                    "Dorduncu cumle son olarak eklenir."
+                ),
+                reading_order=0,
+                heading_path=["Bolum 1"],
+                context_prefix="Bolum 1",
+                source_engine="PYMUPDF",
+            ),
+        ]
+    )
+
+    chunks = render_document_chunks(doc)
+
+    assert len(chunks) >= 2
+    assert all(chunk["text"].strip() for chunk in chunks)
+    assert all(chunk["text"].strip()[-1] in ".!?" for chunk in chunks[:-1])
+    assert chunks[1]["text"].startswith(("Ikinci", "Ucuncu", "Dorduncu"))
 
 
 def test_render_document_chunks_splits_large_table_with_header_prefix():

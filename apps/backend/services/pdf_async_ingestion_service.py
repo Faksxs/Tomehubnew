@@ -133,6 +133,12 @@ def _emit_post_ingestion_effects(book_id: str, firebase_uid: str, title: str, au
         logger.warning("File report generation failed after async ingest: %s", exc)
 
 
+def _resolve_processing_route(classifier_result: PdfClassifierResult, *, force_ocr: bool) -> str:
+    if force_ocr:
+        return "IMAGE_SCAN"
+    return str(classifier_result.route or "IMAGE_SCAN")
+
+
 def _should_retry_as_ocr(classifier_result: PdfClassifierResult, chunk_metrics: Dict[str, object]) -> tuple[bool, str]:
     chunk_count = int(chunk_metrics.get("chunk_count", 0) or 0)
     garbled_ratio = float(classifier_result.classifier_metrics.get("garbled_ratio", 0.0) or 0.0)
@@ -412,6 +418,7 @@ class AsyncPdfIngestionManager:
         categories: Optional[str],
         bucket_name: str,
         object_key: str,
+        force_ocr: bool = False,
     ) -> None:
         key = self._task_key(firebase_uid, book_id)
         current = self._parse_tasks.get(key)
@@ -438,6 +445,7 @@ class AsyncPdfIngestionManager:
             categories=categories,
             bucket_name=bucket_name,
             object_key=object_key,
+            force_ocr=force_ocr,
         )
 
     def _ensure_processing_task(
@@ -450,6 +458,7 @@ class AsyncPdfIngestionManager:
         categories: Optional[str],
         bucket_name: str,
         object_key: str,
+        force_ocr: bool = False,
     ) -> None:
         key = self._task_key(firebase_uid, book_id)
         current = self._parse_tasks.get(key)
@@ -464,6 +473,7 @@ class AsyncPdfIngestionManager:
                 categories=categories,
                 bucket_name=bucket_name,
                 object_key=object_key,
+                force_ocr=force_ocr,
             )
         )
 
@@ -477,6 +487,7 @@ class AsyncPdfIngestionManager:
         categories: Optional[str],
         bucket_name: str,
         object_key: str,
+        force_ocr: bool = False,
     ) -> None:
         parse_started = time.perf_counter()
         temp_path = None
@@ -496,7 +507,7 @@ class AsyncPdfIngestionManager:
             )
             temp_path = await asyncio.to_thread(download_object_to_tempfile, bucket_name, object_key, ".pdf")
             classifier_result = await asyncio.to_thread(classify_pdf, temp_path)
-            route = str(classifier_result.route or "IMAGE_SCAN")
+            route = _resolve_processing_route(classifier_result, force_ocr=force_ocr)
             PDF_CLASSIFIER_ROUTE_TOTAL.labels(route=route).inc()
 
             upsert_ingestion_status(
@@ -535,12 +546,14 @@ class AsyncPdfIngestionManager:
                         **dict(document.routing_metrics or {}),
                         "retry_as_ocr": True,
                         "retry_reason": retry_reason,
+                        "force_ocr": bool(force_ocr),
                     }
                     document, chunks, quality_metrics = await asyncio.to_thread(_finalize_document, document)
                 else:
                     document.routing_metrics = {
                         **dict(document.routing_metrics or {}),
                         "retry_as_ocr": False,
+                        "force_ocr": bool(force_ocr),
                     }
             else:
                 document, fallback_engine, fallback_triggered, shard_count, shard_failed_count = await asyncio.to_thread(
@@ -550,6 +563,10 @@ class AsyncPdfIngestionManager:
                     classifier_result=classifier_result,
                 )
                 parser_engine = str(document.parser_engine or "LLAMAPARSE")
+                document.routing_metrics = {
+                    **dict(document.routing_metrics or {}),
+                    "force_ocr": bool(force_ocr),
+                }
                 document, chunks, quality_metrics = await asyncio.to_thread(_finalize_document, document)
 
             upsert_ingestion_status(
@@ -665,6 +682,9 @@ class AsyncPdfIngestionManager:
             author = metadata["author"]
             bucket_name = str(row.get("bucket_name") or "")
             object_key = str(row.get("object_key") or "")
+            record = get_pdf_record(book_id, firebase_uid) or {}
+            routing_metrics = dict(record.get("routing_metrics_json") or {})
+            force_ocr = bool(routing_metrics.get("force_ocr"))
             if not bucket_name or not object_key:
                 continue
             self._ensure_processing_task(
@@ -675,6 +695,7 @@ class AsyncPdfIngestionManager:
                 categories=None,
                 bucket_name=bucket_name,
                 object_key=object_key,
+                force_ocr=force_ocr,
             )
 
     async def retry_pending_storage_deletes_once(self) -> None:

@@ -81,6 +81,13 @@ def _supported_fields(cursor, payload: Dict[str, Any]) -> Dict[str, Any]:
 def _decode_json_if_needed(value: Any) -> Any:
     if not isinstance(value, str):
         return value
+    stripped = value.strip()
+    if not stripped or stripped[:1] not in {"{", "["}:
+        return value
+    try:
+        return json.loads(stripped)
+    except Exception:
+        return value
 
 
 def is_active_parse_status(status: Any, parse_status: Any) -> bool:
@@ -89,13 +96,6 @@ def is_active_parse_status(status: Any, parse_status: Any) -> bool:
     if status_value != "PROCESSING":
         return False
     return parse_value not in _TERMINAL_PARSE_STATUSES
-    stripped = value.strip()
-    if not stripped or stripped[:1] not in {"{", "["}:
-        return value
-    try:
-        return json.loads(stripped)
-    except Exception:
-        return value
 
 
 def upsert_ingestion_status(

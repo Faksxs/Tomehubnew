@@ -96,6 +96,10 @@ export interface ApiError {
     details?: string;
 }
 
+const throwApiError = async (response: Response, fallbackMessage: string): Promise<never> => {
+    throw new Error(await parseApiErrorMessage(response, fallbackMessage));
+};
+
 export interface ReportSearchResponse {
     topic: string;
     count: number;
@@ -292,8 +296,7 @@ export async function searchLibrary(
     });
 
     if (!response.ok) {
-        const error: ApiError = await response.json();
-        throw new Error(error.details || error.error || 'Search failed');
+        await throwApiError(response, 'Search failed');
     }
 
     return response.json();
@@ -340,8 +343,7 @@ export async function sendChatMessage(
     });
 
     if (!response.ok) {
-        const error: ApiError = await response.json();
-        throw new Error(error.details || error.error || 'Chat failed');
+        await throwApiError(response, 'Chat failed');
     }
 
     return response.json();
@@ -384,8 +386,7 @@ export async function ingestDocument(
     });
 
     if (!response.ok) {
-        const error: ApiError = await response.json();
-        throw new Error(error.details || error.error || 'Ingestion failed');
+        await throwApiError(response, 'Ingestion failed');
     }
 
     return response.json();
@@ -404,8 +405,7 @@ export async function submitFeedback(request: FeedbackRequest): Promise<{ succes
     });
 
     if (!response.ok) {
-        const error: ApiError = await response.json();
-        throw new Error(error.details || error.error || 'Feedback failed');
+        await throwApiError(response, 'Feedback failed');
     }
 
     return response.json();
@@ -433,8 +433,7 @@ export async function searchReportsByTopic(
         }
     );
     if (!response.ok) {
-        const error: ApiError = await response.json();
-        throw new Error(error.details || error.error || 'Report search failed');
+        await throwApiError(response, 'Report search failed');
     }
     return response.json();
 }
@@ -471,8 +470,7 @@ export async function getIngestionStatus(
     );
 
     if (!response.ok) {
-        const error: ApiError = await response.json();
-        throw new Error(error.details || error.error || 'Failed to fetch ingestion status');
+        await throwApiError(response, 'Failed to fetch ingestion status');
     }
 
     return response.json();
@@ -496,8 +494,7 @@ export async function extractMetadata(file: File): Promise<{
     });
 
     if (!response.ok) {
-        const error: ApiError = await response.json();
-        throw new Error(error.error || 'Metadata extraction failed');
+        await throwApiError(response, 'Metadata extraction failed');
     }
 
     return response.json();
@@ -1015,14 +1012,7 @@ export async function pollRealtimeEvents(
         throw new Error('REALTIME_ENDPOINT_NOT_FOUND');
     }
     if (!response.ok) {
-        let message = 'Realtime polling failed';
-        try {
-            const error: ApiError = await response.json();
-            message = error.details || error.error || message;
-        } catch {
-            // Keep fallback message when response is not JSON.
-        }
-        throw new Error(message);
+        await throwApiError(response, 'Realtime polling failed');
     }
     return response.json();
 }
@@ -1047,8 +1037,7 @@ export async function scanIsbnFromPhoto(file: File): Promise<string> {
     }
 
     if (!response.ok) {
-        const error: ApiError = await response.json().catch(() => ({ error: 'Scan failed' }));
-        throw new Error(error.details || error.error || 'Barcode scan failed');
+        await throwApiError(response, 'Barcode scan failed');
     }
 
     const data = await response.json();
@@ -1089,8 +1078,7 @@ export async function translateChunk(
     });
 
     if (!response.ok) {
-        const error: ApiError = await response.json().catch(() => ({ error: 'Translation failed' }));
-        throw new Error(error.details || error.error || 'Translation failed');
+        await throwApiError(response, 'Translation failed');
     }
 
     return response.json();
