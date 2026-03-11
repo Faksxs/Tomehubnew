@@ -1,5 +1,5 @@
 import { normalizeHighlightType } from '../lib/highlightType';
-import { API_BASE_URL, fetchWithAuth, parseApiErrorMessage } from './apiClient';
+import { API_BASE_URL, fetchWithAuth, getFirebaseIdToken, parseApiErrorMessage } from './apiClient';
 /**
  * TomeHub Backend API Service
  * Connects React frontend to Flask backend for RAG search and document ingestion
@@ -55,6 +55,11 @@ export interface IngestResponse {
     success: boolean;
     message: string;
     timestamp: string;
+    storage_warning?: string | null;
+    storage_used_gb?: number;
+    storage_limit_gb?: number;
+    pdf_available?: boolean;
+    parse_status?: string | null;
 }
 
 export interface IngestionStatusResponse {
@@ -63,8 +68,27 @@ export interface IngestionStatusResponse {
     chunk_count: number | null;
     embedding_count: number | null;
     updated_at: string | null;
+    parse_path?: string | null;
+    parse_status?: string | null;
+    pdf_available?: boolean;
+    storage_warning?: string | null;
+    size_bytes?: number | null;
+    storage_status?: string | null;
+    error_message?: string | null;
     resolved_book_id?: string | null;
     matched_by_title?: boolean;
+}
+
+export interface PdfMetadataResponse {
+    book_id: string;
+    pdf_available: boolean;
+    file_name: string | null;
+    size_bytes: number | null;
+    mime_type: string | null;
+    parse_status?: string | null;
+    parse_path?: string | null;
+    storage_warning?: string | null;
+    updated_at?: string | null;
 }
 
 export interface ApiError {
@@ -738,6 +762,49 @@ export async function purgeResourceContent(
         throw new Error('Failed to purge resource content');
     }
     return response.json();
+}
+
+export async function getBookPdfMetadata(bookId: string, firebaseUid: string): Promise<PdfMetadataResponse> {
+    if (!firebaseUid) {
+        throw new Error('User must be authenticated to fetch PDF metadata');
+    }
+
+    const response = await fetchWithAuth(
+        `${API_BASE_URL}/api/books/${encodeURIComponent(bookId)}/pdf?firebase_uid=${encodeURIComponent(firebaseUid)}`,
+        {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Firebase-UID': firebaseUid,
+            },
+        }
+    );
+
+    if (!response.ok) {
+        const error = await parseApiErrorMessage(response, 'Failed to fetch PDF metadata');
+        throw new Error(error);
+    }
+
+    return response.json();
+}
+
+export async function openBookPdfInApp(bookId: string): Promise<void> {
+    const readerWindow = window.open('', '_blank', 'noopener,noreferrer');
+    try {
+        const token = await getFirebaseIdToken();
+        const url = new URL(`${API_BASE_URL}/api/books/${encodeURIComponent(bookId)}/pdf/content`);
+        url.searchParams.set('auth_token', token);
+        if (readerWindow) {
+            readerWindow.location.href = url.toString();
+            return;
+        }
+        window.open(url.toString(), '_blank', 'noopener,noreferrer');
+    } catch (error) {
+        if (readerWindow) {
+            readerWindow.close();
+        }
+        throw error;
+    }
 }
 
 export async function getMemoryProfile(firebaseUid: string): Promise<MemoryProfileResponse> {

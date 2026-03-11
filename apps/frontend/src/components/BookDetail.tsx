@@ -5,7 +5,7 @@ import StarRating from './StarRating';
 import { HighlightSection } from './HighlightSection';
 import { analyzeHighlightsAI, enrichBookWithAI, libraryItemToDraft, mergeEnrichedDraftIntoItem } from '../services/geminiService';
 import { useAuth } from '../contexts/AuthContext';
-import { getIngestionStatus, ingestDocument, IngestResponse, IngestionStatusResponse } from '../services/backendApiService';
+import { getIngestionStatus, ingestDocument, IngestResponse, IngestionStatusResponse, openBookPdfInApp } from '../services/backendApiService';
 import { patchItemForUser } from '../services/oracleLibraryService';
 import { getPersonalNoteCategory } from '../lib/personalNotePolicy';
 import { toPersonalNotePreviewHtml } from '../lib/personalNoteRender';
@@ -28,6 +28,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isIngesting, setIsIngesting] = useState(false);
   const [isEnriching, setIsEnriching] = useState(false);
+  const [isOpeningPdf, setIsOpeningPdf] = useState(false);
   const [enrichError, setEnrichError] = useState<string | null>(null);
   const [ingestResult, setIngestResult] = useState<IngestResponse | null>(null);
   const [ingestError, setIngestError] = useState<string | null>(null);
@@ -177,6 +178,19 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
     }
   };
 
+  const handleOpenPdf = async () => {
+    if (!user?.uid) return;
+    setIsOpeningPdf(true);
+    setIngestError(null);
+    try {
+      await openBookPdfInApp(book.id);
+    } catch (err) {
+      setIngestError(err instanceof Error ? err.message : 'PDF could not be opened');
+    } finally {
+      setIsOpeningPdf(false);
+    }
+  };
+
   const readingConfig = !isNote ? getReadingStatusConfig(book.readingStatus) : null;
   const physicalConfig = !isNote ? getPhysicalStatusConfig(book.status) : null;
   const pdfMatchedDifferentBook = Boolean(
@@ -188,6 +202,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
   const pdfIndexed = pdfStatus?.status === 'COMPLETED' && !pdfMatchedDifferentBook;
   const pdfProcessing = pdfStatus?.status === 'PROCESSING';
   const pdfFailed = pdfStatus?.status === 'FAILED';
+  const pdfAvailable = Boolean(pdfStatus?.pdf_available) && !pdfMatchedDifferentBook;
   const pdfDisableUpload = pdfIndexed || pdfProcessing || isIngesting;
   const processingProgress = Math.min(95, Math.max(12, 12 + (pdfPollAttempts * 3)));
 
@@ -470,7 +485,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                 </div>
 
                 {/* Action Buttons */}
-                <div className={`grid ${isMedia ? 'grid-cols-2' : 'grid-cols-3'} gap-2 mt-1 md:mt-2`}>
+                <div className={`grid ${isMedia ? 'grid-cols-2' : (pdfAvailable ? 'grid-cols-4' : 'grid-cols-3')} gap-2 mt-1 md:mt-2`}>
                   {!isMedia && (
                     <>
                       <input
@@ -491,6 +506,18 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                         <span className="hidden lg:inline">PDF</span>
                       </button>
                     </>
+                  )}
+                  {!isMedia && pdfAvailable && (
+                    <button
+                      type="button"
+                      onClick={handleOpenPdf}
+                      disabled={isOpeningPdf}
+                      className="flex items-center justify-center gap-2 px-2 py-2 bg-white dark:bg-slate-900 border border-[#E6EAF2] dark:border-slate-700 hover:border-[#262D40]/18 dark:hover:border-[#262D40]/30 hover:text-[#262D40] dark:hover:text-[#262D40]/82 rounded-lg text-slate-600 dark:text-slate-400 transition-colors text-xs font-medium disabled:opacity-50"
+                      title="Read PDF"
+                    >
+                      {isOpeningPdf ? <Loader2 size={14} className="animate-spin" /> : <BookOpen size={14} />}
+                      <span className="hidden lg:inline">Read</span>
+                    </button>
                   )}
                   <button
                     type="button"
@@ -530,6 +557,11 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                 {!isMedia && pdfFailed && (
                   <div className="mt-2 text-[10px] text-red-600 dark:text-red-400 font-medium flex items-center gap-1 animate-in fade-in slide-in-from-top-1">
                     <AlertTriangle size={10} /> PDF islenemedi. Lutfen farkli bir PDF ile tekrar deneyin.
+                  </div>
+                )}
+                {!isMedia && (pdfStatus?.storage_warning || ingestResult?.storage_warning) && (
+                  <div className="mt-2 text-[10px] text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1 animate-in fade-in slide-in-from-top-1">
+                    <AlertTriangle size={10} /> {pdfStatus?.storage_warning || ingestResult?.storage_warning}
                   </div>
                 )}
               </div>
@@ -694,6 +726,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                         <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
                           {pdfProcessing && "Processing..."}
                           {pdfFailed && "Failed - please re-upload"}
+                          {!pdfProcessing && !pdfFailed && pdfAvailable && !pdfIndexed && "Available to read"}
                           {pdfIndexed && (
                             <>
                               {pdfStatus.file_name ? (
@@ -726,6 +759,17 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                         )}
                         {pdfStatusError && (
                           <span className="text-[10px] md:text-xs text-red-600 dark:text-red-400">{pdfStatusError}</span>
+                        )}
+                        {pdfAvailable && (
+                          <button
+                            type="button"
+                            onClick={handleOpenPdf}
+                            disabled={isOpeningPdf}
+                            className="mt-2 inline-flex items-center gap-2 text-[11px] md:text-xs font-semibold text-sky-700 dark:text-sky-300"
+                          >
+                            {isOpeningPdf ? <Loader2 size={12} className="animate-spin" /> : <BookOpen size={12} />}
+                            Read PDF
+                          </button>
                         )}
                       </div>
                     )}

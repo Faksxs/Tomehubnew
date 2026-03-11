@@ -1,45 +1,39 @@
-import re
-import os
+from __future__ import annotations
+
+from difflib import SequenceMatcher
 import ftfy
-# Replaced SymSpell with RapidFuzz due to build issues on Windows without C++ tools
-from rapidfuzz import process, fuzz
 import logging
+from rapidfuzz import fuzz, process
+import re
 
 logger = logging.getLogger(__name__)
 
+
 class LinguisticCorrectionService:
-    RULE_VERSION = "tr_ocr_v1"
-    
-    # Common OCR artifact replacements (high precision)
+    RULE_VERSION = "tr_ocr_v2_safe"
+    MAX_DELTA_RATIO = 0.22
+
+    # Keep only high-confidence targeted repairs. Avoid generic catch-all
+    # replacements that can damage already-correct body text.
     REGEX_RULES = [
-        # 1. Tilde repairs (Aggressive)
-        (r'~alisma', 'çalışma'),
-        (r'~', 'ş'), # Fallback
-        
-        # 2. Known "Hayat" book specific errors
-        (r'\bgPnOmuz\b', 'günümüz'),
-        (r'\bgOnOmuz\b', 'günümüz'),
-        (r'\bgonomuz\b', 'günümüz'),
-        
-        # 3. General "O" / "0" -> "ü" / "ö" fixer (Heuristic)
-        (r'\bg[O0]n\b', 'gün'),
-        (r'\bb[O0]t[O0]n\b', 'bütün'),
-        (r'\bg[O0]z\b', 'göz'),
-        (r'\bk[O0]lt[O0]r\b', 'kültür'),
-        
-        # 4. "1" -> "ı" fixer
-        (r'([a-z])1\b', r'\1ı'),
+        (r"\bgPnOmuz\b", "g\u00fcn\u00fcm\u00fcz"),
+        (r"\bgOnOmuz\b", "g\u00fcn\u00fcm\u00fcz"),
+        (r"\bgonomuz\b", "g\u00fcn\u00fcm\u00fcz"),
+        (r"\bg[O0]n\b", "g\u00fcn"),
+        (r"\bb[O0]t[O0]n\b", "b\u00fct\u00fcn"),
+        (r"\bg[O0]z\b", "g\u00f6z"),
+        (r"\bk[O0]lt[O0]r\b", "k\u00fclt\u00fcr"),
+        (r"\b~ok\b", "\u00e7ok"),
+        (r"\bi~in\b", "i\u00e7in"),
+        (r"\bi~inde\b", "i\u00e7inde"),
+        (r"([a-z])1\b", "\\1\u0131"),
     ]
 
     def __init__(self):
         self.valid_words = set()
         self._load_bootstrap_dictionary()
 
-    def _load_bootstrap_dictionary(self):
-        """
-        Loads a small bootstrap dictionary.
-        """
-        # Dictionary of valid words
+    def _load_bootstrap_dictionary(self) -> None:
         bootstrap_words = """
         günümüz
         kültür
@@ -65,24 +59,25 @@ class LinguisticCorrectionService:
         if not text:
             return ""
 
-        # Step 0: FTFY
-        text = ftfy.fix_text(text)
+        original = str(text)
+        candidate = ftfy.fix_text(original)
+        candidate = re.sub(r"(\w+)-\s*\n\s*([a-zğüşiöç]+)", r"\1\2\n", candidate)
 
-        # Step 1: Line Gluestick
-        text = re.sub(r'(\w+)-\s*\n\s*([a-zğüşiöç]+)', r'\1\2\n', text)
-        
-        # Step 3: Regex "Sledgehammer"
         for pattern, replacement in self.REGEX_RULES:
-            text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+            candidate = re.sub(pattern, replacement, candidate, flags=re.IGNORECASE)
 
-        # Step 4: Dictionary checks (Optional for now/future expansion)
-        # Using RapidFuzz here might be slow for entire texts, so we skip it 
-        # for this MVP pass unless specific problematic words are identified.
-        # The Regex rules above handle the specific 'Hayat' errors (gOnOmuz -> günümüz).
+        if self._delta_ratio(original, candidate) > self.MAX_DELTA_RATIO:
+            logger.debug("Linguistic correction skipped due to high delta ratio")
+            return ftfy.fix_text(original)
 
-        return text
+        return candidate
 
     def verify_word(self, word: str):
-        """Debug helper to test fuzzy match"""
-        match = process.extractOne(word, self.valid_words, scorer=fuzz.ratio)
-        return match
+        return process.extractOne(word, self.valid_words, scorer=fuzz.ratio)
+
+    @staticmethod
+    def _delta_ratio(original: str, candidate: str) -> float:
+        if original == candidate:
+            return 0.0
+        similarity = SequenceMatcher(None, str(original or ""), str(candidate or "")).ratio()
+        return max(0.0, 1.0 - similarity)

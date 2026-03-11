@@ -1,0 +1,355 @@
+from types import SimpleNamespace
+
+from services.canonical_document_service import CanonicalBlock, CanonicalDocument, CanonicalPage, merge_documents
+from services.chunk_render_service import render_document_chunks, summarize_chunk_metrics
+from services.ingestion_status_service import is_active_parse_status
+from services.paragraph_reconstruction_service import reconstruct_document
+from services.pdf_classifier_service import decide_route
+from services.pdf_parser_adapters import LlamaParseAdapter, _canonicalize_ocr_payload, _parse_language_values
+
+
+def _document(blocks):
+    return CanonicalDocument(
+        document_id="doc-1",
+        route="TEXT_NATIVE",
+        parser_engine="PYMUPDF",
+        parser_version="v1",
+        pages=[
+            CanonicalPage(
+                page_number=1,
+                has_text_layer=True,
+                char_count=200,
+                word_count=40,
+                ocr_applied=False,
+                image_heavy_suspected=False,
+                garbled_ratio=0.01,
+            ),
+            CanonicalPage(
+                page_number=2,
+                has_text_layer=True,
+                char_count=220,
+                word_count=42,
+                ocr_applied=False,
+                image_heavy_suspected=False,
+                garbled_ratio=0.01,
+            ),
+        ],
+        blocks=blocks,
+        classifier_metrics={},
+        quality_metrics={},
+        routing_metrics={},
+    )
+
+
+def test_decide_route_prefers_text_native_when_preflight_is_clean():
+    route = decide_route(
+        {
+            "page_count": 120,
+            "pages_with_text_ratio": 0.94,
+            "avg_chars_per_page": 880,
+            "blank_page_ratio": 0.01,
+            "garbled_ratio": 0.02,
+            "image_heavy_ratio": 0.10,
+        }
+    )
+    assert route == "TEXT_NATIVE"
+
+
+def test_reconstruct_document_merges_page_boundary_continuation():
+    doc = _document(
+        [
+            CanonicalBlock(
+                block_id="b1",
+                page_number=1,
+                block_type="body",
+                text="Bu paragraf sonraki sayfada devam eden",
+                reading_order=0,
+                heading_path=["Bolum 1"],
+                source_engine="PYMUPDF",
+            ),
+            CanonicalBlock(
+                block_id="b2",
+                page_number=2,
+                block_type="body",
+                text="ve yine ayni cumleye baglanan kisimdir.",
+                reading_order=1,
+                heading_path=["Bolum 1"],
+                source_engine="PYMUPDF",
+            ),
+        ]
+    )
+    reconstructed = reconstruct_document(doc)
+    body_blocks = [block for block in reconstructed.blocks if block.block_type == "body"]
+    assert len(body_blocks) == 1
+    assert "baglanan kisimdir" in body_blocks[0].text
+    assert reconstructed.quality_metrics["page_boundary_merge_total"] == 1
+
+
+def test_render_document_chunks_keeps_context_prefix():
+    doc = _document(
+        [
+            CanonicalBlock(
+                block_id="h1",
+                page_number=1,
+                block_type="heading",
+                text="Bolum 1",
+                reading_order=0,
+                heading_path=["Bolum 1"],
+                source_engine="PYMUPDF",
+            ),
+            CanonicalBlock(
+                block_id="b1",
+                page_number=1,
+                block_type="body",
+                text="Bu birinci paragraftir ve yeterince uzundur ki chunk icine girsin.",
+                reading_order=1,
+                heading_path=["Bolum 1"],
+                context_prefix="Bolum 1",
+                source_engine="PYMUPDF",
+            ),
+            CanonicalBlock(
+                block_id="b2",
+                page_number=1,
+                block_type="body",
+                text="Bu da ikinci paragraftir ve ayni baslik altinda ilerler.",
+                reading_order=2,
+                heading_path=["Bolum 1"],
+                context_prefix="Bolum 1",
+                source_engine="PYMUPDF",
+            ),
+        ]
+    )
+    chunks = render_document_chunks(doc)
+    metrics = summarize_chunk_metrics(chunks)
+    assert chunks
+    assert chunks[0]["context_prefix"] == "Bolum 1"
+    assert chunks[0]["rendered_context_prefix"].startswith("## Bolum 1")
+    assert metrics["chunk_count"] >= 1
+
+
+def test_render_document_chunks_splits_large_table_with_header_prefix():
+    table_text = "\n".join(
+        [
+            "Tablo 1: Baslik",
+            "Kolon A | Kolon B",
+            *[f"Satir {idx} | Deger {idx}" for idx in range(1, 140)],
+        ]
+    )
+    doc = CanonicalDocument(
+        document_id="doc-table",
+        route="IMAGE_SCAN",
+        parser_engine="LLAMAPARSE",
+        parser_version="v1",
+        pages=[
+            CanonicalPage(
+                page_number=1,
+                has_text_layer=False,
+                char_count=0,
+                word_count=0,
+                ocr_applied=True,
+                image_heavy_suspected=True,
+                garbled_ratio=0.0,
+            )
+        ],
+        blocks=[
+            CanonicalBlock(
+                block_id="t1",
+                page_number=1,
+                block_type="table",
+                text=table_text,
+                reading_order=0,
+                heading_path=["Ekler"],
+                source_engine="LLAMAPARSE",
+            )
+        ],
+        classifier_metrics={},
+        quality_metrics={},
+        routing_metrics={},
+    )
+
+    chunks = render_document_chunks(doc)
+
+    assert len(chunks) > 1
+    assert all(chunk["text"].startswith("Tablo 1: Baslik\nKolon A | Kolon B") for chunk in chunks)
+
+
+def test_parse_language_values_splits_csv():
+    assert _parse_language_values("tr,en") == ["tr", "en"]
+    assert _parse_language_values("tr") == ["tr"]
+    assert _parse_language_values("") == ["tr"]
+
+
+def test_llamaparse_adapter_sends_languages_as_repeated_form_fields(monkeypatch, tmp_path):
+    pdf_path = tmp_path / "sample.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n%%EOF\n")
+
+    captured = {}
+
+    class FakeParseResult:
+        def model_dump(self, mode="json"):
+            return {
+                "items": {
+                    "pages": [
+                        {
+                            "page_number": 1,
+                            "success": True,
+                            "items": [
+                                {
+                                    "type": "text",
+                                    "value": "Merhaba dunya",
+                                    "bbox": [{"x": 1, "y": 2, "w": 30, "h": 10}],
+                                }
+                            ],
+                        }
+                    ]
+                }
+            }
+
+    class FakeFiles:
+        def create(self, *, file, purpose):
+            captured["file"] = file
+            captured["purpose"] = purpose
+            return SimpleNamespace(id="file-123")
+
+    class FakeParsing:
+        def parse(self, **kwargs):
+            captured["parse_kwargs"] = kwargs
+            return FakeParseResult()
+
+    class FakeLlamaCloud:
+        def __init__(self, api_key):
+            captured["api_key"] = api_key
+            self.files = FakeFiles()
+            self.parsing = FakeParsing()
+
+    monkeypatch.setattr("services.pdf_parser_adapters.LlamaCloud", FakeLlamaCloud, raising=False)
+    monkeypatch.setattr("services.pdf_parser_adapters.settings.LLAMA_CLOUD_API_KEY", "test-key")
+    monkeypatch.setattr("services.pdf_parser_adapters.settings.PDF_OCR_LANGUAGES", "tr,en")
+    monkeypatch.setattr("services.pdf_parser_adapters.settings.LLAMA_PARSE_TIMEOUT_SEC", 1)
+    monkeypatch.setattr("services.pdf_parser_adapters.settings.LLAMA_PARSE_POLL_INTERVAL_SEC", 1)
+    monkeypatch.setattr("services.pdf_parser_adapters.settings.LLAMA_PARSE_TIER", "agentic")
+    monkeypatch.setattr("services.pdf_parser_adapters.settings.LLAMA_PARSE_VERSION", "latest")
+
+    document = LlamaParseAdapter().parse(
+        pdf_path=str(pdf_path),
+        document_id="doc-1",
+        route="IMAGE_SCAN",
+        classifier_result=SimpleNamespace(
+            classifier_metrics={"page_count": 1},
+            pages=[
+                SimpleNamespace(
+                    page_number=1,
+                    has_text_layer=False,
+                    char_count=0,
+                    word_count=0,
+                    image_heavy_suspected=True,
+                    garbled_ratio=0.0,
+                )
+            ],
+        ),
+    )
+
+    assert document.parser_engine == "LLAMAPARSE"
+    assert captured["api_key"] == "test-key"
+    assert captured["purpose"] == "parse"
+    assert captured["parse_kwargs"]["processing_options"]["ocr_parameters"]["languages"] == ["tr", "en"]
+    assert captured["parse_kwargs"]["output_options"]["spatial_text"]["preserve_layout_alignment_across_pages"] is True
+
+
+def test_canonicalize_ocr_payload_flattens_items_pages_shape():
+    document = _canonicalize_ocr_payload(
+        document_id="doc-1",
+        route="IMAGE_SCAN",
+        parser_engine="LLAMAPARSE",
+        parser_version="v1",
+        payload={
+            "items": {
+                "pages": [
+                    {
+                        "page_number": 3,
+                        "success": True,
+                        "items": [
+                            {
+                                "type": "heading",
+                                "value": "Bolum 3",
+                                "bbox": [{"x": 10, "y": 20, "w": 30, "h": 5}],
+                            },
+                            {
+                                "type": "text",
+                                "value": "Metin govdesi",
+                                "bbox": [{"x": 15, "y": 30, "w": 50, "h": 10}],
+                            },
+                        ],
+                    }
+                ]
+            }
+        },
+        classifier_result=SimpleNamespace(
+            classifier_metrics={"page_count": 1},
+            pages=[
+                SimpleNamespace(
+                    page_number=3,
+                    has_text_layer=False,
+                    char_count=0,
+                    word_count=0,
+                    image_heavy_suspected=True,
+                    garbled_ratio=0.0,
+                )
+            ],
+        ),
+        ocr_applied=True,
+    )
+
+    assert len(document.blocks) == 2
+    assert document.blocks[0].page_number == 3
+    assert document.blocks[0].block_type == "heading"
+    assert document.blocks[0].bbox == {"x0": 10.0, "y0": 20.0, "x1": 40.0, "y1": 25.0}
+
+
+def test_merge_documents_dedupes_pages_after_shard_offset():
+    left = CanonicalDocument(
+        document_id="doc-1",
+        route="IMAGE_SCAN",
+        parser_engine="LLAMAPARSE",
+        parser_version="v1",
+        pages=[
+            CanonicalPage(1, False, 0, 0, True, True, 0.0),
+            CanonicalPage(2, False, 0, 0, True, True, 0.0),
+        ],
+        blocks=[
+            CanonicalBlock("b1", 1, "text", "sol", reading_order=0, source_engine="LLAMAPARSE"),
+            CanonicalBlock("b2", 2, "text", "orta", reading_order=1, source_engine="LLAMAPARSE"),
+        ],
+    )
+    right = CanonicalDocument(
+        document_id="doc-1",
+        route="IMAGE_SCAN",
+        parser_engine="LLAMAPARSE",
+        parser_version="v1",
+        pages=[
+            CanonicalPage(2, False, 10, 2, True, True, 0.0),
+            CanonicalPage(3, False, 0, 0, True, True, 0.0),
+        ],
+        blocks=[
+            CanonicalBlock("b3", 2, "text", "iki", reading_order=0, source_engine="LLAMAPARSE"),
+            CanonicalBlock("b4", 3, "text", "uc", reading_order=1, source_engine="LLAMAPARSE"),
+        ],
+    )
+
+    merged = merge_documents(
+        document_id="doc-1",
+        route="IMAGE_SCAN",
+        parser_engine="LLAMAPARSE",
+        parser_version="v1",
+        documents=[left, right],
+    )
+
+    assert [page.page_number for page in merged.pages] == [1, 2, 3]
+    assert len(merged.blocks) == 4
+
+
+def test_is_active_parse_status_only_for_live_processing_rows():
+    assert is_active_parse_status("PROCESSING", "QUEUED") is True
+    assert is_active_parse_status("PROCESSING", "PARSING") is True
+    assert is_active_parse_status("PROCESSING", "COMPLETED") is False
+    assert is_active_parse_status("FAILED", "FAILED") is False

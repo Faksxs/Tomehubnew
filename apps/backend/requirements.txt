@@ -14,6 +14,7 @@ oracledb>=2.0.0
 # AI & Embeddings
 google-genai>=1.30.0,<2
 firebase-admin>=6.2.0
+llama-cloud>=1.6.0
 
 # Oracle Cloud Infrastructure
 oci>=2.100.0
@@ -26,7 +27,7 @@ turkishnlp==0.0.61
 
 # PDF Processing
 PyPDF2>=3.0.0
-opendataloader-pdf==1.11.2
+PyMuPDF>=1.24.0
 
 # Barcode Scanning
 pyzbar>=0.1.9

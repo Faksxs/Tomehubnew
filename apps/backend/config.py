@@ -45,6 +45,50 @@ class Settings:
         # Default: 75% for reads (search, RAG), 25% for writes (ingestion, logs)
         self.DB_READ_POOL_MAX = int(os.getenv("DB_READ_POOL_MAX", str(int(self.DB_POOL_MAX * 0.75))))
         self.DB_WRITE_POOL_MAX = int(os.getenv("DB_WRITE_POOL_MAX", str(int(self.DB_POOL_MAX * 0.25))))
+
+        # OCI PDF storage / parsing
+        self.OCI_TENANCY_OCID = os.getenv("OCI_TENANCY_OCID", "").strip()
+        self.OCI_COMPARTMENT_OCID = os.getenv("OCI_COMPARTMENT_OCID", "").strip() or self.OCI_TENANCY_OCID
+        self.OCI_OBJECT_STORAGE_BUCKET = os.getenv("OCI_OBJECT_STORAGE_BUCKET", "").strip()
+        self.OCI_OBJECT_STORAGE_NAMESPACE = os.getenv("OCI_OBJECT_STORAGE_NAMESPACE", "").strip()
+        self.PDF_STORAGE_WARN_GB = float(os.getenv("PDF_STORAGE_WARN_GB", "15"))
+        self.PDF_STORAGE_BLOCK_GB = float(os.getenv("PDF_STORAGE_BLOCK_GB", "19"))
+        self.PDF_STORAGE_LIMIT_GB = float(os.getenv("PDF_STORAGE_LIMIT_GB", "20"))
+        self.PDF_OCI_POLL_INTERVAL_SEC = int(os.getenv("PDF_OCI_POLL_INTERVAL_SEC", "15"))
+        if self.PDF_OCI_POLL_INTERVAL_SEC < 3:
+            self.PDF_OCI_POLL_INTERVAL_SEC = 15
+        self.PDF_DELETE_RETRY_INTERVAL_SEC = int(os.getenv("PDF_DELETE_RETRY_INTERVAL_SEC", "300"))
+        if self.PDF_DELETE_RETRY_INTERVAL_SEC < 30:
+            self.PDF_DELETE_RETRY_INTERVAL_SEC = 300
+        self.PDF_V2_ENABLED = os.getenv("PDF_V2_ENABLED", "true").strip().lower() == "true"
+        self.PDF_TEXT_NATIVE_MIN_CHARS_PER_PAGE = int(os.getenv("PDF_TEXT_NATIVE_MIN_CHARS_PER_PAGE", "120"))
+        self.PDF_TEXT_NATIVE_TEXT_PAGE_RATIO_MIN = float(os.getenv("PDF_TEXT_NATIVE_TEXT_PAGE_RATIO_MIN", "0.70"))
+        self.PDF_TEXT_NATIVE_BLANK_PAGE_RATIO_MAX = float(os.getenv("PDF_TEXT_NATIVE_BLANK_PAGE_RATIO_MAX", "0.20"))
+        self.PDF_TEXT_NATIVE_GARBLED_RATIO_MAX = float(os.getenv("PDF_TEXT_NATIVE_GARBLED_RATIO_MAX", "0.12"))
+        self.PDF_TEXT_NATIVE_IMAGE_HEAVY_RATIO_MAX = float(os.getenv("PDF_TEXT_NATIVE_IMAGE_HEAVY_RATIO_MAX", "0.40"))
+        self.PDF_RETRY_AS_OCR_GARBLED_RATIO = float(os.getenv("PDF_RETRY_AS_OCR_GARBLED_RATIO", "0.18"))
+        self.PDF_RETRY_AS_OCR_MIN_CHUNKS = int(os.getenv("PDF_RETRY_AS_OCR_MIN_CHUNKS", "8"))
+        self.PDF_OCR_SHARD_TRIGGER_PAGES = int(os.getenv("PDF_OCR_SHARD_TRIGGER_PAGES", "300"))
+        self.PDF_OCR_SHARD_SIZE = int(os.getenv("PDF_OCR_SHARD_SIZE", "100"))
+        self.PDF_OCR_SHARD_TRIGGER_FILE_MB = int(os.getenv("PDF_OCR_SHARD_TRIGGER_FILE_MB", "25"))
+        self.PDF_OCR_LANGUAGES = os.getenv("PDF_OCR_LANGUAGES", "tr,en").strip() or "tr,en"
+        self.PDF_CHUNK_SOFT_TOKEN_TARGET = int(os.getenv("PDF_CHUNK_SOFT_TOKEN_TARGET", "350"))
+        self.PDF_CHUNK_HARD_TOKEN_CAP = int(os.getenv("PDF_CHUNK_HARD_TOKEN_CAP", "450"))
+        self.LLAMA_CLOUD_API_KEY = os.getenv("LLAMA_CLOUD_API_KEY", "").strip()
+        self.LLAMA_PARSE_API_URL = os.getenv(
+            "LLAMA_PARSE_API_URL",
+            "https://api.cloud.llamaindex.ai/api/parsing/upload",
+        ).strip()
+        self.LLAMA_PARSE_RESULT_URL_TEMPLATE = os.getenv(
+            "LLAMA_PARSE_RESULT_URL_TEMPLATE",
+            "https://api.cloud.llamaindex.ai/api/parsing/job/{job_id}/result/json",
+        ).strip()
+        self.LLAMA_PARSE_TIMEOUT_SEC = int(os.getenv("LLAMA_PARSE_TIMEOUT_SEC", "900"))
+        self.LLAMA_PARSE_POLL_INTERVAL_SEC = int(os.getenv("LLAMA_PARSE_POLL_INTERVAL_SEC", "8"))
+        self.LLAMA_PARSE_TIER = os.getenv("LLAMA_PARSE_TIER", "agentic").strip() or "agentic"
+        self.LLAMA_PARSE_VERSION = os.getenv("LLAMA_PARSE_VERSION", "latest").strip() or "latest"
+        self.UNSTRUCTURED_API_URL = os.getenv("UNSTRUCTURED_API_URL", "").strip()
+        self.UNSTRUCTURED_API_KEY = os.getenv("UNSTRUCTURED_API_KEY", "").strip()
         
         # Security / Firebase
         self.FIREBASE_CREDENTIALS_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
@@ -358,34 +402,6 @@ class Settings:
             self.SEARCH_MMR_LAMBDA = 0.62
         if self.SEARCH_MMR_LAMBDA > 1.0:
             self.SEARCH_MMR_LAMBDA = 1.0
-
-        # ODL secondary rescue path (default-off, canary-safe).
-        self.ODL_SECONDARY_ENABLED = os.getenv("ODL_SECONDARY_ENABLED", "false").strip().lower() == "true"
-        self.ODL_SHADOW_INGEST_ENABLED = (
-            os.getenv("ODL_SHADOW_INGEST_ENABLED", "false").strip().lower() == "true"
-        )
-        self.ODL_RESCUE_ENABLED = os.getenv("ODL_RESCUE_ENABLED", "false").strip().lower() == "true"
-        self.ODL_SECONDARY_UID_ALLOWLIST = set(_parse_csv(os.getenv("ODL_SECONDARY_UID_ALLOWLIST", "")))
-        self.ODL_SECONDARY_BOOK_ALLOWLIST = set(_parse_csv(os.getenv("ODL_SECONDARY_BOOK_ALLOWLIST", "")))
-        self.ODL_RESCUE_MIN_RESULTS = int(os.getenv("ODL_RESCUE_MIN_RESULTS", "5"))
-        if self.ODL_RESCUE_MIN_RESULTS < 1:
-            self.ODL_RESCUE_MIN_RESULTS = 5
-        self.ODL_RESCUE_TOP1_SCORE_THRESHOLD = float(os.getenv("ODL_RESCUE_TOP1_SCORE_THRESHOLD", "0.0"))
-        if self.ODL_RESCUE_TOP1_SCORE_THRESHOLD < 0.0:
-            self.ODL_RESCUE_TOP1_SCORE_THRESHOLD = 0.0
-        self.ODL_RESCUE_TIMEOUT_MS = int(os.getenv("ODL_RESCUE_TIMEOUT_MS", "250"))
-        if self.ODL_RESCUE_TIMEOUT_MS < 50:
-            self.ODL_RESCUE_TIMEOUT_MS = 250
-        self.ODL_RESCUE_MAX_CANDIDATES = int(os.getenv("ODL_RESCUE_MAX_CANDIDATES", "8"))
-        if self.ODL_RESCUE_MAX_CANDIDATES < 1:
-            self.ODL_RESCUE_MAX_CANDIDATES = 8
-        self.ODL_RESCUE_MAX_RATIO = float(os.getenv("ODL_RESCUE_MAX_RATIO", "0.25"))
-        if self.ODL_RESCUE_MAX_RATIO <= 0.0:
-            self.ODL_RESCUE_MAX_RATIO = 0.25
-        if self.ODL_RESCUE_MAX_RATIO > 0.9:
-            self.ODL_RESCUE_MAX_RATIO = 0.9
-        self.ODL_EXTRACTOR_VERSION = os.getenv("ODL_EXTRACTOR_VERSION", "opendataloader-pdf")
-        self.ODL_POSTPROCESS_VERSION = os.getenv("ODL_POSTPROCESS_VERSION", "v1")
 
         # Chat scope policy (Phase: Chat-only rollout)
         scope_policy_default = "true" if self.ENVIRONMENT == "development" else "false"

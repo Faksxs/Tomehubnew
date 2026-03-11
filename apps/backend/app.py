@@ -16,12 +16,14 @@ import uvicorn
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from urllib.parse import quote
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Request, BackgroundTasks, Response
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 from typing import Optional, List, Any, Dict
 import traceback
+import hashlib
 
 # Add backend dir to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -96,6 +98,23 @@ from services.cache_service import get_cache, generate_cache_key
 from services.monitoring import DB_POOL_UTILIZATION, CIRCUIT_BREAKER_STATE, REDIS_AVAILABLE
 from services.memory_monitor_service import MemoryMonitor
 from services.embedding_service import get_circuit_breaker_status
+from services.ingestion_status_service import (
+    delete_ingested_file_row,
+    fetch_ingestion_status as fetch_ingestion_status_record,
+    get_pdf_record,
+    get_user_storage_bytes,
+    is_active_parse_status,
+    upsert_ingestion_status as upsert_ingestion_status_record,
+)
+from services.object_storage_service import (
+    cleanup_pdf_artifacts,
+    ObjectStorageConfigError,
+    compute_sha256,
+    get_storage_quota_summary,
+    stream_object,
+    upload_pdf,
+)
+from services.pdf_async_ingestion_service import mark_pdf_for_cleanup, pdf_async_ingestion_manager
 
 # Configure Sentry - REPLACED BY LOKI (Standard Logging)
 # (Sentry code removed)
@@ -140,6 +159,56 @@ def get_verified_uid(request: Request, uid_from_jwt: Optional[str]) -> str:
             return uid
 
     raise HTTPException(status_code=401, detail="Authentication required")
+
+
+async def get_pdf_request_uid(request: Request) -> str:
+    auth_header = request.headers.get("Authorization", "").strip()
+    if auth_header:
+        uid_from_jwt = await verify_firebase_token(request)
+        return get_verified_uid(request, uid_from_jwt)
+
+    auth_token = str(request.query_params.get("auth_token") or "").strip()
+    if auth_token:
+        try:
+            from firebase_admin import auth as firebase_auth
+        except ImportError as exc:
+            logger.error("firebase-admin is not installed for PDF access: %s", exc)
+            raise HTTPException(status_code=500, detail="Authentication service unavailable")
+
+        if not settings.FIREBASE_READY:
+            raise HTTPException(status_code=500, detail="Authentication service unavailable")
+
+        try:
+            decoded_token = firebase_auth.verify_id_token(auth_token)
+            uid = str(decoded_token.get("uid") or "").strip()
+            if not uid:
+                raise HTTPException(status_code=401, detail="Invalid token claims")
+            return uid
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.warning("PDF auth_token verification failed: %s", exc)
+            raise HTTPException(status_code=401, detail="Authentication verification failed")
+
+    return get_verified_uid(request, None)
+
+
+def _to_iso_datetime(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if hasattr(value, "isoformat"):
+        try:
+            return value.isoformat()
+        except Exception:
+            return str(value)
+    return str(value)
+
+
+def _build_content_disposition(filename: str) -> str:
+    safe_ascii = re.sub(r'[^A-Za-z0-9._-]+', "_", str(filename or "document.pdf")).strip("._") or "document.pdf"
+    return f"inline; filename=\"{safe_ascii}\"; filename*=UTF-8''{quote(str(filename or safe_ascii))}"
 
 
 def _ensure_media_library_enabled() -> None:
@@ -384,6 +453,12 @@ async def lifespan(app: FastAPI):
     app.state.metrics_task = metrics_task
     logger.info("✓ Metrics updater started (10s interval)")
     
+    try:
+        await pdf_async_ingestion_manager.startup()
+        logger.info("Async PDF ingestion manager started")
+    except Exception as e:
+        logger.error(f"Failed to start async PDF ingestion manager: {e}")
+
     yield
     # Shutdown: Clean up
     logger.info("🛑 Shutdown: Cancelling background tasks...")
@@ -394,6 +469,11 @@ async def lifespan(app: FastAPI):
     except asyncio.CancelledError:
         pass
     
+    try:
+        await pdf_async_ingestion_manager.shutdown()
+    except Exception as e:
+        logger.error(f"Failed to shutdown async PDF ingestion manager cleanly: {e}")
+
     logger.info("🛑 Shutdown: Closing DB Pool...")
     DatabaseManager.close_pool()
 
@@ -1513,38 +1593,22 @@ def upsert_ingestion_status(
     status: str,
     file_name: Optional[str] = None,
     chunk_count: Optional[int] = None,
-    embedding_count: Optional[int] = None
+    embedding_count: Optional[int] = None,
+    **extra_fields: Any,
 ):
     """Upsert ingestion status for a book/user."""
     if not book_id:
         return
     try:
-        with DatabaseManager.get_write_connection() as conn:
-            with conn.cursor() as cursor:
-                merge_sql = """
-                MERGE INTO TOMEHUB_INGESTED_FILES target
-                USING (SELECT :p_bid as book_id, :p_uid as firebase_uid FROM DUAL) src
-                ON (target.BOOK_ID = src.book_id AND target.FIREBASE_UID = src.firebase_uid)
-                WHEN MATCHED THEN
-                    UPDATE SET
-                        STATUS = :p_status,
-                        SOURCE_FILE_NAME = COALESCE(:p_file, target.SOURCE_FILE_NAME),
-                        CHUNK_COUNT = :p_chunk_count,
-                        EMBEDDING_COUNT = :p_embed_count,
-                        UPDATED_AT = CURRENT_TIMESTAMP
-                WHEN NOT MATCHED THEN
-                    INSERT (BOOK_ID, FIREBASE_UID, SOURCE_FILE_NAME, STATUS, CHUNK_COUNT, EMBEDDING_COUNT)
-                    VALUES (:p_bid, :p_uid, :p_file, :p_status, :p_chunk_count, :p_embed_count)
-                """
-                cursor.execute(merge_sql, {
-                    "p_bid": book_id,
-                    "p_uid": firebase_uid,
-                    "p_file": file_name,
-                    "p_status": status,
-                    "p_chunk_count": chunk_count,
-                    "p_embed_count": embedding_count
-                })
-                conn.commit()
+        upsert_ingestion_status_record(
+            book_id,
+            firebase_uid,
+            file_name=file_name,
+            status=status,
+            chunk_count=chunk_count,
+            embedding_count=embedding_count,
+            **extra_fields,
+        )
         try:
             from services.change_event_service import emit_change_event
             emit_change_event(
@@ -1557,6 +1621,7 @@ def upsert_ingestion_status(
                     "file_name": file_name,
                     "chunk_count": chunk_count,
                     "embedding_count": embedding_count,
+                    **extra_fields,
                 },
                 source_service="app.upsert_ingestion_status",
             )
@@ -1568,18 +1633,13 @@ def upsert_ingestion_status(
 def fetch_ingestion_status(book_id: str, firebase_uid: str):
     """Fetch ingestion status for a book/user."""
     try:
-        with DatabaseManager.get_read_connection() as conn:
-            with conn.cursor() as cursor:
-                # Phase 4: Compatibility view-first (includes index state summary).
-                try:
+        item_index_state = None
+        try:
+            with DatabaseManager.get_read_connection() as conn:
+                with conn.cursor() as cursor:
                     cursor.execute(
                         """
                         SELECT
-                            INGESTION_STATUS,
-                            SOURCE_FILE_NAME,
-                            CHUNK_COUNT,
-                            EMBEDDING_COUNT,
-                            INGESTION_UPDATED_AT,
                             INDEX_FRESHNESS_STATE,
                             TOTAL_CHUNKS,
                             EMBEDDED_CHUNKS,
@@ -1597,48 +1657,26 @@ def fetch_ingestion_status(book_id: str, firebase_uid: str):
                     )
                     row = cursor.fetchone()
                     if row:
-                        return {
-                            "status": row[0],
-                            "file_name": row[1],
-                            "chunk_count": row[2],
-                            "embedding_count": row[3],
-                            "updated_at": row[4],
-                            "item_index_state": {
-                                "index_freshness_state": row[5],
-                                "total_chunks": row[6],
-                                "embedded_chunks": row[7],
-                                "graph_linked_chunks": row[8],
-                                "vector_ready": row[9],
-                                "graph_ready": row[10],
-                                "fully_ready": row[11],
-                                "vector_coverage_ratio": row[12],
-                                "graph_coverage_ratio": row[13],
-                                "last_checked_at": row[14].isoformat() if row[14] else None,
-                            },
+                        item_index_state = {
+                            "index_freshness_state": row[0],
+                            "total_chunks": row[1],
+                            "embedded_chunks": row[2],
+                            "graph_linked_chunks": row[3],
+                            "vector_ready": row[4],
+                            "graph_ready": row[5],
+                            "fully_ready": row[6],
+                            "vector_coverage_ratio": row[7],
+                            "graph_coverage_ratio": row[8],
+                            "last_checked_at": row[9].isoformat() if row[9] else None,
                         }
-                except Exception:
-                    # View may be unavailable in older envs; fallback to base table.
-                    pass
+        except Exception:
+            item_index_state = None
 
-                cursor.execute(
-                    """
-                    SELECT STATUS, SOURCE_FILE_NAME, CHUNK_COUNT, EMBEDDING_COUNT, UPDATED_AT
-                    FROM TOMEHUB_INGESTED_FILES
-                    WHERE BOOK_ID = :p_bid AND FIREBASE_UID = :p_uid
-                    """,
-                    {"p_bid": book_id, "p_uid": firebase_uid}
-                )
-                row = cursor.fetchone()
-                if not row:
-                    return None
-                return {
-                    "status": row[0],
-                    "file_name": row[1],
-                    "chunk_count": row[2],
-                    "embedding_count": row[3],
-                    "updated_at": row[4],
-                    "item_index_state": None,
-                }
+        record = fetch_ingestion_status_record(book_id, firebase_uid)
+        if not record:
+            return None
+        record["item_index_state"] = item_index_state
+        return record
     except Exception as e:
         logger.error(f"Failed to fetch ingestion status: {e}")
         return None
@@ -1796,6 +1834,13 @@ def _safe_upload_filename(upload_file: UploadFile) -> str:
     safe_name = os.path.basename(str(safe_name or "").replace("\x00", "")).strip()
     return safe_name or "upload.pdf"
 
+
+def _has_active_pdf_ingestion(book_id: str, firebase_uid: str) -> bool:
+    record = fetch_ingestion_status(book_id, firebase_uid)
+    if not record:
+        return False
+    return is_active_parse_status(record.get("status"), record.get("parse_status"))
+
 def run_ingestion_background(temp_path: str, title: str, author: str, firebase_uid: str, book_id: str, categories: Optional[str] = None):
     """
     Background task wrapper for book ingestion.
@@ -1910,7 +1955,107 @@ async def ingest_endpoint(
         unique_filename = f"{uuid.uuid4()}_{original_filename}"
         temp_path = os.path.join(upload_dir, unique_filename)
 
-        # Upsert ingestion status as PROCESSING (if book_id provided)
+        # Stream file to disk to avoid Memory Spike (OOM)
+        with open(temp_path, "wb") as buffer:
+            while True:
+                chunk = await file.read(1024 * 1024 * 5) # 5MB chunks
+                if not chunk:
+                    break
+                buffer.write(chunk)
+
+        file_ext = os.path.splitext(original_filename)[1].lower()
+        if file_ext == ".pdf":
+            effective_book_id = book_id or unique_filename.split("_", 1)[0]
+            if _has_active_pdf_ingestion(effective_book_id, verified_firebase_uid):
+                if temp_path and os.path.exists(temp_path):
+                    os.remove(temp_path)
+                    temp_path = None
+                raise HTTPException(
+                    status_code=409,
+                    detail="Bu kitap icin halihazirda bir PDF ingestion calisiyor. Once mevcut run tamamlanmali.",
+                )
+            size_bytes = os.path.getsize(temp_path)
+            current_storage = get_user_storage_bytes(
+                verified_firebase_uid,
+                exclude_book_id=effective_book_id,
+            )
+            quota = get_storage_quota_summary(current_storage, size_bytes)
+            storage_warning = None
+            if quota["block"]:
+                if temp_path and os.path.exists(temp_path):
+                    os.remove(temp_path)
+                    temp_path = None
+                raise HTTPException(
+                    status_code=413,
+                    detail=(
+                        f"PDF storage limit yaklasti. Su an {quota['storage_used_gb']} GB / "
+                        f"{quota['storage_limit_gb']} GB kullanilacak."
+                    ),
+                )
+            if quota["warn"]:
+                storage_warning = (
+                    f"PDF storage kullanimı {quota['storage_used_gb']} GB / "
+                    f"{quota['storage_limit_gb']} GB seviyesine yaklasti."
+                )
+
+            sha256_hex = compute_sha256(temp_path)
+            upload_info = upload_pdf(temp_path, verified_firebase_uid, effective_book_id, sha256_hex)
+            if temp_path and os.path.exists(temp_path):
+                os.remove(temp_path)
+                temp_path = None
+
+            upsert_ingestion_status(
+                book_id=effective_book_id,
+                firebase_uid=verified_firebase_uid,
+                status="PROCESSING",
+                file_name=original_filename,
+                storage_backend="OCI_OBJECT_STORAGE",
+                bucket_name=str(upload_info["bucket_name"]),
+                object_key=str(upload_info["object_key"]),
+                size_bytes=int(upload_info["size_bytes"]),
+                storage_status="STORED",
+                parse_path="PDF_V2",
+                parse_status="QUEUED",
+                storage_warning=storage_warning,
+                content_type="PDF",
+                mime_type="application/pdf",
+                sha256=str(upload_info["sha256"]),
+                error_message=None,
+            )
+
+            try:
+                await pdf_async_ingestion_manager.enqueue_pdf_processing(
+                    book_id=effective_book_id,
+                    firebase_uid=verified_firebase_uid,
+                    title=title,
+                    author=author,
+                    categories=tags,
+                    bucket_name=str(upload_info["bucket_name"]),
+                    object_key=str(upload_info["object_key"]),
+                )
+            except RuntimeError:
+                cleanup_pdf_artifacts(
+                    str(upload_info["bucket_name"]),
+                    str(upload_info["object_key"]),
+                    "",
+                )
+                delete_ingested_file_row(effective_book_id, verified_firebase_uid)
+                raise HTTPException(
+                    status_code=409,
+                    detail="Bu kitap icin halihazirda bir PDF ingestion calisiyor. Once mevcut run tamamlanmali.",
+                )
+
+            return {
+                "success": True,
+                "message": f"Ingestion started for '{title}'",
+                "timestamp": datetime.now().isoformat(),
+                "storage_warning": storage_warning,
+                "storage_used_gb": quota["storage_used_gb"],
+                "storage_limit_gb": quota["storage_limit_gb"],
+                "pdf_available": True,
+                "parse_status": "QUEUED"
+            }
+
         if book_id:
             upsert_ingestion_status(
                 book_id=book_id,
@@ -1919,31 +2064,27 @@ async def ingest_endpoint(
                 file_name=original_filename
             )
 
-        # Stream file to disk to avoid Memory Spike (OOM)
-        with open(temp_path, "wb") as buffer:
-            while True:
-                chunk = await file.read(1024 * 1024 * 5) # 5MB chunks
-                if not chunk:
-                    break
-                buffer.write(chunk)
-        
         # Add to background tasks
         background_tasks.add_task(
-            run_ingestion_background, 
-            temp_path, 
-            title, 
-            author, 
-            verified_firebase_uid, 
+            run_ingestion_background,
+            temp_path,
+            title,
+            author,
+            verified_firebase_uid,
             book_id,
             categories=tags
         )
-        
+
         return {
             "success": True,
             "message": f"Ingestion started for '{title}'",
             "timestamp": datetime.now().isoformat()
         }
              
+    except HTTPException:
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise
     except Exception as e:
         logger.error("Ingestion setup error", extra={"error": str(e), "traceback": traceback.format_exc()})
         # If we failed before adding task, cleanup immediately
@@ -2015,7 +2156,28 @@ async def get_ingestion_status(
                 "file_name": row.get("file_name"),
                 "chunk_count": int(row["chunk_count"]) if row.get("chunk_count") is not None else None,
                 "embedding_count": int(row["embedding_count"]) if row.get("embedding_count") is not None else None,
-                "updated_at": row["updated_at"].isoformat() if row.get("updated_at") else None,
+                "updated_at": _to_iso_datetime(row.get("updated_at")),
+                "parse_path": row.get("parse_path"),
+                "parse_status": row.get("parse_status"),
+                "pdf_available": bool(row.get("pdf_available")),
+                "storage_warning": row.get("storage_warning"),
+                "size_bytes": int(row["size_bytes"]) if row.get("size_bytes") is not None else None,
+                "storage_status": row.get("storage_status"),
+                "error_message": row.get("error_message"),
+                "classification_route": row.get("classification_route"),
+                "parse_engine": row.get("parse_engine"),
+                "fallback_engine": row.get("fallback_engine"),
+                "classifier_metrics_json": row.get("classifier_metrics_json"),
+                "quality_metrics_json": row.get("quality_metrics_json"),
+                "routing_metrics_json": row.get("routing_metrics_json"),
+                "parse_time_ms": int(row["parse_time_ms"]) if row.get("parse_time_ms") is not None else None,
+                "pages": int(row["pages"]) if row.get("pages") is not None else None,
+                "chars_extracted": int(row["chars_extracted"]) if row.get("chars_extracted") is not None else None,
+                "garbled_ratio": float(row["garbled_ratio"]) if row.get("garbled_ratio") is not None else None,
+                "avg_chunk_tokens": float(row["avg_chunk_tokens"]) if row.get("avg_chunk_tokens") is not None else None,
+                "fallback_triggered": bool(row.get("fallback_triggered")) if row.get("fallback_triggered") is not None else False,
+                "shard_count": int(row["shard_count"]) if row.get("shard_count") is not None else None,
+                "shard_failed_count": int(row["shard_failed_count"]) if row.get("shard_failed_count") is not None else None,
                 "resolved_book_id": effective_book_id,
                 "matched_by_title": matched_by_title,
                 "match_source": match_source,
@@ -2035,6 +2197,27 @@ async def get_ingestion_status(
                 "chunk_count": int(pdf_stats.get("effective_chunks", 0)),
                 "embedding_count": int(pdf_stats.get("effective_embeddings", 0)),
                 "updated_at": datetime.now().isoformat(),
+                "parse_path": None,
+                "parse_status": None,
+                "pdf_available": False,
+                "storage_warning": None,
+                "size_bytes": None,
+                "storage_status": None,
+                "error_message": None,
+                "classification_route": None,
+                "parse_engine": None,
+                "fallback_engine": None,
+                "classifier_metrics_json": None,
+                "quality_metrics_json": None,
+                "routing_metrics_json": None,
+                "parse_time_ms": None,
+                "pages": None,
+                "chars_extracted": None,
+                "garbled_ratio": None,
+                "avg_chunk_tokens": None,
+                "fallback_triggered": False,
+                "shard_count": None,
+                "shard_failed_count": None,
                 "resolved_book_id": effective_book_id,
                 "matched_by_title": matched_by_title,
                 "match_source": "content_fallback",
@@ -2052,6 +2235,27 @@ async def get_ingestion_status(
         "chunk_count": None,
         "embedding_count": None,
         "updated_at": None,
+        "parse_path": None,
+        "parse_status": None,
+        "pdf_available": False,
+        "storage_warning": None,
+        "size_bytes": None,
+        "storage_status": None,
+        "error_message": None,
+        "classification_route": None,
+        "parse_engine": None,
+        "fallback_engine": None,
+        "classifier_metrics_json": None,
+        "quality_metrics_json": None,
+        "routing_metrics_json": None,
+        "parse_time_ms": None,
+        "pages": None,
+        "chars_extracted": None,
+        "garbled_ratio": None,
+        "avg_chunk_tokens": None,
+        "fallback_triggered": False,
+        "shard_count": None,
+        "shard_failed_count": None,
         "resolved_book_id": effective_book_id,
         "matched_by_title": matched_by_title,
         "match_source": match_source,
@@ -2060,6 +2264,75 @@ async def get_ingestion_status(
         "index_freshness_state": freshness.get("index_freshness_state"),
         "index_freshness": freshness,
     }
+
+
+@app.get("/api/books/{book_id}/pdf")
+async def get_book_pdf_metadata(
+    book_id: str,
+    request: Request,
+    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+):
+    verified_firebase_uid = get_verified_uid(request, firebase_uid_from_jwt)
+    record = get_pdf_record(book_id, verified_firebase_uid)
+    if not record or not record.get("object_key"):
+        raise HTTPException(status_code=404, detail="PDF not found")
+
+    return {
+        "book_id": book_id,
+        "pdf_available": True,
+        "file_name": record.get("file_name"),
+        "size_bytes": int(record["size_bytes"]) if record.get("size_bytes") is not None else None,
+        "mime_type": record.get("mime_type") or "application/pdf",
+        "parse_status": record.get("parse_status"),
+        "parse_path": record.get("parse_path"),
+        "storage_warning": record.get("storage_warning"),
+        "updated_at": _to_iso_datetime(record.get("updated_at")),
+    }
+
+
+@app.get("/api/books/{book_id}/pdf/content")
+async def stream_book_pdf_content(
+    book_id: str,
+    request: Request,
+):
+    verified_firebase_uid = await get_pdf_request_uid(request)
+    record = get_pdf_record(book_id, verified_firebase_uid)
+    if not record or not record.get("object_key") or not record.get("bucket_name"):
+        raise HTTPException(status_code=404, detail="PDF not found")
+
+    byte_range = request.headers.get("Range")
+    try:
+        body_iter, object_headers = stream_object(
+            str(record.get("bucket_name")),
+            str(record.get("object_key")),
+            byte_range=byte_range,
+        )
+    except ObjectStorageConfigError as exc:
+        logger.error("PDF stream failed due to Object Storage config: %s", exc)
+        raise HTTPException(status_code=503, detail="PDF storage is not configured")
+    except Exception as exc:
+        logger.error("PDF stream failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to stream PDF")
+
+    filename = str(record.get("file_name") or f"{book_id}.pdf")
+    response_headers = {
+        "Accept-Ranges": str(object_headers.get("accept_ranges") or "bytes"),
+        "Content-Disposition": _build_content_disposition(filename),
+        "Cache-Control": "private, max-age=60",
+    }
+    if object_headers.get("content_length") is not None:
+        response_headers["Content-Length"] = str(object_headers.get("content_length"))
+    if object_headers.get("content_range"):
+        response_headers["Content-Range"] = str(object_headers.get("content_range"))
+    if object_headers.get("etag"):
+        response_headers["ETag"] = str(object_headers.get("etag"))
+
+    return StreamingResponse(
+        body_iter,
+        status_code=206 if byte_range else 200,
+        media_type=str(object_headers.get("content_type") or record.get("mime_type") or "application/pdf"),
+        headers=response_headers,
+    )
 
 
 def _run_calculate_graph_stats_background():
