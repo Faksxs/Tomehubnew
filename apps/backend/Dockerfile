@@ -1,7 +1,7 @@
 # TomeHub Backend Dockerfile
-# Python Flask API with Caddy for auto-HTTPS (self-discovering IP)
+# FastAPI backend with Caddy reverse proxy / TLS termination
 
-FROM python:3.15-rc-alpine3.22
+FROM python:3.12-slim-bookworm
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -14,7 +14,9 @@ WORKDIR /app
 
 # Install system dependencies including Caddy, curl, and libzbar0 (for pyzbar barcode scanning)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
+    bash \
+    build-essential \
+    ca-certificates \
     curl \
     gnupg \
     libzbar0 \
@@ -42,7 +44,7 @@ RUN sed -i 's/\r$//' /app/entrypoint.sh && \
     chmod +x /app/entrypoint.sh && \
     mkdir -p /app/uploads
 
-# Expose ports: 80 (HTTP redirect), 443 (HTTPS), 5000 (internal Flask)
+# Expose ports: 80 (HTTP redirect), 443 (HTTPS), 5000 (internal FastAPI)
 EXPOSE 80 443 5000
 
 # Health check via HTTPS
