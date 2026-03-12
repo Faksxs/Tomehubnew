@@ -156,6 +156,7 @@ Usage notes:
   - root-level `tests/` before `apps/backend/tests/`
 
 ### Working Conventions
+- Treat the TomeHub workspace rooted at this directory as a hard boundary for all changes. Only modify files and folders inside this repository root; do not change anything elsewhere on the PC or outside the repo unless the user explicitly asks for it.
 - Prefer implementing changes in the active app folders instead of adding more root-level helper scripts.
 - If a task touches search quality, ingestion freshness, release safety, UI work, or security, use the matching skill first when available.
 - When updating docs or prompts, align terminology with current product naming:

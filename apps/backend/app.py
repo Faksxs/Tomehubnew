@@ -21,7 +21,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Req
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
-from typing import Optional, List, Any, Dict
+from typing import Annotated, Optional, List, Any, Dict
 import traceback
 import hashlib
 
@@ -121,7 +121,7 @@ logger = get_logger("tomehub_api")
 logger.setLevel(getattr(logging, settings.LOG_LEVEL, logging.INFO))
 
 
-def get_verified_uid(request: Optional[Request], uid_from_jwt: Optional[str]) -> str:
+def get_verified_uid(uid_from_jwt: Optional[str]) -> str:
     """
     Authoritative UID resolver for TomeHub.
     Requires a verified JWT-derived UID for protected endpoints.
@@ -136,7 +136,7 @@ async def get_pdf_request_uid(request: Request) -> str:
     auth_header = request.headers.get("Authorization", "").strip()
     if auth_header:
         uid_from_jwt = await verify_firebase_token(request)
-        return get_verified_uid(request, uid_from_jwt)
+        return get_verified_uid(uid_from_jwt)
 
     auth_token = str(request.query_params.get("auth_token") or "").strip()
     if auth_token:
@@ -161,7 +161,7 @@ async def get_pdf_request_uid(request: Request) -> str:
             logger.warning("PDF auth_token verification failed: %s", exc)
             raise HTTPException(status_code=401, detail="Authentication verification failed")
 
-    return get_verified_uid(request, None)
+    return get_verified_uid(None)
 
 
 def _to_iso_datetime(value: Any) -> Optional[str]:
@@ -415,6 +415,9 @@ Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
 @app.get("/")
 async def health_check():
+    """
+    Basic health check endpoint to verify API availability.
+    """
     return {
         "status": "online",
         "service": "TomeHub API (FastAPI)",
@@ -422,19 +425,22 @@ async def health_check():
     }
 
 
-@app.get("/api/realtime/poll")
+@app.get("/api/realtime/poll", responses={
+    204: {"description": "No content, compact poll optimization"},
+    401: {"description": "Authentication required"}
+})
 async def realtime_poll(
     request: Request,
     since_ms: int = 0,
     limit: int = 100,
     firebase_uid: Optional[str] = None,
-    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+    firebase_uid_from_jwt: Annotated[str | None, Depends(verify_firebase_token)] = None,
 ):
     """
     Fast polling endpoint for multi-device UX consistency.
     Returns coarse-grained change events since client timestamp.
     """
-    verified_uid = get_verified_uid(request, firebase_uid_from_jwt)
+    verified_uid = get_verified_uid(firebase_uid_from_jwt)
     compact_poll = request.headers.get("x-th-compact-poll") == "1"
     payload = fetch_realtime_poll_payload(
         firebase_uid=verified_uid,
@@ -451,14 +457,17 @@ async def realtime_poll(
 # SEARCH ENDPOINTS
 # ============================================================================
 
-@app.post("/api/search", response_model=SearchResponse)
+@app.post("/api/search", response_model=SearchResponse, responses={
+    401: {"description": "Authentication required"},
+    500: {"description": "Search failed or internal server error"}
+})
 @limiter.limit(settings.RATE_LIMIT_SEARCH)
 async def search(
     request: Request,
     search_request: SearchRequest,
-    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+    firebase_uid_from_jwt: Annotated[str | None, Depends(verify_firebase_token)] = None
 ):
-    firebase_uid = get_verified_uid(request, firebase_uid_from_jwt)
+    firebase_uid = get_verified_uid(firebase_uid_from_jwt)
     logger.info(f"Using JWT-verified UID: {firebase_uid}")
     
     # Log search start
@@ -479,19 +488,22 @@ async def search(
     except Exception as e:
         _raise_internal_server_error("Search failed", e, detail="Search failed")
 
-@app.post("/api/chat", response_model=ChatResponse)
+@app.post("/api/chat", response_model=ChatResponse, responses={
+    401: {"description": "Authentication required"},
+    500: {"description": "Chat failed or internal server error"}
+})
 @limiter.limit(settings.RATE_LIMIT_CHAT)
 async def chat_endpoint(
     request: Request,
     chat_request: ChatRequest,
     background_tasks: BackgroundTasks,
-    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+    firebase_uid_from_jwt: Annotated[str | None, Depends(verify_firebase_token)] = None
 ):
     """
     Stateful Chat Endpoint (LogosChat - Layer 3).
     Orchestrates session, history, and RAG search.
     """
-    firebase_uid = get_verified_uid(request, firebase_uid_from_jwt)
+    firebase_uid = get_verified_uid(firebase_uid_from_jwt)
     logger.info(f"Using JWT-verified UID: {firebase_uid}")
     
     logger.info(
@@ -525,15 +537,17 @@ async def chat_endpoint(
         _raise_internal_server_error("Chat failed", e, detail="Chat failed")
 
 
-@app.get("/api/analytics/ingested-books")
+@app.get("/api/analytics/ingested-books", responses={
+    401: {"description": "Authentication required"},
+    500: {"description": "Internal server error"}
+})
 async def get_ingested_books(
-    request: Request,
-    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+    firebase_uid_from_jwt: Annotated[str | None, Depends(verify_firebase_token)] = None
 ):
     """
     Returns list of book_ids that have ingested PDF content for the user.
     """
-    firebase_uid = get_verified_uid(request, firebase_uid_from_jwt)
+    firebase_uid = get_verified_uid(firebase_uid_from_jwt)
 
     try:
         from services.analytics_service import resolve_ingested_book_ids
@@ -556,14 +570,15 @@ async def get_ingested_books(
         _raise_internal_server_error("Ingested books endpoint failed", e, detail="Failed to fetch ingested books")
 
 
-@app.get("/api/analytics/epistemic-distribution")
+@app.get("/api/analytics/epistemic-distribution", responses={
+    401: {"description": "Authentication required"}
+})
 async def get_epistemic_distribution_endpoint(
-    request: Request,
     book_id: Optional[str] = None,
     limit: int = 250,
-    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+    firebase_uid_from_jwt: Annotated[str | None, Depends(verify_firebase_token)] = None,
 ):
-    firebase_uid = get_verified_uid(request, firebase_uid_from_jwt)
+    firebase_uid = get_verified_uid(firebase_uid_from_jwt)
 
     loop = asyncio.get_running_loop()
     result = await loop.run_in_executor(
@@ -572,13 +587,15 @@ async def get_epistemic_distribution_endpoint(
     )
     return result
 
-@app.get("/api/analytics/concordance")
+@app.get("/api/analytics/concordance", responses={
+    401: {"description": "Unauthorized Access"}
+})
 async def get_concordance(
     book_id: str,
     term: str,
     limit: int = 50,
     offset: int = 0,
-    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+    firebase_uid_from_jwt: Annotated[str | None, Depends(verify_firebase_token)] = None
 ):
     """
     Endpoint for paginated KWIC (Concordance) retrieval.
@@ -613,11 +630,13 @@ async def get_concordance(
         _raise_internal_server_error("Concordance endpoint failed", e, detail="Failed to fetch concordance")
 
 
-@app.get("/api/analytics/distribution")
+@app.get("/api/analytics/distribution", responses={
+    401: {"description": "Unauthorized Access"}
+})
 async def get_distribution(
     book_id: str,
     term: str,
-    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+    firebase_uid_from_jwt: Annotated[str | None, Depends(verify_firebase_token)] = None
 ):
     """
     Endpoint for keyword distribution across pages.
@@ -647,10 +666,12 @@ async def get_distribution(
         _raise_internal_server_error("Distribution endpoint failed", e, detail="Failed to fetch distribution")
 
 
-@app.post("/api/analytics/compare")
+@app.post("/api/analytics/compare", responses={
+    401: {"description": "Unauthorized Access"}
+})
 async def get_comparative_stats_endpoint(
     request: ComparisonRequest,
-    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+    firebase_uid_from_jwt: Annotated[str | None, Depends(verify_firebase_token)] = None
 ):
     """
     Endpoint for cross-book keyword comparison.
@@ -679,15 +700,18 @@ async def get_comparative_stats_endpoint(
         _raise_internal_server_error("Comparison endpoint failed", e, detail="Failed to compare analytics")
 
 
-@app.post("/api/smart-search")
+@app.post("/api/smart-search", responses={
+    401: {"description": "Authentication required"},
+    500: {"description": "Smart search failed"}
+})
 async def perform_search(
     request: SearchRequest,
-    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+    firebase_uid_from_jwt: Annotated[str | None, Depends(verify_firebase_token)] = None
 ):
     """
     Pure weighted search (Search - Layer 2).
     """
-    firebase_uid = get_verified_uid(None, firebase_uid_from_jwt)
+    firebase_uid = get_verified_uid(firebase_uid_from_jwt)
     
     try:
         from services.search_system.mix_policy import resolve_result_mix_policy
@@ -738,12 +762,15 @@ async def perform_search(
     except Exception as e:
         _raise_internal_server_error("Smart search failed", e, detail="Smart search failed")
 
-@app.post("/api/feedback")
+@app.post("/api/feedback", responses={
+    401: {"description": "Authentication required"},
+    500: {"description": "Feedback submission failed"}
+})
 async def feedback(
     request: FeedbackRequest,
-    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+    firebase_uid_from_jwt: Annotated[str | None, Depends(verify_firebase_token)] = None
 ):
-    firebase_uid = get_verified_uid(None, firebase_uid_from_jwt)
+    firebase_uid = get_verified_uid(firebase_uid_from_jwt)
     
     try:
         # Pydantic model dump
@@ -769,7 +796,7 @@ async def feedback(
 @app.post("/api/extract-metadata")
 async def extract_metadata_endpoint(
     file: UploadFile = File(...),
-    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+    firebase_uid_from_jwt: Annotated[str | None, Depends(verify_firebase_token)] = None
 ):
     # JWT verified, firebase_uid_from_jwt can be used if needed for logging/tracking
     filename = str(getattr(file, "filename", "") or "").strip()
@@ -793,14 +820,16 @@ async def extract_metadata_endpoint(
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
-@app.get("/api/reports/search")
+@app.get("/api/reports/search", responses={
+    401: {"description": "Authentication required"}
+})
 async def search_reports(
     topic: str,
+    firebase_uid_from_jwt: Annotated[str | None, Depends(verify_firebase_token)] = None,
     limit: int = 20,
-    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
     firebase_uid: str | None = None
 ):
-    uid = get_verified_uid(None, firebase_uid_from_jwt)
+    uid = get_verified_uid(firebase_uid_from_jwt)
 
     loop = asyncio.get_running_loop()
     results = await loop.run_in_executor(None, search_reports_by_topic, uid, topic, limit)
@@ -1160,7 +1189,7 @@ async def ingest_endpoint(
     # Log ingestion start
     logger.info("Ingesting file", extra={"upload_filename": file.filename, "title": title})
     
-    verified_firebase_uid = get_verified_uid(None, firebase_uid_from_jwt)
+    verified_firebase_uid = get_verified_uid(firebase_uid_from_jwt)
     
     upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
     os.makedirs(upload_dir, exist_ok=True)
@@ -1318,7 +1347,7 @@ async def get_ingestion_status(
     title: Optional[str] = None,
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
-    verified_firebase_uid = get_verified_uid(request, firebase_uid_from_jwt)
+    verified_firebase_uid = get_verified_uid(firebase_uid_from_jwt)
 
     effective_book_id = book_id
     matched_by_title = False
@@ -1476,13 +1505,13 @@ async def get_ingestion_status(
     }
 
 
-@app.get("/api/books/{book_id}/pdf")
+@app.get("/api/books/{book_id}/pdf", responses={401: {"description": "Authentication required"}, 404: {"description": "PDF not found"}})
 async def get_book_pdf_metadata(
     book_id: str,
     request: Request,
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
 ):
-    verified_firebase_uid = get_verified_uid(request, firebase_uid_from_jwt)
+    verified_firebase_uid = get_verified_uid(firebase_uid_from_jwt)
     record = get_pdf_record(book_id, verified_firebase_uid)
     if not record or not record.get("object_key"):
         raise HTTPException(status_code=404, detail="PDF not found")
@@ -1500,7 +1529,7 @@ async def get_book_pdf_metadata(
     }
 
 
-@app.get("/api/books/{book_id}/pdf/content")
+@app.get("/api/books/{book_id}/pdf/content", responses={401: {"description": "Authentication required"}, 404: {"description": "PDF not found"}, 500: {"description": "Streaming failed"}})
 async def stream_book_pdf_content(
     book_id: str,
     request: Request,
@@ -1611,7 +1640,7 @@ async def list_library_items_endpoint(
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
 ):
     try:
-        verified_uid = get_verified_uid(request, firebase_uid_from_jwt)
+        verified_uid = get_verified_uid(firebase_uid_from_jwt)
         parsed_types = [t.strip() for t in str(types or "").split(",") if t.strip()] if types else None
         
         start_time = time.time()
@@ -1632,7 +1661,7 @@ async def list_library_items_endpoint(
         _raise_internal_server_error("Library list failed", e, detail="Failed to list library items")
 
 
-@app.get("/api/media/search")
+@app.get("/api/media/search", responses={401: {"description": "Authentication required"}, 404: {"description": "Media library disabled"}})
 async def media_search_endpoint(
     request: Request,
     query: str,
@@ -1642,7 +1671,7 @@ async def media_search_endpoint(
 ):
     _ensure_media_library_enabled()
     # Enforce same auth policy as other library endpoints.
-    _ = get_verified_uid(request, firebase_uid_from_jwt)
+    _ = get_verified_uid(firebase_uid_from_jwt)
 
     if not bool(getattr(settings, "MEDIA_TMDB_SYNC_ENABLED", True)):
         return {"success": True, "results": [], "source": "manual_only"}
@@ -1662,7 +1691,7 @@ async def media_search_endpoint(
     return {"success": True, "results": results, "source": "tmdb"}
 
 
-@app.get("/api/media/details/{kind}/{tmdb_id}")
+@app.get("/api/media/details/{kind}/{tmdb_id}", responses={401: {"description": "Authentication required"}, 404: {"description": "Media library disabled or details not found"}})
 async def media_details_endpoint(
     request: Request,
     kind: str,
@@ -1670,7 +1699,7 @@ async def media_details_endpoint(
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
 ):
     _ensure_media_library_enabled()
-    _ = get_verified_uid(request, firebase_uid_from_jwt)
+    _ = get_verified_uid(firebase_uid_from_jwt)
 
     if not bool(getattr(settings, "MEDIA_TMDB_SYNC_ENABLED", True)):
         raise HTTPException(status_code=503, detail="TMDb sync is disabled")
@@ -1683,7 +1712,7 @@ async def media_details_endpoint(
     return {"success": True, "details": details}
 
 
-@app.put("/api/library/items/{item_id}")
+@app.put("/api/library/items/{item_id}", responses={401: {"description": "Authentication required"}, 404: {"description": "Media library limited or resource not found"}})
 async def upsert_library_item_endpoint(
     item_id: str,
     payload: LibraryItemUpsertRequest,
@@ -1691,7 +1720,7 @@ async def upsert_library_item_endpoint(
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
 ):
     try:
-        verified_uid = get_verified_uid(request, firebase_uid_from_jwt)
+        verified_uid = get_verified_uid(firebase_uid_from_jwt)
         _ensure_media_resource_type_allowed(payload.type)
         payload_data = payload.model_dump()
         result = upsert_library_item(verified_uid, item_id, payload_data)
@@ -1713,7 +1742,7 @@ async def upsert_library_item_endpoint(
         _raise_internal_server_error("Library upsert failed", e, detail="Failed to save library item")
 
 
-@app.patch("/api/library/items/{item_id}")
+@app.patch("/api/library/items/{item_id}", responses={401: {"description": "Authentication required"}, 404: {"description": "Item not found"}})
 async def patch_library_item_endpoint(
     item_id: str,
     payload: LibraryItemPatchRequest,
@@ -1721,7 +1750,7 @@ async def patch_library_item_endpoint(
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
 ):
     try:
-        verified_uid = get_verified_uid(request, firebase_uid_from_jwt)
+        verified_uid = get_verified_uid(firebase_uid_from_jwt)
         result = patch_library_item(verified_uid, item_id, payload.patch or {})
         return {"success": True, **result}
     except ValueError as e:
@@ -1732,14 +1761,14 @@ async def patch_library_item_endpoint(
         _raise_internal_server_error("Library patch failed", e, detail="Failed to update library item")
 
 
-@app.delete("/api/library/items/{item_id}")
+@app.delete("/api/library/items/{item_id}", responses={401: {"description": "Authentication required"}, 500: {"description": "Delete failed"}})
 async def delete_library_item_endpoint(
     item_id: str,
     request: Request,
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
 ):
     try:
-        verified_uid = get_verified_uid(request, firebase_uid_from_jwt)
+        verified_uid = get_verified_uid(firebase_uid_from_jwt)
         result = delete_library_item(verified_uid, item_id)
         if not result.get("success"):
             raise HTTPException(status_code=500, detail=result.get("error", "Delete failed"))
@@ -1750,14 +1779,14 @@ async def delete_library_item_endpoint(
         _raise_internal_server_error("Library delete failed", e, detail="Failed to delete library item")
 
 
-@app.post("/api/library/items/bulk-delete")
+@app.post("/api/library/items/bulk-delete", responses={401: {"description": "Authentication required"}, 500: {"description": "Bulk delete failed"}})
 async def bulk_delete_library_items_endpoint(
     payload: LibraryBulkDeleteRequest,
     request: Request,
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
 ):
     try:
-        verified_uid = get_verified_uid(request, firebase_uid_from_jwt)
+        verified_uid = get_verified_uid(firebase_uid_from_jwt)
         result = bulk_delete_library_items(verified_uid, payload.item_ids)
         return result
     except HTTPException:
@@ -1766,13 +1795,13 @@ async def bulk_delete_library_items_endpoint(
         _raise_internal_server_error("Library bulk delete failed", e, detail="Failed to bulk delete library items")
 
 
-@app.get("/api/library/personal-note-folders")
+@app.get("/api/library/personal-note-folders", responses={401: {"description": "Authentication required"}, 500: {"description": "Folder list failed"}})
 async def list_personal_note_folders_endpoint(
     request: Request,
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
 ):
     try:
-        verified_uid = get_verified_uid(request, firebase_uid_from_jwt)
+        verified_uid = get_verified_uid(firebase_uid_from_jwt)
         folders = list_personal_note_folders(verified_uid)
         return {"success": True, "folders": folders}
     except HTTPException:
@@ -1781,7 +1810,7 @@ async def list_personal_note_folders_endpoint(
         _raise_internal_server_error("Folder list failed", e, detail="Failed to list folders")
 
 
-@app.put("/api/library/personal-note-folders/{folder_id}")
+@app.put("/api/library/personal-note-folders/{folder_id}", responses={401: {"description": "Authentication required"}, 500: {"description": "Folder upsert failed"}})
 async def upsert_personal_note_folder_endpoint(
     folder_id: str,
     payload: PersonalNoteFolderUpsertRequest,
@@ -1789,7 +1818,7 @@ async def upsert_personal_note_folder_endpoint(
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
 ):
     try:
-        verified_uid = get_verified_uid(request, firebase_uid_from_jwt)
+        verified_uid = get_verified_uid(firebase_uid_from_jwt)
         folder = upsert_personal_note_folder(verified_uid, folder_id, payload.model_dump())
         return {"success": True, "folder": folder}
     except HTTPException:
@@ -1798,7 +1827,7 @@ async def upsert_personal_note_folder_endpoint(
         _raise_internal_server_error("Folder upsert failed", e, detail="Failed to save folder")
 
 
-@app.patch("/api/library/personal-note-folders/{folder_id}")
+@app.patch("/api/library/personal-note-folders/{folder_id}", responses={401: {"description": "Authentication required"}, 404: {"description": "Folder not found"}})
 async def patch_personal_note_folder_endpoint(
     folder_id: str,
     payload: PersonalNoteFolderPatchRequest,
@@ -1806,7 +1835,7 @@ async def patch_personal_note_folder_endpoint(
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
 ):
     try:
-        verified_uid = get_verified_uid(request, firebase_uid_from_jwt)
+        verified_uid = get_verified_uid(firebase_uid_from_jwt)
         folder = patch_personal_note_folder(verified_uid, folder_id, payload.model_dump(exclude_none=True))
         return {"success": True, "folder": folder}
     except ValueError as e:
@@ -1817,14 +1846,14 @@ async def patch_personal_note_folder_endpoint(
         _raise_internal_server_error("Folder patch failed", e, detail="Failed to update folder")
 
 
-@app.delete("/api/library/personal-note-folders/{folder_id}")
+@app.delete("/api/library/personal-note-folders/{folder_id}", responses={401: {"description": "Authentication required"}, 500: {"description": "Folder delete failed"}})
 async def delete_personal_note_folder_endpoint(
     folder_id: str,
     request: Request,
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
 ):
     try:
-        verified_uid = get_verified_uid(request, firebase_uid_from_jwt)
+        verified_uid = get_verified_uid(firebase_uid_from_jwt)
         return delete_personal_note_folder(verified_uid, folder_id)
     except HTTPException:
         raise
@@ -1832,13 +1861,13 @@ async def delete_personal_note_folder_endpoint(
         _raise_internal_server_error("Folder delete failed", e, detail="Failed to delete folder")
 
 
-@app.post("/api/add-item")
+@app.post("/api/add-item", responses={401: {"description": "Authentication required"}, 500: {"description": "Add item failed"}})
 async def add_item_endpoint(
     request: AddItemRequest,
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
     try:
-        verified_firebase_uid = get_verified_uid(None, firebase_uid_from_jwt)
+        verified_firebase_uid = get_verified_uid(firebase_uid_from_jwt)
         
         success = ingest_text_item(
             text=request.text,
@@ -1886,7 +1915,7 @@ async def add_item_endpoint(
         _raise_internal_server_error("Add item failed", e, detail="Failed to add item")
 
 
-@app.post("/api/books/{book_id}/sync-highlights")
+@app.post("/api/books/{book_id}/sync-highlights", responses={401: {"description": "Authentication required"}, 500: {"description": "Highlight sync failed"}})
 async def sync_highlights_endpoint(
     book_id: str,
     request: HighlightSyncRequest,
@@ -1895,7 +1924,7 @@ async def sync_highlights_endpoint(
 ):
     try:
         _ensure_media_resource_type_allowed(request.resource_type)
-        verified_firebase_uid = get_verified_uid(None, firebase_uid_from_jwt)
+        verified_firebase_uid = get_verified_uid(firebase_uid_from_jwt)
 
         result = sync_highlights_for_item(
             firebase_uid=verified_firebase_uid,
@@ -1959,7 +1988,7 @@ async def sync_highlights_for_item_endpoint(
     )
 
 
-@app.post("/api/notes/{book_id}/sync-personal-note")
+@app.post("/api/notes/{book_id}/sync-personal-note", responses={401: {"description": "Authentication required"}, 500: {"description": "Personal note sync failed"}})
 async def sync_personal_note_endpoint(
     book_id: str,
     request: PersonalNoteSyncRequest,
@@ -1967,7 +1996,7 @@ async def sync_personal_note_endpoint(
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
     try:
-        verified_firebase_uid = get_verified_uid(None, firebase_uid_from_jwt)
+        verified_firebase_uid = get_verified_uid(firebase_uid_from_jwt)
 
         result = sync_personal_note_for_item(
             firebase_uid=verified_firebase_uid,
@@ -2023,7 +2052,7 @@ async def get_memory_profile_endpoint(
     request: Request,
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
 ):
-    firebase_uid = get_verified_uid(request, firebase_uid_from_jwt)
+    firebase_uid = get_verified_uid(firebase_uid_from_jwt)
     try:
         from functools import partial
         from services.memory_profile_service import get_memory_profile, refresh_memory_profile
@@ -2057,7 +2086,7 @@ async def refresh_memory_profile_endpoint(
     payload: MemoryProfileRefreshRequest,
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
 ):
-    firebase_uid = get_verified_uid(None, firebase_uid_from_jwt)
+    firebase_uid = get_verified_uid(firebase_uid_from_jwt)
     try:
         from functools import partial
         from services.memory_profile_service import refresh_memory_profile
@@ -2081,7 +2110,7 @@ async def purge_resource_endpoint(
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
     try:
-        verified_firebase_uid = get_verified_uid(None, firebase_uid_from_jwt)
+        verified_firebase_uid = get_verified_uid(firebase_uid_from_jwt)
 
         result = purge_item_content(
             firebase_uid=verified_firebase_uid,
@@ -2102,7 +2131,7 @@ async def migrate_bulk_endpoint(
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
     try:
-        verified_firebase_uid = get_verified_uid(None, firebase_uid_from_jwt)
+        verified_firebase_uid = get_verified_uid(firebase_uid_from_jwt)
         
         result = process_bulk_items_logic(request.items, verified_firebase_uid)
         return {

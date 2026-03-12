@@ -77,19 +77,23 @@ def test_question_classification():
     print("TEST 1: Question Intent Classification")
     print("=" * 70)
     
-    question = "vicdan değişen bir şey midir"
-    intent, complexity = classify_question_intent(question)
-    
-    print(f"Question: {question}")
-    print(f"Intent: {intent}")
-    print(f"Complexity: {complexity}")
-    
-    # Expected: DIRECT intent (ends with "midir") + HIGH complexity (contains "vicdan" + "değişen midir")
-    assert intent == "DIRECT", f"Expected DIRECT, got {intent}"
-    assert complexity == "HIGH", f"Expected HIGH, got {complexity}"
-    
-    print("✅ PASSED: Question correctly classified as DIRECT + HIGH complexity")
-    return True
+    try:
+        question = "vicdan değişen bir şey midir"
+        intent, complexity = classify_question_intent(question)
+        
+        print(f"Question: {question}")
+        print(f"Intent: {intent}")
+        print(f"Complexity: {complexity}")
+        
+        # Expected: DIRECT intent (ends with "midir") + HIGH complexity (contains "vicdan" + "değişen midir")
+        assert intent == "DIRECT", f"Expected DIRECT, got {intent}"
+        assert complexity == "HIGH", f"Expected HIGH, got {complexity}"
+        
+        print("✅ PASSED: Question correctly classified as DIRECT + HIGH complexity")
+        return True
+    except Exception as e:
+        print(f"❌ FAILED: {e}")
+        return False
 
 
 def test_passage_classification():
@@ -144,41 +148,45 @@ def test_answer_mode_detection():
     print("TEST 3: Answer Mode Detection")
     print("=" * 70)
     
-    question = "vicdan değişen bir şey midir"
-    keywords = extract_core_concepts(question)
-    intent, complexity = classify_question_intent(question)
-    
-    print(f"Keywords: {keywords}")
-    print(f"Intent: {intent}, Complexity: {complexity}")
-    
-    # Create mock chunks with classification
-    mock_chunks = []
-    for note_id, note in GROUND_TRUTH_NOTES.items():
-        chunk = {
-            "title": f"Test Note - {note_id}",
-            "content_chunk": note["text"],
-            "personal_comment": "",
-            "summary": ""
-        }
-        classify_chunk(keywords, chunk)
-        mock_chunks.append(chunk)
-    
-    # Display chunk scores
-    print("\nChunk Scores:")
-    for chunk in mock_chunks:
-        print(f"  Level {chunk.get('epistemic_level', 'C')} | Score {chunk.get('answerability_score', 0)}/7 | "
-              f"Type: {chunk.get('passage_type', 'N/A')} | {chunk['title']}")
-    
-    # Determine answer mode
-    answer_mode = determine_answer_mode(mock_chunks, intent, complexity)
-    
-    print(f"\nAnswer Mode: {answer_mode}")
-    
-    # Expected: HYBRID mode (DIRECT + HIGH complexity + has definitional evidence)
-    assert answer_mode == "HYBRID", f"Expected HYBRID, got {answer_mode}"
-    
-    print("✅ PASSED: HYBRID mode correctly triggered")
-    return True
+    try:
+        question = "vicdan değişen bir şey midir"
+        keywords = extract_core_concepts(question)
+        intent, complexity = classify_question_intent(question)
+        
+        print(f"Keywords: {keywords}")
+        print(f"Intent: {intent}, Complexity: {complexity}")
+        
+        # Create mock chunks with classification
+        mock_chunks = []
+        for note_id, note in GROUND_TRUTH_NOTES.items():
+            chunk = {
+                "title": f"Test Note - {note_id}",
+                "content_chunk": note["text"],
+                "personal_comment": "",
+                "summary": ""
+            }
+            classify_chunk(keywords, chunk)
+            mock_chunks.append(chunk)
+        
+        # Display chunk scores
+        print("\nChunk Scores:")
+        for chunk in mock_chunks:
+            print(f"  Level {chunk.get('epistemic_level', 'C')} | Score {chunk.get('answerability_score', 0)}/7 | "
+                  f"Type: {chunk.get('passage_type', 'N/A')} | {chunk['title']}")
+        
+        # Determine answer mode
+        answer_mode = determine_answer_mode(mock_chunks, intent, complexity)
+        
+        print(f"\nAnswer Mode: {answer_mode}")
+        
+        # Expected: HYBRID mode (DIRECT + HIGH complexity + has definitional evidence)
+        assert answer_mode == "HYBRID", f"Expected HYBRID, got {answer_mode}"
+        
+        print("✅ PASSED: HYBRID mode correctly triggered")
+        return True
+    except Exception as e:
+        print(f"❌ FAILED: {e}")
+        return False
 
 
 def test_context_build():

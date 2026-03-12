@@ -1,4 +1,4 @@
-﻿# Logs
+# Logs
 logs
 *.log
 npm-debug.log*
@@ -91,3 +91,6 @@ apps/backend/uploads/
 *.tar
 diff.txt
 diff_app.txt
+
+# Temporary and Inspection Files
+tmp/

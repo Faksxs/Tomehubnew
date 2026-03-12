@@ -51,29 +51,33 @@ def test_cache_key_generation():
     print("TEST 2: Cache Key Generation")
     print("="*60)
     
-    key1 = generate_cache_key("search", "test query", "user123", None, 50, "v2")
-    key2 = generate_cache_key("search", "test query", "user123", None, 50, "v2")
-    key3 = generate_cache_key("search", "test query", "user456", None, 50, "v2")
-    key4 = generate_cache_key("search", "different query", "user123", None, 50, "v2")
-    
-    # Same inputs should generate same key
-    assert key1 == key2, "Same inputs should generate same key"
-    print(f"✓ Same inputs generate same key: {key1[:50]}...")
-    
-    # Different users should generate different keys
-    assert key1 != key3, "Different users should generate different keys"
-    print(f"✓ Different users generate different keys")
-    
-    # Different queries should generate different keys
-    assert key1 != key4, "Different queries should generate different keys"
-    print(f"✓ Different queries generate different keys")
-    
-    print(f"\nSample keys:")
-    print(f"  Key 1: {key1}")
-    print(f"  Key 3: {key3}")
-    print(f"  Key 4: {key4}")
-    
-    return True
+    try:
+        key1 = generate_cache_key("search", "test query", "user123", None, 50, "v2")
+        key2 = generate_cache_key("search", "test query", "user123", None, 50, "v2")
+        key3 = generate_cache_key("search", "test query", "user456", None, 50, "v2")
+        key4 = generate_cache_key("search", "different query", "user123", None, 50, "v2")
+        
+        # Same inputs should generate same key
+        assert key1 == key2, "Same inputs should generate same key"
+        print(f"✓ Same inputs generate same key: {key1[:50]}...")
+        
+        # Different users should generate different keys
+        assert key1 != key3, "Different users should generate different keys"
+        print(f"✓ Different users generate different keys")
+        
+        # Different queries should generate different keys
+        assert key1 != key4, "Different queries should generate different keys"
+        print(f"✓ Different queries generate different keys")
+        
+        print(f"\nSample keys:")
+        print(f"  Key 1: {key1}")
+        print(f"  Key 3: {key3}")
+        print(f"  Key 4: {key4}")
+        
+        return True
+    except Exception as e:
+        print(f"✗ Test failed: {e}")
+        return False
 
 def test_l1_cache():
     """Test L1 (in-memory) cache."""
@@ -81,39 +85,43 @@ def test_l1_cache():
     print("TEST 3: L1 Cache (In-Memory)")
     print("="*60)
     
-    cache = L1Cache(maxsize=10, ttl=2)  # 2 second TTL for testing
-    
-    # Test set and get
-    cache.set("key1", "value1")
-    value = cache.get("key1")
-    assert value == "value1", "L1 cache should return stored value"
-    print("✓ Set and get works")
-    
-    # Test cache hit
-    value = cache.get("key1")
-    assert value == "value1", "L1 cache should return cached value"
-    print("✓ Cache hit works")
-    
-    # Test cache miss
-    value = cache.get("nonexistent")
-    assert value is None, "L1 cache should return None for missing key"
-    print("✓ Cache miss works")
-    
-    # Test TTL expiration
-    cache.set("key2", "value2")
-    time.sleep(3)  # Wait for TTL to expire
-    value = cache.get("key2")
-    assert value is None, "L1 cache should expire after TTL"
-    print("✓ TTL expiration works")
-    
-    # Test size limit
-    for i in range(15):
-        cache.set(f"key{i}", f"value{i}")
-    # Should have evicted oldest entries
-    assert cache.size() <= 10, "L1 cache should respect maxsize"
-    print(f"✓ Size limit works (current size: {cache.size()})")
-    
-    return True
+    try:
+        cache = L1Cache(maxsize=10, ttl=2)  # 2 second TTL for testing
+        
+        # Test set and get
+        cache.set("key1", "value1")
+        value = cache.get("key1")
+        assert value == "value1", "L1 cache should return stored value"
+        print("✓ Set and get works")
+        
+        # Test cache hit
+        value = cache.get("key1")
+        assert value == "value1", "L1 cache should return cached value"
+        print("✓ Cache hit works")
+        
+        # Test cache miss
+        value = cache.get("nonexistent")
+        assert value is None, "L1 cache should return None for missing key"
+        print("✓ Cache miss works")
+        
+        # Test TTL expiration
+        cache.set("key2", "value2")
+        time.sleep(3)  # Wait for TTL to expire
+        value = cache.get("key2")
+        assert value is None, "L1 cache should expire after TTL"
+        print("✓ TTL expiration works")
+        
+        # Test size limit
+        for i in range(15):
+            cache.set(f"key{i}", f"value{i}")
+        # Should have evicted oldest entries
+        assert cache.size() <= 10, "L1 cache should respect maxsize"
+        print(f"✓ Size limit works (current size: {cache.size()})")
+        
+        return True
+    except Exception as e:
+        print(f"✗ Test failed: {e}")
+        return False
 
 def test_l2_cache():
     """Test L2 (Redis) cache if available."""
@@ -121,34 +129,38 @@ def test_l2_cache():
     print("TEST 4: L2 Cache (Redis)")
     print("="*60)
     
-    cache = L2Cache(redis_url=settings.REDIS_URL)
-    
-    if not cache.is_available():
-        print("⚠ Redis not available, skipping L2 cache tests")
-        print("  To test L2 cache, start Redis and set REDIS_URL environment variable")
-        return True  # Not a failure, just skip
-    
-    # Test set and get
-    cache.set("test_key", {"data": "test_value"}, ttl=10)
-    value = cache.get("test_key")
-    assert value == {"data": "test_value"}, "L2 cache should return stored value"
-    print("✓ Set and get works")
-    
-    # Test cache hit
-    value = cache.get("test_key")
-    assert value == {"data": "test_value"}, "L2 cache should return cached value"
-    print("✓ Cache hit works")
-    
-    # Test cache miss
-    value = cache.get("nonexistent_key")
-    assert value is None, "L2 cache should return None for missing key"
-    print("✓ Cache miss works")
-    
-    # Cleanup
-    cache.delete("test_key")
-    print("✓ Cleanup works")
-    
-    return True
+    try:
+        cache = L2Cache(redis_url=settings.REDIS_URL)
+        
+        if not cache.is_available():
+            print("⚠ Redis not available, skipping L2 cache tests")
+            print("  To test L2 cache, start Redis and set REDIS_URL environment variable")
+            return True  # Not a failure, just skip
+        
+        # Test set and get
+        cache.set("test_key", {"data": "test_value"}, ttl=10)
+        value = cache.get("test_key")
+        assert value == {"data": "test_value"}, "L2 cache should return stored value"
+        print("✓ Set and get works")
+        
+        # Test cache hit
+        value = cache.get("test_key")
+        assert value == {"data": "test_value"}, "L2 cache should return cached value"
+        print("✓ Cache hit works")
+        
+        # Test cache miss
+        value = cache.get("nonexistent_key")
+        assert value is None, "L2 cache should return None for missing key"
+        print("✓ Cache miss works")
+        
+        # Cleanup
+        cache.delete("test_key")
+        print("✓ Cleanup works")
+        
+        return True
+    except Exception as e:
+        print(f"✗ Test failed: {e}")
+        return False
 
 def test_multilayer_cache():
     """Test multi-layer cache (L1 + L2)."""
@@ -156,40 +168,44 @@ def test_multilayer_cache():
     print("TEST 5: Multi-Layer Cache")
     print("="*60)
     
-    l1 = L1Cache(maxsize=100, ttl=60)
-    l2 = L2Cache(redis_url=settings.REDIS_URL)
-    cache = MultiLayerCache(l1=l1, l2=l2)
-    
-    test_key = "multilayer_test"
-    test_value = {"result": "test_data", "sources": []}
-    
-    # Test write (should write to both layers)
-    cache.set(test_key, test_value, ttl=60)
-    print("✓ Write to both layers")
-    
-    # Test read from L1 (should hit L1)
-    l1_value = l1.get(test_key)
-    assert l1_value == test_value, "L1 should have the value"
-    print("✓ Value stored in L1")
-    
-    # Clear L1 to test L2 fallback
-    l1.delete(test_key)
-    
-    # Test read from L2 (should fallback to L2 and populate L1)
-    value = cache.get(test_key)
-    assert value == test_value, "Should get value from L2"
-    print("✓ Fallback to L2 works")
-    
-    # Verify L1 was populated
-    l1_value = l1.get(test_key)
-    assert l1_value == test_value, "L1 should be populated from L2"
-    print("✓ L1 populated from L2 on miss")
-    
-    # Cleanup
-    cache.delete(test_key)
-    print("✓ Cleanup works")
-    
-    return True
+    try:
+        l1 = L1Cache(maxsize=100, ttl=60)
+        l2 = L2Cache(redis_url=settings.REDIS_URL)
+        cache = MultiLayerCache(l1=l1, l2=l2)
+        
+        test_key = "multilayer_test"
+        test_value = {"result": "test_data", "sources": []}
+        
+        # Test write (should write to both layers)
+        cache.set(test_key, test_value, ttl=60)
+        print("✓ Write to both layers")
+        
+        # Test read from L1 (should hit L1)
+        l1_value = l1.get(test_key)
+        assert l1_value == test_value, "L1 should have the value"
+        print("✓ Value stored in L1")
+        
+        # Clear L1 to test L2 fallback
+        l1.delete(test_key)
+        
+        # Test read from L2 (should fallback to L2 and populate L1)
+        value = cache.get(test_key)
+        assert value == test_value, "Should get value from L2"
+        print("✓ Fallback to L2 works")
+        
+        # Verify L1 was populated
+        l1_value = l1.get(test_key)
+        assert l1_value == test_value, "L1 should be populated from L2"
+        print("✓ L1 populated from L2 on miss")
+        
+        # Cleanup
+        cache.delete(test_key)
+        print("✓ Cleanup works")
+        
+        return True
+    except Exception as e:
+        print(f"✗ Test failed: {e}")
+        return False
 
 def test_search_orchestrator_caching():
     """Test search orchestrator with caching."""

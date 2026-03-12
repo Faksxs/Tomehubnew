@@ -14,13 +14,13 @@ def test():
     vec = [0.1] * 768 # dummy vector (DB uses 768, confirmed via overflow error)
     
     print("\n--- Testing Gravity with ALL_NOTES ---")
-    cards = fs._fetch_seed_gravity(uid, sid, vec, "ALL_NOTES", limit=5)
+    cards = fs._fetch_seed_gravity(uid, sid, vec, "ALL_NOTES", None, 5)
     print(f"Gravity Cards found: {len(cards)}")
     for c in cards:
         print(f" - {c.title}: {c.content[:50]}...")
 
     print("\n--- Testing Recency with ALL_NOTES ---")
-    recency = fs._fetch_seed_recency(uid, sid, "ALL_NOTES", limit=5)
+    recency = fs._fetch_seed_recency(uid, sid, "ALL_NOTES", None, 5)
     print(f"Recency Cards found: {len(recency)}")
 
 if __name__ == "__main__":

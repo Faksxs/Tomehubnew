@@ -109,7 +109,8 @@ def _query_chunk_counts(book_id: str, firebase_uid: str) -> Dict[str, int]:
     return counts
 
 
-def _emit_post_ingestion_effects(book_id: str, firebase_uid: str, title: str, author: str, categories: Optional[str]) -> None:
+def _emit_post_ingestion_effects(book_id: str, firebase_uid: str, title: str, author: str, categories: Optional[str]) -> bool:
+    all_success = True
     try:
         maybe_trigger_graph_enrichment_async(
             firebase_uid=firebase_uid,
@@ -118,6 +119,7 @@ def _emit_post_ingestion_effects(book_id: str, firebase_uid: str, title: str, au
         )
     except Exception as exc:
         logger.warning("Graph enrichment trigger failed after async ingest: %s", exc)
+        all_success = False
     try:
         maybe_trigger_external_enrichment_async(
             book_id=book_id,
@@ -129,10 +131,14 @@ def _emit_post_ingestion_effects(book_id: str, firebase_uid: str, title: str, au
         )
     except Exception as exc:
         logger.warning("External enrichment trigger failed after async ingest: %s", exc)
+        all_success = False
     try:
         generate_file_report(book_id, firebase_uid)
     except Exception as exc:
         logger.warning("File report generation failed after async ingest: %s", exc)
+        all_success = False
+    
+    return all_success
 
 
 def _resolve_processing_route(classifier_result: PdfClassifierResult) -> str:

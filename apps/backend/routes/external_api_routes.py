@@ -1,4 +1,5 @@
 import asyncio
+from typing import Annotated
 from functools import partial
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -39,7 +40,7 @@ async def external_health() -> dict:
 async def external_search_endpoint(
     request: Request,
     payload: ExternalSearchRequest,
-    principal: ExternalApiPrincipal = Depends(verify_external_api_key),
+    principal: Annotated[ExternalApiPrincipal, Depends(verify_external_api_key)],
 ):
     try:
         require_external_scope(principal, "search:read")

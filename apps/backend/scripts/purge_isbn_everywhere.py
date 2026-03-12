@@ -100,7 +100,7 @@ def _commit_batch(batch, pending: int) -> int:
     if pending <= 0:
         return 0
     batch.commit()
-    return 0
+    return pending  # Return number of items committed for variance
 
 
 def purge_firestore_isbn(*, execute: bool) -> dict[str, Any]:

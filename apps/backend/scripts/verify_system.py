@@ -31,12 +31,16 @@ def test_search():
             data = res.json()
             if "answer" in data:
                 print(f"✅ PASSED: Answer received ({len(data['answer'])} chars)")
+                return True
             else:
                 print(f"⚠️ WARNING: No answer field in response")
+                return False
         else:
             print(f"❌ FAILED: Status {res.status_code} - {res.text}")
+            return False
     except Exception as e:
         print(f"❌ FAILED: {e}")
+        return False
 
 def test_ai_cover_verification():
     print(f"\n[TEST] AI Cover Verification...")
@@ -56,10 +60,13 @@ def test_ai_cover_verification():
         if res.status_code in [200, 401, 403]:
             # Accepting auth errors as "Partial Pass" since we can't easily gen real tokens here
             print(f"✅ PASSED (Connectivity): Status {res.status_code}")
+            return True
         else:
             print(f"❌ FAILED: Status {res.status_code} - {res.text}")
+            return False
     except Exception as e:
         print(f"❌ FAILED: {e}")
+        return False
 
 def create_dummy_pdf():
     from reportlab.pdfgen import canvas
@@ -83,17 +90,19 @@ def test_pdf_metadata():
         if res.status_code == 200:
             data = res.json()
             print(f"Response: {data}")
-            # AI might or might not extract it perfectly depending on the mock model,
-            # but getting a JSON back with keys is success.
             if "title" in data:
                 print(f"✅ PASSED: Metadata extracted")
+                return True
             else:
                 print(f"❌ FAILED: Invalid response structure")
+                return False
         else:
             print(f"❌ FAILED: Status {res.status_code} - {res.text}")
+            return False
             
     except Exception as e:
         print(f"❌ FAILED: {e}")
+        return False
     finally:
         if os.path.exists(pdf_path):
             os.remove(pdf_path)

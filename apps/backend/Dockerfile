@@ -37,11 +37,10 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy application code
 COPY . .
 
-# Fix Windows line endings and make entrypoint executable
-RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh
-
-# Create uploads directory for temporary files
-RUN mkdir -p /app/uploads
+# Fix Windows line endings, make entrypoint executable, and create uploads directory
+RUN sed -i 's/\r$//' /app/entrypoint.sh && \
+    chmod +x /app/entrypoint.sh && \
+    mkdir -p /app/uploads
 
 # Expose ports: 80 (HTTP redirect), 443 (HTTPS), 5000 (internal Flask)
 EXPOSE 80 443 5000

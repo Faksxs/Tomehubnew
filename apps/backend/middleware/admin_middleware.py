@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, Request
 
@@ -30,7 +30,7 @@ def _token_has_admin_claim(decoded_token: Any) -> bool:
 
 async def require_admin(
     request: Request,
-    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+    firebase_uid_from_jwt: Annotated[str | None, Depends(verify_firebase_token)] = None,
 ) -> str:
     firebase_uid = str(firebase_uid_from_jwt or "").strip()
     if not firebase_uid:

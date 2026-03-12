@@ -44,7 +44,7 @@ for keyword in "${AIRFLOW_KEYWORDS[@]}"; do
 done
 
 # If Airflow keywords detected, inject skill suggestion
-if [ "$MATCHED" = true ]; then
+if [[ "$MATCHED" == true ]]; then
     # Check if user already explicitly mentioned using the skill
     if echo "$PROMPT_LOWER" | grep -q "use.*skill\|/data:airflow"; then
         # User already wants to use the skill, no need to inject

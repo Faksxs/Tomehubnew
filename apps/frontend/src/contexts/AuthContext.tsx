@@ -9,6 +9,7 @@ import {
     User,
     onAuthStateChanged,
     signInWithPopup,
+    signInWithRedirect,
     getRedirectResult,
     signOut,
 } from "firebase/auth";
@@ -23,6 +24,7 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+const popupSafeHosts = new Set(["localhost", "127.0.0.1", "::1"]);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     children,
@@ -56,8 +58,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
 
     const loginWithGoogle = async () => {
         try {
-            // Mobile users often have popups blocked, but signInWithPopup is generally
-            // more reliable than redirect on modern browsers if triggered by a click.
+            const useRedirect =
+                typeof window !== "undefined" &&
+                !popupSafeHosts.has(window.location.hostname.toLowerCase());
+
+            if (useRedirect) {
+                await signInWithRedirect(auth, googleProvider);
+                return;
+            }
+
             await signInWithPopup(auth, googleProvider);
         } catch (error: any) {
             console.error("Login with Google failed:", error);

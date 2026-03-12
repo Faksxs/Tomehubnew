@@ -40,48 +40,52 @@ def test_cache_invalidation():
         cache=cache
     )
     
-    # Perform search (will cache results)
-    print(f"\n1. Performing search (will cache results)...")
-    results1 = orchestrator.search(test_query, test_uid, limit=10)
-    print(f"   Results: {len(results1)} items")
-    
-    # Verify cache key exists
-    cache_key = generate_cache_key(
-        service="search",
-        query=test_query,
-        firebase_uid=test_uid,
-        book_id=None,
-        limit=10,
-        version=settings.EMBEDDING_MODEL_VERSION
-    )
-    
-    cached_value = cache.get(cache_key)
-    assert cached_value is not None, "Cache should contain the search results"
-    print(f"   ✓ Cache key exists: {cache_key[:50]}...")
-    
-    # Simulate cache invalidation (as would happen after ingestion)
-    print(f"\n2. Simulating cache invalidation (as after ingestion)...")
-    pattern = f"search:*:{test_uid}:*"
-    cache.delete_pattern(pattern)
-    print(f"   Pattern deleted: {pattern}")
-    
-    # Verify cache is cleared
-    cached_value = cache.get(cache_key)
-    assert cached_value is None, "Cache should be cleared after invalidation"
-    print(f"   ✓ Cache cleared successfully")
-    
-    # Perform search again (should compute fresh, not use cache)
-    print(f"\n3. Performing search again (should compute fresh)...")
-    results2 = orchestrator.search(test_query, test_uid, limit=10)
-    print(f"   Results: {len(results2)} items")
-    
-    # Verify cache is repopulated
-    cached_value = cache.get(cache_key)
-    assert cached_value is not None, "Cache should be repopulated after new search"
-    print(f"   ✓ Cache repopulated after new search")
-    
-    print("\n✓ All cache invalidation tests passed!")
-    return True
+    try:
+        # Perform search (will cache results)
+        print(f"\n1. Performing search (will cache results)...")
+        results1 = orchestrator.search(test_query, test_uid, limit=10)
+        print(f"   Results: {len(results1)} items")
+        
+        # Verify cache key exists
+        cache_key = generate_cache_key(
+            service="search",
+            query=test_query,
+            firebase_uid=test_uid,
+            book_id=None,
+            limit=10,
+            version=settings.EMBEDDING_MODEL_VERSION
+        )
+        
+        cached_value = cache.get(cache_key)
+        assert cached_value is not None, "Cache should contain the search results"
+        print(f"   ✓ Cache key exists: {cache_key[:50]}...")
+        
+        # Simulate cache invalidation (as would happen after ingestion)
+        print(f"\n2. Simulating cache invalidation (as after ingestion)...")
+        pattern = f"search:*:{test_uid}:*"
+        cache.delete_pattern(pattern)
+        print(f"   Pattern deleted: {pattern}")
+        
+        # Verify cache is cleared
+        cached_value = cache.get(cache_key)
+        assert cached_value is None, "Cache should be cleared after invalidation"
+        print(f"   ✓ Cache cleared successfully")
+        
+        # Perform search again (should compute fresh, not use cache)
+        print(f"\n3. Performing search again (should compute fresh)...")
+        results2 = orchestrator.search(test_query, test_uid, limit=10)
+        print(f"   Results: {len(results2)} items")
+        
+        # Verify cache is repopulated
+        cached_value = cache.get(cache_key)
+        assert cached_value is not None, "Cache should be repopulated after new search"
+        print(f"   ✓ Cache repopulated after new search")
+        
+        print("\n✓ All cache invalidation tests passed!")
+        return True
+    except Exception as e:
+        print(f"✗ Integration test failed: {e}")
+        return False
 
 if __name__ == "__main__":
     try:
