@@ -1,4 +1,9 @@
--- Safe Schema Repair: Create TOMEHUB_BOOKS Mirror
+-- LEGACY ONLY: Safe Schema Repair for deprecated TOMEHUB_CONTENT / TOMEHUB_BOOKS path
+-- Active TomeHub retrieval path uses:
+--   TOMEHUB_CONTENT_V2(FIREBASE_UID, ITEM_ID)
+--   -> TOMEHUB_LIBRARY_ITEMS(FIREBASE_UID, ITEM_ID)
+-- This script must not be used as the source of truth for current V2 schema work.
+-- Keep only for one-off legacy recovery in environments that still carry TOMEHUB_CONTENT.
 -- 1. Create the table if it doesn't exist
 BEGIN
     EXECUTE IMMEDIATE 'CREATE TABLE TOMEHUB_BOOKS (
@@ -47,8 +52,8 @@ EXCEPTION
 END;
 /
 
--- 4. Add Constraints (Safe Mode - DISABLE first)
--- We add the constraint but disable it to prevent locking or immediate failures
+-- 4. Add Constraints (Legacy Safe Mode - DISABLE first)
+-- This is intentionally left disabled because legacy environments may still contain orphan rows.
 BEGIN
     EXECUTE IMMEDIATE 'ALTER TABLE TOMEHUB_CONTENT 
                        ADD CONSTRAINT fk_content_book 
@@ -62,6 +67,7 @@ EXCEPTION
 END;
 /
 
--- 5. Enable Constraints NOVALIDATE (Fast enable, checks new data, ignores old)
--- Uncomment this line to enforce integrity on NEW inserts only
+-- 5. Optional legacy follow-up:
+-- Only if you still write to TOMEHUB_CONTENT/TOMEHUB_BOOKS and have accepted the cleanup plan,
+-- enable NOVALIDATE so new legacy writes remain valid without back-validating old rows.
 -- ALTER TABLE TOMEHUB_CONTENT ENABLE NOVALIDATE CONSTRAINT fk_content_book;

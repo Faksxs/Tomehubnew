@@ -72,11 +72,42 @@ class Settings:
         self.PDF_TEXT_NATIVE_BLANK_PAGE_RATIO_MAX = float(os.getenv("PDF_TEXT_NATIVE_BLANK_PAGE_RATIO_MAX", "0.20"))
         self.PDF_TEXT_NATIVE_GARBLED_RATIO_MAX = float(os.getenv("PDF_TEXT_NATIVE_GARBLED_RATIO_MAX", "0.12"))
         self.PDF_TEXT_NATIVE_IMAGE_HEAVY_RATIO_MAX = float(os.getenv("PDF_TEXT_NATIVE_IMAGE_HEAVY_RATIO_MAX", "0.40"))
+        self.PDF_CLASSIFIER_EARLY_OCR_ENABLED = (
+            os.getenv("PDF_CLASSIFIER_EARLY_OCR_ENABLED", "true").strip().lower() == "true"
+        )
+        self.PDF_CLASSIFIER_SAMPLE_PAGES = int(os.getenv("PDF_CLASSIFIER_SAMPLE_PAGES", "5"))
+        if self.PDF_CLASSIFIER_SAMPLE_PAGES < 3:
+            self.PDF_CLASSIFIER_SAMPLE_PAGES = 3
+        if self.PDF_CLASSIFIER_SAMPLE_PAGES > 9:
+            self.PDF_CLASSIFIER_SAMPLE_PAGES = 9
         self.PDF_RETRY_AS_OCR_GARBLED_RATIO = float(os.getenv("PDF_RETRY_AS_OCR_GARBLED_RATIO", "0.18"))
         self.PDF_RETRY_AS_OCR_MIN_CHUNKS = int(os.getenv("PDF_RETRY_AS_OCR_MIN_CHUNKS", "8"))
         self.PDF_OCR_SHARD_TRIGGER_PAGES = int(os.getenv("PDF_OCR_SHARD_TRIGGER_PAGES", "300"))
         self.PDF_OCR_SHARD_SIZE = int(os.getenv("PDF_OCR_SHARD_SIZE", "100"))
         self.PDF_OCR_SHARD_TRIGGER_FILE_MB = int(os.getenv("PDF_OCR_SHARD_TRIGGER_FILE_MB", "25"))
+        self.PDF_HEADER_FOOTER_SAMPLE_DEPTH = int(os.getenv("PDF_HEADER_FOOTER_SAMPLE_DEPTH", "2"))
+        if self.PDF_HEADER_FOOTER_SAMPLE_DEPTH < 1:
+            self.PDF_HEADER_FOOTER_SAMPLE_DEPTH = 2
+        if self.PDF_HEADER_FOOTER_SAMPLE_DEPTH > 4:
+            self.PDF_HEADER_FOOTER_SAMPLE_DEPTH = 4
+        self.PDF_HEADER_FOOTER_MIN_OCCURRENCES = int(os.getenv("PDF_HEADER_FOOTER_MIN_OCCURRENCES", "3"))
+        if self.PDF_HEADER_FOOTER_MIN_OCCURRENCES < 2:
+            self.PDF_HEADER_FOOTER_MIN_OCCURRENCES = 3
+        self.PDF_HEADER_FOOTER_REPEAT_RATIO_MIN = float(
+            os.getenv("PDF_HEADER_FOOTER_REPEAT_RATIO_MIN", "0.20")
+        )
+        if self.PDF_HEADER_FOOTER_REPEAT_RATIO_MIN <= 0.0:
+            self.PDF_HEADER_FOOTER_REPEAT_RATIO_MIN = 0.20
+        if self.PDF_HEADER_FOOTER_REPEAT_RATIO_MIN > 0.80:
+            self.PDF_HEADER_FOOTER_REPEAT_RATIO_MIN = 0.80
+        self.PDF_PROCESSING_STALE_SEC = int(os.getenv("PDF_PROCESSING_STALE_SEC", "1800"))
+        if self.PDF_PROCESSING_STALE_SEC < 300:
+            self.PDF_PROCESSING_STALE_SEC = 1800
+        self.PDF_PROCESSING_RECOVERY_LIMIT = int(os.getenv("PDF_PROCESSING_RECOVERY_LIMIT", "50"))
+        if self.PDF_PROCESSING_RECOVERY_LIMIT < 1:
+            self.PDF_PROCESSING_RECOVERY_LIMIT = 50
+        if self.PDF_PROCESSING_RECOVERY_LIMIT > 500:
+            self.PDF_PROCESSING_RECOVERY_LIMIT = 500
         self.PDF_OCR_LANGUAGES = os.getenv("PDF_OCR_LANGUAGES", "tr,en").strip() or "tr,en"
         self.PDF_CHUNK_SOFT_TOKEN_TARGET = int(os.getenv("PDF_CHUNK_SOFT_TOKEN_TARGET", "350"))
         self.PDF_CHUNK_HARD_TOKEN_CAP = int(os.getenv("PDF_CHUNK_HARD_TOKEN_CAP", "450"))

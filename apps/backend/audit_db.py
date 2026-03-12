@@ -77,8 +77,10 @@ def scan_db():
                     
                     if not has_pk:
                         print("  [CRITICAL] NO PRIMARY KEY DEFINED!")
-                    if not has_fk and t in ['TOMEHUB_CONTENT_V2', 'TOMEHUB_CHANGE_EVENTS']:
-                        print(f"  [RECOMMENDATION] CONSIDER ADDING FOREIGN KEY TO TOMEHUB_LIBRARY_ITEMS(ITEM_ID) TO ENSURE RELATIONAL INTEGRITY.")
+                    if not has_fk and t == 'TOMEHUB_CONTENT_V2':
+                        print("  [RECOMMENDATION] CONSIDER ADDING COMPOSITE FOREIGN KEY TO TOMEHUB_LIBRARY_ITEMS(FIREBASE_UID, ITEM_ID) FOR ACTIVE V2 INTEGRITY.")
+                    if not has_fk and t == 'TOMEHUB_CHANGE_EVENTS':
+                        print("  [RECOMMENDATION] REVIEW WHETHER CHANGE_EVENTS SHOULD REMAIN LOOSELY COUPLED OR REFERENCE LIBRARY ITEMS EXPLICITLY.")
                         
                     # VEC_EMBEDDING checks
                     has_vector = any(c[0] == 'VEC_EMBEDDING' for c in cols)

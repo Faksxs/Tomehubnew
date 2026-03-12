@@ -18,6 +18,7 @@ from services.ingestion_service import ingest_pre_extracted_chunks
 from services.ingestion_status_service import (
     delete_ingested_file_row,
     get_pdf_record,
+    list_stale_parse_jobs,
     list_pending_parse_jobs,
     list_pending_storage_deletes,
     mark_storage_delete_failed,
@@ -698,6 +699,59 @@ class AsyncPdfIngestionManager:
             except Exception as exc:
                 mark_storage_delete_failed(book_id, firebase_uid, str(exc))
 
+    async def recover_stale_parse_jobs_once(self) -> None:
+        stale_after_sec = int(getattr(settings, "PDF_PROCESSING_STALE_SEC", 1800) or 1800)
+        recovery_limit = int(getattr(settings, "PDF_PROCESSING_RECOVERY_LIMIT", 50) or 50)
+        rows = await asyncio.to_thread(list_stale_parse_jobs, stale_after_sec, recovery_limit)
+        for row in rows:
+            book_id = str(row.get("book_id") or "")
+            firebase_uid = str(row.get("firebase_uid") or "")
+            if not book_id or not firebase_uid:
+                continue
+
+            key = self._task_key(firebase_uid, book_id)
+            current = self._parse_tasks.get(key)
+            if current and not current.done():
+                continue
+
+            bucket_name = str(row.get("bucket_name") or "")
+            object_key = str(row.get("object_key") or "")
+            metadata = _resolve_book_metadata(book_id, firebase_uid)
+            title = str(metadata.get("title") or row.get("file_name") or book_id)
+            author = str(metadata.get("author") or "")
+            if not bucket_name or not object_key:
+                await asyncio.to_thread(
+                    upsert_ingestion_status,
+                    book_id,
+                    firebase_uid,
+                    status="FAILED",
+                    parse_path="PDF_V2",
+                    parse_status="FAILED",
+                    error_message="Stale PROCESSING job could not be recovered due to missing storage reference",
+                )
+                logger.warning("Marked stale PDF ingestion job as failed due to missing storage reference: %s/%s", firebase_uid, book_id)
+                continue
+
+            await asyncio.to_thread(
+                upsert_ingestion_status,
+                book_id,
+                firebase_uid,
+                status="PROCESSING",
+                parse_path="PDF_V2",
+                parse_status="QUEUED",
+                error_message="Recovered stale PROCESSING job",
+            )
+            self._ensure_processing_task(
+                book_id=book_id,
+                firebase_uid=firebase_uid,
+                title=title,
+                author=author,
+                categories=None,
+                bucket_name=bucket_name,
+                object_key=object_key,
+            )
+            logger.warning("Recovered stale PDF ingestion job: %s/%s", firebase_uid, book_id)
+
     async def cleanup_expired_canonical_objects_once(self) -> None:
         retention_days = int(getattr(settings, "PDF_CANONICAL_RETENTION_DAYS", 15))
         if retention_days <= 0:
@@ -720,6 +774,7 @@ class AsyncPdfIngestionManager:
     async def _maintenance_loop(self) -> None:
         while True:
             try:
+                await self.recover_stale_parse_jobs_once()
                 await self.retry_pending_storage_deletes_once()
                 await self.cleanup_expired_canonical_objects_once()
                 await asyncio.sleep(settings.PDF_DELETE_RETRY_INTERVAL_SEC)

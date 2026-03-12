@@ -4,8 +4,13 @@ import copy
 import re
 from typing import Dict, List, Tuple
 
+from config import settings
 from services.canonical_document_service import CanonicalBlock, CanonicalDocument
-from services.chunk_quality_audit_service import should_skip_for_ingestion
+from services.chunk_quality_audit_service import (
+    detect_repeated_margin_signatures,
+    normalize_line_signature,
+    should_skip_for_ingestion,
+)
 
 
 _SENTENCE_END_RE = re.compile(r"[.!?\"')\]]\s*$")
@@ -27,6 +32,63 @@ def _normalize_text(text: str) -> str:
 
 def _is_mergeable(block: CanonicalBlock) -> bool:
     return str(block.block_type or "body").lower() not in _NON_MERGE_TYPES
+
+
+def _strip_repeated_margin_blocks(blocks: List[CanonicalBlock]) -> tuple[List[CanonicalBlock], int]:
+    if not blocks:
+        return [], 0
+
+    sample_depth = int(getattr(settings, "PDF_HEADER_FOOTER_SAMPLE_DEPTH", 2) or 2)
+    min_occurrences = int(getattr(settings, "PDF_HEADER_FOOTER_MIN_OCCURRENCES", 3) or 3)
+    min_ratio = float(getattr(settings, "PDF_HEADER_FOOTER_REPEAT_RATIO_MIN", 0.20) or 0.20)
+    pages_map: Dict[int, List[CanonicalBlock]] = {}
+    for block in blocks:
+        pages_map.setdefault(int(block.page_number), []).append(block)
+
+    page_entries = []
+    for page_number, page_blocks in sorted(pages_map.items()):
+        ordered_blocks = sorted(
+            page_blocks,
+            key=lambda block: (int(block.reading_order), str(block.block_id)),
+        )
+        page_entries.append(
+            {
+                "page_num": page_number,
+                "lines": [{"text": str(block.text or "")} for block in ordered_blocks if str(block.text or "").strip()],
+            }
+        )
+
+    repeated_signatures = detect_repeated_margin_signatures(
+        page_entries,
+        sample_depth=sample_depth,
+        min_occurrences=min_occurrences,
+        min_ratio=min_ratio,
+    )
+    if not repeated_signatures:
+        return list(blocks), 0
+
+    filtered: List[CanonicalBlock] = []
+    removed = 0
+    for page_number, page_blocks in sorted(pages_map.items()):
+        ordered_blocks = sorted(
+            page_blocks,
+            key=lambda block: (int(block.reading_order), str(block.block_id)),
+        )
+        candidate_indexes = set(range(min(sample_depth, len(ordered_blocks))))
+        tail_start = max(0, len(ordered_blocks) - sample_depth)
+        candidate_indexes.update(range(tail_start, len(ordered_blocks)))
+        for idx, block in enumerate(ordered_blocks):
+            if idx in candidate_indexes:
+                signature = normalize_line_signature(block.text)
+                skip_margin_artifact, margin_analysis = should_skip_for_ingestion(block.text, page_number=page_number)
+                if signature and signature in repeated_signatures:
+                    removed += 1
+                    continue
+                if skip_margin_artifact and bool(margin_analysis.get("page_artifact")):
+                    removed += 1
+                    continue
+            filtered.append(block)
+    return filtered, removed
 
 
 def _should_merge(left: CanonicalBlock, right: CanonicalBlock) -> Tuple[bool, str]:
@@ -57,17 +119,20 @@ def _should_merge(left: CanonicalBlock, right: CanonicalBlock) -> Tuple[bool, st
 
 def reconstruct_document(document: CanonicalDocument) -> CanonicalDocument:
     reconstructed = copy.deepcopy(document)
-    blocks = sorted(
+    source_blocks = sorted(
         list(reconstructed.blocks or []),
         key=lambda block: (int(block.page_number), int(block.reading_order), str(block.block_id)),
     )
+    blocks, removed_header_footer = _strip_repeated_margin_blocks(source_blocks)
     merged_blocks: List[CanonicalBlock] = []
     metrics = {
         "page_boundary_merge_total": 0,
         "hyphenation_merge_total": 0,
         "same_page_merge_total": 0,
         "toc_bibliography_pruned_total": 0,
-        "header_footer_removed_total": int(document.quality_metrics.get("header_footer_removed_total", 0) or 0),
+        "header_footer_removed_total": (
+            int(document.quality_metrics.get("header_footer_removed_total", 0) or 0) + int(removed_header_footer)
+        ),
     }
 
     current_heading_path: List[str] = []

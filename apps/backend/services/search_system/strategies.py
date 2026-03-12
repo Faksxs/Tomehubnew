@@ -227,6 +227,7 @@ def _apply_resource_type_filter(sql: str, params: Dict[str, Any], resource_type:
                 " SELECT 1 FROM TOMEHUB_LIBRARY_ITEMS li2"
                 f" WHERE li2.FIREBASE_UID = {uid_expr}"
                 f"   AND li2.ITEM_ID = {item_id_expr}"
+                "   AND NVL(li2.IS_DELETED, 0) = 0"
                 "   AND li2.ITEM_TYPE = :p_item_type"
                 " ) "
             )
@@ -250,6 +251,21 @@ def _apply_book_id_filter(sql: str, params: Dict[str, Any], book_id: Optional[st
         else:
             sql += " AND book_id = :p_book_id "
         params["p_book_id"] = bid
+    return (sql, params)
+
+
+def _apply_active_library_item_filter(sql: str, params: Dict[str, Any]) -> tuple:
+    uses_v2_alias = " c." in sql or " c " in sql
+    if not uses_v2_alias or "li_active" in sql:
+        return (sql, params)
+    sql += (
+        " AND EXISTS ("
+        " SELECT 1 FROM TOMEHUB_LIBRARY_ITEMS li_active"
+        " WHERE li_active.FIREBASE_UID = c.firebase_uid"
+        "   AND li_active.ITEM_ID = c.item_id"
+        "   AND NVL(li_active.IS_DELETED, 0) = 0"
+        " ) "
+    )
     return (sql, params)
 
 
@@ -399,6 +415,7 @@ class ExactMatchStrategy(SearchStrategy):
 
                         sql, params = _apply_resource_type_filter(sql, params, resource_type)
                         sql, params = _apply_book_id_filter(sql, params, book_id)
+                        sql, params = _apply_active_library_item_filter(sql, params)
                         sql, params = _apply_visibility_filter(sql, params, visibility_scope)
                         sql, params = _apply_content_type_filter(sql, params, effective_content_type)
                         sql, params = _apply_ingestion_type_filter(sql, params, ingestion_type)
@@ -543,6 +560,7 @@ class LemmaMatchStrategy(SearchStrategy):
                     
                     sql, params = _apply_resource_type_filter(sql, params, resource_type)
                     sql, params = _apply_book_id_filter(sql, params, book_id)
+                    sql, params = _apply_active_library_item_filter(sql, params)
                     sql, params = _apply_visibility_filter(sql, params, visibility_scope)
                     sql, params = _apply_content_type_filter(sql, params, effective_content_type)
                     sql, params = _apply_ingestion_type_filter(sql, params, ingestion_type)
@@ -594,6 +612,7 @@ class LemmaMatchStrategy(SearchStrategy):
                         
                         if lemma_conditions_fb:
                             sql_with_pdf += " AND (" + " OR ".join(lemma_conditions_fb) + ")"
+                        sql_with_pdf, params = _apply_active_library_item_filter(sql_with_pdf, params)
                         sql_with_pdf, params = _apply_visibility_filter(sql_with_pdf, params, visibility_scope)
                         sql_with_pdf, params = _apply_content_type_filter(sql_with_pdf, params, effective_content_type)
                         sql_with_pdf, params = _apply_ingestion_type_filter(sql_with_pdf, params, ingestion_type)
@@ -695,6 +714,7 @@ class SemanticMatchStrategy(SearchStrategy):
                         
                         sql, params = _apply_resource_type_filter(sql, params, resource_type)
                         sql, params = _apply_book_id_filter(sql, params, book_id)
+                        sql, params = _apply_active_library_item_filter(sql, params)
                         sql, params = _apply_visibility_filter(sql, params, visibility_scope)
                         sql, params = _apply_content_type_filter(sql, params, effective_content_type)
                         sql, params = _apply_ingestion_type_filter(sql, params, ingestion_type)

@@ -307,6 +307,13 @@ def get_book_context(book_id: str, query_text: str, firebase_uid: str) -> List[D
                     WHERE c.item_id = :bv_book_id 
                       AND c.firebase_uid = :bv_uid
                       AND c.AI_ELIGIBLE = 1
+                      AND EXISTS (
+                          SELECT 1
+                          FROM TOMEHUB_LIBRARY_ITEMS li
+                          WHERE li.FIREBASE_UID = c.firebase_uid
+                            AND li.ITEM_ID = c.item_id
+                            AND NVL(li.IS_DELETED, 0) = 0
+                      )
                     ORDER BY dist ASC
                     FETCH FIRST 15 ROWS ONLY
                 """
@@ -665,6 +672,13 @@ def _fetch_parent_context_neighbors(
                             FROM TOMEHUB_CONTENT_V2 c
                             WHERE c.firebase_uid = :p_uid
                               AND c.item_id = :p_item_id
+                              AND EXISTS (
+                                  SELECT 1
+                                  FROM TOMEHUB_LIBRARY_ITEMS li
+                                  WHERE li.FIREBASE_UID = c.firebase_uid
+                                    AND li.ITEM_ID = c.item_id
+                                    AND NVL(li.IS_DELETED, 0) = 0
+                              )
                               AND (:p_anchor_id IS NULL OR c.id <> :p_anchor_id)
                               AND (
                                 (:p_page_low IS NOT NULL AND c.page_number BETWEEN :p_page_low AND :p_page_high)
@@ -2291,6 +2305,5 @@ if __name__ == "__main__":
             print("  1. Database contains content for this user")
             print("  2. GEMINI_API_KEY is configured")
             print("  3. Internet connectivity")
-
 
 

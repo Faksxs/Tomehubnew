@@ -4,7 +4,7 @@ from services.canonical_document_service import CanonicalBlock, CanonicalDocumen
 from services.chunk_render_service import render_document_chunks, summarize_chunk_metrics
 from services.ingestion_status_service import is_active_parse_status
 from services.paragraph_reconstruction_service import reconstruct_document
-from services.pdf_classifier_service import decide_route
+from services.pdf_classifier_service import classify_pdf, decide_route
 from services.pdf_async_ingestion_service import _resolve_processing_route
 from services.pdf_parser_adapters import LlamaParseAdapter, _canonicalize_ocr_payload, _parse_language_values
 
@@ -89,6 +89,46 @@ def test_reconstruct_document_merges_page_boundary_continuation():
     assert len(body_blocks) == 1
     assert "baglanan kisimdir" in body_blocks[0].text
     assert reconstructed.quality_metrics["page_boundary_merge_total"] == 1
+
+
+def test_reconstruct_document_strips_repeated_margin_blocks(monkeypatch):
+    monkeypatch.setattr("services.paragraph_reconstruction_service.settings.PDF_HEADER_FOOTER_SAMPLE_DEPTH", 2)
+    monkeypatch.setattr("services.paragraph_reconstruction_service.settings.PDF_HEADER_FOOTER_MIN_OCCURRENCES", 3)
+    monkeypatch.setattr("services.paragraph_reconstruction_service.settings.PDF_HEADER_FOOTER_REPEAT_RATIO_MIN", 0.2)
+
+    doc = CanonicalDocument(
+        document_id="doc-margin",
+        route="IMAGE_SCAN",
+        parser_engine="LLAMAPARSE",
+        parser_version="v1",
+        pages=[
+            CanonicalPage(1, False, 0, 0, True, True, 0.0),
+            CanonicalPage(2, False, 0, 0, True, True, 0.0),
+            CanonicalPage(3, False, 0, 0, True, True, 0.0),
+        ],
+        blocks=[
+            CanonicalBlock("p1h", 1, "heading", "Chapter 1", reading_order=0, source_engine="LLAMAPARSE"),
+            CanonicalBlock("p1b", 1, "body", "Bu sayfadaki asil govde metni yeterince uzundur ve korunmalidir.", reading_order=1, source_engine="LLAMAPARSE"),
+            CanonicalBlock("p1f", 1, "body", "Page 1", reading_order=2, source_engine="LLAMAPARSE"),
+            CanonicalBlock("p2h", 2, "heading", "Chapter 1", reading_order=3, source_engine="LLAMAPARSE"),
+            CanonicalBlock("p2b", 2, "body", "Ikinci sayfadaki govde metni de semantic olarak tutulmalidir.", reading_order=4, source_engine="LLAMAPARSE"),
+            CanonicalBlock("p2f", 2, "body", "Page 2", reading_order=5, source_engine="LLAMAPARSE"),
+            CanonicalBlock("p3h", 3, "heading", "Chapter 1", reading_order=6, source_engine="LLAMAPARSE"),
+            CanonicalBlock("p3b", 3, "body", "Ucuncu sayfadaki govde metni de header footer disinda kalir.", reading_order=7, source_engine="LLAMAPARSE"),
+            CanonicalBlock("p3f", 3, "body", "Page 3", reading_order=8, source_engine="LLAMAPARSE"),
+        ],
+        classifier_metrics={},
+        quality_metrics={},
+        routing_metrics={},
+    )
+
+    reconstructed = reconstruct_document(doc)
+    texts = [block.text for block in reconstructed.blocks]
+
+    assert all(text != "Chapter 1" for text in texts)
+    assert all(not text.startswith("Page ") for text in texts)
+    assert reconstructed.quality_metrics["header_footer_removed_total"] == 6
+    assert any("asil govde metni" in text for text in texts)
 
 
 def test_render_document_chunks_keeps_context_prefix():
@@ -393,3 +433,50 @@ def test_is_active_parse_status_only_for_live_processing_rows():
     assert is_active_parse_status("PROCESSING", "PARSING") is True
     assert is_active_parse_status("PROCESSING", "COMPLETED") is False
     assert is_active_parse_status("FAILED", "FAILED") is False
+
+
+class _FakeClassifierPage:
+    def __init__(self, text: str, image_count: int = 1):
+        self._text = text
+        self._image_count = image_count
+
+    def get_text(self, _mode: str, sort: bool = True):
+        return self._text
+
+    def get_images(self, full: bool = True):
+        return [object()] * self._image_count
+
+
+class _FakeClassifierDocument:
+    def __init__(self, pages):
+        self._pages = pages
+
+    def __len__(self):
+        return len(self._pages)
+
+    def load_page(self, idx: int):
+        return self._pages[idx]
+
+
+def test_classify_pdf_uses_progressive_early_exit_for_clear_ocr_cases(monkeypatch, tmp_path):
+    pdf_path = tmp_path / "scan.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n%%EOF\n")
+
+    fake_document = _FakeClassifierDocument(
+        [_FakeClassifierPage("", image_count=2) for _ in range(80)]
+    )
+
+    monkeypatch.setattr("services.pdf_classifier_service._require_pymupdf", lambda: SimpleNamespace(open=lambda _: fake_document))
+    monkeypatch.setattr("services.pdf_classifier_service.settings.PDF_CLASSIFIER_EARLY_OCR_ENABLED", True)
+    monkeypatch.setattr("services.pdf_classifier_service.settings.PDF_CLASSIFIER_SAMPLE_PAGES", 5)
+    monkeypatch.setattr("services.pdf_classifier_service.settings.PDF_TEXT_NATIVE_MIN_CHARS_PER_PAGE", 120)
+    monkeypatch.setattr("services.pdf_classifier_service.settings.PDF_TEXT_NATIVE_TEXT_PAGE_RATIO_MIN", 0.7)
+    monkeypatch.setattr("services.pdf_classifier_service.settings.PDF_TEXT_NATIVE_IMAGE_HEAVY_RATIO_MAX", 0.4)
+
+    result = classify_pdf(str(pdf_path))
+
+    assert result.route == "IMAGE_SCAN"
+    assert result.classifier_metrics["early_exit_ocr"] is True
+    assert result.classifier_metrics["route_reason"] == "sample_no_text"
+    assert result.classifier_metrics["sampled_page_count"] >= 3
+    assert len(result.pages) == 80

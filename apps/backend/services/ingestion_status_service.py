@@ -318,6 +318,65 @@ def list_pending_parse_jobs(limit: int = 100) -> list[Dict[str, Any]]:
     return rows
 
 
+def list_stale_parse_jobs(stale_after_sec: int, limit: int = 100) -> list[Dict[str, Any]]:
+    rows: list[Dict[str, Any]] = []
+    if int(stale_after_sec or 0) <= 0:
+        return rows
+    try:
+        with DatabaseManager.get_read_connection() as conn:
+            with conn.cursor() as cursor:
+                columns = _get_columns(cursor)
+                required = {"PARSE_STATUS", "OBJECT_KEY", "BUCKET_NAME", "STATUS", "UPDATED_AT"}
+                if not required.issubset(columns):
+                    return rows
+
+                cursor.execute(
+                    """
+                    SELECT
+                        BOOK_ID,
+                        FIREBASE_UID,
+                        SOURCE_FILE_NAME,
+                        PARSE_STATUS,
+                        PARSE_PATH,
+                        OCI_JOB_ID,
+                        OCI_OUTPUT_PREFIX,
+                        BUCKET_NAME,
+                        OBJECT_KEY,
+                        SOURCE_FILE_NAME,
+                        STORAGE_STATUS,
+                        UPDATED_AT
+                    FROM TOMEHUB_INGESTED_FILES
+                    WHERE STATUS = 'PROCESSING'
+                      AND NVL(PARSE_PATH, 'LEGACY') = 'PDF_V2'
+                      AND PARSE_STATUS NOT IN ('COMPLETED', 'FAILED')
+                      AND UPDATED_AT < (CURRENT_TIMESTAMP - NUMTODSINTERVAL(:p_stale_sec, 'SECOND'))
+                    ORDER BY UPDATED_AT
+                    FETCH FIRST :p_limit ROWS ONLY
+                    """,
+                    {"p_stale_sec": int(stale_after_sec), "p_limit": int(limit)},
+                )
+                for row in cursor.fetchall():
+                    rows.append(
+                        {
+                            "book_id": row[0],
+                            "firebase_uid": row[1],
+                            "title": None,
+                            "parse_status": row[3],
+                            "parse_path": row[4],
+                            "oci_job_id": row[5],
+                            "oci_output_prefix": row[6],
+                            "bucket_name": row[7],
+                            "object_key": row[8],
+                            "file_name": row[9],
+                            "storage_status": row[10],
+                            "updated_at": row[11],
+                        }
+                    )
+    except Exception as exc:
+        logger.error("Failed to list stale parse jobs: %s", exc)
+    return rows
+
+
 def mark_storage_delete_failed(book_id: str, firebase_uid: str, error_message: str) -> None:
     upsert_ingestion_status(
         book_id,
