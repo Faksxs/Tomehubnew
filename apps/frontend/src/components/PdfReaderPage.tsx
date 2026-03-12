@@ -101,26 +101,26 @@ export const PdfReaderPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(13,148,136,0.12),_transparent_28%),linear-gradient(180deg,_#f7f4ed_0%,_#efe7da_100%)] text-slate-900">
       <div className="mx-auto flex min-h-screen max-w-[1600px] flex-col px-3 py-3 sm:px-4 lg:px-6">
-        <header className="mb-3 overflow-hidden rounded-[28px] border border-black/5 bg-white/75 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur">
-          <div className="flex flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
+        <header className="mb-3 overflow-hidden rounded-[24px] border border-black/5 bg-white/75 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur sm:rounded-[28px]">
+          <div className="flex flex-col gap-3 px-3 py-3 sm:gap-4 sm:px-6 sm:py-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-start gap-3">
               <button
                 type="button"
                 onClick={() => navigate(-1)}
-                className="mt-0.5 inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-700 transition hover:border-teal-300 hover:bg-teal-50 hover:text-teal-700"
+                className="mt-0.5 inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 transition hover:border-teal-300 hover:bg-teal-50 hover:text-teal-700 sm:h-11 sm:w-11 sm:rounded-2xl"
                 aria-label="Back"
               >
-                <ArrowLeft size={18} />
+                <ArrowLeft size={16} className="sm:h-[18px] sm:w-[18px]" />
               </button>
               <div className="min-w-0">
-                <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-teal-700">
+                <div className="mb-1.5 inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-teal-700 sm:mb-2 sm:gap-2 sm:px-3 sm:text-[11px] sm:tracking-[0.24em]">
                   <BookOpen size={12} />
                   PDF Reader
                 </div>
-                <h1 className="truncate text-xl font-semibold sm:text-2xl">
+                <h1 className="truncate text-lg font-semibold sm:text-2xl">
                   {metadata?.file_name || 'Document Reader'}
                 </h1>
-                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600 sm:gap-x-3 sm:text-sm">
                   {metadata?.size_bytes ? <span>{formatBytes(metadata.size_bytes)}</span> : null}
                   {metadata?.updated_at ? <span>Updated {new Date(metadata.updated_at).toLocaleString()}</span> : null}
                   {metadata?.parse_path ? <span>{metadata.parse_path}</span> : null}
@@ -132,7 +132,7 @@ export const PdfReaderPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setReloadKey((value) => value + 1)}
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 sm:rounded-2xl sm:px-4 sm:py-2.5"
               >
                 <RefreshCcw size={16} />
                 Reload
@@ -141,7 +141,7 @@ export const PdfReaderPage: React.FC = () => {
                 type="button"
                 onClick={handleDownload}
                 disabled={!pdfUrl}
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:rounded-2xl sm:px-4 sm:py-2.5"
               >
                 <Download size={16} />
                 Download
@@ -150,7 +150,7 @@ export const PdfReaderPage: React.FC = () => {
                 type="button"
                 onClick={handleOpenNative}
                 disabled={!pdfUrl}
-                className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 sm:rounded-2xl sm:px-4 sm:py-2.5"
               >
                 <ExternalLink size={16} />
                 Open Native
@@ -160,12 +160,12 @@ export const PdfReaderPage: React.FC = () => {
         </header>
 
         <div className="grid flex-1 gap-3 lg:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="rounded-[28px] border border-black/5 bg-white/75 p-5 shadow-[0_20px_60px_rgba(15,23,42,0.06)] backdrop-blur">
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-600">
+          <aside className="rounded-[24px] border border-black/5 bg-white/75 p-3.5 shadow-[0_20px_60px_rgba(15,23,42,0.06)] backdrop-blur sm:rounded-[28px] sm:p-5">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-600 sm:mb-4 sm:px-3 sm:text-[11px] sm:tracking-[0.22em]">
               <FileText size={12} />
               Reading Session
             </div>
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Status</div>
                 <div className="mt-1 text-sm text-slate-800">
@@ -178,7 +178,7 @@ export const PdfReaderPage: React.FC = () => {
               </div>
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Tips</div>
-                <ul className="mt-2 space-y-2 text-sm leading-6 text-slate-600">
+                <ul className="mt-2 space-y-1.5 text-sm leading-5 text-slate-600 sm:space-y-2 sm:leading-6">
                   <li>Use the browser PDF controls for zoom and search.</li>
                   <li>If the embed fails, use `Open Native`.</li>
                   <li>The file is streamed from TomeHub storage, not local disk.</li>

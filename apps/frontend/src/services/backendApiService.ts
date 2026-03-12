@@ -803,10 +803,6 @@ export async function openBookPdfInApp(bookId: string, title?: string): Promise<
         ? `?title=${encodeURIComponent(title.trim())}`
         : '';
     const readerUrl = `${window.location.origin}${window.location.pathname}${hashPath}${hashQuery}`;
-    const readerWindow = window.open(readerUrl, '_blank', 'noopener,noreferrer');
-    if (readerWindow) {
-        return;
-    }
     window.location.assign(readerUrl);
 }
 
