@@ -228,7 +228,8 @@ async def generate_evaluated_answer(
                     answer=answer_text,
                     chunks=chunks,
                     answer_mode=answer_mode,
-                    intent=intent
+                    intent=intent,
+                    network_status=network_status,
                 )
             except Exception as e:
                 logger.error(f"[DualAI] Judge AI failed: {e}")

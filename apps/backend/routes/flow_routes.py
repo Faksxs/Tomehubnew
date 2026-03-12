@@ -26,19 +26,9 @@ logger = logging.getLogger("tomehub_api")
 # Create Router
 router = APIRouter(prefix="/api/flow", tags=["Flux (Layer 4)"])
 
-
-def _allow_dev_unverified_auth() -> bool:
-    return (
-        settings.ENVIRONMENT == "development"
-        and bool(getattr(settings, "DEV_UNSAFE_AUTH_BYPASS", False))
-    )
-
-
 def _resolve_flow_uid(token_uid: Optional[str], body_uid: Optional[str] = None) -> str:
     if token_uid:
         return token_uid
-    if _allow_dev_unverified_auth() and body_uid:
-        return body_uid
     raise HTTPException(status_code=401, detail="Authentication required")
 
 
@@ -61,9 +51,6 @@ async def flow_start(
         logger.debug("[FLOW-API] Incoming request: %s", flow_request)
         logger.debug("[FLOW-API] Token-derived UID: %s", user_id)
     
-    # SECURITY NOTE: For local dev, if token verification is bypassed (returns None),
-    # we use the firebase_uid from request body.
-    # In production, this should be strictly enforced from token.
     flow_request.firebase_uid = _resolve_flow_uid(user_id, flow_request.firebase_uid)
     
     logger.info(f"[FLOW] Starting session for UID: {flow_request.firebase_uid}")
@@ -80,7 +67,8 @@ async def flow_start(
         )
         
         return response
-        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"[FLOW] Start failed: {e}")
         traceback.print_exc()
@@ -98,7 +86,6 @@ async def flow_next(
     """
     Get the next batch of cards in the Flux.
     """
-    # SECURITY NOTE: Handle bypassed token verification for local dev
     flow_request.firebase_uid = _resolve_flow_uid(user_id, flow_request.firebase_uid)
         
     logger.info(f"[FLOW] Next batch for session: {flow_request.session_id}")
@@ -116,7 +103,8 @@ async def flow_next(
             )
         
         return response
-        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"[FLOW] Next failed: {e}")
         traceback.print_exc()
@@ -146,7 +134,8 @@ async def flow_feedback(
         )
         
         return {"success": success, "action": feedback.action}
-        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"[FLOW] Feedback failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -218,7 +207,8 @@ async def flow_reset_anchor(
             "topic_label": new_label,
             "pivot_info": pivot_info.dict() if pivot_info else None
         }
-        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"[FLOW] Reset anchor failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -247,7 +237,6 @@ async def get_session_info(
             "mode": state.mode.value if state.mode else "FOCUS",
             "anchor_id": state.global_anchor_id
         }
-        
     except HTTPException:
         raise
     except Exception as e:

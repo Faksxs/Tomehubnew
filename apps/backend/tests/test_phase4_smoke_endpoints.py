@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 import app as tomehub_app
 from infrastructure.db_manager import DatabaseManager
+from middleware.auth_middleware import verify_firebase_token
 from models.flow_models import FlowCard, FlowNextResponse, FlowStartResponse
 
 
@@ -23,17 +24,11 @@ class Phase4SmokeEndpointsTests(unittest.TestCase):
             pass
 
     def setUp(self):
-        self._orig_env = tomehub_app.settings.ENVIRONMENT
-        self._orig_dev_bypass = getattr(tomehub_app.settings, "DEV_UNSAFE_AUTH_BYPASS", False)
-        self._orig_firebase_ready = getattr(tomehub_app.settings, "FIREBASE_READY", False)
-        tomehub_app.settings.ENVIRONMENT = "development"
-        tomehub_app.settings.DEV_UNSAFE_AUTH_BYPASS = True
-        tomehub_app.settings.FIREBASE_READY = False
+        self._orig_overrides = dict(tomehub_app.app.dependency_overrides)
+        tomehub_app.app.dependency_overrides[verify_firebase_token] = lambda: "u1"
 
     def tearDown(self):
-        tomehub_app.settings.ENVIRONMENT = self._orig_env
-        tomehub_app.settings.DEV_UNSAFE_AUTH_BYPASS = self._orig_dev_bypass
-        tomehub_app.settings.FIREBASE_READY = self._orig_firebase_ready
+        tomehub_app.app.dependency_overrides = self._orig_overrides
 
     def test_realtime_poll_outbox_first_shape(self):
         fake_changes = [
@@ -51,7 +46,7 @@ class Phase4SmokeEndpointsTests(unittest.TestCase):
             "services.change_event_service.fetch_change_events_since",
             return_value=(fake_changes, 101),
         ):
-            resp = self.client.get("/api/realtime/poll", params={"firebase_uid": "u1", "since_ms": 0, "limit": 10})
+            resp = self.client.get("/api/realtime/poll", params={"since_ms": 0, "limit": 10})
 
         self.assertEqual(resp.status_code, 200, resp.text)
         data = resp.json()
@@ -87,7 +82,7 @@ class Phase4SmokeEndpointsTests(unittest.TestCase):
             "_get_pdf_index_stats",
             return_value={"effective_chunks": 12, "effective_embeddings": 12, "raw_chunks": 12},
         ):
-            resp = self.client.get("/api/books/book-1/ingestion-status", params={"firebase_uid": "u1"})
+            resp = self.client.get("/api/books/book-1/ingestion-status")
 
         self.assertEqual(resp.status_code, 200, resp.text)
         data = resp.json()
@@ -121,7 +116,7 @@ class Phase4SmokeEndpointsTests(unittest.TestCase):
             tomehub_app,
             "upsert_ingestion_status",
         ) as mock_upsert:
-            resp = self.client.get("/api/books/book-1/ingestion-status", params={"firebase_uid": "u1"})
+            resp = self.client.get("/api/books/book-1/ingestion-status")
 
         self.assertEqual(resp.status_code, 200, resp.text)
         data = resp.json()
@@ -144,9 +139,7 @@ class Phase4SmokeEndpointsTests(unittest.TestCase):
             captured["kwargs"] = kwargs
             return ([{"id": 1, "title": "T", "content_chunk": "c"}], {"total_count": 1})
 
-        with patch("services.smart_search_service.perform_search", side_effect=_fake_perform_search), patch.object(
-            tomehub_app, "_allow_dev_unverified_auth", return_value=True
-        ):
+        with patch("services.smart_search_service.perform_search", side_effect=_fake_perform_search):
             resp = self.client.post(
                 "/api/smart-search",
                 json={
@@ -181,9 +174,7 @@ class Phase4SmokeEndpointsTests(unittest.TestCase):
             captured["kwargs"] = kwargs
             return ([], {"total_count": 0})
 
-        with patch("services.smart_search_service.perform_search", side_effect=_fake_perform_search), patch.object(
-            tomehub_app, "_allow_dev_unverified_auth", return_value=True
-        ):
+        with patch("services.smart_search_service.perform_search", side_effect=_fake_perform_search):
             resp = self.client.post(
                 "/api/smart-search",
                 json={
@@ -245,9 +236,7 @@ class Phase4SmokeEndpointsTests(unittest.TestCase):
             captured["kwargs"] = kwargs
             return ("ok", [{"title": "s1", "similarity_score": 0.9}], {"status": "ok"})
 
-        with patch.object(tomehub_app, "generate_answer", side_effect=_fake_generate_answer), patch.object(
-            tomehub_app, "_allow_dev_unverified_auth", return_value=True
-        ):
+        with patch.object(tomehub_app, "generate_answer", side_effect=_fake_generate_answer):
             resp = self.client.post(
                 "/api/search",
                 json={
@@ -393,14 +382,9 @@ class Phase4SmokeEndpointsTests(unittest.TestCase):
             tomehub_app,
             "maybe_trigger_external_enrichment_async",
             return_value=True,
-        ) as mock_external, patch.object(
-            tomehub_app,
-            "_allow_dev_unverified_auth",
-            return_value=True,
-        ):
+        ) as mock_external:
             resp = self.client.put(
                 "/api/library/items/article-1",
-                params={"firebase_uid": "u1"},
                 json={
                     "id": "article-1",
                     "type": "ARTICLE",

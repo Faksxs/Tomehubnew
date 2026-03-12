@@ -115,7 +115,12 @@ def _from_json(value: Any) -> Dict[str, Any]:
     try:
         parsed = json.loads(raw or "{}")
         return parsed if isinstance(parsed, dict) else {}
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "external_kb JSON payload parse failed: size=%s error=%s",
+            len(raw or ""),
+            exc,
+        )
         return {}
 
 
@@ -156,11 +161,13 @@ def _http_get_json(
             if idx < retries and (code == 429 or code >= 500):
                 time.sleep(0.2 * (idx + 1))
                 continue
+            logger.warning("external_kb HTTP request failed: status=%s url=%s", code, url)
             return None
-        except Exception:
+        except Exception as exc:
             if idx < retries:
                 time.sleep(0.2 * (idx + 1))
                 continue
+            logger.warning("external_kb HTTP request failed: url=%s error=%s", url, exc)
             return None
     return None
 

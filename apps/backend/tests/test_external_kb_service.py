@@ -10,6 +10,7 @@ class ExternalKBServiceTests(unittest.TestCase):
         self._saved = {
             "EXTERNAL_KB_ENABLED": settings.EXTERNAL_KB_ENABLED,
             "EXTERNAL_KB_OPENALEX_EXPLORER_ONLY": settings.EXTERNAL_KB_OPENALEX_EXPLORER_ONLY,
+            "EXTERNAL_KB_HTTP_MAX_RETRY": settings.EXTERNAL_KB_HTTP_MAX_RETRY,
             "OPENALEX_API_KEY": getattr(settings, "OPENALEX_API_KEY", ""),
             "OPENALEX_EMAIL": getattr(settings, "OPENALEX_EMAIL", ""),
         }
@@ -115,6 +116,16 @@ class ExternalKBServiceTests(unittest.TestCase):
         self.assertIn("api_key=test-key", args[0])
         self.assertIn("mailto=reader%40example.com", args[0])
         self.assertEqual(kwargs.get("headers", {}).get("Authorization"), "Bearer test-key")
+
+    @patch("services.external_kb_service.logger.warning")
+    @patch("services.external_kb_service.urllib_request.urlopen", side_effect=RuntimeError("boom"))
+    def test_http_get_json_logs_unexpected_failure(self, _mock_urlopen, mock_warning):
+        settings.EXTERNAL_KB_HTTP_MAX_RETRY = 0
+
+        result = external_kb_service._http_get_json("https://example.com/test", timeout_sec=0.01)
+
+        self.assertIsNone(result)
+        mock_warning.assert_called_once()
 
 
 if __name__ == "__main__":

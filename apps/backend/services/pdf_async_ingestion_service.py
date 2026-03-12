@@ -44,6 +44,7 @@ from services.monitoring import (
 from services.object_storage_service import (
     build_canonical_object_key,
     cleanup_pdf_artifacts,
+    delete_expired_canonical_objects,
     download_object_to_tempfile,
     put_json_object,
 )
@@ -133,9 +134,7 @@ def _emit_post_ingestion_effects(book_id: str, firebase_uid: str, title: str, au
         logger.warning("File report generation failed after async ingest: %s", exc)
 
 
-def _resolve_processing_route(classifier_result: PdfClassifierResult, *, force_ocr: bool) -> str:
-    if force_ocr:
-        return "IMAGE_SCAN"
+def _resolve_processing_route(classifier_result: PdfClassifierResult) -> str:
     return str(classifier_result.route or "IMAGE_SCAN")
 
 
@@ -404,6 +403,7 @@ class AsyncPdfIngestionManager:
     def __init__(self) -> None:
         self._parse_tasks: dict[str, asyncio.Task] = {}
         self._maintenance_task: Optional[asyncio.Task] = None
+        self._last_canonical_cleanup_ts = 0.0
 
     def _task_key(self, firebase_uid: str, book_id: str) -> str:
         return f"{firebase_uid}:{book_id}"
@@ -418,7 +418,6 @@ class AsyncPdfIngestionManager:
         categories: Optional[str],
         bucket_name: str,
         object_key: str,
-        force_ocr: bool = False,
     ) -> None:
         key = self._task_key(firebase_uid, book_id)
         current = self._parse_tasks.get(key)
@@ -445,7 +444,6 @@ class AsyncPdfIngestionManager:
             categories=categories,
             bucket_name=bucket_name,
             object_key=object_key,
-            force_ocr=force_ocr,
         )
 
     def _ensure_processing_task(
@@ -458,7 +456,6 @@ class AsyncPdfIngestionManager:
         categories: Optional[str],
         bucket_name: str,
         object_key: str,
-        force_ocr: bool = False,
     ) -> None:
         key = self._task_key(firebase_uid, book_id)
         current = self._parse_tasks.get(key)
@@ -473,7 +470,6 @@ class AsyncPdfIngestionManager:
                 categories=categories,
                 bucket_name=bucket_name,
                 object_key=object_key,
-                force_ocr=force_ocr,
             )
         )
 
@@ -487,7 +483,6 @@ class AsyncPdfIngestionManager:
         categories: Optional[str],
         bucket_name: str,
         object_key: str,
-        force_ocr: bool = False,
     ) -> None:
         parse_started = time.perf_counter()
         temp_path = None
@@ -507,7 +502,7 @@ class AsyncPdfIngestionManager:
             )
             temp_path = await asyncio.to_thread(download_object_to_tempfile, bucket_name, object_key, ".pdf")
             classifier_result = await asyncio.to_thread(classify_pdf, temp_path)
-            route = _resolve_processing_route(classifier_result, force_ocr=force_ocr)
+            route = _resolve_processing_route(classifier_result)
             PDF_CLASSIFIER_ROUTE_TOTAL.labels(route=route).inc()
 
             upsert_ingestion_status(
@@ -546,14 +541,12 @@ class AsyncPdfIngestionManager:
                         **dict(document.routing_metrics or {}),
                         "retry_as_ocr": True,
                         "retry_reason": retry_reason,
-                        "force_ocr": bool(force_ocr),
                     }
                     document, chunks, quality_metrics = await asyncio.to_thread(_finalize_document, document)
                 else:
                     document.routing_metrics = {
                         **dict(document.routing_metrics or {}),
                         "retry_as_ocr": False,
-                        "force_ocr": bool(force_ocr),
                     }
             else:
                 document, fallback_engine, fallback_triggered, shard_count, shard_failed_count = await asyncio.to_thread(
@@ -563,10 +556,6 @@ class AsyncPdfIngestionManager:
                     classifier_result=classifier_result,
                 )
                 parser_engine = str(document.parser_engine or "LLAMAPARSE")
-                document.routing_metrics = {
-                    **dict(document.routing_metrics or {}),
-                    "force_ocr": bool(force_ocr),
-                }
                 document, chunks, quality_metrics = await asyncio.to_thread(_finalize_document, document)
 
             upsert_ingestion_status(
@@ -683,8 +672,6 @@ class AsyncPdfIngestionManager:
             bucket_name = str(row.get("bucket_name") or "")
             object_key = str(row.get("object_key") or "")
             record = get_pdf_record(book_id, firebase_uid) or {}
-            routing_metrics = dict(record.get("routing_metrics_json") or {})
-            force_ocr = bool(routing_metrics.get("force_ocr"))
             if not bucket_name or not object_key:
                 continue
             self._ensure_processing_task(
@@ -695,7 +682,6 @@ class AsyncPdfIngestionManager:
                 categories=None,
                 bucket_name=bucket_name,
                 object_key=object_key,
-                force_ocr=force_ocr,
             )
 
     async def retry_pending_storage_deletes_once(self) -> None:
@@ -712,10 +698,30 @@ class AsyncPdfIngestionManager:
             except Exception as exc:
                 mark_storage_delete_failed(book_id, firebase_uid, str(exc))
 
+    async def cleanup_expired_canonical_objects_once(self) -> None:
+        retention_days = int(getattr(settings, "PDF_CANONICAL_RETENTION_DAYS", 15))
+        if retention_days <= 0:
+            return
+
+        now = time.time()
+        cleanup_interval_sec = int(getattr(settings, "PDF_CANONICAL_CLEANUP_INTERVAL_SEC", 21600))
+        if cleanup_interval_sec > 0 and (now - self._last_canonical_cleanup_ts) < cleanup_interval_sec:
+            return
+
+        deleted_count = await asyncio.to_thread(
+            delete_expired_canonical_objects,
+            None,
+            retention_days=retention_days,
+        )
+        self._last_canonical_cleanup_ts = now
+        if deleted_count > 0:
+            logger.info("Canonical retention cleanup removed %s expired objects", deleted_count)
+
     async def _maintenance_loop(self) -> None:
         while True:
             try:
                 await self.retry_pending_storage_deletes_once()
+                await self.cleanup_expired_canonical_objects_once()
                 await asyncio.sleep(settings.PDF_DELETE_RETRY_INTERVAL_SEC)
             except asyncio.CancelledError:
                 raise

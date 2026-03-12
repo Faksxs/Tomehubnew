@@ -56,10 +56,9 @@ def test_decide_route_prefers_text_native_when_preflight_is_clean():
     assert route == "TEXT_NATIVE"
 
 
-def test_force_ocr_overrides_text_native_route():
+def test_resolve_processing_route_uses_classifier_result():
     classifier_result = SimpleNamespace(route="TEXT_NATIVE")
-    assert _resolve_processing_route(classifier_result, force_ocr=False) == "TEXT_NATIVE"
-    assert _resolve_processing_route(classifier_result, force_ocr=True) == "IMAGE_SCAN"
+    assert _resolve_processing_route(classifier_result) == "TEXT_NATIVE"
 
 
 def test_reconstruct_document_merges_page_boundary_continuation():

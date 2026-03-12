@@ -200,7 +200,7 @@ class SearchOrchestrator:
         search_surface_effective = str(search_surface or "CORE").strip().upper()
         if search_surface_effective not in {"CORE", "PDF_ONLY"}:
             search_surface_effective = "CORE"
-        pdf_like_types = {"PDF", "EPUB", "PDF_CHUNK", "BOOK_CHUNK", "ODL_SHADOW"}
+        pdf_like_types = {"PDF", "EPUB", "PDF_CHUNK", "BOOK_CHUNK"}
         content_type_effective = str(content_type or "").strip().upper() or None
         if search_surface_effective == "PDF_ONLY":
             content_type_effective = "PDF"

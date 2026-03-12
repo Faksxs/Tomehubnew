@@ -4,6 +4,8 @@ import json
 import re
 import logging
 import asyncio
+import unicodedata
+from difflib import SequenceMatcher
 from typing import Dict, List, Any, Optional, Tuple
 from services.rubric import (
     DEFAULT_RUBRIC, 
@@ -82,22 +84,86 @@ def extract_citations_from_answer(answer: str, chunks: List[Dict] = None) -> Lis
         
     return citations
 
+def _normalize_title_for_match(value: str) -> str:
+    if not value:
+        return ""
+
+    normalized = str(value).translate(
+        str.maketrans(
+            {
+                "ç": "c",
+                "Ç": "c",
+                "ğ": "g",
+                "Ğ": "g",
+                "ı": "i",
+                "İ": "i",
+                "ö": "o",
+                "Ö": "o",
+                "ş": "s",
+                "Ş": "s",
+                "ü": "u",
+                "Ü": "u",
+                "â": "a",
+                "Â": "a",
+                "î": "i",
+                "Î": "i",
+                "û": "u",
+                "Û": "u",
+            }
+        )
+    )
+    normalized = unicodedata.normalize("NFKD", normalized)
+    normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    normalized = normalized.lower()
+    normalized = re.sub(r"[^a-z0-9\s]", " ", normalized)
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def _title_token_overlap(target: str, candidate: str) -> float:
+    target_tokens = {token for token in target.split() if token}
+    candidate_tokens = {token for token in candidate.split() if token}
+    if not target_tokens or not candidate_tokens:
+        return 0.0
+    return len(target_tokens & candidate_tokens) / max(1, len(target_tokens | candidate_tokens))
+
+
 def find_chunk_by_title(chunks: List[Dict], title: str) -> Optional[Dict]:
     """Find a source chunk by title (fuzzy match)."""
     if not title: 
         return None
-        
-    normalized_target = title.lower()
+
+    normalized_target = _normalize_title_for_match(title)
+    if not normalized_target:
+        return None
+
     best_match = None
     best_score = 0.0
     
     for chunk in chunks:
-        chunk_title = chunk.get('title', '').lower()
+        chunk_title = _normalize_title_for_match(chunk.get('title', ''))
+        if not chunk_title:
+            continue
+
+        if normalized_target == chunk_title:
+            return chunk
+
         if normalized_target in chunk_title or chunk_title in normalized_target:
-            return chunk # Exact substring match
-            
-        # TODO: Add Levenshtein if needed, for now substring is robust enough
-        
+            return chunk
+
+        seq_score = SequenceMatcher(None, normalized_target, chunk_title).ratio()
+        overlap_score = _title_token_overlap(normalized_target, chunk_title)
+        combined_score = max(seq_score, overlap_score)
+
+        if overlap_score >= 0.75 and seq_score >= 0.60:
+            combined_score = max(combined_score, 0.85)
+
+        if combined_score > best_score:
+            best_score = combined_score
+            best_match = chunk
+
+    if best_score >= 0.78:
+        return best_match
+
     return None
 
 # =============================================================================
@@ -329,7 +395,8 @@ async def evaluate_answer(
     answer: str,
     chunks: List[Dict],
     answer_mode: str,
-    intent: str = "SYNTHESIS"
+    intent: str = "SYNTHESIS",
+    network_status: str = "UNKNOWN",
 ) -> Dict[str, Any]:
     """
     Evaluate answer quality using Judge AI logic + Auto-Verification.
@@ -380,22 +447,12 @@ async def evaluate_answer(
         
     hints = generate_hints_from_failures(failures)
     
-    # [Observability] Record Metric
-    # Intent and Netowrk Status are passed in, verify context
-    # Note: 'network_status' is not passed to evaluate_answer currently, defaulting to "UNKNOWN" if missing
-    # But wait, evaluate_answer signature: (question, answer, chunks, answer_mode, intent)
-    # Orchestrator has network_status. We should probably pass it or infer it.
-    # For now, let's use a safe default or ask to update signature. 
-    # Actually Orchestrator calls this. Let's keep it simple and record partially.
-    # Actually, we can get better context if we move the recording to Orchestrator?
-    # No, keep it close to logic. 
     try:
-        # We need to map verdict (PASS/REGENERATE) from the result
-        # verdict is in result['verdict']
         verdict_val = verdict.upper() if verdict else "UNKNOWN"
+        network_status_val = str(network_status or "UNKNOWN").strip().upper() or "UNKNOWN"
         JUDGE_SCORE.labels(
             intent=intent, 
-            network_status="UNKNOWN", 
+            network_status=network_status_val,
             verdict=verdict_val
         ).observe(overall_score)
     except Exception as e:

@@ -28,7 +28,7 @@ from services.llm_client import (
 )
 
 # Import TomeHub services
-from services.embedding_service import get_embedding, batch_get_embeddings
+from services.embedding_service import get_embedding
 from services.epistemic_service import (
     extract_core_concepts, 
     classify_chunk, 
@@ -56,17 +56,12 @@ from services.smart_search_service import (
     perform_search, 
     create_turkish_fuzzy_pattern, 
     parse_and_clean_content,
-    generate_query_variations,
-    score_with_bm25,
-    compute_rrf
 )
 from services.search_system.mix_policy import resolve_result_mix_policy
 
 # Import Graph Service
 from services.graph_service import get_graph_candidates, GraphRetrievalError
 
-# Import Re-rank Service
-from services.rerank_service import rerank_candidates
 from services.network_classifier import classify_network_status
 from services.network_classifier import classify_network_status
 from services.monitoring import (
@@ -345,276 +340,6 @@ def get_book_context(book_id: str, query_text: str, firebase_uid: str) -> List[D
     except Exception as e:
         logger.error("Context retrieval failed: %s", e)
         return []
-
-
-def search_similar_content(query_text: str, firebase_uid: str, top_k: int = 5) -> Optional[List[Dict]]:
-    """
-    Advanced Hybrid RAG Retrieval Pipeline (Phase 1 Upgrade).
-    
-    Orchestration:
-    1. Query Expansion (Gemini) -> [q1, q2, q3]
-    2. Parallel Vector Search (Oracle) for all queries
-    3. Sparse Retrieval Simulation (BM25)
-    4. Reciprocal Rank Fusion (RRF)
-    5. Final Candidate Selection
-    """
-    start_time = time.time()
-    logger.info("Hybrid Search Started", extra={"query": query_text, "uid": firebase_uid})
-    
-    try:
-        with DatabaseManager.get_read_connection() as connection:
-            with connection.cursor() as cursor:
-                # 1. QUERY EXPANSION
-                t0 = time.time()
-                queries = [query_text]
-                variations = generate_query_variations(query_text)
-                if variations:
-                    queries.extend(variations)
-                    logger.info("Query Expansion Complete", extra={
-                        "original": query_text, 
-                        "expanded": variations,
-                        "duration_ms": int((time.time() - t0) * 1000)
-                    })
-
-                # 2. RETRIEVAL (Vector + Keyword for ALL variations)
-                t1 = time.time()
-                candidate_pool = {} # content_hash -> row_data
-                
-                # B3: Batch get embeddings for all query variations (N+1 Elimination)
-                unique_queries = list(set(queries))
-                q_embeddings = batch_get_embeddings(unique_queries, task_type="retrieval_query")
-                
-                for q, q_emb in zip(unique_queries, q_embeddings):
-                    # A. Vector Retrieval
-                    if q_emb:
-                        vector_sql = """
-                        SELECT c.content_chunk, c.page_number, c.title, c.content_type,
-                               (VECTOR_DISTANCE(c.vec_embedding, :p_vec, COSINE) / NULLIF(c.rag_weight, 0.0001)) as dist
-                        FROM TOMEHUB_CONTENT_V2 c
-                        WHERE c.firebase_uid = :p_uid
-                          AND c.AI_ELIGIBLE = 1
-                        ORDER BY dist
-                        FETCH FIRST 20 ROWS ONLY
-                        """
-                        cursor.execute(vector_sql, {"p_vec": q_emb, "p_uid": firebase_uid})
-                        rows = cursor.fetchall()
-                        
-                        for r in rows:
-                             # Create unique key (assuming title+page+content_snippet is unique enough)
-                            content = safe_read_clob(r[0])
-                            key = f"{r[2]}_{r[1]}_{content[:30]}"
-                            
-                            if key not in candidate_pool:
-                                candidate_pool[key] = {
-                                    'content': content,
-                                    'page': r[1],
-                                    'title': r[2],
-                                    'type': r[3],
-                                    'vector_score': 1 - r[4], # Similarity (0.0 to 1.0)
-                                    'bm25_score': 0.0,
-                                    'graph_score': 0.0
-                                }
-                            else:
-                                # Keep best vector score if found multiple times
-                                current_sim = 1 - r[4]
-                                if current_sim > candidate_pool[key]['vector_score']:
-                                    candidate_pool[key]['vector_score'] = current_sim
-
-                    # B. Keyword/SQL Retrieval (Tokenized Lemma Search)
-                    # Uses lemmatized tokens to catch morphological variations
-                    if q == query_text:
-                        from utils.text_utils import get_lemmas
-                        lemmas = get_lemmas(q)
-                        # Filter out very short or stop words
-                        keywords = [l for l in lemmas if len(l) > 2][:5]  # Max 5 keywords
-                        
-                        if keywords:
-                            # Build OR conditions for each keyword
-                            conditions = []
-                            params = {"p_uid": firebase_uid}
-                            for i, kw in enumerate(keywords):
-                                conditions.append(f"LOWER(c.content_chunk) LIKE :kw{i}")
-                                params[f"kw{i}"] = f"%{kw.lower()}%"
-                            
-                            keyword_sql = f"""
-                            SELECT c.content_chunk, c.page_number, c.title, c.content_type
-                            FROM TOMEHUB_CONTENT_V2 c
-                            WHERE c.firebase_uid = :p_uid
-                              AND c.AI_ELIGIBLE = 1
-                            AND ({" OR ".join(conditions)})
-                            FETCH FIRST 25 ROWS ONLY
-                            """
-                            cursor.execute(keyword_sql, params)
-                            k_rows = cursor.fetchall()
-                            
-                            for r in k_rows:
-                                content = safe_read_clob(r[0])
-                                key = f"{r[2]}_{r[1]}_{content[:30]}"
-                                if key not in candidate_pool:
-                                    candidate_pool[key] = {
-                                        'content': content,
-                                        'page': r[1],
-                                        'title': r[2],
-                                        'type': r[3],
-                                        'vector_score': 0.0,
-                                        'bm25_score': 0.0,
-                                        'graph_score': 0.0
-                                    }
-                
-                logger.info("Base Retrieval Complete", extra={
-                    "candidates_count": len(candidate_pool),
-                    "duration_ms": int((time.time() - t1) * 1000)
-                })
-
-                # 3. GRAPH RETRIEVAL (Phase 2)
-                # Finds chunks that are conceptually related but textually different
-                t2 = time.time()
-                logger.info("Executing GraphRAG Retrieval...")
-                graph_chunks = get_graph_candidates(query_text, firebase_uid)
-                
-                for gc in graph_chunks:
-                    # Create same key structure
-                    key = f"{gc['title']}_{gc['page']}_{gc['content'][:30]}"
-                    if key not in candidate_pool:
-                        candidate_pool[key] = {
-                            'content': gc['content'],
-                            'page': gc['page'],
-                            'title': gc['title'],
-                            'type': gc['type'],
-                            'vector_score': 0.0,
-                            'bm25_score': 0.0,
-                            'graph_score': 1.0 # High confidence
-                        }
-                    else:
-                        candidate_pool[key]['graph_score'] = 1.0
-
-                logger.info("Graph Retrieval Complete", extra={
-                    "graph_candidates": len(graph_chunks),
-                    "duration_ms": int((time.time() - t2) * 1000)
-                })
-
-                # 4. BM25 SCORING (Sparse)
-                candidates_list = list(candidate_pool.values())
-                corpus = [c['content'] for c in candidates_list]
-                bm25_scores = score_with_bm25(corpus, query_text) # Score against ORIGINAL query
-                
-                for i, score in enumerate(bm25_scores):
-                    candidates_list[i]['bm25_score'] = score
-                    
-                # 5. FUSION (RRF)
-                # Create ranked lists
-                # Rank by Vector (High to Low)
-                vector_ranking = sorted([k for k, v in candidate_pool.items() if v['vector_score'] > 0], 
-                                      key=lambda k: candidate_pool[k]['vector_score'], reverse=True)
-                                      
-                # Rank by BM25 (High to Low)
-                bm25_ranking = sorted([k for k, v in candidate_pool.items()], 
-                                    key=lambda k: candidate_pool[k]['bm25_score'], reverse=True)
-                                    
-                # Rank by Graph (High to Low) - essentially binary here but robust for future
-                graph_ranking = sorted([k for k, v in candidate_pool.items() if v['graph_score'] > 0], 
-                                     key=lambda k: candidate_pool[k]['graph_score'], reverse=True)
-                
-                # Fuse 3 Lists (Order matters: BM25 first for weighted RRF)
-                rrf_scores = compute_rrf([bm25_ranking, vector_ranking, graph_ranking], k=60)
-                
-                # Attach RRF scores
-                final_results = []
-                for key, score in rrf_scores.items():
-                    cand = candidate_pool[key]
-                    cand['rrf_score'] = score
-                    final_results.append(cand)
-                    
-                # Sort by RRF
-                final_results.sort(key=lambda x: x['rrf_score'], reverse=True)
-                
-                # 6. SMART RE-RANKING (Phase 3) - Skip if high confidence
-                # Check if reranking is needed based on RRF scores
-                top_rrf_score = final_results[0].get('rrf_score', 0) if final_results else 0
-                second_rrf_score = final_results[1].get('rrf_score', 0) if len(final_results) > 1 else 0
-                score_gap = top_rrf_score - second_rrf_score if second_rrf_score > 0 else top_rrf_score
-                
-                # Skip reranking if high confidence (top score > 0.8 and gap > 0.1)
-                skip_reranking = top_rrf_score > 0.8 and score_gap > 0.1
-                
-                if skip_reranking:
-                    logger.info(f"Skipping reranking: High RRF confidence (top={top_rrf_score:.3f}, gap={score_gap:.3f})")
-                    # Convert to reranked format for consistency
-                    reranked_results = []
-                    for res in final_results[:top_k]:
-                        reranked_results.append({
-                            'content': res['content'],
-                            'page': res['page'],
-                            'title': res['title'],
-                            'type': res['type'],
-                            'rrf_score': res['rrf_score'],
-                            'rerank_score': res['rrf_score']  # Use RRF score as rerank score
-                        })
-                else:
-                    # RE-RANKING (Phase 3)
-                    # We take top 30 from RRF and re-score them using LLM
-                    t3 = time.time()
-                    logger.info("Re-ranking top candidates...")
-                    
-                    # Prepare candidates for re-ranking (Standardize Keys)
-                    rerank_input = []
-                    for res in final_results[:30]:
-                        rerank_input.append({
-                            'content': res['content'],
-                            'page': res['page'],
-                            'title': res['title'],
-                            'type': res['type'],
-                            'rrf_score': res['rrf_score']
-                        })
-                        
-                    reranked_results = rerank_candidates(query_text, rerank_input)
-                    
-                    if not reranked_results:
-                         logger.warning("Re-ranking returned empty/failed. Using RRF results.")
-                         reranked_results = rerank_input
-                    
-                    logger.info("Re-ranking Complete", extra={
-                        "input_count": len(rerank_input),
-                        "output_count": len(reranked_results),
-                        "duration_ms": int((time.time() - t3) * 1000)
-                    })
-
-
-                # 7. FORMATTING & DIVERSITY
-                selected_chunks = []
-                seen_titles = set()
-                
-                # Diversity Pass: First 10 results from diff books
-                from services.search_system.strategies import _strip_metadata_header
-                for res in reranked_results:
-                    if len(selected_chunks) >= top_k: 
-                        break
-                    
-                    # Use 'content_chunk' key to match old API
-                    selected_chunks.append({
-                        'content_chunk': _strip_metadata_header(res['content']),
-                        'page_number': res['page'],
-                        'title': res['title'],
-                        'similarity_score': res.get('rerank_score', 0), # New score
-                        'final_score': res['rrf_score'], # Keep original for debug
-                        'source_type': res['type']
-                    })
-                    
-                # [Observability] Record Metrics
-                SEARCH_RESULT_COUNT.observe(len(reranked_results))
-                
-                unique_books = set(c.get('title') for c in selected_chunks)
-                SEARCH_DIVERSITY_COUNT.observe(len(unique_books))
-                
-                logger.info("Hybrid Search Finished", extra={
-                    "final_count": len(selected_chunks),
-                    "total_duration_ms": int((time.time() - start_time) * 1000)
-                })
-                return selected_chunks
-
-    except Exception as e:
-        logger.error("Hybrid Search Failed", extra={"error": str(e)}, exc_info=True)
-        return None
 
 
 from concurrent.futures import ThreadPoolExecutor
@@ -1393,7 +1118,8 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
     def run_graph_search():
         try:
             return get_graph_candidates(effective_query, firebase_uid, limit=limit or 15, offset=offset)
-        except:
+        except Exception as exc:
+            logger.warning("Graph candidate prefetch failed-open: %s", exc)
             return []
 
     stepback_mode = "disabled"
@@ -1639,8 +1365,13 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
                     book_id=candidate_book_id,
                     firebase_uid=firebase_uid,
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "Explorer external refresh scheduling failed for book_id=%s uid=%s: %s",
+                    candidate_book_id,
+                    firebase_uid,
+                    exc,
+                )
 
             book_external = get_external_graph_candidates(
                 book_id=candidate_book_id,
@@ -1940,13 +1671,6 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
     selected_buckets = vec_meta.get("selected_buckets", [])
     executed_strategies = vec_meta.get("executed_strategies", [])
     expansion_skipped_reason = vec_meta.get("expansion_skipped_reason")
-    odl_rescue_applied = bool(vec_meta.get("odl_rescue_applied", False))
-    odl_rescue_reason = vec_meta.get("odl_rescue_reason")
-    odl_rescue_timed_out = bool(vec_meta.get("odl_rescue_timed_out", False))
-    odl_rescue_latency_ms = vec_meta.get("odl_rescue_latency_ms")
-    odl_rescue_candidates_added = int(vec_meta.get("odl_rescue_candidates_added", 0) or 0)
-    odl_rescue_candidates_topk = int(vec_meta.get("odl_rescue_candidates_topk", 0) or 0)
-    odl_shadow_status = vec_meta.get("odl_shadow_status")
 
     dynamic_confidence = max(0.5, min(5.0, float(avg_conf or 0.0)))
     source_diversity_count = len(
@@ -1981,13 +1705,6 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
             "source_diversity_count": source_diversity_count,
             "source_type_diversity_count": source_type_diversity_count,
             "level_counts": {"A": level_a_count, "B": level_b_count, "C": level_c_count},
-            "odl_rescue_applied": odl_rescue_applied,
-            "odl_rescue_reason": odl_rescue_reason,
-            "odl_rescue_timed_out": odl_rescue_timed_out,
-            "odl_rescue_latency_ms": odl_rescue_latency_ms,
-            "odl_rescue_candidates_added": odl_rescue_candidates_added,
-            "odl_rescue_candidates_topk": odl_rescue_candidates_topk,
-            "odl_shadow_status": odl_shadow_status,
             "stepback_mode": stepback_mode,
             "stepback_status": stepback_status,
             "stepback_applied": stepback_applied,
@@ -2049,13 +1766,6 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         "supplementary_keyword_search_applied": supplementary_search_applied,
         "supplementary_search_skipped_reason": supplementary_search_skipped_reason,
         "expansion_skipped_reason": expansion_skipped_reason,
-        "odl_rescue_applied": odl_rescue_applied,
-        "odl_rescue_reason": odl_rescue_reason,
-        "odl_rescue_timed_out": odl_rescue_timed_out,
-        "odl_rescue_latency_ms": odl_rescue_latency_ms,
-        "odl_rescue_candidates_added": odl_rescue_candidates_added,
-        "odl_rescue_candidates_topk": odl_rescue_candidates_topk,
-        "odl_shadow_status": odl_shadow_status,
         "compare_applied": compare_applied,
         "target_books_used": target_books_used,
         "target_books_truncated": target_books_truncated,
@@ -2122,13 +1832,6 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
             "supplementary_keyword_search_applied": supplementary_search_applied,
             "supplementary_search_skipped_reason": supplementary_search_skipped_reason,
             "expansion_skipped_reason": expansion_skipped_reason,
-            "odl_rescue_applied": odl_rescue_applied,
-            "odl_rescue_reason": odl_rescue_reason,
-            "odl_rescue_timed_out": odl_rescue_timed_out,
-            "odl_rescue_latency_ms": odl_rescue_latency_ms,
-            "odl_rescue_candidates_added": odl_rescue_candidates_added,
-            "odl_rescue_candidates_topk": odl_rescue_candidates_topk,
-            "odl_shadow_status": odl_shadow_status,
             "compare_applied": compare_applied,
             "target_books_used": target_books_used,
             "target_books_truncated": target_books_truncated,
@@ -2174,13 +1877,6 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
                 "retrieval_mode": retrieval_mode,
                 "selected_buckets": selected_buckets,
                 "executed_strategies": executed_strategies,
-                "odl_rescue_applied": odl_rescue_applied,
-                "odl_rescue_reason": odl_rescue_reason,
-                "odl_rescue_timed_out": odl_rescue_timed_out,
-                "odl_rescue_latency_ms": odl_rescue_latency_ms,
-                "odl_rescue_candidates_added": odl_rescue_candidates_added,
-                "odl_rescue_candidates_topk": odl_rescue_candidates_topk,
-                "odl_shadow_status": odl_shadow_status,
             },
         }
     }
@@ -2595,7 +2291,6 @@ if __name__ == "__main__":
             print("  1. Database contains content for this user")
             print("  2. GEMINI_API_KEY is configured")
             print("  3. Internet connectivity")
-
 
 
 

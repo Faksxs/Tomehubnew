@@ -259,6 +259,24 @@ def get_firestore_oracle_sync_status() -> Dict[str, Any]:
         return dict(_sync_status)
 
 
+def _collect_expected_present_ids(
+    firestore_items: Dict[str, Dict[str, Any]],
+    *,
+    scope_uid: str,
+) -> set[str]:
+    expected_present_ids: set[str] = set()
+    for item_id, raw in firestore_items.items():
+        try:
+            normalize_and_validate_item(item_id, raw)
+            expected_present_ids.add(item_id)
+        except Exception as exc:
+            logger.warning(
+                "Skipping invalid Firestore item during remaining-missing calculation",
+                extra={"uid": scope_uid, "item_id": item_id, "error": str(exc)},
+            )
+    return expected_present_ids
+
+
 def _sync_uid_worker(
     scope_uid: str,
     *,
@@ -397,13 +415,7 @@ def _sync_uid_worker(
                 logger.warning("sync failed", extra={"uid": scope_uid, "item_id": item_id, "error": str(e)})
 
         remaining_ids = _load_oracle_book_ids(scope_uid)
-        expected_present_ids: set[str] = set()
-        for item_id, raw in firestore_items.items():
-            try:
-                item = normalize_and_validate_item(item_id, raw)
-                expected_present_ids.add(item_id)
-            except Exception:
-                continue
+        expected_present_ids = _collect_expected_present_ids(firestore_items, scope_uid=scope_uid)
         still_missing = len(expected_present_ids - remaining_ids)
         _set_status(remaining_missing=still_missing)
     except Exception as e:

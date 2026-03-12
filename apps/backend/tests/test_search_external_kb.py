@@ -134,6 +134,55 @@ class SearchExternalKBTests(unittest.TestCase):
         self.assertEqual(ctx.get("wikidata_qid"), "Q404567")
         self.assertEqual(ctx.get("external_graph_candidates_count"), 1)
 
+    @patch("services.search_service.logger.warning")
+    @patch("services.search_service.perform_search")
+    @patch("services.search_service.get_graph_candidates", return_value=[])
+    @patch("services.search_service.classify_question_intent", return_value=("SYNTHESIS", "MEDIUM"))
+    @patch("services.search_service.extract_core_concepts", return_value=["toplum"])
+    @patch("services.search_service.classify_chunk", side_effect=_classify_stub)
+    @patch("services.search_service.classify_network_status", return_value={"status": "IN_NETWORK", "reason": "ok"})
+    @patch("services.search_service.get_external_meta", return_value={"academic_scope": True, "wikidata_qid": "Q10", "openalex_id": "W20"})
+    @patch("services.search_service.maybe_refresh_external_for_explorer_async", side_effect=RuntimeError("boom"))
+    @patch(
+        "services.search_service.get_external_graph_candidates",
+        return_value=[
+            {
+                "title": "External KB (OPENALEX)",
+                "content_chunk": "Toplum has topic modernite",
+                "page_number": 0,
+                "source_type": "EXTERNAL_KB",
+                "score": 0.61,
+                "external_weight": 0.15,
+            }
+        ],
+    )
+    def test_explorer_refresh_failure_logs_but_keeps_context(
+        self,
+        _mock_external_candidates,
+        _mock_refresh,
+        _mock_external_meta,
+        _mock_network,
+        _mock_classify,
+        _mock_extract,
+        _mock_intent,
+        _mock_graph,
+        mock_search,
+        mock_warning,
+    ):
+        mock_search.return_value = ([_base_chunk()], {"retrieval_path": "hybrid", "retrieval_fusion_mode": "concat"})
+
+        ctx = search_service.get_rag_context(
+            question="toplum modernite iliskisi nedir",
+            firebase_uid="u1",
+            context_book_id="b1",
+            mode="EXPLORER",
+        )
+
+        self.assertIsNotNone(ctx)
+        self.assertTrue(ctx.get("external_kb_used"))
+        self.assertEqual(ctx.get("external_graph_candidates_count"), 1)
+        self.assertTrue(mock_warning.called)
+
 
 if __name__ == "__main__":
     unittest.main()

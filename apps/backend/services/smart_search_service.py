@@ -4,9 +4,7 @@ import sys
 import logging
 import oracledb
 from dotenv import load_dotenv
-import json
 import re
-from services.llm_client import MODEL_TIER_LITE, generate_text, get_model_for_tier
 from config import settings
 
 # Load environment variables - go up one level from services/ to backend/
@@ -98,52 +96,6 @@ def parse_and_clean_content(content):
 def create_turkish_fuzzy_pattern(query):
     """Legacy compatibility: Returns normalized query as list."""
     return [normalize_text(query)]
-
-def generate_query_variations(query: str) -> list[str]:
-    """
-    Generates 3 semantic variations of the user query using Gemini.
-    """
-    if not query:
-        return []
-        
-    if settings.DEBUG_VERBOSE_PIPELINE:
-        logger.debug("Generating query variations for query='%s'", query)
-    
-    prompt = f"""You are an AI search optimizer.
-    Generate 3 alternative versions of the following search query to improve retrieval recall.
-    Focus on synonyms, related concepts, and removing ambiguity.
-    
-    Query: "{query}"
-    
-    Output Format: JSON list of strings ONLY.
-    Example: ["variation 1", "variation 2", "variation 3"]
-    """
-    
-    try:
-        model = get_model_for_tier(MODEL_TIER_LITE)
-        result = generate_text(
-            model=model,
-            prompt=prompt,
-            task="smart_search_query_variations",
-            model_tier=MODEL_TIER_LITE,
-            timeout_s=30.0,
-        )
-        text = result.text.strip()
-        
-        # Clean markdown
-        if "```json" in text:
-            text = re.search(r'```json\s*(.*?)\s*```', text, re.DOTALL).group(1)
-        elif "```" in text:
-            text = re.search(r'```\s*(.*?)\s*```', text, re.DOTALL).group(1)
-            
-        variations = json.loads(text)
-        if isinstance(variations, list):
-            return variations[:3]
-        return [query]
-        
-    except Exception as e:
-        logger.warning("Query expansion failed: %s", e)
-        return [query]
 
 def score_with_bm25(documents: list[str], query: str) -> list[float]:
     """

@@ -115,7 +115,7 @@ def _ts_to_ms(value: Any) -> int:
         return int(datetime.utcnow().timestamp() * 1000)
 
 
-def _safe_json_list(value: Any) -> list[str]:
+def _safe_json_list(value: Any, *, field_name: str = "json_list") -> list[str]:
     if value is None:
         return []
     raw = safe_read_clob(value) if not isinstance(value, str) else value
@@ -130,8 +130,13 @@ def _safe_json_list(value: Any) -> list[str]:
                 if text:
                     out.append(text)
             return out
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning(
+            "Failed to parse library JSON list field=%s size=%s error=%s",
+            field_name,
+            len(str(raw or "")),
+            exc,
+        )
     return []
 
 
@@ -211,7 +216,8 @@ def _decode_cursor(cursor: Optional[str]) -> Optional[tuple[int, str]]:
         if not item_id:
             return None
         return ts, item_id
-    except Exception:
+    except Exception as exc:
+        logger.warning("Invalid library pagination cursor: %s", exc)
         return None
 
 
@@ -449,7 +455,7 @@ def list_library_items(
                     "url": str(r[8] or "").strip() or None,
                     "status": str(r[9] or "On Shelf"),
                     "readingStatus": str(r[10] or "To Read"),
-                    "tags": _safe_json_list(r[11]),
+                    "tags": _safe_json_list(r[11], field_name="item_tags"),
                     # Personal note body primarily comes from content table. For local-only
                     # categories we fall back to the library summary metadata.
                     "generalNotes": safe_read_clob(r[12]) if (str(r[1] or "").strip().upper() == "PERSONAL_NOTE" and r[12] is not None) else "",
@@ -463,7 +469,7 @@ def list_library_items(
                     "personalFolderId": str(r[19] or "").strip() or None,
                     "folderPath": safe_read_clob(r[20]) if r[20] is not None else None,
                     "coverUrl": str(r[21] or "").strip() or None,
-                    "castTop": _safe_json_list(r[22]),
+                    "castTop": _safe_json_list(r[22], field_name="cast_top"),
                     "addedAt": _ts_to_ms(r[23]),
                     "isFavorite": bool(int(r[24])) if r[24] is not None else False,
                     "pageCount": int(r[25]) if r[25] is not None else None,
@@ -575,7 +581,7 @@ def list_library_items(
                                     "pageNumber": int(hr[4]) if hr[4] is not None else None,
                                     "comment": safe_read_clob(hr[6]) if hr[6] is not None else None,
                                     "createdAt": _ts_to_ms(hr[8]),
-                                    "tags": _safe_json_list(hr[7]),
+                                    "tags": _safe_json_list(hr[7], field_name="highlight_tags"),
                                     "isFavorite": False,
                                 }
                             )
@@ -969,7 +975,7 @@ def upsert_library_item(firebase_uid: str, item_id: str, payload: dict[str, Any]
                 _append_scalar_if_blank("COVER_URL", payload.get("coverUrl"))
                 _append_clob_if_blank("SUMMARY_TEXT", summary_value)
                 if normalized_cast_top:
-                    existing_cast = _safe_json_list(existing_map.get("CAST_TOP_JSON"))
+                    existing_cast = _safe_json_list(existing_map.get("CAST_TOP_JSON"), field_name="existing_cast_top")
                     if not existing_cast and "CAST_TOP_JSON" in lib_cols:
                         b = f"p_safe_{len(safe_binds)}"
                         safe_binds[b] = cast_top_json_value

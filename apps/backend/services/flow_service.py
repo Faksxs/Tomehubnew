@@ -2004,7 +2004,13 @@ class FlowService:
                         AND seen_at > CURRENT_TIMESTAMP - :p_days
                     """, {"p_uid": firebase_uid, "p_cid": coerced_id, "p_days": days})
                     return cursor.fetchone()[0] > 0
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "Global seen lookup failed for uid=%s chunk_id=%s: %s",
+                firebase_uid,
+                chunk_id,
+                exc,
+            )
             return False
 
     def _prune_old_seen_records(self, firebase_uid: str, days: int = 45):

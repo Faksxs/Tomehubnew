@@ -72,17 +72,11 @@ from services.ai_service import (
     search_resources_async,
     stream_enrichment
 )
-from services.analytics_service import (
-    is_analytic_word_count,
-    extract_target_term,
-    count_lemma_occurrences,
-    resolve_book_id_from_question,
-    count_all_notes_occurrences,
-    resolve_all_book_ids,
-    get_comparative_stats,
-    get_keyword_contexts,
+from services.api_route_support_service import (
+    execute_chat_request,
+    execute_search_request,
+    fetch_realtime_poll_payload,
 )
-from services.query_plan_service import looks_explicit_compare_query
 from models.request_models import (
     EnrichBookRequest, GenerateTagsRequest, VerifyCoverRequest, AnalyzeHighlightsRequest
 )
@@ -126,37 +120,13 @@ logger = get_logger("tomehub_api")
 logger.setLevel(getattr(logging, settings.LOG_LEVEL, logging.INFO))
 
 
-def _allow_dev_unverified_auth() -> bool:
-    return (
-        settings.ENVIRONMENT == "development"
-        and not bool(getattr(settings, "FIREBASE_READY", False))
-        and bool(getattr(settings, "DEV_UNSAFE_AUTH_BYPASS", False))
-    )
-
-
-def get_verified_uid(request: Request, uid_from_jwt: Optional[str]) -> str:
+def get_verified_uid(request: Optional[Request], uid_from_jwt: Optional[str]) -> str:
     """
     Authoritative UID resolver for TomeHub.
-    Prioritizes verified JWT, falls back to raw UID in development mode.
+    Requires a verified JWT-derived UID for protected endpoints.
     """
     if uid_from_jwt:
         return uid_from_jwt
-
-    # Local development fallbacks
-    if settings.ENVIRONMENT == "development":
-        # 1. Query Param
-        uid = request.query_params.get("firebase_uid")
-        # 2. X-Firebase-UID Header
-        if not uid:
-            uid = request.headers.get("X-Firebase-UID")
-        # 3. Authorization Header (raw UID)
-        if not uid:
-            auth_header = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
-            if auth_header and len(auth_header) < 128:
-                uid = auth_header
-
-        if uid:
-            return uid
 
     raise HTTPException(status_code=401, detail="Authentication required")
 
@@ -211,6 +181,16 @@ def _build_content_disposition(filename: str) -> str:
     return f"inline; filename=\"{safe_ascii}\"; filename*=UTF-8''{quote(str(filename or safe_ascii))}"
 
 
+def _raise_internal_server_error(
+    log_message: str,
+    exc: Exception,
+    *,
+    detail: str = "Internal server error",
+) -> None:
+    logger.error(log_message, extra={"error": str(exc), "traceback": traceback.format_exc()})
+    raise HTTPException(status_code=500, detail=detail)
+
+
 def _ensure_media_library_enabled() -> None:
     if not bool(getattr(settings, "MEDIA_LIBRARY_ENABLED", False)):
         raise HTTPException(status_code=404, detail="Media library is disabled")
@@ -241,115 +221,6 @@ def _validate_cors_origins(origins: list[str]) -> list[str]:
         raise ValueError(f"Invalid CORS origin: {origin}")
     return normalized
 
-
-_HIGHLIGHT_FOCUS_TERMS = (
-    "highlight", "highlights", "altini ciz", "altını çiz", "notlarim", "notlarım",
-    "notlar", "alinan not", "alıntı", "alinti", "insight"
-)
-
-
-def _is_scope_policy_enabled_for_chat(firebase_uid: str, mode: str) -> bool:
-    if not bool(getattr(settings, "SEARCH_SCOPE_POLICY_ENABLED", False)):
-        return False
-
-    enabled_modes = {
-        str(m or "").strip().upper()
-        for m in getattr(settings, "SEARCH_SCOPE_POLICY_CHAT_MODES", []) or []
-    }
-    if enabled_modes and str(mode or "STANDARD").strip().upper() not in enabled_modes:
-        return False
-
-    canary_uids = set(getattr(settings, "SEARCH_SCOPE_POLICY_CANARY_UIDS", set()) or set())
-    if canary_uids and str(firebase_uid or "").strip() not in canary_uids:
-        return False
-    return True
-
-
-def _looks_highlight_focused_query(message: str) -> bool:
-    text = str(message or "").strip().lower()
-    return any(term in text for term in _HIGHLIGHT_FOCUS_TERMS)
-
-
-def _resolve_chat_scope_policy(
-    *,
-    message: str,
-    firebase_uid: str,
-    requested_scope_mode: str,
-    explicit_book_id: Optional[str],
-    context_book_id: Optional[str],
-    compare_mode: Optional[str] = None,
-    target_book_ids: Optional[List[str]] = None,
-) -> Dict[str, Any]:
-    requested = str(requested_scope_mode or "AUTO").strip().upper() or "AUTO"
-    anchor_book_id = str(explicit_book_id or context_book_id or "").strip() or None
-    requested_targets = [str(b or "").strip() for b in (target_book_ids or []) if str(b or "").strip()]
-    compare_mode_effective = str(compare_mode or "EXPLICIT_ONLY").strip().upper() or "EXPLICIT_ONLY"
-    compare_query_explicit = looks_explicit_compare_query(message)
-
-    if requested in {"AUTO", "BOOK_FIRST"}:
-        if len(requested_targets) >= 2:
-            return {
-                "scope_mode": "GLOBAL",
-                "resolved_book_id": anchor_book_id,
-                "scope_decision": "COMPARE_GLOBAL_OVERRIDE_TARGETS",
-            }
-        if compare_query_explicit and compare_mode_effective in {"EXPLICIT_ONLY", "AUTO"}:
-            return {
-                "scope_mode": "GLOBAL",
-                "resolved_book_id": anchor_book_id,
-                "scope_decision": "COMPARE_GLOBAL_OVERRIDE_QUERY",
-            }
-
-    chosen_book_id = anchor_book_id
-    if not chosen_book_id and requested in {"AUTO", "BOOK_FIRST"}:
-        try:
-            chosen_book_id = resolve_book_id_from_question(firebase_uid, message)
-        except Exception:
-            chosen_book_id = None
-
-    if requested == "GLOBAL":
-        return {
-            "scope_mode": "GLOBAL",
-            "resolved_book_id": None,
-            "scope_decision": "GLOBAL_FORCED",
-        }
-    if requested == "HIGHLIGHT_FIRST":
-        return {
-            "scope_mode": "HIGHLIGHT_FIRST",
-            "resolved_book_id": chosen_book_id,
-            "scope_decision": "HIGHLIGHT_FIRST_FORCED",
-        }
-    if requested == "BOOK_FIRST":
-        if chosen_book_id:
-            return {
-                "scope_mode": "BOOK_FIRST",
-                "resolved_book_id": chosen_book_id,
-                "scope_decision": "BOOK_FIRST_FORCED",
-            }
-        return {
-            "scope_mode": "HIGHLIGHT_FIRST",
-            "resolved_book_id": None,
-            "scope_decision": "BOOK_FIRST_FALLBACK_NO_BOOK",
-        }
-
-    # AUTO mode
-    if chosen_book_id:
-        return {
-            "scope_mode": "BOOK_FIRST",
-            "resolved_book_id": chosen_book_id,
-            "scope_decision": "AUTO_RESOLVED_BOOK",
-        }
-    if _looks_highlight_focused_query(message):
-        return {
-            "scope_mode": "HIGHLIGHT_FIRST",
-            "resolved_book_id": None,
-            "scope_decision": "AUTO_HIGHLIGHT_FOCUS",
-        }
-    return {
-        "scope_mode": "HIGHLIGHT_FIRST",
-        "resolved_book_id": None,
-        "scope_decision": "AUTO_DEFAULT_HIGHLIGHT_FIRST",
-    }
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -562,118 +433,16 @@ async def realtime_poll(
     Fast polling endpoint for multi-device UX consistency.
     Returns coarse-grained change events since client timestamp.
     """
-    if firebase_uid_from_jwt:
-        verified_uid = firebase_uid_from_jwt
-    else:
-        if settings.ENVIRONMENT == "production":
-            raise HTTPException(status_code=401, detail="Authentication required")
-        verified_uid = firebase_uid or request.query_params.get("firebase_uid")
-        if not verified_uid:
-            raise HTTPException(status_code=400, detail="firebase_uid is required in development")
-
-    safe_limit = max(1, min(int(limit), 300))
+    verified_uid = get_verified_uid(request, firebase_uid_from_jwt)
     compact_poll = request.headers.get("x-th-compact-poll") == "1"
-    events: list[dict[str, Any]] = []
-    cutoff_ms = max(int(since_ms or 0), 0)
-
-    try:
-        from services.change_event_service import fetch_change_events_since
-        changes, last_event_id = fetch_change_events_since(
-            firebase_uid=verified_uid,
-            since_ms=cutoff_ms,
-            limit=safe_limit,
-        )
-        if changes:
-            server_time_ms = int(datetime.now().timestamp() * 1000)
-            return {
-                "success": True,
-                "server_time_ms": server_time_ms,
-                "server_time": datetime.now().isoformat(),
-                "last_event_id": last_event_id,
-                "changes": changes,
-                "events": changes,
-                "count": len(changes),
-                "source": "outbox",
-            }
-    except Exception as e:
-        logger.warning(f"Realtime polling outbox read failed (fallback to legacy query): {e}")
-
-    try:
-        with DatabaseManager.get_read_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT ITEM_ID, TITLE, COALESCE(UPDATED_AT, CREATED_AT)
-                    FROM TOMEHUB_LIBRARY_ITEMS
-                    WHERE FIREBASE_UID = :p_uid
-                    ORDER BY COALESCE(UPDATED_AT, CREATED_AT) DESC
-                    FETCH FIRST :p_limit ROWS ONLY
-                    """,
-                    {"p_uid": verified_uid, "p_limit": safe_limit},
-                )
-                for row in cursor.fetchall():
-                    ts = row[2]
-                    ts_ms = int(ts.timestamp() * 1000) if ts else int(datetime.now().timestamp() * 1000)
-                    if ts_ms <= cutoff_ms:
-                        continue
-                    events.append(
-                        {
-                            "event_type": "book.updated",
-                            "book_id": str(row[0]),
-                            "title": str(row[1] or ""),
-                            "updated_at_ms": ts_ms,
-                        }
-                    )
-
-                cursor.execute(
-                    """
-                    SELECT ITEM_ID, CONTENT_TYPE, MAX(CREATED_AT)
-                    FROM TOMEHUB_CONTENT_V2
-                    WHERE FIREBASE_UID = :p_uid
-                      AND CONTENT_TYPE IN ('HIGHLIGHT', 'INSIGHT', 'PERSONAL_NOTE')
-                    GROUP BY ITEM_ID, CONTENT_TYPE
-                    FETCH FIRST :p_limit ROWS ONLY
-                    """,
-                    {"p_uid": verified_uid, "p_limit": safe_limit},
-                )
-                for row in cursor.fetchall():
-                    source_type = str(row[1] or "").upper()
-                    ts = row[2]
-                    if not ts:
-                        continue
-                    ts_ms = int(ts.timestamp() * 1000)
-                    if ts_ms <= cutoff_ms:
-                        continue
-                    event_type = "highlight.synced" if source_type in {"HIGHLIGHT", "INSIGHT"} else "note.synced"
-                    events.append(
-                        {
-                            "event_type": event_type,
-                            "book_id": str(row[0] or ""),
-                            "source_type": source_type,
-                            "updated_at_ms": ts_ms,
-                        }
-                    )
-    except Exception as e:
-        logger.error(f"Realtime polling query failed: {e}")
-        raise HTTPException(status_code=500, detail="Realtime polling failed")
-
-    events.sort(key=lambda e: int(e.get("updated_at_ms") or 0), reverse=True)
-    if len(events) > safe_limit:
-        events = events[:safe_limit]
-    server_time_ms = int(datetime.now().timestamp() * 1000)
-    if compact_poll and len(events) == 0:
+    payload = fetch_realtime_poll_payload(
+        firebase_uid=verified_uid,
+        since_ms=since_ms,
+        limit=limit,
+    )
+    if compact_poll and int(payload.get("count") or 0) == 0:
         return Response(status_code=204)
-
-    return {
-        "success": True,
-        "server_time_ms": server_time_ms,
-        "server_time": datetime.now().isoformat(),
-        "last_event_id": None,
-        "changes": events,
-        "events": events,
-        "count": len(events),
-        "source": "legacy_aggregate",
-    }
+    return payload
 
 
 
@@ -688,19 +457,8 @@ async def search(
     search_request: SearchRequest,
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
-    # Determine authoritative UID (JWT or request body in dev mode)
-    if firebase_uid_from_jwt:
-        # Production: JWT is authoritative
-        firebase_uid = firebase_uid_from_jwt
-        logger.info(f"Using JWT-verified UID: {firebase_uid}")
-    else:
-        # Development mode: use request body UID (with warning)
-        firebase_uid = search_request.firebase_uid
-        if _allow_dev_unverified_auth():
-            logger.warning(f"⚠️ Dev mode: Using unverified UID from request body: {firebase_uid}")
-        else:
-            logger.error("SECURITY: Auth failed but ENVIRONMENT != development. Rejecting request.")
-            raise HTTPException(status_code=401, detail="Authentication required")
+    firebase_uid = get_verified_uid(request, firebase_uid_from_jwt)
+    logger.info(f"Using JWT-verified UID: {firebase_uid}")
     
     # Log search start
     logger.info(
@@ -710,174 +468,15 @@ async def search(
     _ensure_media_resource_type_allowed(search_request.resource_type)
     
     try:
-        import asyncio
-        from functools import partial
-        visibility_scope = "all" if search_request.include_private_notes else search_request.visibility_scope
-        
-        loop = asyncio.get_running_loop()
-
-        # Analytic short-circuit (Layer-3)
-        if is_analytic_word_count(search_request.question):
-            term = extract_target_term(search_request.question)
-            resolved_book_id = search_request.book_id or search_request.context_book_id
-            if not resolved_book_id:
-                resolved_book_id = resolve_book_id_from_question(firebase_uid, search_request.question)
-
-            if not resolved_book_id and not term:
-                return {
-                    "answer": "Analitik sayım için kitap ve kelime gerekli. Örn: \"Mahur Beste kitabında zaman kelimesi kaç defa geçiyor?\"",
-                    "sources": [],
-                    "timestamp": datetime.now().isoformat(),
-                    "metadata": {
-                        "status": "analytic",
-                        "analytics": {"type": "word_count", "error": "book_and_term_missing"},
-                        "search_variant": "search",
-                        "graph_capability": "enabled",
-                    },
-                }
-            if not resolved_book_id:
-                return {
-                    "answer": "Analitik sayım için hangi kitabı soruyorsun? Örn: \"Mahur Beste kitabında zaman kelimesi kaç defa geçiyor?\"",
-                    "sources": [],
-                    "timestamp": datetime.now().isoformat(),
-                    "metadata": {
-                        "status": "analytic",
-                        "analytics": {"type": "word_count", "error": "book_id_required"},
-                        "search_variant": "search",
-                        "graph_capability": "enabled",
-                    },
-                }
-            if not term:
-                return {
-                    "answer": "Sayılacak kelimeyi belirtir misin?",
-                    "sources": [],
-                    "timestamp": datetime.now().isoformat(),
-                    "metadata": {
-                        "status": "analytic",
-                        "analytics": {"type": "word_count", "error": "term_missing"},
-                        "search_variant": "search",
-                        "graph_capability": "enabled",
-                    },
-                }
-            count = count_lemma_occurrences(firebase_uid, resolved_book_id, term)
-            
-            # Fetch context snippets for the UI "See Contexts" button
-            from services.analytics_service import get_keyword_contexts
-            contexts = get_keyword_contexts(firebase_uid, resolved_book_id, term, limit=10)
-            
-            metadata_dict = {
-                "status": "analytic",
-                "analytics": {
-                    "type": "word_count",
-                    "term": term,
-                    "count": count,
-                    "match": "lemma",
-                    "scope": "book_chunks",
-                    "resolved_book_id": resolved_book_id,
-                    "contexts": contexts if count > 0 else [],
-                    "debug": {"cache": "disabled"},
-                },
-                "search_variant": "search",
-                "graph_capability": "enabled",
-            }
-            
-            logger.debug("Analytic search context count", extra={"count": len(metadata_dict['analytics']['contexts'])})
-            
-            return {
-                "answer": f"\"{term}\" kelimesi bu kitapta toplam {count} kez geçiyor.",
-                "sources": [],
-                "timestamp": datetime.now().isoformat(),
-                "metadata": metadata_dict
-            }
-        
-        scope_policy_active = _is_scope_policy_enabled_for_chat(firebase_uid, search_request.mode)
-        effective_book_id = search_request.book_id
-        effective_resource_type = search_request.resource_type
-        effective_scope_mode = "GLOBAL"
-        scope_decision = "LEGACY_SCOPE_POLICY_DISABLED"
-        if scope_policy_active:
-            scope_state = _resolve_chat_scope_policy(
-                message=search_request.question,
-                firebase_uid=firebase_uid,
-                requested_scope_mode=search_request.scope_mode,
-                explicit_book_id=search_request.book_id,
-                context_book_id=search_request.context_book_id,
-                compare_mode=search_request.compare_mode,
-                target_book_ids=search_request.target_book_ids,
-            )
-            effective_scope_mode = scope_state["scope_mode"]
-            scope_decision = scope_state["scope_decision"]
-            effective_book_id = scope_state.get("resolved_book_id")
-
-            if effective_scope_mode == "BOOK_FIRST":
-                effective_resource_type = "BOOK"
-            elif effective_scope_mode == "HIGHLIGHT_FIRST":
-                effective_resource_type = "ALL_NOTES"
-            else:
-                effective_resource_type = search_request.resource_type
-
-        scope_metadata = {
-            "scope_policy_active": scope_policy_active,
-            "scope_decision": scope_decision,
-            "scope_mode": effective_scope_mode,
-            "resolved_book_id": effective_book_id,
-        }
-
-        # Run synchronous RAG search in thread pool
-        result = await loop.run_in_executor(
-            None, 
-            partial(
-                generate_answer, 
-                search_request.question, 
-                firebase_uid, 
-                effective_book_id,
-                None, # chat_history
-                "", # session_summary
-                search_request.limit,
-                search_request.offset,
-                None, # session_id
-                effective_resource_type,
-                effective_scope_mode,
-                scope_policy_active,
-                search_request.compare_mode,
-                search_request.target_book_ids,
-                visibility_scope,
-                search_request.content_type,
-                search_request.ingestion_type,
-            )
+        return await execute_search_request(
+            search_request=search_request,
+            firebase_uid=firebase_uid,
+            generate_answer_fn=generate_answer,
         )
-        
-        # Unpack result (answer, sources, metadata)
-        answer, sources, metadata = result
-        logger.info(
-            "Search finished successfully",
-            extra={
-                "answer_length": len(answer),
-                "source_count": len(sources) if sources else 0,
-                "first_source_title": sources[0].get('title') if sources else None,
-                "first_source_score": sources[0].get('similarity_score') if sources else None,
-                "metadata": metadata,
-            }
-        )
-
-        if isinstance(metadata, dict):
-            metadata.setdefault("search_variant", "search")
-            metadata.setdefault("graph_capability", "enabled")
-            for key, value in scope_metadata.items():
-                metadata.setdefault(key, value)
-            metadata.setdefault("visibility_scope", visibility_scope)
-            metadata.setdefault("content_type_filter", search_request.content_type)
-            metadata.setdefault("ingestion_type_filter", search_request.ingestion_type)
-        
-        return {
-            "answer": answer,
-            "sources": sources or [],
-            "timestamp": datetime.now().isoformat(),
-            "metadata": metadata
-        }
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error("Search failed", extra={"error": str(e), "traceback": traceback.format_exc()})
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Search failed", e, detail="Search failed")
 
 @app.post("/api/chat", response_model=ChatResponse)
 @limiter.limit(settings.RATE_LIMIT_CHAT)
@@ -891,17 +490,8 @@ async def chat_endpoint(
     Stateful Chat Endpoint (LogosChat - Layer 3).
     Orchestrates session, history, and RAG search.
     """
-    # Determine authoritative UID (JWT or request body in dev mode)
-    if firebase_uid_from_jwt:
-        firebase_uid = firebase_uid_from_jwt
-        logger.info(f"Using JWT-verified UID: {firebase_uid}")
-    else:
-        firebase_uid = chat_request.firebase_uid
-        if _allow_dev_unverified_auth():
-            logger.warning(f"⚠️ Dev mode: Using unverified UID from request body: {firebase_uid}")
-        else:
-            logger.error("SECURITY: Auth failed but ENVIRONMENT != development. Rejecting request.")
-            raise HTTPException(status_code=401, detail="Authentication required")
+    firebase_uid = get_verified_uid(request, firebase_uid_from_jwt)
+    logger.info(f"Using JWT-verified UID: {firebase_uid}")
     
     logger.info(
         "Chat started",
@@ -910,348 +500,28 @@ async def chat_endpoint(
     _ensure_media_resource_type_allowed(chat_request.resource_type)
     
     try:
-        import asyncio
-        from functools import partial
         from services.chat_history_service import (
             create_session, add_message, get_session_context, summarize_session_history
         )
         from services.memory_profile_service import get_memory_context_snippet, refresh_memory_profile
-        
-        loop = asyncio.get_running_loop()
-        
-        # 1. Handle Session Creation
-        session_id = chat_request.session_id
-        if not session_id:
-            new_title = f"Chat: {chat_request.message[:40]}..."
-            session_id = await loop.run_in_executor(None, create_session, firebase_uid, new_title)
-            if not session_id:
-                raise HTTPException(status_code=500, detail="Failed to create session")
-            
-        # 2. Get Context (Summary + History)
-        ctx_data = await loop.run_in_executor(None, get_session_context, session_id)
-        memory_context_snippet = await loop.run_in_executor(None, get_memory_context_snippet, firebase_uid)
-        
-        # 3. Save User Message
-        await loop.run_in_executor(None, add_message, session_id, 'user', chat_request.message)
-
-        # 3.5 Analytic short-circuit (Layer-3)
-        if is_analytic_word_count(chat_request.message):
-            term = extract_target_term(chat_request.message)
-            resolved_book_id = chat_request.book_id
-            if not resolved_book_id:
-                resolved_book_id = resolve_book_id_from_question(firebase_uid, chat_request.message)
-
-            if not resolved_book_id and not term:
-                answer = "Analitik sayım için kitap ve kelime gerekli. Örn: \"Mahur Beste kitabında zaman kelimesi kaç defa geçiyor?\""
-                await loop.run_in_executor(None, add_message, session_id, 'assistant', answer, [])
-                background_tasks.add_task(summarize_session_history, session_id)
-                return {
-                    "answer": answer,
-                    "session_id": session_id,
-                    "sources": [],
-                    "timestamp": datetime.now().isoformat(),
-                    "conversation_state": {},
-                    "thinking_history": [],
-                    "metadata": {
-                        "status": "analytic",
-                        "analytics": {"type": "word_count", "error": "book_and_term_missing"},
-                    },
-                }
-            if not resolved_book_id:
-                answer = "Analitik sayım için hangi kitabı soruyorsun? Örn: \"Mahur Beste kitabında zaman kelimesi kaç defa geçiyor?\""
-                await loop.run_in_executor(None, add_message, session_id, 'assistant', answer, [])
-                background_tasks.add_task(summarize_session_history, session_id)
-                return {
-                    "answer": answer,
-                    "session_id": session_id,
-                    "sources": [],
-                    "timestamp": datetime.now().isoformat(),
-                    "conversation_state": {},
-                    "thinking_history": [],
-                    "metadata": {
-                        "status": "analytic",
-                        "analytics": {"type": "word_count", "error": "book_id_required"},
-                    },
-                }
-            if not term:
-                answer = "Sayılacak kelimeyi belirtir misin?"
-                await loop.run_in_executor(None, add_message, session_id, 'assistant', answer, [])
-                background_tasks.add_task(summarize_session_history, session_id)
-                return {
-                    "answer": answer,
-                    "session_id": session_id,
-                    "sources": [],
-                    "timestamp": datetime.now().isoformat(),
-                    "conversation_state": {},
-                    "thinking_history": [],
-                    "metadata": {
-                        "status": "analytic",
-                        "analytics": {"type": "word_count", "error": "term_missing"},
-                    },
-                }
-
-            # 3.9 Fetch all data for narrative response
-            # 3.9 Fetch all data for narrative response
-            # Implementation Strategy: Single book analytic only.
-            
-            # A. Count in Current Book (Critical)
-            try:
-                count = count_lemma_occurrences(firebase_uid, resolved_book_id, term)
-            except Exception as e:
-                logger.error(f"Primary count failed: {e}")
-                count = 0
-
-            # B. Build Simple Narrative (Current Book Only)
-            answer = f"\"{term}\" kelimesi bu kitapta toplam **{count}** kez geçiyor."
-
-            logger.info(f"Final Narrative Answer: {answer}")
-            
-            # C. Fetch Contexts for 'See Contexts' button
-            contexts = get_keyword_contexts(firebase_uid, resolved_book_id, term, limit=10)
-            
-            await loop.run_in_executor(None, add_message, session_id, 'assistant', answer, [])
-            background_tasks.add_task(summarize_session_history, session_id)
-            return {
-                "answer": answer,
-                "session_id": session_id,
-                "sources": [],
-                "timestamp": datetime.now().isoformat(),
-                "conversation_state": {},
-                "thinking_history": [],
-                "metadata": {
-                    "status": "analytic",
-                    "analytics": {
-                        "type": "word_count",
-                        "term": term,
-                        "count": count,
-                        "match": "lemma",
-                        "scope": "book_chunks",
-                        "resolved_book_id": resolved_book_id,
-                        "contexts": contexts
-                    },
-                },
-            }
-
-        scope_policy_active = _is_scope_policy_enabled_for_chat(firebase_uid, chat_request.mode)
-        effective_book_id = chat_request.book_id
-        effective_resource_type = chat_request.resource_type
-        effective_scope_mode = "GLOBAL"
-        scope_decision = "LEGACY_SCOPE_POLICY_DISABLED"
-        if scope_policy_active:
-            scope_state = _resolve_chat_scope_policy(
-                message=chat_request.message,
-                firebase_uid=firebase_uid,
-                requested_scope_mode=chat_request.scope_mode,
-                explicit_book_id=chat_request.book_id,
-                context_book_id=chat_request.context_book_id,
-                compare_mode=chat_request.compare_mode,
-                target_book_ids=chat_request.target_book_ids,
-            )
-            effective_scope_mode = scope_state["scope_mode"]
-            scope_decision = scope_state["scope_decision"]
-            effective_book_id = scope_state.get("resolved_book_id")
-
-            if effective_scope_mode == "BOOK_FIRST":
-                effective_resource_type = "BOOK"
-            elif effective_scope_mode == "HIGHLIGHT_FIRST":
-                effective_resource_type = "ALL_NOTES"
-            else:
-                effective_resource_type = chat_request.resource_type
-
-        scope_metadata = {
-            "scope_policy_active": scope_policy_active,
-            "scope_decision": scope_decision,
-            "scope_mode": effective_scope_mode,
-            "resolved_book_id": effective_book_id,
-        }
-
-        # 4. Generate Answer (Using RAG with history)
-        # Route based on mode:
-        # - STANDARD: Use fast legacy flow (generate_answer)
-        # - EXPLORER: Use Dual-AI Orchestrator (deep dialectical analysis)
-        use_explorer_mode = chat_request.mode == 'EXPLORER'
-        
-        answer = "Üzgünüm, ilgili içerik bulunamadı."
-        sources = []
-        conversation_state = None  # To return in response
-        thinking_history = []      # To return in response
-        final_metadata = {}
-        # Guardrail: prevent accidentally tiny retrieval pools in chat mode.
-        retrieval_limit = int(chat_request.limit or 20)
-        if use_explorer_mode:
-            retrieval_limit = max(20, retrieval_limit)
-        else:
-            retrieval_limit = max(10, retrieval_limit)
-        retrieval_limit = min(100, retrieval_limit)
-        
-        if use_explorer_mode:
-            # EXPLORER Mode: Dual-AI Orchestrator with conversation state
-            # Reuse already-fetched session context instead of another DB read.
-            state_payload = str((ctx_data or {}).get('conversation_state_json') or '').strip()
-            summary_payload = str((ctx_data or {}).get('summary') or '').strip()
-            conversation_state = {
-                "active_topic": "",
-                "assumptions": [],
-                "open_questions": [],
-                "established_facts": [],
-                "turn_count": 0,
-            }
-            raw_state_payload = state_payload or summary_payload
-            if raw_state_payload:
-                if raw_state_payload.startswith("{"):
-                    try:
-                        parsed_state = json.loads(raw_state_payload)
-                        if isinstance(parsed_state, dict):
-                            conversation_state.update(parsed_state)
-                    except Exception:
-                        conversation_state["legacy_summary"] = raw_state_payload
-                        conversation_state["active_topic"] = raw_state_payload[:100]
-                else:
-                    conversation_state["legacy_summary"] = raw_state_payload
-                    conversation_state["active_topic"] = raw_state_payload[:100]
-            if memory_context_snippet:
-                conversation_state["memory_profile"] = memory_context_snippet[:1000]
-
-            # 1. Retrieve Context
-            rag_ctx = await loop.run_in_executor(
-                None, 
-                partial(
-                    get_rag_context,
-                    chat_request.message, 
-                    firebase_uid, 
-                    effective_book_id,
-                    chat_history=ctx_data['recent_messages'],
-                    mode='EXPLORER',
-                    resource_type=effective_resource_type,
-                    scope_mode=effective_scope_mode,
-                    apply_scope_policy=scope_policy_active,
-                    compare_mode=chat_request.compare_mode,
-                    target_book_ids=chat_request.target_book_ids,
-                    limit=retrieval_limit,
-                    offset=chat_request.offset
-                )
-            )
-            
-            if rag_ctx:
-                from services.dual_ai_orchestrator import generate_evaluated_answer
-                
-                final_result = await generate_evaluated_answer(
-                    question=chat_request.message,
-                    chunks=rag_ctx['chunks'],
-                    answer_mode='EXPLORER',
-                    confidence_score=rag_ctx['confidence'],
-                    network_status=rag_ctx.get('network_status', 'IN_NETWORK'),
-                    conversation_state=conversation_state,  # Pass structured state
-                    source_diversity_count=int(rag_ctx.get("source_diversity_count") or 0),
-                )
-                
-                answer = final_result['final_answer']
-                thinking_history = final_result['metadata'].get('history', [])
-                
-                # Merge RAG degradations with Orchestrator metadata
-                rag_meta = rag_ctx.get('metadata', {})
-                if rag_meta: 
-                    # Ensure final_result metadata has these too
-                    if 'degradations' in rag_meta:
-                        if 'degradations' not in final_result['metadata']:
-                            final_result['metadata']['degradations'] = []
-                        final_result['metadata']['degradations'].extend(rag_meta['degradations'])
-                    # Phase-1: forward retrieval diagnostics for UI/observability
-                    for key in (
-                        "retrieval_fusion_mode",
-                        "retrieval_path",
-                        "graph_candidates_count",
-                        "external_graph_candidates_count",
-                        "vector_candidates_count",
-                        "source_diversity_count",
-                        "source_type_diversity_count",
-                        "academic_scope",
-                        "external_kb_used",
-                        "wikidata_qid",
-                        "openalex_used",
-                        "dbpedia_used",
-                        "orkg_used",
-                        "search_log_id",
-                        "graph_bridge_attempted",
-                        "quote_target_count",
-                        "compare_applied",
-                        "target_books_used",
-                        "target_books_truncated",
-                        "unauthorized_target_book_ids",
-                        "evidence_policy",
-                        "per_book_evidence_count",
-                        "latency_budget_hit",
-                        "compare_degrade_reason",
-                        "compare_mode",
-                    ):
-                        if key in rag_meta:
-                            final_result['metadata'][key] = rag_meta[key]
-                        
-                final_metadata = final_result['metadata']
-                
-                # Use the exact sources seen by the LLM
-                used_chunks = final_result['metadata'].get('used_chunks', [])
-                for i, c in enumerate(used_chunks, 1):
-                    sources.append({
-                        'id': i,
-                        'title': c.get('title', 'Unknown'),
-                        'score': c.get('answerability_score', 0),
-                        'page_number': c.get('page_number', 0),
-                        'content': str(c.get('content_chunk', ''))[:500]
-                    })
-        else:
-            # STANDARD Mode: Fast legacy flow
-            answer_result, sources_result, meta_result = await loop.run_in_executor(
-                None,
-                partial(
-                    generate_answer,
-                    chat_request.message,
-                    firebase_uid,
-                    effective_book_id,
-                    ctx_data['recent_messages'],
-                    "\n\n".join(part for part in [memory_context_snippet, ctx_data['summary'] or ""] if part).strip(),
-                    retrieval_limit,
-                    chat_request.offset,
-                    session_id,
-                    effective_resource_type,
-                    effective_scope_mode,
-                    scope_policy_active,
-                    chat_request.compare_mode,
-                    chat_request.target_book_ids,
-                )
-            )
-            
-            if answer_result:
-                answer = answer_result
-                sources = sources_result or []
-                final_metadata = meta_result or {}
-
-        if isinstance(final_metadata, dict):
-            final_metadata.setdefault("effective_retrieval_limit", retrieval_limit)
-            for key, value in scope_metadata.items():
-                final_metadata.setdefault(key, value)
-            final_metadata.setdefault("memory_profile_loaded", bool(memory_context_snippet))
-        
-        # 5. Save Assistant Message
-        await loop.run_in_executor(None, add_message, session_id, 'assistant', answer, sources)
-        
-        # 6. Periodic Summarization (Background)
-        background_tasks.add_task(summarize_session_history, session_id)
-        background_tasks.add_task(refresh_memory_profile, firebase_uid)
-        
-        return {
-            "answer": answer,
-            "session_id": session_id,
-            "sources": sources or [],
-            "timestamp": datetime.now().isoformat(),
-            "conversation_state": conversation_state,
-            "thinking_history": thinking_history,
-            "metadata": final_metadata
-        }
-        
+        return await execute_chat_request(
+            chat_request=chat_request,
+            firebase_uid=firebase_uid,
+            background_tasks=background_tasks,
+            generate_answer_fn=generate_answer,
+            get_rag_context_fn=get_rag_context,
+            generate_evaluated_answer_fn=generate_evaluated_answer,
+            create_session_fn=create_session,
+            add_message_fn=add_message,
+            get_session_context_fn=get_session_context,
+            summarize_session_history_fn=summarize_session_history,
+            get_memory_context_snippet_fn=get_memory_context_snippet,
+            refresh_memory_profile_fn=refresh_memory_profile,
+        )
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error("Chat failed", extra={"error": str(e), "traceback": traceback.format_exc()})
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Chat failed", e, detail="Chat failed")
 
 
 @app.get("/api/analytics/ingested-books")
@@ -1262,21 +532,7 @@ async def get_ingested_books(
     """
     Returns list of book_ids that have ingested PDF content for the user.
     """
-    # 1. Determine UID (Priority: JWT > QueryParam)
-    if firebase_uid_from_jwt:
-        firebase_uid = firebase_uid_from_jwt
-    else:
-        # Fallback to query param OR manual header extraction for raw UIDs (Dev mode)
-        firebase_uid = request.query_params.get("firebase_uid")
-        
-        # If still none, check Authorization header manually to see if it's a raw UID
-        if not firebase_uid:
-            auth_header = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
-            if auth_header and len(auth_header) < 128: # Raw UIDs are short, JWTs are long
-                firebase_uid = auth_header
-
-    if not firebase_uid:
-         raise HTTPException(status_code=401, detail="Authentication required")
+    firebase_uid = get_verified_uid(request, firebase_uid_from_jwt)
 
     try:
         from services.analytics_service import resolve_ingested_book_ids
@@ -1296,8 +552,7 @@ async def get_ingested_books(
             "count": len(book_ids)
         }
     except Exception as e:
-        logger.error(f"Ingested books endpoint failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Ingested books endpoint failed", e, detail="Failed to fetch ingested books")
 
 
 @app.get("/api/analytics/epistemic-distribution")
@@ -1307,18 +562,7 @@ async def get_epistemic_distribution_endpoint(
     limit: int = 250,
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
 ):
-    if firebase_uid_from_jwt:
-        firebase_uid = firebase_uid_from_jwt
-    else:
-        if not _allow_dev_unverified_auth():
-            raise HTTPException(status_code=401, detail="Authentication required")
-        firebase_uid = request.query_params.get("firebase_uid")
-        if not firebase_uid:
-            auth_header = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
-            if auth_header and len(auth_header) < 128:
-                firebase_uid = auth_header
-    if not firebase_uid:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    firebase_uid = get_verified_uid(request, firebase_uid_from_jwt)
 
     loop = asyncio.get_running_loop()
     result = await loop.run_in_executor(
@@ -1365,8 +609,7 @@ async def get_concordance(
             "count": len(contexts)
         }
     except Exception as e:
-        logger.error("Concordance endpoint failed", extra={"error": str(e), "traceback": traceback.format_exc()})
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Concordance endpoint failed", e, detail="Failed to fetch concordance")
 
 
 @app.get("/api/analytics/distribution")
@@ -1400,8 +643,7 @@ async def get_distribution(
             "distribution": distribution
         }
     except Exception as e:
-        logger.error("Distribution endpoint failed", extra={"error": str(e), "traceback": traceback.format_exc()})
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Distribution endpoint failed", e, detail="Failed to fetch distribution")
 
 
 @app.post("/api/analytics/compare")
@@ -1433,8 +675,7 @@ async def get_comparative_stats_endpoint(
             "comparison": stats
         }
     except Exception as e:
-        logger.error("Comparison endpoint failed", extra={"error": str(e), "traceback": traceback.format_exc()})
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Comparison endpoint failed", e, detail="Failed to compare analytics")
 
 
 @app.post("/api/smart-search")
@@ -1445,15 +686,7 @@ async def perform_search(
     """
     Pure weighted search (Search - Layer 2).
     """
-    # Determine authoritative UID
-    if firebase_uid_from_jwt:
-        firebase_uid = firebase_uid_from_jwt
-    else:
-        firebase_uid = request.firebase_uid
-        if _allow_dev_unverified_auth():
-            logger.warning(f"⚠️ Dev mode: Using unverified UID from request body: {firebase_uid}")
-        else:
-            raise HTTPException(status_code=401, detail="Authentication required")
+    firebase_uid = get_verified_uid(None, firebase_uid_from_jwt)
     
     try:
         from services.search_system.mix_policy import resolve_result_mix_policy
@@ -1499,24 +732,17 @@ async def perform_search(
             "query": request.question,
             "metadata": metadata
         }
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error("Smart search failed", extra={"error": str(e), "traceback": traceback.format_exc()})
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Smart search failed", e, detail="Smart search failed")
 
 @app.post("/api/feedback")
 async def feedback(
     request: FeedbackRequest,
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
-    # Determine authoritative UID
-    if firebase_uid_from_jwt:
-        firebase_uid = firebase_uid_from_jwt
-    else:
-        firebase_uid = request.firebase_uid
-        if _allow_dev_unverified_auth():
-            logger.warning(f"⚠️ Dev mode: Using unverified UID from request body: {firebase_uid}")
-        else:
-            raise HTTPException(status_code=401, detail="Authentication required")
+    firebase_uid = get_verified_uid(None, firebase_uid_from_jwt)
     
     try:
         # Pydantic model dump
@@ -1530,8 +756,10 @@ async def feedback(
             return {"success": True}
         else:
             raise HTTPException(status_code=500, detail="Failed to save feedback")
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Feedback submission failed", e, detail="Failed to save feedback")
 
 # ============================================================================
 # INGESTION ENDPOINTS
@@ -1559,8 +787,7 @@ async def extract_metadata_endpoint(
         metadata = await get_pdf_metadata(temp_path)
         return metadata
     except Exception as e:
-        logger.error("Error extracting metadata", extra={"error": str(e), "traceback": traceback.format_exc()})
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Error extracting metadata", e, detail="Failed to extract PDF metadata")
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
@@ -1572,15 +799,7 @@ async def search_reports(
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
     firebase_uid: str | None = None
 ):
-    # Determine authoritative UID
-    if firebase_uid_from_jwt:
-        uid = firebase_uid_from_jwt
-    else:
-        uid = firebase_uid
-        if _allow_dev_unverified_auth():
-            logger.warning(f"⚠️ Dev mode: Using unverified UID from query: {uid}")
-        else:
-            raise HTTPException(status_code=401, detail="Authentication required")
+    uid = get_verified_uid(None, firebase_uid_from_jwt)
 
     loop = asyncio.get_running_loop()
     results = await loop.run_in_executor(None, search_reports_by_topic, uid, topic, limit)
@@ -1932,24 +1151,15 @@ async def ingest_endpoint(
     file: UploadFile = File(...),
     title: str = Form(...),
     author: str = Form(...),
-    firebase_uid: str = Form(...),
+    firebase_uid: Optional[str] = Form(None),
     book_id: Optional[str] = Form(None),
     tags: Optional[str] = Form(None),
-    force_ocr: bool = Form(False),
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
     # Log ingestion start
     logger.info("Ingesting file", extra={"upload_filename": file.filename, "title": title})
     
-    # Verify firebase_uid from JWT in production, fall back to form data in development
-    if firebase_uid_from_jwt:
-        verified_firebase_uid = firebase_uid_from_jwt
-    else:
-        verified_firebase_uid = firebase_uid
-        if settings.ENVIRONMENT == "production":
-            raise HTTPException(status_code=401, detail="Authentication required")
-        else:
-            logger.warning(f"⚠️ Dev mode: Using unverified UID from form data for ingestion {file.filename}")
+    verified_firebase_uid = get_verified_uid(None, firebase_uid_from_jwt)
     
     upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
     os.makedirs(upload_dir, exist_ok=True)
@@ -2023,7 +1233,7 @@ async def ingest_endpoint(
                 storage_status="STORED",
                 parse_path="PDF_V2",
                 parse_status="QUEUED",
-                routing_metrics_json=json.dumps({"force_ocr": bool(force_ocr)}),
+                routing_metrics_json=json.dumps({}),
                 storage_warning=storage_warning,
                 content_type="PDF",
                 mime_type="application/pdf",
@@ -2040,7 +1250,6 @@ async def ingest_endpoint(
                     categories=tags,
                     bucket_name=str(upload_info["bucket_name"]),
                     object_key=str(upload_info["object_key"]),
-                    force_ocr=bool(force_ocr),
                 )
             except RuntimeError:
                 cleanup_pdf_artifacts(
@@ -2063,7 +1272,6 @@ async def ingest_endpoint(
                 "storage_limit_gb": quota["storage_limit_gb"],
                 "pdf_available": True,
                 "parse_status": "QUEUED",
-                "force_ocr": bool(force_ocr),
             }
 
         if book_id:
@@ -2096,11 +1304,10 @@ async def ingest_endpoint(
             os.remove(temp_path)
         raise
     except Exception as e:
-        logger.error("Ingestion setup error", extra={"error": str(e), "traceback": traceback.format_exc()})
         # If we failed before adding task, cleanup immediately
         if temp_path and os.path.exists(temp_path):
              os.remove(temp_path)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Ingestion setup error", e, detail="Failed to start ingestion")
 
 @app.get("/api/books/{book_id}/ingestion-status")
 async def get_ingestion_status(
@@ -2110,15 +1317,7 @@ async def get_ingestion_status(
     title: Optional[str] = None,
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
-    # Determine authoritative UID
-    if firebase_uid_from_jwt:
-        verified_firebase_uid = firebase_uid_from_jwt
-    else:
-        if settings.ENVIRONMENT == "production":
-            raise HTTPException(status_code=401, detail="Authentication required")
-        verified_firebase_uid = firebase_uid or request.headers.get("X-Firebase-UID")
-        if not verified_firebase_uid:
-            raise HTTPException(status_code=400, detail="firebase_uid is required in development")
+    verified_firebase_uid = get_verified_uid(request, firebase_uid_from_jwt)
 
     effective_book_id = book_id
     matched_by_title = False
@@ -2366,9 +1565,8 @@ async def recalculate_graph_endpoint(
     Triggers the graph centrality recalculation script in the background.
     Useful after bulk ingesting new books to update discovery bridges.
     """
-    if not firebase_uid_from_jwt and not _allow_dev_unverified_auth():
-        raise HTTPException(status_code=401, detail="Authentication required")
-        
+    _ = get_verified_uid(request, firebase_uid_from_jwt)
+
     background_tasks.add_task(_run_calculate_graph_stats_background)
     return {"success": True, "message": "Graph centrality calculation started in background."}
 
@@ -2380,14 +1578,7 @@ async def start_external_kb_backfill(
     firebase_uid: Optional[str] = None,
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
 ):
-    if firebase_uid_from_jwt:
-        verified_uid = firebase_uid_from_jwt
-    else:
-        if settings.ENVIRONMENT == "production":
-            raise HTTPException(status_code=401, detail="Authentication required")
-        verified_uid = firebase_uid or request.query_params.get("firebase_uid")
-        if not verified_uid:
-            raise HTTPException(status_code=400, detail="firebase_uid is required in development")
+    verified_uid = get_verified_uid(request, firebase_uid_from_jwt)
 
     if all_users and settings.ENVIRONMENT == "production":
         raise HTTPException(status_code=403, detail="all_users backfill is disabled in production")
@@ -2403,10 +1594,7 @@ async def external_kb_backfill_status(
     firebase_uid: Optional[str] = None,
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
 ):
-    if not firebase_uid_from_jwt and settings.ENVIRONMENT == "production":
-        raise HTTPException(status_code=401, detail="Authentication required")
-    if not firebase_uid_from_jwt and settings.ENVIRONMENT != "production":
-        _ = firebase_uid or request.query_params.get("firebase_uid")
+    _ = get_verified_uid(request, firebase_uid_from_jwt)
     return {"success": True, "status": get_external_kb_backfill_status()}
 
 
@@ -2439,8 +1627,7 @@ async def list_library_items_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"library list failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Library list failed", e, detail="Failed to list library items")
 
 
 @app.get("/api/media/search")
@@ -2521,8 +1708,7 @@ async def upsert_library_item_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"library upsert failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Library upsert failed", e, detail="Failed to save library item")
 
 
 @app.patch("/api/library/items/{item_id}")
@@ -2541,8 +1727,7 @@ async def patch_library_item_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"library patch failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Library patch failed", e, detail="Failed to update library item")
 
 
 @app.delete("/api/library/items/{item_id}")
@@ -2560,8 +1745,7 @@ async def delete_library_item_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"library delete failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Library delete failed", e, detail="Failed to delete library item")
 
 
 @app.post("/api/library/items/bulk-delete")
@@ -2577,8 +1761,7 @@ async def bulk_delete_library_items_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"library bulk delete failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Library bulk delete failed", e, detail="Failed to bulk delete library items")
 
 
 @app.get("/api/library/personal-note-folders")
@@ -2593,8 +1776,7 @@ async def list_personal_note_folders_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"folder list failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Folder list failed", e, detail="Failed to list folders")
 
 
 @app.put("/api/library/personal-note-folders/{folder_id}")
@@ -2611,8 +1793,7 @@ async def upsert_personal_note_folder_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"folder upsert failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Folder upsert failed", e, detail="Failed to save folder")
 
 
 @app.patch("/api/library/personal-note-folders/{folder_id}")
@@ -2631,8 +1812,7 @@ async def patch_personal_note_folder_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"folder patch failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Folder patch failed", e, detail="Failed to update folder")
 
 
 @app.delete("/api/library/personal-note-folders/{folder_id}")
@@ -2647,8 +1827,7 @@ async def delete_personal_note_folder_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"folder delete failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Folder delete failed", e, detail="Failed to delete folder")
 
 
 @app.post("/api/add-item")
@@ -2657,15 +1836,7 @@ async def add_item_endpoint(
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
     try:
-        # Verify firebase_uid from JWT in production, fall back to request body in development
-        if firebase_uid_from_jwt:
-            verified_firebase_uid = firebase_uid_from_jwt
-        else:
-            verified_firebase_uid = request.firebase_uid
-            if settings.ENVIRONMENT == "production":
-                raise HTTPException(status_code=401, detail="Authentication required")
-            else:
-                logger.warning(f"⚠️ Dev mode: Using unverified UID from request body for add-item")
+        verified_firebase_uid = get_verified_uid(None, firebase_uid_from_jwt)
         
         success = ingest_text_item(
             text=request.text,
@@ -2707,8 +1878,10 @@ async def add_item_endpoint(
                 },
             }
         raise HTTPException(status_code=500, detail="Failed to add item")
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Add item failed", e, detail="Failed to add item")
 
 
 @app.post("/api/books/{book_id}/sync-highlights")
@@ -2720,14 +1893,7 @@ async def sync_highlights_endpoint(
 ):
     try:
         _ensure_media_resource_type_allowed(request.resource_type)
-        if firebase_uid_from_jwt:
-            verified_firebase_uid = firebase_uid_from_jwt
-        else:
-            verified_firebase_uid = request.firebase_uid
-            if settings.ENVIRONMENT == "production":
-                raise HTTPException(status_code=401, detail="Authentication required")
-            else:
-                logger.warning("⚠️ Dev mode: Using unverified UID for sync-highlights")
+        verified_firebase_uid = get_verified_uid(None, firebase_uid_from_jwt)
 
         result = sync_highlights_for_item(
             firebase_uid=verified_firebase_uid,
@@ -2769,8 +1935,10 @@ async def sync_highlights_endpoint(
         except Exception as e:
             logger.warning(f"Memory profile refresh enqueue skipped after highlight sync: {e}")
         return result
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Highlight sync failed", e, detail="Failed to sync highlights")
 
 
 @app.post("/api/items/{item_id}/sync-highlights")
@@ -2797,13 +1965,7 @@ async def sync_personal_note_endpoint(
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
     try:
-        if firebase_uid_from_jwt:
-            verified_firebase_uid = firebase_uid_from_jwt
-        else:
-            verified_firebase_uid = request.firebase_uid
-            if settings.ENVIRONMENT == "production":
-                raise HTTPException(status_code=401, detail="Authentication required")
-            logger.warning("⚠️ Dev mode: Using unverified UID for sync-personal-note")
+        verified_firebase_uid = get_verified_uid(None, firebase_uid_from_jwt)
 
         result = sync_personal_note_for_item(
             firebase_uid=verified_firebase_uid,
@@ -2848,8 +2010,10 @@ async def sync_personal_note_endpoint(
         except Exception as e:
             logger.warning(f"Memory profile refresh enqueue skipped after personal note sync: {e}")
         return result
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Personal note sync failed", e, detail="Failed to sync personal note")
 
 
 @app.get("/api/memory/profile")
@@ -2880,9 +2044,10 @@ async def get_memory_profile_endpoint(
                 "status": "missing",
             }
         return profile
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error("Memory profile get failed", extra={"error": str(e), "traceback": traceback.format_exc()})
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Memory profile get failed", e, detail="Failed to load memory profile")
 
 
 @app.post("/api/memory/profile/refresh")
@@ -2890,12 +2055,7 @@ async def refresh_memory_profile_endpoint(
     payload: MemoryProfileRefreshRequest,
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
 ):
-    if firebase_uid_from_jwt:
-        firebase_uid = firebase_uid_from_jwt
-    else:
-        firebase_uid = payload.firebase_uid
-        if not _allow_dev_unverified_auth():
-            raise HTTPException(status_code=401, detail="Authentication required")
+    firebase_uid = get_verified_uid(None, firebase_uid_from_jwt)
     try:
         from functools import partial
         from services.memory_profile_service import refresh_memory_profile
@@ -2906,9 +2066,10 @@ async def refresh_memory_profile_endpoint(
             partial(refresh_memory_profile, firebase_uid, force=bool(payload.force)),
         )
         return profile
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error("Memory profile refresh failed", extra={"error": str(e), "traceback": traceback.format_exc()})
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Memory profile refresh failed", e, detail="Failed to refresh memory profile")
 
 
 @app.post("/api/resources/{book_id}/purge")
@@ -2918,13 +2079,7 @@ async def purge_resource_endpoint(
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
     try:
-        if firebase_uid_from_jwt:
-            verified_firebase_uid = firebase_uid_from_jwt
-        else:
-            verified_firebase_uid = request.firebase_uid
-            if settings.ENVIRONMENT == "production":
-                raise HTTPException(status_code=401, detail="Authentication required")
-            logger.warning("⚠️ Dev mode: Using unverified UID for resource purge")
+        verified_firebase_uid = get_verified_uid(None, firebase_uid_from_jwt)
 
         result = purge_item_content(
             firebase_uid=verified_firebase_uid,
@@ -2933,8 +2088,10 @@ async def purge_resource_endpoint(
         if not result.get("success"):
             raise HTTPException(status_code=500, detail=result.get("error", "Purge failed"))
         return result
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Resource purge failed", e, detail="Failed to purge resource")
 
 
 @app.post("/api/migrate_bulk")
@@ -2943,15 +2100,7 @@ async def migrate_bulk_endpoint(
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
 ):
     try:
-        # Verify firebase_uid from JWT in production, fall back to request body in development
-        if firebase_uid_from_jwt:
-            verified_firebase_uid = firebase_uid_from_jwt
-        else:
-            verified_firebase_uid = request.firebase_uid
-            if settings.ENVIRONMENT == "production":
-                raise HTTPException(status_code=401, detail="Authentication required")
-            else:
-                logger.warning(f"⚠️ Dev mode: Using unverified UID from request body for bulk migration")
+        verified_firebase_uid = get_verified_uid(None, firebase_uid_from_jwt)
         
         result = process_bulk_items_logic(request.items, verified_firebase_uid)
         return {
@@ -2959,8 +2108,10 @@ async def migrate_bulk_endpoint(
             "processed": len(request.items),
             "results": result
         }
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_internal_server_error("Bulk migration failed", e, detail="Failed to run bulk migration")
 
 if __name__ == "__main__":
     logger.info("Starting FastAPI Server on port 8000 (DIRECT)...")

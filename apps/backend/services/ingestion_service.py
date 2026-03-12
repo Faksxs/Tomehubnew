@@ -1132,7 +1132,6 @@ def ingest_book(file_path: str, title: str, author: str, firebase_uid: str, book
             "author": author,
             "source_type": source_type,
             "chunks_inserted": successful_inserts,
-            "odl_shadow_triggered": bool(odl_shadow_triggered),
             "data_cleaner": {
                 "ai_calls_used": data_cleaner_budget.get("ai_calls_used", 0) if 'data_cleaner_budget' in locals() else 0,
                 "ai_calls_applied": data_cleaner_budget.get("ai_calls_applied", 0) if 'data_cleaner_budget' in locals() else 0,

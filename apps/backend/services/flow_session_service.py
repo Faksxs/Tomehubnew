@@ -27,6 +27,16 @@ RECENT_BUFFER_SIZE = 50
 NEGATIVE_BUFFER_SIZE = 20
 
 
+def _log_redis_fallback(operation: str, session_id: str, exc: Exception) -> None:
+    """Surface Redis failures without changing the fail-open session behavior."""
+    logger.warning(
+        "Flow session Redis %s failed for session %s: %s",
+        operation,
+        session_id,
+        exc,
+    )
+
+
 class FlowSessionManager:
     """
     Manages Flow session state in Redis or In-Memory (Fallback).
@@ -209,7 +219,8 @@ class FlowSessionManager:
         if self.use_redis and self.l2.redis:
             try:
                 return self.l2.redis.scard(key)
-            except Exception:
+            except Exception as exc:
+                _log_redis_fallback("seen-count", session_id, exc)
                 return 0
         else:
             return len(self._local_storage.get(key, set()))
@@ -243,6 +254,7 @@ class FlowSessionManager:
                 raw_list = self.l2.redis.lrange(key, 0, -1)
                 return [json.loads(v) for v in raw_list]
             except Exception as e:
+                _log_redis_fallback("recent-read", session_id, e)
                 return []
         else:
             return self._local_storage.get(key, [])
@@ -304,8 +316,8 @@ class FlowSessionManager:
                 self.l2.redis.lpush(key, vec_json)
                 self.l2.redis.ltrim(key, 0, NEGATIVE_BUFFER_SIZE - 1)
                 self.l2.redis.expire(key, SESSION_TTL)
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_redis_fallback("negative-write", session_id, exc)
         else:
             if key not in self._local_storage:
                  self._local_storage[key] = []
@@ -330,7 +342,8 @@ class FlowSessionManager:
             try:
                 raw_list = self.l2.redis.lrange(key, 0, -1)
                 negative_vectors = [json.loads(v) for v in raw_list]
-            except Exception:
+            except Exception as exc:
+                _log_redis_fallback("negative-read", session_id, exc)
                 negative_vectors = []
         else:
              negative_vectors = self._local_storage.get(key, [])

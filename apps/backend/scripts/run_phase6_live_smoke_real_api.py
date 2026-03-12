@@ -108,8 +108,7 @@ def _sample_uid_and_book() -> tuple[str, str]:
 def _spawn_server(port: int, lifespan_off: bool) -> subprocess.Popen:
     env = os.environ.copy()
     env["ENVIRONMENT"] = "development"
-    env["DEV_UNSAFE_AUTH_BYPASS"] = "true"
-    # Force Firebase init off so dev bypass path remains active.
+    # Force Firebase init off so startup stays in development mode without real credentials.
     env["GOOGLE_APPLICATION_CREDENTIALS"] = "__missing__.json"
 
     cmd = [
@@ -315,4 +314,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

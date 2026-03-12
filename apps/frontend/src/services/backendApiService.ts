@@ -1,5 +1,5 @@
 import { normalizeHighlightType } from '../lib/highlightType';
-import { API_BASE_URL, fetchWithAuth, getFirebaseIdToken, parseApiErrorMessage } from './apiClient';
+import { API_BASE_URL, fetchWithAuth, parseApiErrorMessage } from './apiClient';
 /**
  * TomeHub Backend API Service
  * Connects React frontend to Flask backend for RAG search and document ingestion
@@ -786,22 +786,12 @@ export async function getBookPdfMetadata(bookId: string, firebaseUid: string): P
 }
 
 export async function openBookPdfInApp(bookId: string): Promise<void> {
-    const readerWindow = window.open('', '_blank', 'noopener,noreferrer');
-    try {
-        const token = await getFirebaseIdToken();
-        const url = new URL(`${API_BASE_URL}/api/books/${encodeURIComponent(bookId)}/pdf/content`);
-        url.searchParams.set('auth_token', token);
-        if (readerWindow) {
-            readerWindow.location.href = url.toString();
-            return;
-        }
-        window.open(url.toString(), '_blank', 'noopener,noreferrer');
-    } catch (error) {
-        if (readerWindow) {
-            readerWindow.close();
-        }
-        throw error;
+    const readerUrl = `${window.location.origin}${window.location.pathname}#/pdf-reader/${encodeURIComponent(bookId)}`;
+    const readerWindow = window.open(readerUrl, '_blank', 'noopener,noreferrer');
+    if (readerWindow) {
+        return;
     }
+    window.location.assign(readerUrl);
 }
 
 export async function getMemoryProfile(firebaseUid: string): Promise<MemoryProfileResponse> {

@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Generator, Iterable, Optional
 
@@ -186,11 +187,11 @@ def download_object_to_tempfile(bucket_name: str, object_key: str, suffix: str =
     return temp_path
 
 
-def list_objects(bucket_name: str, prefix: str) -> list[Dict[str, str | int]]:
+def list_objects(bucket_name: str, prefix: str) -> list[Dict[str, str | int | datetime | None]]:
     client = get_object_storage_client()
     ctx = get_bucket_context(bucket_name=bucket_name)
     start = None
-    collected: list[Dict[str, str | int]] = []
+    collected: list[Dict[str, str | int | datetime | None]] = []
     while True:
         response = client.list_objects(
             ctx["namespace_name"],
@@ -205,6 +206,7 @@ def list_objects(bucket_name: str, prefix: str) -> list[Dict[str, str | int]]:
                 {
                     "name": item.name,
                     "size": int(getattr(item, "size", 0) or 0),
+                    "time_created": getattr(item, "time_created", None),
                 }
             )
         start = getattr(data, "next_start_with", None)
@@ -245,6 +247,44 @@ def delete_prefix(bucket_name: str, prefix: str) -> None:
         if not object_name:
             continue
         delete_object(bucket_name, object_name)
+
+
+def delete_expired_canonical_objects(
+    bucket_name: Optional[str] = None,
+    *,
+    retention_days: Optional[int] = None,
+    prefix: str = "users/",
+) -> int:
+    effective_retention_days = int(
+        retention_days if retention_days is not None else getattr(settings, "PDF_CANONICAL_RETENTION_DAYS", 15)
+    )
+    if effective_retention_days <= 0:
+        return 0
+
+    bucket = bucket_name or _get_bucket_name()
+    cutoff = datetime.now(timezone.utc) - timedelta(days=effective_retention_days)
+    deleted = 0
+
+    for item in list_objects(bucket, prefix):
+        object_name = str(item.get("name") or "")
+        if not object_name.endswith("/canonical/latest.json"):
+            continue
+
+        created_at = item.get("time_created")
+        if not isinstance(created_at, datetime):
+            continue
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        if created_at > cutoff:
+            continue
+
+        try:
+            delete_object(bucket, object_name)
+            deleted += 1
+        except Exception as exc:
+            logger.warning("Canonical retention cleanup failed for %s: %s", object_name, exc)
+
+    return deleted
 
 
 def cleanup_pdf_artifacts(bucket_name: str, object_key: Optional[str], output_prefix: Optional[str]) -> None:

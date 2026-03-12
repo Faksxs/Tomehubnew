@@ -60,6 +60,12 @@ class Settings:
         self.PDF_DELETE_RETRY_INTERVAL_SEC = int(os.getenv("PDF_DELETE_RETRY_INTERVAL_SEC", "300"))
         if self.PDF_DELETE_RETRY_INTERVAL_SEC < 30:
             self.PDF_DELETE_RETRY_INTERVAL_SEC = 300
+        self.PDF_CANONICAL_RETENTION_DAYS = int(os.getenv("PDF_CANONICAL_RETENTION_DAYS", "15"))
+        if self.PDF_CANONICAL_RETENTION_DAYS < 0:
+            self.PDF_CANONICAL_RETENTION_DAYS = 15
+        self.PDF_CANONICAL_CLEANUP_INTERVAL_SEC = int(os.getenv("PDF_CANONICAL_CLEANUP_INTERVAL_SEC", "21600"))
+        if self.PDF_CANONICAL_CLEANUP_INTERVAL_SEC < 300:
+            self.PDF_CANONICAL_CLEANUP_INTERVAL_SEC = 21600
         self.PDF_V2_ENABLED = os.getenv("PDF_V2_ENABLED", "true").strip().lower() == "true"
         self.PDF_TEXT_NATIVE_MIN_CHARS_PER_PAGE = int(os.getenv("PDF_TEXT_NATIVE_MIN_CHARS_PER_PAGE", "120"))
         self.PDF_TEXT_NATIVE_TEXT_PAGE_RATIO_MIN = float(os.getenv("PDF_TEXT_NATIVE_TEXT_PAGE_RATIO_MIN", "0.70"))
@@ -100,10 +106,6 @@ class Settings:
         self.FIREBASE_CREDENTIALS_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
         self.FIREBASE_READY = False
         self._init_firebase()
-        self.DEV_UNSAFE_AUTH_BYPASS = (
-            os.getenv("DEV_UNSAFE_AUTH_BYPASS", "false").strip().lower() == "true"
-        )
-
         # External read-only API (separate from Firebase JWT user auth)
         self.EXTERNAL_API_ENABLED = (
             os.getenv("EXTERNAL_API_ENABLED", "false").strip().lower() == "true"

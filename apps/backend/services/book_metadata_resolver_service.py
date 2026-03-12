@@ -268,15 +268,33 @@ def _fetch_json_with_retry(
                 continue
             if retryable:
                 _mark_negative_cache(cache_key, ttl_sec=120.0 if code == 429 else 90.0)
+            logger.warning(
+                "Book metadata provider HTTP failure: provider=%s status=%s url=%s",
+                provider,
+                code,
+                url,
+            )
             return None
-        except (URLError, TimeoutError):
+        except (URLError, TimeoutError) as exc:
             if attempt + 1 < max_attempts:
                 wait_s = (0.30 * (2 ** attempt)) + random.uniform(0.05, 0.15)
                 time.sleep(wait_s)
                 continue
             _mark_negative_cache(cache_key, ttl_sec=60.0)
+            logger.warning(
+                "Book metadata provider network failure: provider=%s url=%s error=%s",
+                provider,
+                url,
+                exc,
+            )
             return None
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "Book metadata provider unexpected failure: provider=%s url=%s error=%s",
+                provider,
+                url,
+                exc,
+            )
             return None
     return None
 
@@ -358,7 +376,8 @@ def _is_viable_cover_url(url: Optional[str]) -> bool:
             ok = status_ok and ("image" in content_type or "octet-stream" in content_type)
             _cover_cache_set(raw, ok)
             return ok
-    except Exception:
+    except Exception as exc:
+        logger.warning("Cover viability check failed for %s: %s", raw, exc)
         _cover_cache_set(raw, False, ttl=180.0)
         return False
 
@@ -683,7 +702,8 @@ def _verify_cover_urls(items: List[Dict[str, Any]], top_n: int = 3) -> None:
         try:
             if not bool(future.result()):
                 item["coverUrl"] = None
-        except Exception:
+        except Exception as exc:
+            logger.warning("Cover verification worker failed for %s: %s", cover, exc)
             item["coverUrl"] = None
 
     for item in items:

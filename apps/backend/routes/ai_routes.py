@@ -74,6 +74,8 @@ async def enrich_batch_endpoint(
             stream_enrichment(books),
             media_type="text/event-stream"
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Streaming error", extra={"error": str(e), "traceback": traceback.format_exc()})
         raise HTTPException(status_code=500, detail=str(e))

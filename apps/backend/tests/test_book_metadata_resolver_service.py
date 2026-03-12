@@ -1,4 +1,5 @@
 from services import book_metadata_resolver_service as resolver
+from unittest.mock import patch
 
 
 def test_resolve_book_metadata_prefers_openlibrary_bib_for_isbn(monkeypatch):
@@ -144,3 +145,38 @@ def test_map_openlibrary_bib_transliterates_cyrillic_author_in_latin_context():
     assert mapped is not None
     assert mapped["author"] != cyr_author
     assert "Maksim" in mapped["author"]
+
+
+@patch("services.book_metadata_resolver_service.logger.warning")
+@patch("services.book_metadata_resolver_service.urllib_request.urlopen", side_effect=RuntimeError("boom"))
+def test_fetch_json_with_retry_logs_unexpected_failure(_mock_urlopen, mock_warning):
+    result = resolver._fetch_json_with_retry(
+        "https://example.com/books",
+        provider="google-books",
+        cache_key="cache-key",
+        timeout_sec=0.01,
+        max_attempts=1,
+    )
+
+    assert result is None
+    mock_warning.assert_called_once()
+
+
+@patch("services.book_metadata_resolver_service.logger.warning")
+def test_verify_cover_urls_logs_worker_failure(mock_warning):
+    class _BrokenFuture:
+        def result(self):
+            raise RuntimeError("boom")
+
+    items = [{"coverUrl": "https://example.com/cover.jpg"}]
+
+    with patch.object(resolver, "_sanitize_cover_url", side_effect=lambda value: value), patch.object(
+        resolver._PROVIDER_EXECUTOR,
+        "submit",
+        return_value=_BrokenFuture(),
+    ):
+        resolver._verify_cover_urls(items, top_n=1)
+
+    assert items[0]["coverUrl"] is None
+    assert items[0]["coverVerified"] is False
+    mock_warning.assert_called_once()

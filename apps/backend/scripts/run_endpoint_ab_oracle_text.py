@@ -173,7 +173,6 @@ def _run_mode(
     base_url = f"http://127.0.0.1:{port}"
     env_overrides = {
         "ENVIRONMENT": "development",
-        "DEV_UNSAFE_AUTH_BYPASS": "true",
         "GOOGLE_APPLICATION_CREDENTIALS": "__missing__.json",
         "SEARCH_EXACT_ORACLE_TEXT_ENABLED": "true" if oracle_enabled else "false",
         "SEARCH_EXACT_ORACLE_TEXT_SINGLE_TOKEN_ENABLED": "true" if oracle_single_token else "false",

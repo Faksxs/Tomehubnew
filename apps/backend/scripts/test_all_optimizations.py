@@ -200,16 +200,11 @@ def test_cache_hit_performance():
         traceback.print_exc()
         return False
 
-def test_smart_reranking_skip():
-    """Test 5: Verify smart reranking skip logic."""
-    print_section("TEST 5: Smart Reranking Skip")
+def test_search_orchestrator_ranking_path():
+    """Test 5: Verify the active orchestrator ranking path."""
+    print_section("TEST 5: Active Ranking Path")
     
     try:
-        # This test checks if the logic is in place
-        # Actual skip depends on RRF scores which vary by query
-        
-        from services.search_service import search_similar_content
-        
         test_query = "vicdan nedir"
         if len(sys.argv) < 2:
             print("Usage: python test_all_optimizations.py <uid>")
@@ -217,13 +212,17 @@ def test_smart_reranking_skip():
         test_uid = sys.argv[1]
         
         print(f"Running search: '{test_query}'")
-        print("Checking if reranking skip logic is active...")
-        
-        results = search_similar_content(test_query, test_uid, top_k=10)
+        print("Checking active orchestrator ranking path...")
+
+        orchestrator = SearchOrchestrator(
+            embedding_fn=get_embedding,
+            cache=get_cache(),
+        )
+        results = orchestrator.search(test_query, test_uid, limit=10)
         
         if results:
             print(f"✓ Search completed with {len(results)} results")
-            print("  (Check logs for 'Skipping reranking' message if RRF scores are high)")
+            print("  Active retrieval path is orchestrator-based")
             return True
         else:
             print("⚠ No results returned")
@@ -405,7 +404,7 @@ async def main():
         ("Query Normalization", test_query_normalization),
         ("Parallel Expansion", test_parallel_expansion),
         ("Cache Hit Performance", test_cache_hit_performance),
-        ("Smart Reranking Skip", test_smart_reranking_skip),
+        ("Active Ranking Path", test_search_orchestrator_ranking_path),
         ("Intent Caching", test_intent_caching),
         ("Database Pool", test_database_pool),
         ("Overall Benchmark", benchmark_overall_performance),

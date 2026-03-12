@@ -2,7 +2,7 @@
 // TomeHub - Personal Library - Deployment Trigger: 2026-03-04
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { HashRouter } from "react-router-dom";
+import { HashRouter, Route, Routes } from "react-router-dom";
 import {
   LibraryItem,
   Highlight,
@@ -45,6 +45,7 @@ import { AppBookFormLayer } from "./features/app/components/AppBookFormLayer";
 import { AppTab } from "./features/app/types";
 import { useAppUiState } from "./features/app/hooks/useAppUiState";
 import { useUiFeedback } from "./shared/ui/feedback/useUiFeedback";
+import PdfReaderPage from "./components/PdfReaderPage";
 
 
 // ----------------- LAYOUT (ANA UYGULAMA) -----------------
@@ -1380,7 +1381,10 @@ const AppContent: React.FC = () => {
 
   return (
     <HashRouter>
-      <Layout userId={user.uid} userEmail={user.email} onLogout={logout} />
+      <Routes>
+        <Route path="/pdf-reader/:bookId" element={<PdfReaderPage />} />
+        <Route path="*" element={<Layout userId={user.uid} userEmail={user.email} onLogout={logout} />} />
+      </Routes>
     </HashRouter>
   );
 };

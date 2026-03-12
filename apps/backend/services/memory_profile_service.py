@@ -192,7 +192,13 @@ def _fetch_recent_messages(firebase_uid: str, session_limit: int = 2, message_li
                         "content": content[:400],
                     }
                 )
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "Failed to fetch session history for memory profile uid=%s session_id=%s: %s",
+                firebase_uid,
+                session_id,
+                exc,
+            )
             continue
     return items[: max(2, session_limit * message_limit)]
 

@@ -48,22 +48,6 @@ services:
     networks:
       - tomehub-network
 
-  opendataloader:
-    build:
-      context: ../apps/opendataloader
-      dockerfile: Dockerfile
-    container_name: tomehub-opendataloader
-    restart: unless-stopped
-    ports:
-      - "5002:5002"
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:5002"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    networks:
-      - tomehub-network
-
   redis:
     image: redis:7-alpine
     container_name: tomehub-redis
