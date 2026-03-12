@@ -12,6 +12,7 @@ import sys
 import os
 import json
 import re
+import unicodedata
 import uvicorn
 import asyncio
 import logging
@@ -982,6 +983,33 @@ def _get_pdf_index_stats(book_id: str, firebase_uid: str) -> Dict[str, int]:
     return stats
 
 
+def _normalize_lookup_text(value: Optional[str]) -> str:
+    normalized = os.path.splitext(str(value or "").strip())[0]
+    normalized = normalized.translate(
+        str.maketrans(
+            {
+                "\u00c7": "C",
+                "\u011e": "G",
+                "\u0130": "I",
+                "\u00d6": "O",
+                "\u015e": "S",
+                "\u00dc": "U",
+                "\u00e7": "c",
+                "\u011f": "g",
+                "\u0131": "i",
+                "\u00f6": "o",
+                "\u015f": "s",
+                "\u00fc": "u",
+            }
+        )
+    )
+    normalized = unicodedata.normalize("NFKD", normalized)
+    normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    normalized = re.sub(r"[^0-9A-Za-z]+", " ", normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip().lower()
+    return normalized
+
+
 def _normalize_title_candidates(raw_title: Optional[str]) -> List[str]:
     """Build conservative title candidates for ingestion-status fallback."""
     if not raw_title:
@@ -1006,8 +1034,25 @@ def _normalize_title_candidates(raw_title: Optional[str]) -> List[str]:
         _add(no_suffix.split(" - ", 1)[0].strip())
     if ":" in no_suffix:
         _add(no_suffix.split(":", 1)[0].strip())
+    normalized_title = _normalize_lookup_text(title)
+    _add(normalized_title)
+    if " " in normalized_title:
+        for part in normalized_title.split():
+            if len(part) >= 4:
+                _add(part)
 
     return candidates
+
+
+def _oracle_normalized_text_sql(expr: str) -> str:
+    translated = (
+        "TRANSLATE("
+        f"NVL({expr}, ''), "
+        "'ÇĞİÖŞÜçğıöşü', "
+        "'CGIOSUcgiosu'"
+        ")"
+    )
+    return f"LOWER(TRIM(REGEXP_REPLACE({translated}, '[^[:alnum:]]+', ' ')))"
 
 
 
@@ -1026,10 +1071,11 @@ def resolve_pdf_book_id_by_title(firebase_uid: str, title: Optional[str]) -> Opt
             with conn.cursor() as cursor:
                 like_parts = []
                 params: Dict[str, Any] = {"p_uid": firebase_uid}
+                normalized_title_sql = _oracle_normalized_text_sql("TITLE")
                 for idx, candidate in enumerate(title_candidates):
                     key = f"p_title_{idx}"
-                    like_parts.append(f"LOWER(TITLE) LIKE LOWER(:{key})")
-                    params[key] = f"%{candidate}%"
+                    like_parts.append(f"{normalized_title_sql} LIKE :{key}")
+                    params[key] = f"%{_normalize_lookup_text(candidate)}%"
 
                 where_like = " OR ".join(like_parts)
                 sql = f"""
@@ -1103,16 +1149,19 @@ def _resolve_pdf_access_book_id(
             with conn.cursor() as cursor:
                 like_parts = []
                 params: Dict[str, Any] = {"p_uid": firebase_uid}
+                normalized_content_title_sql = _oracle_normalized_text_sql("c.TITLE")
+                normalized_library_title_sql = _oracle_normalized_text_sql("li.TITLE")
+                normalized_source_name_sql = _oracle_normalized_text_sql("f.SOURCE_FILE_NAME")
                 for idx, candidate in enumerate(title_candidates):
                     key = f"p_title_{idx}"
                     like_parts.append(
                         "("
-                        f"LOWER(NVL(c.TITLE, '')) LIKE LOWER(:{key}) "
-                        f"OR LOWER(NVL(li.TITLE, '')) LIKE LOWER(:{key}) "
-                        f"OR LOWER(NVL(f.SOURCE_FILE_NAME, '')) LIKE LOWER(:{key})"
+                        f"{normalized_content_title_sql} LIKE :{key} "
+                        f"OR {normalized_library_title_sql} LIKE :{key} "
+                        f"OR {normalized_source_name_sql} LIKE :{key}"
                         ")"
                     )
-                    params[key] = f"%{candidate}%"
+                    params[key] = f"%{_normalize_lookup_text(candidate)}%"
 
                 where_like = " OR ".join(like_parts)
                 cursor.execute(
@@ -1143,6 +1192,12 @@ def _resolve_pdf_access_book_id(
                     return str(row[0]).strip() or None
     except Exception as e:
         logger.error(f"Failed to resolve PDF access book id by title: {e}")
+
+    content_book_id = resolve_pdf_book_id_by_title(firebase_uid, effective_title)
+    if content_book_id:
+        content_record = get_pdf_record(content_book_id, firebase_uid)
+        if content_record and content_record.get("object_key"):
+            return content_book_id
 
     return None
 
