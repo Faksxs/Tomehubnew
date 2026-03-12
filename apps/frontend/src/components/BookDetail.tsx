@@ -183,7 +183,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
     setIsOpeningPdf(true);
     setIngestError(null);
     try {
-      await openBookPdfInApp(book.id);
+      await openBookPdfInApp(pdfStatus?.pdf_open_book_id || book.id);
     } catch (err) {
       setIngestError(err instanceof Error ? err.message : 'PDF could not be opened');
     } finally {
@@ -203,6 +203,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
   const pdfProcessing = pdfStatus?.status === 'PROCESSING';
   const pdfFailed = pdfStatus?.status === 'FAILED';
   const pdfAvailable = Boolean(pdfStatus?.pdf_available) && !pdfMatchedDifferentBook;
+  const pdfCanRead = Boolean((pdfStatus?.pdf_available || pdfStatus?.pdf_open_book_id) && !pdfMatchedDifferentBook);
   const pdfDisableUpload = pdfIndexed || pdfProcessing || isIngesting;
   const processingProgress = Math.min(95, Math.max(12, 12 + (pdfPollAttempts * 3)));
 
@@ -507,7 +508,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                       </button>
                     </>
                   )}
-                  {!isMedia && pdfAvailable && (
+                  {!isMedia && pdfCanRead && (
                     <button
                       type="button"
                       onClick={handleOpenPdf}
@@ -726,7 +727,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                         <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
                           {pdfProcessing && "Processing..."}
                           {pdfFailed && "Failed - please re-upload"}
-                          {!pdfProcessing && !pdfFailed && pdfAvailable && !pdfIndexed && "Available to read"}
+                          {!pdfProcessing && !pdfFailed && pdfCanRead && !pdfIndexed && "Available to read"}
                           {pdfIndexed && (
                             <>
                               {pdfStatus.file_name ? (
@@ -760,7 +761,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                         {pdfStatusError && (
                           <span className="text-[10px] md:text-xs text-red-600 dark:text-red-400">{pdfStatusError}</span>
                         )}
-                        {pdfAvailable && (
+                        {pdfCanRead && (
                           <button
                             type="button"
                             onClick={handleOpenPdf}

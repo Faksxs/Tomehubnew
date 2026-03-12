@@ -76,11 +76,13 @@ export interface IngestionStatusResponse {
     storage_status?: string | null;
     error_message?: string | null;
     resolved_book_id?: string | null;
+    pdf_open_book_id?: string | null;
     matched_by_title?: boolean;
 }
 
 export interface PdfMetadataResponse {
     book_id: string;
+    requested_book_id?: string;
     pdf_available: boolean;
     file_name: string | null;
     size_bytes: number | null;

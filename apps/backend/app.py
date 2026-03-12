@@ -1052,6 +1052,100 @@ def resolve_pdf_book_id_by_title(firebase_uid: str, title: Optional[str]) -> Opt
     return None
 
 
+def _fetch_library_item_title(book_id: str, firebase_uid: str) -> Optional[str]:
+    if not book_id or not firebase_uid:
+        return None
+    try:
+        with DatabaseManager.get_read_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT TITLE
+                    FROM TOMEHUB_LIBRARY_ITEMS
+                    WHERE ITEM_ID = :p_bid
+                      AND FIREBASE_UID = :p_uid
+                    FETCH FIRST 1 ROWS ONLY
+                    """,
+                    {"p_bid": book_id, "p_uid": firebase_uid},
+                )
+                row = cursor.fetchone()
+                if row and row[0]:
+                    return str(row[0]).strip() or None
+    except Exception as e:
+        logger.error(f"Failed to fetch library item title for PDF access fallback: {e}")
+    return None
+
+
+def _resolve_pdf_access_book_id(
+    book_id: str,
+    firebase_uid: str,
+    title: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Resolve the book id that should be used for PDF access.
+    Prefers an exact ingestion row with object storage, then falls back to
+    same-title PDF-like items that actually have a readable object_key.
+    """
+    if not book_id or not firebase_uid:
+        return None
+
+    exact_record = get_pdf_record(book_id, firebase_uid)
+    if exact_record and exact_record.get("object_key"):
+        return book_id
+
+    effective_title = title or _fetch_library_item_title(book_id, firebase_uid)
+    title_candidates = _normalize_title_candidates(effective_title)
+    if not title_candidates:
+        return None
+
+    try:
+        with DatabaseManager.get_read_connection() as conn:
+            with conn.cursor() as cursor:
+                like_parts = []
+                params: Dict[str, Any] = {"p_uid": firebase_uid}
+                for idx, candidate in enumerate(title_candidates):
+                    key = f"p_title_{idx}"
+                    like_parts.append(f"LOWER(c.TITLE) LIKE LOWER(:{key})")
+                    params[key] = f"%{candidate}%"
+
+                where_like = " OR ".join(like_parts)
+                cursor.execute(
+                    f"""
+                    SELECT f.BOOK_ID, COUNT(*) AS chunk_count, MAX(f.UPDATED_AT) AS last_updated
+                    FROM TOMEHUB_INGESTED_FILES f
+                    JOIN TOMEHUB_CONTENT_V2 c
+                      ON c.ITEM_ID = f.BOOK_ID
+                     AND c.FIREBASE_UID = f.FIREBASE_UID
+                    WHERE f.FIREBASE_UID = :p_uid
+                      AND NVL(f.OBJECT_KEY, '') <> ''
+                      AND c.CONTENT_TYPE IN ('PDF', 'EPUB', 'PDF_CHUNK')
+                      AND ({where_like})
+                    GROUP BY f.BOOK_ID
+                    ORDER BY chunk_count DESC, last_updated DESC NULLS LAST
+                    FETCH FIRST 1 ROWS ONLY
+                    """,
+                    params,
+                )
+                row = cursor.fetchone()
+                if row and row[0]:
+                    return str(row[0]).strip() or None
+    except Exception as e:
+        logger.error(f"Failed to resolve PDF access book id by title: {e}")
+
+    return None
+
+
+def _resolve_pdf_access_record(
+    book_id: str,
+    firebase_uid: str,
+    title: Optional[str] = None,
+) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
+    access_book_id = _resolve_pdf_access_book_id(book_id, firebase_uid, title=title)
+    if not access_book_id:
+        return None, None
+    return access_book_id, get_pdf_record(access_book_id, firebase_uid)
+
+
 def _parse_csv_tags(raw_tags: Optional[str]) -> List[str]:
     if not raw_tags:
         return []
@@ -1353,6 +1447,7 @@ async def get_ingestion_status(
     matched_by_title = False
     match_source = "exact_book_id"
     match_confidence = 1.0
+    pdf_open_book_id: Optional[str] = None
 
     row = fetch_ingestion_status(effective_book_id, verified_firebase_uid)
     if not row and title:
@@ -1389,6 +1484,12 @@ async def get_ingestion_status(
                         embedding_count=effective_embeddings,
                     )
         if row:
+            pdf_open_book_id = _resolve_pdf_access_book_id(
+                effective_book_id,
+                verified_firebase_uid,
+                title=title,
+            )
+            row["pdf_available"] = bool(row.get("pdf_available") or pdf_open_book_id)
             item_index_state = row.get("item_index_state") or {}
             return {
                 "status": row.get("status"),
@@ -1418,6 +1519,7 @@ async def get_ingestion_status(
                 "shard_count": int(row["shard_count"]) if row.get("shard_count") is not None else None,
                 "shard_failed_count": int(row["shard_failed_count"]) if row.get("shard_failed_count") is not None else None,
                 "resolved_book_id": effective_book_id,
+                "pdf_open_book_id": pdf_open_book_id,
                 "matched_by_title": matched_by_title,
                 "match_source": match_source,
                 "match_confidence": match_confidence,
@@ -1430,6 +1532,11 @@ async def get_ingestion_status(
     try:
         pdf_stats = _get_pdf_index_stats(effective_book_id, verified_firebase_uid)
         if pdf_stats.get("effective_chunks", 0) > 0:
+            pdf_open_book_id = _resolve_pdf_access_book_id(
+                effective_book_id,
+                verified_firebase_uid,
+                title=title,
+            )
             return {
                 "status": "COMPLETED",
                 "file_name": None,
@@ -1438,7 +1545,7 @@ async def get_ingestion_status(
                 "updated_at": datetime.now().isoformat(),
                 "parse_path": None,
                 "parse_status": None,
-                "pdf_available": False,
+                "pdf_available": bool(pdf_open_book_id),
                 "storage_warning": None,
                 "size_bytes": None,
                 "storage_status": None,
@@ -1458,6 +1565,7 @@ async def get_ingestion_status(
                 "shard_count": None,
                 "shard_failed_count": None,
                 "resolved_book_id": effective_book_id,
+                "pdf_open_book_id": pdf_open_book_id,
                 "matched_by_title": matched_by_title,
                 "match_source": "content_fallback",
                 "match_confidence": 0.5,
@@ -1496,6 +1604,7 @@ async def get_ingestion_status(
         "shard_count": None,
         "shard_failed_count": None,
         "resolved_book_id": effective_book_id,
+        "pdf_open_book_id": None,
         "matched_by_title": matched_by_title,
         "match_source": match_source,
         "match_confidence": match_confidence if row else (0.0 if effective_book_id == book_id else 0.3),
@@ -1512,12 +1621,13 @@ async def get_book_pdf_metadata(
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
 ):
     verified_firebase_uid = get_verified_uid(firebase_uid_from_jwt)
-    record = get_pdf_record(book_id, verified_firebase_uid)
+    access_book_id, record = _resolve_pdf_access_record(book_id, verified_firebase_uid)
     if not record or not record.get("object_key"):
         raise HTTPException(status_code=404, detail="PDF not found")
 
     return {
-        "book_id": book_id,
+        "book_id": access_book_id or book_id,
+        "requested_book_id": book_id,
         "pdf_available": True,
         "file_name": record.get("file_name"),
         "size_bytes": int(record["size_bytes"]) if record.get("size_bytes") is not None else None,
@@ -1535,7 +1645,8 @@ async def stream_book_pdf_content(
     request: Request,
 ):
     verified_firebase_uid = await get_pdf_request_uid(request)
-    record = get_pdf_record(book_id, verified_firebase_uid)
+    title = str(request.query_params.get("title") or "").strip() or None
+    access_book_id, record = _resolve_pdf_access_record(book_id, verified_firebase_uid, title=title)
     if not record or not record.get("object_key") or not record.get("bucket_name"):
         raise HTTPException(status_code=404, detail="PDF not found")
 
@@ -1553,7 +1664,7 @@ async def stream_book_pdf_content(
         logger.error("PDF stream failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to stream PDF")
 
-    filename = str(record.get("file_name") or f"{book_id}.pdf")
+    filename = str(record.get("file_name") or f"{access_book_id or book_id}.pdf")
     response_headers = {
         "Accept-Ranges": str(object_headers.get("accept_ranges") or "bytes"),
         "Content-Disposition": _build_content_disposition(filename),
