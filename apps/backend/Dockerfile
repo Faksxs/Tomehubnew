@@ -1,7 +1,7 @@
 # TomeHub Backend Dockerfile
 # Python Flask API with Caddy for auto-HTTPS (self-discovering IP)
 
-FROM python:3.11-slim
+FROM python:3.15-rc-alpine3.22
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
