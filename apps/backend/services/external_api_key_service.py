@@ -2,8 +2,11 @@ import hashlib
 import hmac
 import json
 import secrets
+import threading
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from collections import OrderedDict
 from typing import Any, Optional
 
 from config import settings
@@ -15,6 +18,10 @@ logger = get_logger("external_api_key_service")
 
 KEY_PREFIX_LEN = 20
 DEFAULT_SCOPES = ("search:read",)
+_CACHE_MISS = object()
+_api_key_cache_lock = threading.Lock()
+_api_key_cache: "OrderedDict[str, tuple[float, object]]" = OrderedDict()
+_last_key_touch_by_id: dict[int, tuple[float, Optional[str]]] = {}
 
 
 @dataclass
@@ -88,6 +95,58 @@ def _row_to_record(row: Any) -> ExternalApiKeyRecord:
     )
 
 
+def _cache_ttl_seconds() -> int:
+    return int(getattr(settings, "EXTERNAL_API_KEY_CACHE_TTL_SEC", 300) or 300)
+
+
+def _cache_maxsize() -> int:
+    return int(getattr(settings, "EXTERNAL_API_KEY_CACHE_MAXSIZE", 1024) or 1024)
+
+
+def _touch_debounce_seconds() -> int:
+    return int(getattr(settings, "EXTERNAL_API_KEY_TOUCH_DEBOUNCE_SEC", 300) or 300)
+
+
+def _prune_api_key_cache(now: Optional[float] = None) -> None:
+    current = now if now is not None else time.monotonic()
+    expired_keys = [key for key, (expires_at, _) in _api_key_cache.items() if expires_at <= current]
+    for key in expired_keys:
+        _api_key_cache.pop(key, None)
+
+    maxsize = _cache_maxsize()
+    while len(_api_key_cache) > maxsize:
+        _api_key_cache.popitem(last=False)
+
+
+def _get_cached_external_api_key(cache_key: str) -> object:
+    now = time.monotonic()
+    with _api_key_cache_lock:
+        _prune_api_key_cache(now)
+        cached = _api_key_cache.get(cache_key)
+        if cached is None:
+            return _CACHE_MISS
+        expires_at, value = cached
+        if expires_at <= now:
+            _api_key_cache.pop(cache_key, None)
+            return _CACHE_MISS
+        _api_key_cache.move_to_end(cache_key)
+        return value
+
+
+def _store_cached_external_api_key(cache_key: str, value: object) -> None:
+    now = time.monotonic()
+    with _api_key_cache_lock:
+        _api_key_cache[cache_key] = (now + _cache_ttl_seconds(), value)
+        _api_key_cache.move_to_end(cache_key)
+        _prune_api_key_cache(now)
+
+
+def invalidate_external_api_key_cache() -> None:
+    with _api_key_cache_lock:
+        _api_key_cache.clear()
+        _last_key_touch_by_id.clear()
+
+
 def resolve_external_api_key(raw_key: str) -> Optional[ExternalApiKeyRecord]:
     ensure_external_api_enabled()
     key = str(raw_key or "").strip()
@@ -96,6 +155,9 @@ def resolve_external_api_key(raw_key: str) -> Optional[ExternalApiKeyRecord]:
 
     key_prefix = get_key_prefix(key)
     key_hash = hash_external_api_key(key)
+    cached = _get_cached_external_api_key(key_hash)
+    if cached is not _CACHE_MISS:
+        return cached if isinstance(cached, ExternalApiKeyRecord) else None
 
     with DatabaseManager.get_read_connection() as conn:
         with conn.cursor() as cursor:
@@ -120,16 +182,29 @@ def resolve_external_api_key(raw_key: str) -> Optional[ExternalApiKeyRecord]:
             row = cursor.fetchone()
 
     if not row:
+        _store_cached_external_api_key(key_hash, None)
         return None
 
     stored_hash = safe_read_clob(row[7]) if hasattr(row[7], "read") else str(row[7] or "")
     if not stored_hash or not hmac.compare_digest(stored_hash, key_hash):
+        _store_cached_external_api_key(key_hash, None)
         return None
 
-    return _row_to_record(row)
+    record = _row_to_record(row)
+    _store_cached_external_api_key(key_hash, record)
+    return record
 
 
 def touch_external_api_key(key_id: int, remote_addr: Optional[str] = None) -> None:
+    normalized_ip = str(remote_addr or "")[:128] or None
+    now = time.monotonic()
+    with _api_key_cache_lock:
+        previous = _last_key_touch_by_id.get(int(key_id))
+        if previous is not None:
+            last_touch_at, last_ip = previous
+            if (now - last_touch_at) < _touch_debounce_seconds() and last_ip == normalized_ip:
+                return
+
     try:
         with DatabaseManager.get_write_connection() as conn:
             with conn.cursor() as cursor:
@@ -140,9 +215,11 @@ def touch_external_api_key(key_id: int, remote_addr: Optional[str] = None) -> No
                         LAST_IP = :p_last_ip
                     WHERE ID = :p_id
                     """,
-                    {"p_id": int(key_id), "p_last_ip": str(remote_addr or "")[:128] or None},
+                    {"p_id": int(key_id), "p_last_ip": normalized_ip},
                 )
             conn.commit()
+        with _api_key_cache_lock:
+            _last_key_touch_by_id[int(key_id)] = (now, normalized_ip)
     except Exception as exc:
         logger.warning("Failed to update external API key usage id=%s: %s", key_id, exc)
 
@@ -210,6 +287,7 @@ def create_external_api_key(
             conn.commit()
             key_id = int(key_id_var.getvalue()[0])
 
+    invalidate_external_api_key_cache()
     return {
         "key_id": key_id,
         "raw_key": raw_key,
@@ -248,4 +326,6 @@ def revoke_external_api_key(*, key_id: Optional[int] = None, key_prefix: Optiona
             )
             updated = int(cursor.rowcount or 0)
             conn.commit()
+    if updated > 0:
+        invalidate_external_api_key_cache()
     return updated > 0

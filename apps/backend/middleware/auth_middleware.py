@@ -7,6 +7,7 @@ Verifies Firebase JWT tokens for protected endpoints.
 
 import logging
 from fastapi import Request, HTTPException
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,8 @@ async def verify_firebase_token(request: Request) -> str | None:
             logger.error("Firebase token missing 'uid' claim")
             raise HTTPException(status_code=401, detail="Invalid token claims")
 
+        request.state.firebase_uid = uid
+        request.state.firebase_decoded_token = decoded_token
         return uid
 
     except ImportError:
@@ -69,5 +72,5 @@ async def verify_firebase_token(request: Request) -> str | None:
         if "UserDisabledError" in exception_type:
             raise HTTPException(status_code=403, detail="User account disabled")
 
-        logger.warning(f"Firebase verification failed ({exception_type}): {e}")
-        raise HTTPException(status_code=401, detail="Authentication verification failed")
+        logger.exception("Unexpected Firebase verification failure (%s): %s", exception_type, e)
+        raise HTTPException(status_code=500, detail="Authentication service unavailable")

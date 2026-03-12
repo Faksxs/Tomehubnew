@@ -38,6 +38,7 @@ from models.request_models import (
     PersonalNoteFolderUpsertRequest, PersonalNoteFolderPatchRequest,
 )
 from middleware.auth_middleware import verify_firebase_token
+from middleware.admin_middleware import require_admin
 
 # Import Services (Legacy & New)
 from services.search_service import generate_answer, get_rag_context
@@ -315,7 +316,7 @@ async def lifespan(app: FastAPI):
                 
                 await asyncio.sleep(10)
             except asyncio.CancelledError:
-                break
+                raise
             except Exception as e:
                 logger.error(f"Error in metrics updater: {e}")
                 await asyncio.sleep(10)
@@ -338,7 +339,7 @@ async def lifespan(app: FastAPI):
     try:
         await asyncio.gather(memory_task, metrics_task, return_exceptions=True)
     except asyncio.CancelledError:
-        pass
+        raise
     
     try:
         await pdf_async_ingestion_manager.shutdown()
@@ -1558,14 +1559,15 @@ def _run_calculate_graph_stats_background():
 
 @app.post("/api/admin/recalculate_graph")
 async def recalculate_graph_endpoint(
+    request: Request,
     background_tasks: BackgroundTasks,
-    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token)
+    admin_uid: str = Depends(require_admin),
 ):
     """
     Triggers the graph centrality recalculation script in the background.
     Useful after bulk ingesting new books to update discovery bridges.
     """
-    _ = get_verified_uid(request, firebase_uid_from_jwt)
+    _ = admin_uid
 
     background_tasks.add_task(_run_calculate_graph_stats_background)
     return {"success": True, "message": "Graph centrality calculation started in background."}
@@ -1576,9 +1578,9 @@ async def start_external_kb_backfill(
     request: Request,
     all_users: bool = False,
     firebase_uid: Optional[str] = None,
-    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+    admin_uid: str = Depends(require_admin),
 ):
-    verified_uid = get_verified_uid(request, firebase_uid_from_jwt)
+    verified_uid = admin_uid
 
     if all_users and settings.ENVIRONMENT == "production":
         raise HTTPException(status_code=403, detail="all_users backfill is disabled in production")
@@ -1592,9 +1594,9 @@ async def start_external_kb_backfill(
 async def external_kb_backfill_status(
     request: Request,
     firebase_uid: Optional[str] = None,
-    firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
+    admin_uid: str = Depends(require_admin),
 ):
-    _ = get_verified_uid(request, firebase_uid_from_jwt)
+    _ = admin_uid
     return {"success": True, "status": get_external_kb_backfill_status()}
 
 

@@ -58,7 +58,7 @@ class AutoRestartManager:
                 
             except asyncio.CancelledError:
                 logger.info("Memory Monitor stopped.")
-                break
+                raise
             except Exception as e:
                 logger.error(f"Error in memory monitor: {e}")
                 await asyncio.sleep(self.check_interval)

@@ -114,6 +114,34 @@ class Settings:
         self.EXTERNAL_API_DEFAULT_SCOPES = _parse_csv(
             os.getenv("EXTERNAL_API_DEFAULT_SCOPES", "search:read")
         )
+        admin_uid_allowlist_raw = (
+            os.getenv("ADMIN_UID_ALLOWLIST", "").strip()
+            or os.getenv("FIREBASE_ADMIN_UIDS", "").strip()
+        )
+        self.ADMIN_UID_ALLOWLIST = {
+            uid.strip() for uid in admin_uid_allowlist_raw.split(",") if uid.strip()
+        }
+        self.EXTERNAL_API_KEY_CACHE_TTL_SEC = int(
+            os.getenv("EXTERNAL_API_KEY_CACHE_TTL_SEC", "300")
+        )
+        if self.EXTERNAL_API_KEY_CACHE_TTL_SEC < 5:
+            self.EXTERNAL_API_KEY_CACHE_TTL_SEC = 300
+        if self.EXTERNAL_API_KEY_CACHE_TTL_SEC > 3600:
+            self.EXTERNAL_API_KEY_CACHE_TTL_SEC = 3600
+        self.EXTERNAL_API_KEY_CACHE_MAXSIZE = int(
+            os.getenv("EXTERNAL_API_KEY_CACHE_MAXSIZE", "1024")
+        )
+        if self.EXTERNAL_API_KEY_CACHE_MAXSIZE < 32:
+            self.EXTERNAL_API_KEY_CACHE_MAXSIZE = 1024
+        if self.EXTERNAL_API_KEY_CACHE_MAXSIZE > 10000:
+            self.EXTERNAL_API_KEY_CACHE_MAXSIZE = 10000
+        self.EXTERNAL_API_KEY_TOUCH_DEBOUNCE_SEC = int(
+            os.getenv("EXTERNAL_API_KEY_TOUCH_DEBOUNCE_SEC", "300")
+        )
+        if self.EXTERNAL_API_KEY_TOUCH_DEBOUNCE_SEC < 5:
+            self.EXTERNAL_API_KEY_TOUCH_DEBOUNCE_SEC = 300
+        if self.EXTERNAL_API_KEY_TOUCH_DEBOUNCE_SEC > 3600:
+            self.EXTERNAL_API_KEY_TOUCH_DEBOUNCE_SEC = 3600
         self.EXTERNAL_API_MAX_LIMIT = int(os.getenv("EXTERNAL_API_MAX_LIMIT", "12"))
         if self.EXTERNAL_API_MAX_LIMIT < 1:
             self.EXTERNAL_API_MAX_LIMIT = 12
