@@ -1105,20 +1105,32 @@ def _resolve_pdf_access_book_id(
                 params: Dict[str, Any] = {"p_uid": firebase_uid}
                 for idx, candidate in enumerate(title_candidates):
                     key = f"p_title_{idx}"
-                    like_parts.append(f"LOWER(c.TITLE) LIKE LOWER(:{key})")
+                    like_parts.append(
+                        "("
+                        f"LOWER(NVL(c.TITLE, '')) LIKE LOWER(:{key}) "
+                        f"OR LOWER(NVL(li.TITLE, '')) LIKE LOWER(:{key}) "
+                        f"OR LOWER(NVL(f.SOURCE_FILE_NAME, '')) LIKE LOWER(:{key})"
+                        ")"
+                    )
                     params[key] = f"%{candidate}%"
 
                 where_like = " OR ".join(like_parts)
                 cursor.execute(
                     f"""
-                    SELECT f.BOOK_ID, COUNT(*) AS chunk_count, MAX(f.UPDATED_AT) AS last_updated
+                    SELECT
+                        f.BOOK_ID,
+                        COUNT(DISTINCT c.ID) AS chunk_count,
+                        MAX(f.UPDATED_AT) AS last_updated
                     FROM TOMEHUB_INGESTED_FILES f
-                    JOIN TOMEHUB_CONTENT_V2 c
+                    LEFT JOIN TOMEHUB_CONTENT_V2 c
                       ON c.ITEM_ID = f.BOOK_ID
                      AND c.FIREBASE_UID = f.FIREBASE_UID
+                     AND c.CONTENT_TYPE IN ('PDF', 'EPUB', 'PDF_CHUNK')
+                    LEFT JOIN TOMEHUB_LIBRARY_ITEMS li
+                      ON li.ITEM_ID = f.BOOK_ID
+                     AND li.FIREBASE_UID = f.FIREBASE_UID
                     WHERE f.FIREBASE_UID = :p_uid
                       AND NVL(f.OBJECT_KEY, '') <> ''
-                      AND c.CONTENT_TYPE IN ('PDF', 'EPUB', 'PDF_CHUNK')
                       AND ({where_like})
                     GROUP BY f.BOOK_ID
                     ORDER BY chunk_count DESC, last_updated DESC NULLS LAST

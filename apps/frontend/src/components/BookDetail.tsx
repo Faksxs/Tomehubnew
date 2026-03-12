@@ -486,7 +486,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                 </div>
 
                 {/* Action Buttons */}
-                <div className={`grid ${isMedia ? 'grid-cols-2' : (pdfAvailable ? 'grid-cols-4' : 'grid-cols-3')} gap-2 mt-1 md:mt-2`}>
+                <div className={`grid ${isMedia ? 'grid-cols-2' : (pdfIndexed || pdfCanRead ? 'grid-cols-4' : 'grid-cols-3')} gap-2 mt-1 md:mt-2`}>
                   {!isMedia && (
                     <>
                       <input
@@ -496,19 +496,32 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                         accept=".pdf"
                         onChange={handlePdfUpload}
                       />
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={pdfDisableUpload}
-                        className="flex items-center justify-center gap-2 px-2 py-2 bg-white dark:bg-slate-900 border border-[#E6EAF2] dark:border-slate-700 hover:border-[#262D40]/18 dark:hover:border-[#262D40]/30 hover:text-[#262D40] dark:hover:text-[#262D40]/82 rounded-lg text-slate-600 dark:text-slate-400 transition-colors text-xs font-medium disabled:opacity-50"
-                        title={pdfIndexed ? `PDF already indexed: ${pdfStatus?.file_name || ''}` : "Upload PDF"}
-                      >
-                        {isIngesting ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                        <span className="hidden lg:inline">PDF</span>
-                      </button>
+                      {pdfIndexed || pdfCanRead ? (
+                        <button
+                          type="button"
+                          onClick={handleOpenPdf}
+                          disabled={isOpeningPdf}
+                          className="flex items-center justify-center gap-2 px-2 py-2 bg-white dark:bg-slate-900 border border-[#E6EAF2] dark:border-slate-700 hover:border-[#262D40]/18 dark:hover:border-[#262D40]/30 hover:text-[#262D40] dark:hover:text-[#262D40]/82 rounded-lg text-slate-600 dark:text-slate-400 transition-colors text-xs font-medium disabled:opacity-50"
+                          title="Read PDF"
+                        >
+                          {isOpeningPdf ? <Loader2 size={14} className="animate-spin" /> : <BookOpen size={14} />}
+                          <span className="hidden lg:inline">Read</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={pdfDisableUpload}
+                          className="flex items-center justify-center gap-2 px-2 py-2 bg-white dark:bg-slate-900 border border-[#E6EAF2] dark:border-slate-700 hover:border-[#262D40]/18 dark:hover:border-[#262D40]/30 hover:text-[#262D40] dark:hover:text-[#262D40]/82 rounded-lg text-slate-600 dark:text-slate-400 transition-colors text-xs font-medium disabled:opacity-50"
+                          title="Upload PDF"
+                        >
+                          {isIngesting ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                          <span className="hidden lg:inline">PDF</span>
+                        </button>
+                      )}
                     </>
                   )}
-                  {!isMedia && pdfCanRead && (
+                  {!isMedia && pdfCanRead && !pdfIndexed && (
                     <button
                       type="button"
                       onClick={handleOpenPdf}
@@ -761,7 +774,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
                         {pdfStatusError && (
                           <span className="text-[10px] md:text-xs text-red-600 dark:text-red-400">{pdfStatusError}</span>
                         )}
-                        {pdfCanRead && (
+                        {(pdfIndexed || pdfCanRead) && (
                           <button
                             type="button"
                             onClick={handleOpenPdf}
