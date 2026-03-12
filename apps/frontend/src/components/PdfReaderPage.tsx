@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
   BookOpen,
@@ -27,6 +27,7 @@ const formatBytes = (value?: number | null) => {
 
 export const PdfReaderPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { bookId = '' } = useParams();
   const { user } = useAuth();
   const [metadata, setMetadata] = React.useState<PdfMetadataResponse | null>(null);
@@ -34,6 +35,10 @@ export const PdfReaderPage: React.FC = () => {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [reloadKey, setReloadKey] = React.useState(0);
+  const requestedTitle = React.useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get('title') || '';
+  }, [location.search]);
 
   React.useEffect(() => {
     if (!bookId || !user?.uid) return;
@@ -42,17 +47,21 @@ export const PdfReaderPage: React.FC = () => {
 
     const load = async () => {
       setLoading(true);
-      setError(null);
+        setError(null);
       try {
         const [meta, token] = await Promise.all([
-          getBookPdfMetadata(bookId, user.uid),
+          getBookPdfMetadata(bookId, user.uid, requestedTitle),
           getFirebaseIdToken(),
         ]);
         if (cancelled) return;
 
-        const url = new URL(`${API_BASE_URL}/api/books/${encodeURIComponent(bookId)}/pdf/content`);
+        const resolvedBookId = meta?.book_id || bookId;
+        const url = new URL(`${API_BASE_URL}/api/books/${encodeURIComponent(resolvedBookId)}/pdf/content`);
         url.searchParams.set('auth_token', token);
         url.searchParams.set('inline', '1');
+        if (requestedTitle) {
+          url.searchParams.set('title', requestedTitle);
+        }
 
         setMetadata(meta);
         setPdfUrl(url.toString());
@@ -70,7 +79,7 @@ export const PdfReaderPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [bookId, user?.uid, reloadKey]);
+  }, [bookId, user?.uid, reloadKey, requestedTitle]);
 
   const handleOpenNative = () => {
     if (!pdfUrl) return;

@@ -763,13 +763,23 @@ export async function purgeResourceContent(
     return response.json();
 }
 
-export async function getBookPdfMetadata(bookId: string, firebaseUid: string): Promise<PdfMetadataResponse> {
+export async function getBookPdfMetadata(
+    bookId: string,
+    firebaseUid: string,
+    title?: string,
+): Promise<PdfMetadataResponse> {
     if (!firebaseUid) {
         throw new Error('User must be authenticated to fetch PDF metadata');
     }
 
+    const params = new URLSearchParams();
+    params.set('firebase_uid', firebaseUid);
+    if (title && title.trim()) {
+        params.set('title', title.trim());
+    }
+
     const response = await fetchWithAuth(
-        `${API_BASE_URL}/api/books/${encodeURIComponent(bookId)}/pdf?firebase_uid=${encodeURIComponent(firebaseUid)}`,
+        `${API_BASE_URL}/api/books/${encodeURIComponent(bookId)}/pdf?${params.toString()}`,
         {
             method: 'GET',
             headers: {
@@ -787,8 +797,12 @@ export async function getBookPdfMetadata(bookId: string, firebaseUid: string): P
     return response.json();
 }
 
-export async function openBookPdfInApp(bookId: string): Promise<void> {
-    const readerUrl = `${window.location.origin}${window.location.pathname}#/pdf-reader/${encodeURIComponent(bookId)}`;
+export async function openBookPdfInApp(bookId: string, title?: string): Promise<void> {
+    const hashPath = `#/pdf-reader/${encodeURIComponent(bookId)}`;
+    const hashQuery = title && title.trim()
+        ? `?title=${encodeURIComponent(title.trim())}`
+        : '';
+    const readerUrl = `${window.location.origin}${window.location.pathname}${hashPath}${hashQuery}`;
     const readerWindow = window.open(readerUrl, '_blank', 'noopener,noreferrer');
     if (readerWindow) {
         return;

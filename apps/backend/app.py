@@ -1633,7 +1633,8 @@ async def get_book_pdf_metadata(
     firebase_uid_from_jwt: str | None = Depends(verify_firebase_token),
 ):
     verified_firebase_uid = get_verified_uid(firebase_uid_from_jwt)
-    access_book_id, record = _resolve_pdf_access_record(book_id, verified_firebase_uid)
+    title = str(request.query_params.get("title") or "").strip() or None
+    access_book_id, record = _resolve_pdf_access_record(book_id, verified_firebase_uid, title=title)
     if not record or not record.get("object_key"):
         raise HTTPException(status_code=404, detail="PDF not found")
 

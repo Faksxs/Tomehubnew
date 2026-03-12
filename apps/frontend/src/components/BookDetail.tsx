@@ -183,7 +183,7 @@ export const BookDetail: React.FC<BookDetailProps> = React.memo(({ book, onBack,
     setIsOpeningPdf(true);
     setIngestError(null);
     try {
-      await openBookPdfInApp(pdfStatus?.pdf_open_book_id || book.id);
+      await openBookPdfInApp(pdfStatus?.pdf_open_book_id || book.id, book.title);
     } catch (err) {
       setIngestError(err instanceof Error ? err.message : 'PDF could not be opened');
     } finally {
