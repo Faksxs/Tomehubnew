@@ -107,6 +107,7 @@ from services.object_storage_service import (
     ObjectStorageConfigError,
     compute_sha256,
     get_storage_quota_summary,
+    list_objects,
     stream_object,
     upload_pdf,
 )
@@ -1122,6 +1123,56 @@ def _fetch_library_item_title(book_id: str, firebase_uid: str) -> Optional[str]:
     return None
 
 
+def _resolve_pdf_storage_record_from_prefix(
+    book_id: str,
+    firebase_uid: str,
+    base_record: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    if not book_id or not firebase_uid:
+        return None
+
+    bucket_name = str(getattr(settings, "OCI_OBJECT_STORAGE_BUCKET", "") or "").strip()
+    if not bucket_name:
+        return None
+
+    prefix = f"users/{firebase_uid}/books/{book_id}/source/"
+    try:
+        objects = list_objects(bucket_name, prefix)
+    except ObjectStorageConfigError:
+        return None
+    except Exception as e:
+        logger.error(f"Failed to list object storage prefix for PDF access fallback: {e}")
+        return None
+
+    pdf_objects = [
+        obj for obj in (objects or [])
+        if str(obj.get("name") or "").lower().endswith(".pdf")
+    ]
+    if not pdf_objects:
+        return None
+
+    pdf_objects.sort(
+        key=lambda obj: (
+            str(obj.get("time_created") or ""),
+            str(obj.get("name") or ""),
+        ),
+        reverse=True,
+    )
+    selected = pdf_objects[0]
+    object_key = str(selected.get("name") or "").strip()
+    if not object_key:
+        return None
+
+    merged_record = dict(base_record or {})
+    merged_record["bucket_name"] = bucket_name
+    merged_record["object_key"] = object_key
+    merged_record["pdf_available"] = True
+    merged_record["size_bytes"] = int(selected.get("size") or merged_record.get("size_bytes") or 0) or None
+    if not merged_record.get("file_name"):
+        merged_record["file_name"] = os.path.basename(object_key) or f"{book_id}.pdf"
+    return merged_record
+
+
 def _resolve_pdf_access_book_id(
     book_id: str,
     firebase_uid: str,
@@ -1137,6 +1188,8 @@ def _resolve_pdf_access_book_id(
 
     exact_record = get_pdf_record(book_id, firebase_uid)
     if exact_record and exact_record.get("object_key"):
+        return book_id
+    if _resolve_pdf_storage_record_from_prefix(book_id, firebase_uid, base_record=exact_record):
         return book_id
 
     effective_title = title or _fetch_library_item_title(book_id, firebase_uid)
@@ -1198,6 +1251,8 @@ def _resolve_pdf_access_book_id(
         content_record = get_pdf_record(content_book_id, firebase_uid)
         if content_record and content_record.get("object_key"):
             return content_book_id
+        if _resolve_pdf_storage_record_from_prefix(content_book_id, firebase_uid, base_record=content_record):
+            return content_book_id
 
     return None
 
@@ -1210,7 +1265,15 @@ def _resolve_pdf_access_record(
     access_book_id = _resolve_pdf_access_book_id(book_id, firebase_uid, title=title)
     if not access_book_id:
         return None, None
-    return access_book_id, get_pdf_record(access_book_id, firebase_uid)
+    record = get_pdf_record(access_book_id, firebase_uid)
+    if record and record.get("object_key") and record.get("bucket_name"):
+        return access_book_id, record
+    prefix_record = _resolve_pdf_storage_record_from_prefix(
+        access_book_id,
+        firebase_uid,
+        base_record=record,
+    )
+    return access_book_id, prefix_record or record
 
 
 def _parse_csv_tags(raw_tags: Optional[str]) -> List[str]:
