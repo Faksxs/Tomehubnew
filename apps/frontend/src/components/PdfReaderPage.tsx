@@ -56,24 +56,80 @@ const MAX_HIGHLIGHT_TEXT_LENGTH = 6000;
 const MAX_HIGHLIGHT_COMMENT_LENGTH = 2000;
 const MAX_NOTE_TITLE_LENGTH = 220;
 
+const isIosMobileDevice = () => {
+  if (typeof navigator === 'undefined') return false;
+  const userAgent = navigator.userAgent || '';
+  const platform = navigator.platform || '';
+  const maxTouchPoints = navigator.maxTouchPoints || 0;
+  return /iPad|iPhone|iPod/i.test(userAgent)
+    || (platform === 'MacIntel' && maxTouchPoints > 1);
+};
+
+type ReaderUiSessionState = {
+  captureOpen: boolean;
+  captureDraft: ReaderCaptureDraft;
+  lastUsedPageNumber: string;
+};
+
+const buildReaderUiSessionKey = (sourceBookId: string) =>
+  `tomehub:pdf-reader-ui:${sourceBookId}`;
+
+const readReaderUiSession = (sourceBookId: string): ReaderUiSessionState | null => {
+  if (!sourceBookId || typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(buildReaderUiSessionKey(sourceBookId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<ReaderUiSessionState> | null;
+    if (!parsed || typeof parsed !== 'object') return null;
+    return {
+      captureOpen: Boolean(parsed.captureOpen),
+      captureDraft: parsed.captureDraft
+        ? {
+          text: String(parsed.captureDraft.text || ''),
+          pageNumber: String(parsed.captureDraft.pageNumber || ''),
+          comment: String(parsed.captureDraft.comment || ''),
+          tags: String(parsed.captureDraft.tags || ''),
+        }
+        : createEmptyReaderCaptureDraft(''),
+      lastUsedPageNumber: String(parsed.lastUsedPageNumber || ''),
+    };
+  } catch (error) {
+    console.warn('Failed to read PDF reader UI session:', error);
+    return null;
+  }
+};
+
+const writeReaderUiSession = (sourceBookId: string, state: ReaderUiSessionState) => {
+  if (!sourceBookId || typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(buildReaderUiSessionKey(sourceBookId), JSON.stringify(state));
+  } catch (error) {
+    console.warn('Failed to persist PDF reader UI session:', error);
+  }
+};
+
 export const PdfReaderPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { bookId = '' } = useParams();
   const { user } = useAuth();
   const { showToast } = useUiFeedback();
+  const uiSession = React.useMemo(() => readReaderUiSession(bookId), [bookId]);
 
   const [metadata, setMetadata] = React.useState<PdfMetadataResponse | null>(null);
   const [pdfUrl, setPdfUrl] = React.useState<string>('');
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [reloadKey, setReloadKey] = React.useState(0);
-  const [captureOpen, setCaptureOpen] = React.useState(false);
-  const [captureDraft, setCaptureDraft] = React.useState<ReaderCaptureDraft>(() => createEmptyReaderCaptureDraft(''));
+  const [captureOpen, setCaptureOpen] = React.useState(Boolean(uiSession?.captureOpen));
+  const [captureDraft, setCaptureDraft] = React.useState<ReaderCaptureDraft>(() => (
+    uiSession?.captureDraft ?? createEmptyReaderCaptureDraft('')
+  ));
   const [captureError, setCaptureError] = React.useState<string | null>(null);
-  const [lastUsedPageNumber, setLastUsedPageNumber] = React.useState('');
+  const [lastUsedPageNumber, setLastUsedPageNumber] = React.useState(uiSession?.lastUsedPageNumber || '');
   const [submittingAction, setSubmittingAction] = React.useState<'highlight' | 'note' | null>(null);
   const [sourceHighlights, setSourceHighlights] = React.useState<Highlight[]>([]);
+  const [isIosMobile] = React.useState(() => isIosMobileDevice());
 
   const requestedTitle = React.useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -108,6 +164,14 @@ export const PdfReaderPage: React.FC = () => {
   React.useEffect(() => {
     setSourceHighlights(Array.isArray(persistedContext?.sourceHighlights) ? persistedContext.sourceHighlights : []);
   }, [persistedContext]);
+
+  React.useEffect(() => {
+    writeReaderUiSession(bookId, {
+      captureOpen,
+      captureDraft,
+      lastUsedPageNumber,
+    });
+  }, [bookId, captureDraft, captureOpen, lastUsedPageNumber]);
 
   React.useEffect(() => {
     if (!bookId || !user?.uid) return;
@@ -152,6 +216,10 @@ export const PdfReaderPage: React.FC = () => {
 
   const handleOpenNative = () => {
     if (!pdfUrl) return;
+    if (isIosMobile) {
+      window.location.assign(pdfUrl);
+      return;
+    }
     window.open(pdfUrl, '_blank', 'noopener,noreferrer');
   };
 
@@ -523,6 +591,8 @@ export const PdfReaderPage: React.FC = () => {
     </div>
   );
 
+  const renderIosReaderFallback = !loading && !error && isIosMobile;
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(13,148,136,0.12),_transparent_28%),linear-gradient(180deg,_#f7f4ed_0%,_#efe7da_100%)] text-slate-900">
       <div className="mx-auto flex min-h-screen max-w-[1600px] flex-col px-3 py-3 sm:px-4 lg:px-6">
@@ -587,7 +657,7 @@ export const PdfReaderPage: React.FC = () => {
                 className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 sm:rounded-2xl sm:px-4 sm:py-2.5"
               >
                 <ExternalLink size={16} />
-                Open Native
+                {isIosMobile ? 'Open Full PDF' : 'Open Native'}
               </button>
             </div>
           </div>
@@ -658,6 +728,39 @@ export const PdfReaderPage: React.FC = () => {
                       className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700"
                     >
                       Go Back
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : renderIosReaderFallback ? (
+              <div className="flex h-full min-h-[70vh] items-center justify-center p-4 sm:p-6">
+                <div className="max-w-lg rounded-[28px] border border-slate-200 bg-white/90 p-6 text-center shadow-xl backdrop-blur">
+                  <div className="mx-auto inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-600">
+                    <BookOpen size={12} />
+                    iPhone / iPad
+                  </div>
+                  <h2 className="mt-4 text-xl font-semibold text-slate-900">Use the full PDF viewer on iOS</h2>
+                  <p className="mt-3 text-sm leading-6 text-slate-600">
+                    Safari does not reliably render multi-page PDFs inside this embedded reader. Open the full PDF,
+                    copy the text you need, then use the browser back button to return here and save it with Capture.
+                  </p>
+                  <div className="mt-5 flex flex-col items-center justify-center gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={handleOpenNative}
+                      disabled={!pdfUrl}
+                      className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <ExternalLink size={16} />
+                      Open Full PDF
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openCapturePanel}
+                      className="inline-flex items-center gap-2 rounded-2xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm font-medium text-teal-800 transition hover:border-teal-300 hover:bg-teal-100"
+                    >
+                      <StickyNote size={16} />
+                      Open Capture
                     </button>
                   </div>
                 </div>
