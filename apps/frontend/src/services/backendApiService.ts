@@ -1,5 +1,5 @@
 import { normalizeHighlightType } from '../lib/highlightType';
-import { API_BASE_URL, fetchWithAuth, parseApiErrorMessage } from './apiClient';
+import { API_BASE_URL, fetchWithAuth, getFirebaseIdToken, parseApiErrorMessage } from './apiClient';
 import type { Highlight } from '../types';
 /**
  * TomeHub Backend API Service
@@ -103,6 +103,15 @@ export interface PdfReaderLaunchContext {
 
 const buildPdfReaderContextStorageKey = (sourceBookId: string) =>
     `tomehub:pdf-reader-context:${sourceBookId}`;
+
+const isIosPdfFallbackDevice = (): boolean => {
+    if (typeof navigator === 'undefined') return false;
+    const userAgent = navigator.userAgent || '';
+    const platform = navigator.platform || '';
+    const maxTouchPoints = navigator.maxTouchPoints || 0;
+    return /iPad|iPhone|iPod/i.test(userAgent)
+        || (platform === 'MacIntel' && maxTouchPoints > 1);
+};
 
 export function readPdfReaderLaunchContext(sourceBookId: string): PdfReaderLaunchContext | null {
     if (!sourceBookId || typeof window === 'undefined') {
@@ -844,6 +853,18 @@ export async function openBookPdfInApp(
 ): Promise<void> {
     if (context?.sourceBookId) {
         writePdfReaderLaunchContext(context);
+    }
+
+    if (isIosPdfFallbackDevice()) {
+        const token = await getFirebaseIdToken();
+        const pdfUrl = new URL(`${API_BASE_URL}/api/books/${encodeURIComponent(bookId)}/pdf/content`);
+        pdfUrl.searchParams.set('auth_token', token);
+        pdfUrl.searchParams.set('inline', '1');
+        if (title && title.trim()) {
+            pdfUrl.searchParams.set('title', title.trim());
+        }
+        window.location.assign(pdfUrl.toString());
+        return;
     }
 
     const hashPath = `#/pdf-reader/${encodeURIComponent(bookId)}`;
