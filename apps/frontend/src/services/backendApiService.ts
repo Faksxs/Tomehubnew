@@ -1,5 +1,6 @@
 import { normalizeHighlightType } from '../lib/highlightType';
 import { API_BASE_URL, fetchWithAuth, parseApiErrorMessage } from './apiClient';
+import type { Highlight } from '../types';
 /**
  * TomeHub Backend API Service
  * Connects React frontend to Flask backend for RAG search and document ingestion
@@ -91,6 +92,45 @@ export interface PdfMetadataResponse {
     parse_path?: string | null;
     storage_warning?: string | null;
     updated_at?: string | null;
+}
+
+export interface PdfReaderLaunchContext {
+    sourceBookId?: string;
+    sourceTitle?: string;
+    sourceAuthor?: string;
+    sourceHighlights?: Highlight[];
+}
+
+const buildPdfReaderContextStorageKey = (sourceBookId: string) =>
+    `tomehub:pdf-reader-context:${sourceBookId}`;
+
+export function readPdfReaderLaunchContext(sourceBookId: string): PdfReaderLaunchContext | null {
+    if (!sourceBookId || typeof window === 'undefined') {
+        return null;
+    }
+    try {
+        const raw = window.sessionStorage.getItem(buildPdfReaderContextStorageKey(sourceBookId));
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as PdfReaderLaunchContext;
+        return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch (error) {
+        console.warn('Failed to read PDF reader context:', error);
+        return null;
+    }
+}
+
+function writePdfReaderLaunchContext(context: PdfReaderLaunchContext): void {
+    if (!context.sourceBookId || typeof window === 'undefined') {
+        return;
+    }
+    try {
+        window.sessionStorage.setItem(
+            buildPdfReaderContextStorageKey(context.sourceBookId),
+            JSON.stringify(context)
+        );
+    } catch (error) {
+        console.warn('Failed to persist PDF reader context:', error);
+    }
 }
 
 export interface ApiError {
@@ -797,11 +837,30 @@ export async function getBookPdfMetadata(
     return response.json();
 }
 
-export async function openBookPdfInApp(bookId: string, title?: string): Promise<void> {
+export async function openBookPdfInApp(
+    bookId: string,
+    title?: string,
+    context?: PdfReaderLaunchContext,
+): Promise<void> {
+    if (context?.sourceBookId) {
+        writePdfReaderLaunchContext(context);
+    }
+
     const hashPath = `#/pdf-reader/${encodeURIComponent(bookId)}`;
-    const hashQuery = title && title.trim()
-        ? `?title=${encodeURIComponent(title.trim())}`
-        : '';
+    const params = new URLSearchParams();
+    if (title && title.trim()) {
+        params.set('title', title.trim());
+    }
+    if (context?.sourceBookId) {
+        params.set('sourceBookId', context.sourceBookId);
+    }
+    if (context?.sourceTitle?.trim()) {
+        params.set('sourceTitle', context.sourceTitle.trim());
+    }
+    if (context?.sourceAuthor?.trim()) {
+        params.set('sourceAuthor', context.sourceAuthor.trim());
+    }
+    const hashQuery = params.toString() ? `?${params.toString()}` : '';
     const readerUrl = `${window.location.origin}${window.location.pathname}${hashPath}${hashQuery}`;
     window.location.assign(readerUrl);
 }
