@@ -216,10 +216,6 @@ export const PdfReaderPage: React.FC = () => {
 
   const handleOpenNative = () => {
     if (!pdfUrl) return;
-    if (isIosMobile) {
-      window.location.assign(pdfUrl);
-      return;
-    }
     window.open(pdfUrl, '_blank', 'noopener,noreferrer');
   };
 
@@ -742,7 +738,7 @@ export const PdfReaderPage: React.FC = () => {
                   <h2 className="mt-4 text-xl font-semibold text-slate-900">Use the full PDF viewer on iOS</h2>
                   <p className="mt-3 text-sm leading-6 text-slate-600">
                     Safari does not reliably render multi-page PDFs inside this embedded reader. Open the full PDF,
-                    copy the text you need, then use the browser back button to return here and save it with Capture.
+                    copy the text you need, then switch back to TomeHub and save it with Capture.
                   </p>
                   <div className="mt-5 flex flex-col items-center justify-center gap-2 sm:flex-row">
                     <button

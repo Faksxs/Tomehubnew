@@ -863,7 +863,7 @@ export async function openBookPdfInApp(
         if (title && title.trim()) {
             pdfUrl.searchParams.set('title', title.trim());
         }
-        window.location.assign(pdfUrl.toString());
+        window.open(pdfUrl.toString(), '_blank', 'noopener,noreferrer');
         return;
     }
 
@@ -883,7 +883,7 @@ export async function openBookPdfInApp(
     }
     const hashQuery = params.toString() ? `?${params.toString()}` : '';
     const readerUrl = `${window.location.origin}${window.location.pathname}${hashPath}${hashQuery}`;
-    window.location.assign(readerUrl);
+    window.open(readerUrl, '_blank', 'noopener,noreferrer');
 }
 
 export async function getMemoryProfile(firebaseUid: string): Promise<MemoryProfileResponse> {
