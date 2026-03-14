@@ -710,11 +710,16 @@ async def execute_chat_request(
                     "retrieval_path",
                     "graph_candidates_count",
                     "external_graph_candidates_count",
+                    "islamic_external_candidates_count",
                     "vector_candidates_count",
                     "source_diversity_count",
                     "source_type_diversity_count",
                     "academic_scope",
                     "external_kb_used",
+                    "islamic_external_used",
+                    "islamic_provider_counts",
+                    "quran_external_used",
+                    "hadith_external_used",
                     "wikidata_qid",
                     "openalex_used",
                     "dbpedia_used",
@@ -745,6 +750,11 @@ async def execute_chat_request(
                         "score": chunk.get("answerability_score", 0),
                         "page_number": chunk.get("page_number", 0),
                         "content": str(chunk.get("content_chunk", ""))[:500],
+                        "source_type": chunk.get("source_type"),
+                        "provider": chunk.get("provider"),
+                        "source_url": chunk.get("source_url"),
+                        "reference": chunk.get("reference"),
+                        "religious_source_kind": chunk.get("religious_source_kind"),
                     }
                 )
     else:

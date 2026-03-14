@@ -813,6 +813,73 @@ class Settings:
         self.EXTERNAL_KB_DBPEDIA_WEIGHT = float(os.getenv("EXTERNAL_KB_DBPEDIA_WEIGHT", "0.08"))
         self.EXTERNAL_KB_ORKG_WEIGHT = float(os.getenv("EXTERNAL_KB_ORKG_WEIGHT", "0.10"))
         self.EXTERNAL_KB_HTTP_MAX_RETRY = int(os.getenv("EXTERNAL_KB_HTTP_MAX_RETRY", "1"))
+
+        # Explorer-only Islamic providers
+        self.ISLAMIC_API_ENABLED = os.getenv("ISLAMIC_API_ENABLED", "false").strip().lower() == "true"
+        self.ISLAMIC_API_EXPLORER_ONLY = (
+            os.getenv("ISLAMIC_API_EXPLORER_ONLY", "true").strip().lower() == "true"
+        )
+        self.ISLAMIC_API_MAX_CANDIDATES = int(os.getenv("ISLAMIC_API_MAX_CANDIDATES", "4"))
+        if self.ISLAMIC_API_MAX_CANDIDATES < 1:
+            self.ISLAMIC_API_MAX_CANDIDATES = 4
+        if self.ISLAMIC_API_MAX_CANDIDATES > 8:
+            self.ISLAMIC_API_MAX_CANDIDATES = 8
+        self.ISLAMIC_API_MIN_CONFIDENCE = float(os.getenv("ISLAMIC_API_MIN_CONFIDENCE", "0.45"))
+        self.ISLAMIC_API_QURAN_WEIGHT = float(os.getenv("ISLAMIC_API_QURAN_WEIGHT", "0.22"))
+        self.ISLAMIC_API_HADITH_WEIGHT = float(os.getenv("ISLAMIC_API_HADITH_WEIGHT", "0.18"))
+        self.ISLAMIC_API_HTTP_TIMEOUT_SEC = float(os.getenv("ISLAMIC_API_HTTP_TIMEOUT_SEC", "6.0"))
+        self.ISLAMIC_API_HTTP_MAX_RETRY = int(os.getenv("ISLAMIC_API_HTTP_MAX_RETRY", "1"))
+
+        self.QURAN_FOUNDATION_ENABLED = os.getenv("QURAN_FOUNDATION_ENABLED", "false").strip().lower() == "true"
+        self.QURAN_FOUNDATION_CLIENT_ID = os.getenv("QURAN_FOUNDATION_CLIENT_ID", "").strip()
+        self.QURAN_FOUNDATION_CLIENT_SECRET = os.getenv("QURAN_FOUNDATION_CLIENT_SECRET", "").strip()
+        self.QURAN_FOUNDATION_OAUTH_URL = (
+            os.getenv("QURAN_FOUNDATION_OAUTH_URL", "https://oauth2.quran.foundation").strip().rstrip("/")
+        )
+        self.QURAN_FOUNDATION_CONTENT_SCOPE = (
+            os.getenv("QURAN_FOUNDATION_CONTENT_SCOPE", "content").strip() or "content"
+        )
+        self.QURAN_FOUNDATION_API_BASE_URL = (
+            os.getenv(
+                "QURAN_FOUNDATION_API_BASE_URL",
+                "https://apis.quran.foundation/content/api/v4",
+            ).strip().rstrip("/")
+        )
+        self.QURAN_FOUNDATION_DEFAULT_TRANSLATION_IDS = _parse_csv(
+            os.getenv("QURAN_FOUNDATION_DEFAULT_TRANSLATION_IDS", "77")
+        )
+        self.QURAN_FOUNDATION_DEFAULT_LANGUAGE = (
+            os.getenv("QURAN_FOUNDATION_DEFAULT_LANGUAGE", "tr").strip().lower() or "tr"
+        )
+
+        self.DIYANET_QURAN_ENABLED = os.getenv("DIYANET_QURAN_ENABLED", "false").strip().lower() == "true"
+        self.DIYANET_QURAN_API_KEY = os.getenv("DIYANET_QURAN_API_KEY", "").strip()
+        self.DIYANET_QURAN_BASE_URL = (
+            os.getenv(
+                "DIYANET_QURAN_BASE_URL",
+                "https://acikkaynakkuran-dev.diyanet.gov.tr",
+            ).strip().rstrip("/")
+        )
+
+        self.HADEETHENC_ENABLED = os.getenv("HADEETHENC_ENABLED", "false").strip().lower() == "true"
+        self.HADEETHENC_API_BASE_URL = (
+            os.getenv("HADEETHENC_API_BASE_URL", "https://hadeethenc.com/api/v1").strip().rstrip("/")
+        )
+        self.HADEETHENC_LANGUAGE_PRIMARY = (
+            os.getenv("HADEETHENC_LANGUAGE_PRIMARY", "tr").strip().lower() or "tr"
+        )
+        self.HADEETHENC_LANGUAGE_FALLBACK = (
+            os.getenv("HADEETHENC_LANGUAGE_FALLBACK", "en").strip().lower() or "en"
+        )
+        self.HADEETHENC_CATEGORY_CACHE_TTL_SEC = int(
+            os.getenv("HADEETHENC_CATEGORY_CACHE_TTL_SEC", "21600")
+        )
+
+        self.HADITH_API_ENABLED = os.getenv("HADITH_API_ENABLED", "false").strip().lower() == "true"
+        self.HADITH_API_KEY = os.getenv("HADITH_API_KEY", "").strip()
+        self.HADITH_API_BASE_URL = (
+            os.getenv("HADITH_API_BASE_URL", "https://hadithapi.com/api").strip().rstrip("/")
+        )
         
         # Flow (Layer 4) text repair: deterministic display-time OCR/imla fix
         self.FLOW_TEXT_REPAIR_ENABLED = os.getenv("FLOW_TEXT_REPAIR_ENABLED", "true").strip().lower() == "true"

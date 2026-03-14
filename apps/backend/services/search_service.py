@@ -85,6 +85,7 @@ from services.external_kb_service import (
     get_external_meta,
     maybe_refresh_external_for_explorer_async,
 )
+from services.islamic_api_service import get_islamic_external_candidates
 from services.analytics_service import (
     is_analytic_word_count,
     extract_target_term,
@@ -1204,6 +1205,12 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
     external_graph_results: List[Dict[str, Any]] = []
     external_kb_used = False
     external_graph_candidates_count = 0
+    islamic_external_results: List[Dict[str, Any]] = []
+    islamic_external_used = False
+    islamic_external_candidates_count = 0
+    islamic_provider_counts: Dict[str, int] = {}
+    quran_external_used = False
+    hadith_external_used = False
     academic_scope = False
     wikidata_qid = None
     openalex_used = False
@@ -1424,6 +1431,44 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
             if key not in all_chunks_map:
                 all_chunks_map[key] = c_std
 
+    if (
+        mode == "EXPLORER"
+        and bool(getattr(settings, "ISLAMIC_API_ENABLED", False))
+        and (not bool(getattr(settings, "ISLAMIC_API_EXPLORER_ONLY", True)) or mode == "EXPLORER")
+    ):
+        islamic_external_results, islamic_diag = get_islamic_external_candidates(
+            effective_query,
+            limit=max(1, min(int(getattr(settings, "ISLAMIC_API_MAX_CANDIDATES", 4) or 4), 8)),
+        )
+        islamic_external_candidates_count = len(islamic_external_results)
+        islamic_external_used = islamic_external_candidates_count > 0
+        islamic_provider_counts = dict(islamic_diag.get("providers") or {})
+        quran_external_used = bool(islamic_diag.get("quran_used"))
+        hadith_external_used = bool(islamic_diag.get("hadith_used"))
+
+        for c in islamic_external_results:
+            c_std = {
+                "title": c.get("title", "Islamic External"),
+                "content_chunk": c.get("content_chunk", ""),
+                "page_number": c.get("page_number", 0),
+                "source_type": "ISLAMIC_EXTERNAL",
+                "epistemic_level": "B",
+                "score": c.get("score", 0.6),
+                "external_weight": float(
+                    c.get(
+                        "external_weight",
+                        getattr(settings, "ISLAMIC_API_QURAN_WEIGHT", 0.22),
+                    )
+                ),
+                "provider": c.get("provider"),
+                "religious_source_kind": c.get("religious_source_kind"),
+                "source_url": c.get("source_url"),
+                "reference": c.get("reference"),
+            }
+            key = f"{c_std['title']}_{str(c_std['content_chunk'])[:20]}"
+            if key not in all_chunks_map:
+                all_chunks_map[key] = c_std
+
     # 3. Supplementary Keyword Search (Gap Filling)
     # Only run when primary retrieval is sparse to avoid extra latency.
     supplementary_search_applied = False
@@ -1587,6 +1632,12 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
             if ext_boost > chunk.get('answerability_score', 0):
                 chunk['answerability_score'] = ext_boost
                 chunk['epistemic_level'] = 'B'
+        elif chunk.get('source_type') == 'ISLAMIC_EXTERNAL':
+            ext_weight = float(chunk.get('external_weight', getattr(settings, "ISLAMIC_API_QURAN_WEIGHT", 0.22)))
+            ext_boost = max(0.8, min(2.2, ext_weight * 6.4))
+            if ext_boost > chunk.get('answerability_score', 0):
+                chunk['answerability_score'] = ext_boost
+                chunk['epistemic_level'] = 'B'
         if chunk.get("_parent_context"):
             decay = float(getattr(settings, "L3_PHASE4_PARENT_SCORE_DECAY", 0.88) or 0.88)
             current = float(chunk.get("answerability_score", 0.0) or 0.0)
@@ -1615,6 +1666,9 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         if chunk.get('source_type') == 'EXTERNAL_KB':
             ext_weight = float(chunk.get('external_weight', getattr(settings, "EXTERNAL_KB_GRAPH_WEIGHT", 0.15)))
             return base * max(0.05, min(0.30, ext_weight))
+        if chunk.get('source_type') == 'ISLAMIC_EXTERNAL':
+            ext_weight = float(chunk.get('external_weight', getattr(settings, "ISLAMIC_API_QURAN_WEIGHT", 0.22)))
+            return base * max(0.08, min(0.38, ext_weight))
         
         weight = 1.0
         if intent in ['NARRATIVE', 'SOCIETAL']:
@@ -1756,11 +1810,16 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         "search_log_id": search_log_id,
         "graph_candidates_count": len(graph_results),
         "external_graph_candidates_count": external_graph_candidates_count,
+        "islamic_external_candidates_count": islamic_external_candidates_count,
         "vector_candidates_count": len(question_results),
         "source_diversity_count": source_diversity_count,
         "source_type_diversity_count": source_type_diversity_count,
         "academic_scope": academic_scope,
         "external_kb_used": external_kb_used,
+        "islamic_external_used": islamic_external_used,
+        "islamic_provider_counts": islamic_provider_counts,
+        "quran_external_used": quran_external_used,
+        "hadith_external_used": hadith_external_used,
         "wikidata_qid": wikidata_qid,
         "openalex_used": openalex_used,
         "dbpedia_used": dbpedia_used,
@@ -1824,11 +1883,16 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
             "search_log_id": search_log_id,
             "graph_candidates_count": len(graph_results),
             "external_graph_candidates_count": external_graph_candidates_count,
+            "islamic_external_candidates_count": islamic_external_candidates_count,
             "vector_candidates_count": len(question_results),
             "source_diversity_count": source_diversity_count,
             "source_type_diversity_count": source_type_diversity_count,
             "academic_scope": academic_scope,
             "external_kb_used": external_kb_used,
+            "islamic_external_used": islamic_external_used,
+            "islamic_provider_counts": islamic_provider_counts,
+            "quran_external_used": quran_external_used,
+            "hadith_external_used": hadith_external_used,
             "wikidata_qid": wikidata_qid,
             "openalex_used": openalex_used,
             "dbpedia_used": dbpedia_used,
@@ -2033,7 +2097,11 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
         'title': c.get('title', 'Unknown'), 
         'page_number': c.get('page_number', 0),
         'content': str(c.get('content_chunk', ''))[:400],
-        'score': c.get('score', 0)
+        'score': c.get('score', 0),
+        'source_type': c.get('source_type'),
+        'provider': c.get('provider'),
+        'source_url': c.get('source_url'),
+        'reference': c.get('reference'),
     } for i, c in enumerate(used_chunks, 1)]
     
     try:
@@ -2305,5 +2373,3 @@ if __name__ == "__main__":
             print("  1. Database contains content for this user")
             print("  2. GEMINI_API_KEY is configured")
             print("  3. Internet connectivity")
-
-

@@ -197,6 +197,11 @@ export interface ChatResponse {
         score: number;
         page_number: number;
         content?: string;
+        source_type?: string;
+        provider?: string;
+        source_url?: string;
+        reference?: string;
+        religious_source_kind?: string;
     }>;
     timestamp: string;
     conversation_state?: {

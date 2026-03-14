@@ -14,6 +14,11 @@ interface Message {
         score: number;
         page_number: number;
         content?: string;
+        source_type?: string;
+        provider?: string;
+        source_url?: string;
+        reference?: string;
+        religious_source_kind?: string;
     }>;
     thinkingHistory?: Array<{
         attempt: number;
@@ -67,6 +72,20 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack, onSa
     useEffect(() => {
         inputRef.current?.focus();
     }, []);
+
+    const splitSources = (sources?: Message['sources']) => {
+        const internal: NonNullable<Message['sources']> = [];
+        const external: NonNullable<Message['sources']> = [];
+        for (const source of sources || []) {
+            const sourceType = (source.source_type || '').toUpperCase();
+            if (sourceType === 'ISLAMIC_EXTERNAL' || sourceType === 'EXTERNAL_KB') {
+                external.push(source);
+            } else {
+                internal.push(source);
+            }
+        }
+        return { internal, external };
+    };
 
     const handleSend = async () => {
         if (!input.trim() || isLoading) return;
@@ -483,21 +502,77 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack, onSa
                                             {message.sources.length} sources
                                         </button>
 
-                                        {expandedSources.has(message.id) && (
-                                            <div className="mt-2 space-y-1 pl-2 border-l-2 border-[#CC561E]/30 dark:border-[#CC561E]/50">
-                                                {message.sources.map((source, idx) => (
-                                                    <div key={idx} className="text-xs text-slate-500 dark:text-slate-400 py-1 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800/50 rounded px-1">
-                                                        <span className="inline-flex items-center justify-center w-4 h-4 mr-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-[9px] font-bold">
-                                                            {source.id || (idx + 1)}
-                                                        </span>
-                                                        <span className="font-medium">{source.title}</span>
-                                                        <span className="ml-2 text-slate-400 text-[10px]">
-                                                            p.{source.page_number}
-                                                        </span>
+                                        {expandedSources.has(message.id) && (() => {
+                                            const { internal, external } = splitSources(message.sources);
+                                            const renderSourceRow = (source: NonNullable<Message['sources']>[number], idx: number) => (
+                                                <div key={`${source.id || idx}-${source.title}`} className="text-xs text-slate-500 dark:text-slate-400 py-1.5 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800/50 rounded px-2">
+                                                    <div className="flex items-start justify-between gap-2">
+                                                        <div className="min-w-0">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="inline-flex items-center justify-center w-4 h-4 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-[9px] font-bold">
+                                                                    {source.id || (idx + 1)}
+                                                                </span>
+                                                                <span className="font-medium text-slate-600 dark:text-slate-300">{source.title}</span>
+                                                            </div>
+                                                            {(source.provider || source.reference || source.religious_source_kind) && (
+                                                                <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-400">
+                                                                    {source.provider && (
+                                                                        <span className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 uppercase tracking-wide">
+                                                                            {source.provider}
+                                                                        </span>
+                                                                    )}
+                                                                    {source.religious_source_kind && (
+                                                                        <span>{source.religious_source_kind}</span>
+                                                                    )}
+                                                                    {source.reference && (
+                                                                        <span>Ref: {source.reference}</span>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                                                            {source.page_number > 0 && <span>p.{source.page_number}</span>}
+                                                            {source.source_url && (
+                                                                <a
+                                                                    href={source.source_url}
+                                                                    target="_blank"
+                                                                    rel="noreferrer"
+                                                                    className="inline-flex items-center gap-1 text-[#CC561E] hover:underline"
+                                                                >
+                                                                    <ExternalLink className="w-2.5 h-2.5" />
+                                                                    Link
+                                                                </a>
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                ))}
-                                            </div>
-                                        )}
+                                                </div>
+                                            );
+
+                                            return (
+                                                <div className="mt-2 space-y-3 pl-2 border-l-2 border-[#CC561E]/30 dark:border-[#CC561E]/50">
+                                                    {internal.length > 0 && (
+                                                        <div>
+                                                            <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                                                İç Kaynaklar
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                {internal.map(renderSourceRow)}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {external.length > 0 && (
+                                                        <div>
+                                                            <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-[#CC561E] dark:text-[#f3a47b]">
+                                                                Dış Kaynaklar
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                {external.map(renderSourceRow)}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
                                 )}
                             </div>
