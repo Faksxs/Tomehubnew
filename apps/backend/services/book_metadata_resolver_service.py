@@ -233,7 +233,7 @@ def _mark_negative_cache(cache_key: str, ttl_sec: float = NEGATIVE_CACHE_TTL_SEC
         _NEGATIVE_CACHE[cache_key] = time.time() + max(1.0, float(ttl_sec))
 
 
-def _fetch_json_with_retry(
+def _fetch_json_with_retry_with_status(
     url: str,
     *,
     provider: str,
@@ -241,9 +241,9 @@ def _fetch_json_with_retry(
     timeout_sec: float,
     max_attempts: int = 3,
     headers: Optional[Dict[str, str]] = None,
-) -> Optional[Dict[str, Any]]:
+) -> Tuple[Optional[Dict[str, Any]], Optional[int]]:
     if _is_negative_cached(cache_key):
-        return None
+        return None, None
 
     user_agent = "TomeHub-BookResolver/1.0"
     if provider == "open-library":
@@ -258,7 +258,7 @@ def _fetch_json_with_retry(
             with urllib_request.urlopen(req, timeout=timeout_sec) as resp:
                 charset = resp.headers.get_content_charset() or "utf-8"
                 raw = resp.read().decode(charset, errors="replace")
-                return json.loads(raw)
+                return json.loads(raw), int(getattr(resp, "status", 200) or 200)
         except HTTPError as exc:
             code = int(getattr(exc, "code", 0) or 0)
             retryable = code in {429, 500, 502, 503, 504}
@@ -274,7 +274,7 @@ def _fetch_json_with_retry(
                 code,
                 url,
             )
-            return None
+            return None, code
         except (URLError, TimeoutError) as exc:
             if attempt + 1 < max_attempts:
                 wait_s = (0.30 * (2 ** attempt)) + random.uniform(0.05, 0.15)
@@ -287,7 +287,7 @@ def _fetch_json_with_retry(
                 url,
                 exc,
             )
-            return None
+            return None, None
         except Exception as exc:
             logger.warning(
                 "Book metadata provider unexpected failure: provider=%s url=%s error=%s",
@@ -295,8 +295,28 @@ def _fetch_json_with_retry(
                 url,
                 exc,
             )
-            return None
-    return None
+            return None, None
+    return None, None
+
+
+def _fetch_json_with_retry(
+    url: str,
+    *,
+    provider: str,
+    cache_key: str,
+    timeout_sec: float,
+    max_attempts: int = 3,
+    headers: Optional[Dict[str, str]] = None,
+) -> Optional[Dict[str, Any]]:
+    data, _status = _fetch_json_with_retry_with_status(
+        url,
+        provider=provider,
+        cache_key=cache_key,
+        timeout_sec=timeout_sec,
+        max_attempts=max_attempts,
+        headers=headers,
+    )
+    return data
 
 
 def _normalize_isbn_list(candidates: Any) -> List[str]:
@@ -649,16 +669,30 @@ def _fetch_google_books(query: str, isbn_set: Set[str]) -> List[Dict[str, Any]]:
         }
         if not isbn_set:
             params["langRestrict"] = "tr"
+        params_with_key = dict(params)
         if api_key:
-            params["key"] = api_key
-        api_url = f"https://www.googleapis.com/books/v1/volumes?{urllib_parse.urlencode(params)}"
-        data = _fetch_json_with_retry(
+            params_with_key["key"] = api_key
+        api_url = f"https://www.googleapis.com/books/v1/volumes?{urllib_parse.urlencode(params_with_key)}"
+        data, status_code = _fetch_json_with_retry_with_status(
             api_url,
             provider="google-books",
             cache_key=f"gbooks:{variant}",
             timeout_sec=4.5,
             max_attempts=3,
         )
+        if data is None and api_key and status_code == 403:
+            logger.warning(
+                "Google Books API key rejected for book search; retrying without key for variant=%s",
+                variant,
+            )
+            fallback_url = f"https://www.googleapis.com/books/v1/volumes?{urllib_parse.urlencode(params)}"
+            data = _fetch_json_with_retry(
+                fallback_url,
+                provider="google-books",
+                cache_key=f"gbooks-nokey:{variant}",
+                timeout_sec=4.5,
+                max_attempts=2,
+            )
         items = (data or {}).get("items", []) if isinstance(data, dict) else []
         for item in items if isinstance(items, list) else []:
             if not isinstance(item, dict):

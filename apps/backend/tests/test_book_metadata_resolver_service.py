@@ -2,6 +2,36 @@ from services import book_metadata_resolver_service as resolver
 from unittest.mock import patch
 
 
+def test_fetch_google_books_retries_without_key_after_403(monkeypatch):
+    monkeypatch.setattr(resolver.settings, "GOOGLE_BOOKS_API_KEY", "blocked-key")
+
+    def fake_fetch(url, *, provider, cache_key, timeout_sec, max_attempts=3, headers=None):
+        if "key=blocked-key" in url:
+            return None, 403
+        return (
+            {
+                "items": [
+                    {
+                        "volumeInfo": {
+                            "title": "Tutunamayanlar",
+                            "authors": ["Oguz Atay"],
+                            "industryIdentifiers": [{"identifier": "9789754700114"}],
+                            "language": "tr",
+                        }
+                    }
+                ]
+            },
+            200,
+        )
+
+    monkeypatch.setattr(resolver, "_fetch_json_with_retry_with_status", fake_fetch)
+
+    rows = resolver._fetch_google_books("Tutunamayanlar", set())
+    assert len(rows) == 1
+    assert rows[0]["_provider"] == "google-books"
+    assert rows[0]["title"] == "Tutunamayanlar"
+
+
 def test_resolve_book_metadata_prefers_openlibrary_bib_for_isbn(monkeypatch):
     isbn = "9789750721311"
 
