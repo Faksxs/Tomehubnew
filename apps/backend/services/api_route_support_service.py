@@ -420,6 +420,7 @@ async def execute_search_request(
             visibility_scope,
             search_request.content_type,
             search_request.ingestion_type,
+            search_request.domain_mode,
         ),
     )
 
@@ -444,6 +445,7 @@ async def execute_search_request(
         metadata.setdefault("visibility_scope", visibility_scope)
         metadata.setdefault("content_type_filter", search_request.content_type)
         metadata.setdefault("ingestion_type_filter", search_request.ingestion_type)
+        metadata.setdefault("requested_domain_mode", search_request.domain_mode)
 
     return {
         "answer": answer,
@@ -683,6 +685,7 @@ async def execute_chat_request(
                 target_book_ids=chat_request.target_book_ids,
                 limit=retrieval_limit,
                 offset=chat_request.offset,
+                domain_mode=chat_request.domain_mode,
             ),
         )
 
@@ -708,6 +711,10 @@ async def execute_chat_request(
                 for key in (
                     "retrieval_fusion_mode",
                     "retrieval_path",
+                    "resolved_domain_mode",
+                    "domain_confidence",
+                    "domain_reason",
+                    "provider_policy_applied",
                     "graph_candidates_count",
                     "external_graph_candidates_count",
                     "islamic_external_candidates_count",
@@ -755,6 +762,8 @@ async def execute_chat_request(
                         "source_url": chunk.get("source_url"),
                         "reference": chunk.get("reference"),
                         "religious_source_kind": chunk.get("religious_source_kind"),
+                        "canonical_reference": chunk.get("canonical_reference"),
+                        "is_exact_match": chunk.get("is_exact_match"),
                     }
                 )
     else:
@@ -775,6 +784,10 @@ async def execute_chat_request(
                 scope_ctx["scope_policy_active"],
                 chat_request.compare_mode,
                 chat_request.target_book_ids,
+                "default",
+                None,
+                None,
+                chat_request.domain_mode,
             ),
         )
         if answer_result:
@@ -789,6 +802,7 @@ async def execute_chat_request(
         final_metadata.setdefault("scope_mode", scope_ctx["scope_mode"])
         final_metadata.setdefault("resolved_book_id", scope_ctx["resolved_book_id"])
         final_metadata.setdefault("memory_profile_loaded", bool(memory_context_snippet))
+        final_metadata.setdefault("requested_domain_mode", chat_request.domain_mode)
 
     await loop.run_in_executor(None, add_message_fn, session_id, "assistant", answer, sources)
     background_tasks.add_task(summarize_session_history_fn, session_id)

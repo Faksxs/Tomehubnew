@@ -127,6 +127,44 @@ class ExternalKBServiceTests(unittest.TestCase):
         self.assertIsNone(result)
         mock_warning.assert_called_once()
 
+    @patch("services.external_kb_service._search_arxiv_direct", return_value=[{"provider": "ARXIV", "title": "Paper", "score": 0.63}])
+    @patch("services.external_kb_service._search_share_direct", return_value=[{"provider": "SHARE", "title": "Paper", "score": 0.61}])
+    @patch("services.external_kb_service._search_semantic_scholar_direct", return_value=[{"provider": "SEMANTIC_SCHOLAR", "title": "Paper", "score": 0.65}])
+    @patch("services.external_kb_service._search_crossref_direct", return_value=[{"provider": "CROSSREF", "title": "Paper", "score": 0.6}])
+    @patch("services.external_kb_service._search_openalex_direct", return_value=[{"provider": "OPENALEX", "title": "Paper", "score": 0.7}])
+    def test_domain_external_candidates_for_academic(self, _mock_openalex, _mock_crossref, _mock_semantic, _mock_share, _mock_arxiv):
+        out = external_kb_service.get_domain_external_candidates(
+            "literature review for this paper",
+            "ACADEMIC",
+            limit=4,
+        )
+
+        self.assertEqual([row["provider"] for row in out], ["OPENALEX", "SEMANTIC_SCHOLAR", "ARXIV", "SHARE"])
+
+    @patch("services.external_kb_service._search_internet_archive_direct", return_value=[{"provider": "INTERNET_ARCHIVE", "title": "Archive", "score": 0.58}])
+    @patch("services.external_kb_service._search_europeana_direct", return_value=[{"provider": "EUROPEANA", "title": "Museum", "score": 0.64}])
+    def test_domain_external_candidates_for_culture_history(self, _mock_europeana, _mock_archive):
+        out = external_kb_service.get_domain_external_candidates(
+            "ottoman archive and museum context",
+            "CULTURE_HISTORY",
+            limit=4,
+        )
+
+        self.assertEqual([row["provider"] for row in out], ["EUROPEANA", "INTERNET_ARCHIVE"])
+
+    @patch("services.external_kb_service._search_lingua_robot_lexical", return_value={"provider": "LINGUA_ROBOT", "reference": "logos", "score": 0.57})
+    @patch("services.external_kb_service._search_words_api_lexical", return_value={"provider": "WORDS_API", "reference": "logos", "score": 0.58})
+    @patch("services.external_kb_service._fetch_wiktionary_extract", return_value={"title": "logos", "extract": "Anlami ve kokenu."})
+    def test_lexical_support_candidates_use_dictionary_providers(self, _mock_extract, _mock_words, _mock_lingua):
+        out = external_kb_service.get_lexical_support_candidates(
+            "logos ne demek",
+            "LITERARY",
+            limit=4,
+        )
+
+        self.assertEqual(len(out), 3)
+        self.assertEqual([row["provider"] for row in out], ["WORDS_API", "LINGUA_ROBOT", "WIKTIONARY"])
+
 
 if __name__ == "__main__":
     unittest.main()

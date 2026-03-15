@@ -2,6 +2,7 @@ import json
 import re
 import threading
 import time
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from urllib import parse as urllib_parse
@@ -341,6 +342,963 @@ def _fetch_openalex(title: str, author: Optional[str], doi: Optional[str] = None
             if str((a.get("author") or {}).get("id") or "").strip()
         ][:10],
     }
+
+
+def _search_openalex_direct(query: str, limit: int = 3) -> List[Dict[str, Any]]:
+    text = str(query or "").strip()
+    if not text:
+        return []
+    params = {"search": text, "per-page": max(1, min(int(limit or 3), 5))}
+    openalex_email = str(getattr(settings, "OPENALEX_EMAIL", "") or "").strip()
+    openalex_api_key = str(getattr(settings, "OPENALEX_API_KEY", "") or "").strip()
+    if openalex_email:
+        params["mailto"] = openalex_email
+    if openalex_api_key:
+        params["api_key"] = openalex_api_key
+    headers: Optional[Dict[str, str]] = None
+    if openalex_api_key:
+        headers = {"Authorization": f"Bearer {openalex_api_key}"}
+    url = f"https://api.openalex.org/works?{urllib_parse.urlencode(params)}"
+    data = _http_get_json(
+        url,
+        timeout_sec=float(getattr(settings, "EXTERNAL_KB_OPENALEX_TIMEOUT_SEC", 3.0)),
+        headers=headers,
+    )
+    rows = (data or {}).get("results", []) if isinstance(data, dict) else []
+    out: List[Dict[str, Any]] = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict):
+            continue
+        title = str(row.get("display_name") or "").strip()
+        if not title:
+            continue
+        doi = str(row.get("doi") or "").strip()
+        authors = [
+            str(((a.get("author") or {}).get("display_name")) or "").strip()
+            for a in (row.get("authorships", []) or [])
+            if isinstance(a, dict)
+        ]
+        authors = [a for a in authors if a][:3]
+        concepts = [
+            str(c.get("display_name") or "").strip()
+            for c in (row.get("concepts", []) or [])
+            if isinstance(c, dict) and str(c.get("display_name") or "").strip()
+        ][:4]
+        published = str(((row.get("publication_year") or "")))[:10]
+        pieces = []
+        if authors:
+            pieces.append("Authors: " + ", ".join(authors))
+        if published:
+            pieces.append(f"Year: {published}")
+        if concepts:
+            pieces.append("Topics: " + ", ".join(concepts))
+        out.append(
+            {
+                "title": title,
+                "content_chunk": " | ".join(pieces) or "Academic record from OpenAlex",
+                "page_number": 0,
+                "source_type": "EXTERNAL_KB",
+                "score": float(row.get("relevance_score") or 0.66),
+                "external_weight": 0.18,
+                "provider": "OPENALEX",
+                "source_url": str(row.get("id") or "").strip() or None,
+                "reference": doi or None,
+            }
+        )
+    return out[: max(1, min(int(limit or 3), 5))]
+
+
+def _search_crossref_direct(query: str, limit: int = 3) -> List[Dict[str, Any]]:
+    text = str(query or "").strip()
+    if not text:
+        return []
+    params = {
+        "query.bibliographic": text,
+        "rows": max(1, min(int(limit or 3), 5)),
+    }
+    openalex_email = str(getattr(settings, "OPENALEX_EMAIL", "") or "").strip()
+    if openalex_email:
+        params["mailto"] = openalex_email
+    url = f"https://api.crossref.org/works?{urllib_parse.urlencode(params)}"
+    data = _http_get_json(url, timeout_sec=3.5)
+    rows = ((data or {}).get("message") or {}).get("items", []) if isinstance(data, dict) else []
+    out: List[Dict[str, Any]] = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict):
+            continue
+        titles = row.get("title") or []
+        title = str(titles[0] or "").strip() if isinstance(titles, list) and titles else ""
+        if not title:
+            continue
+        doi = str(row.get("DOI") or "").strip()
+        container = row.get("container-title") or []
+        journal = str(container[0] or "").strip() if isinstance(container, list) and container else ""
+        author_names = []
+        for author in (row.get("author") or [])[:3]:
+            if not isinstance(author, dict):
+                continue
+            given = str(author.get("given") or "").strip()
+            family = str(author.get("family") or "").strip()
+            full = " ".join(part for part in [given, family] if part).strip()
+            if full:
+                author_names.append(full)
+        year_parts = (((row.get("issued") or {}).get("date-parts")) or [[]])
+        year = ""
+        if isinstance(year_parts, list) and year_parts and isinstance(year_parts[0], list) and year_parts[0]:
+            year = str(year_parts[0][0] or "").strip()
+        pieces = []
+        if journal:
+            pieces.append(f"Venue: {journal}")
+        if author_names:
+            pieces.append("Authors: " + ", ".join(author_names))
+        if year:
+            pieces.append(f"Year: {year}")
+        out.append(
+            {
+                "title": title,
+                "content_chunk": " | ".join(pieces) or "Academic bibliographic record from Crossref",
+                "page_number": 0,
+                "source_type": "EXTERNAL_KB",
+                "score": 0.62,
+                "external_weight": 0.16,
+                "provider": "CROSSREF",
+                "source_url": f"https://doi.org/{doi}" if doi else None,
+                "reference": doi or None,
+            }
+        )
+    return out[: max(1, min(int(limit or 3), 5))]
+
+
+def _search_semantic_scholar_direct(query: str, limit: int = 3) -> List[Dict[str, Any]]:
+    text = str(query or "").strip()
+    if not text:
+        return []
+    params = {
+        "query": text,
+        "limit": max(1, min(int(limit or 3), 5)),
+        "fields": "title,year,authors,citationCount,url,abstract,externalIds",
+    }
+    headers: Optional[Dict[str, str]] = None
+    api_key = str(getattr(settings, "SEMANTIC_SCHOLAR_API_KEY", "") or "").strip()
+    if api_key:
+        headers = {"x-api-key": api_key}
+    url = f"https://api.semanticscholar.org/graph/v1/paper/search?{urllib_parse.urlencode(params)}"
+    data = _http_get_json(url, timeout_sec=3.5, headers=headers)
+    rows = (data or {}).get("data", []) if isinstance(data, dict) else []
+    out: List[Dict[str, Any]] = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict):
+            continue
+        title = str(row.get("title") or "").strip()
+        if not title:
+            continue
+        author_names = [
+            str(author.get("name") or "").strip()
+            for author in (row.get("authors") or [])[:3]
+            if isinstance(author, dict) and str(author.get("name") or "").strip()
+        ]
+        citation_count = str(row.get("citationCount") or "").strip()
+        year = str(row.get("year") or "").strip()
+        abstract = str(row.get("abstract") or "").strip()
+        external_ids = row.get("externalIds") if isinstance(row.get("externalIds"), dict) else {}
+        doi = str(external_ids.get("DOI") or "").strip()
+        pieces = []
+        if author_names:
+            pieces.append("Authors: " + ", ".join(author_names))
+        if year:
+            pieces.append(f"Year: {year}")
+        if citation_count:
+            pieces.append(f"Citations: {citation_count}")
+        if abstract:
+            pieces.append(abstract[:220])
+        out.append(
+            {
+                "title": title,
+                "content_chunk": " | ".join(pieces) or "Academic record from Semantic Scholar",
+                "page_number": 0,
+                "source_type": "EXTERNAL_KB",
+                "score": 0.65,
+                "external_weight": 0.17,
+                "provider": "SEMANTIC_SCHOLAR",
+                "source_url": str(row.get("url") or "").strip() or None,
+                "reference": doi or None,
+            }
+        )
+    return out[: max(1, min(int(limit or 3), 5))]
+
+
+def _http_post_json(
+    url: str,
+    payload: Dict[str, Any],
+    timeout_sec: float,
+    headers: Optional[Dict[str, str]] = None,
+) -> Optional[Dict[str, Any]]:
+    retries = max(0, int(getattr(settings, "EXTERNAL_KB_HTTP_MAX_RETRY", 1)))
+    request_headers = {
+        "User-Agent": "TomeHub-ExternalKB/1.0",
+        "Content-Type": "application/json",
+    }
+    if headers:
+        request_headers.update({str(k): str(v) for k, v in headers.items()})
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib_request.Request(url=url, data=body, headers=request_headers, method="POST")
+    for idx in range(retries + 1):
+        try:
+            with urllib_request.urlopen(req, timeout=timeout_sec) as resp:
+                charset = resp.headers.get_content_charset() or "utf-8"
+                return json.loads(resp.read().decode(charset, errors="replace"))
+        except HTTPError as e:
+            code = int(getattr(e, "code", 0) or 0)
+            if idx < retries and (code == 429 or code >= 500):
+                time.sleep(0.2 * (idx + 1))
+                continue
+            logger.warning("external_kb HTTP POST failed: status=%s url=%s", code, url)
+            return None
+        except Exception as exc:
+            if idx < retries:
+                time.sleep(0.2 * (idx + 1))
+                continue
+            logger.warning("external_kb HTTP POST failed: url=%s error=%s", url, exc)
+            return None
+    return None
+
+
+def _rapidapi_headers(api_host: str, api_key: str) -> Dict[str, str]:
+    return {
+        "x-rapidapi-host": str(api_host or "").strip(),
+        "x-rapidapi-key": str(api_key or "").strip(),
+    }
+
+
+def _search_share_direct(query: str, limit: int = 3) -> List[Dict[str, Any]]:
+    text = str(query or "").strip()
+    if not text:
+        return []
+    url = "https://share.osf.io/api/v2/search/creativeworks/_search"
+    payload = {
+        "size": max(1, min(int(limit or 3), 5)),
+        "query": {
+            "query_string": {
+                "query": text,
+            }
+        },
+    }
+    data = _http_post_json(url, payload, timeout_sec=4.0)
+    hits = ((((data or {}).get("hits")) or {}).get("hits")) if isinstance(data, dict) else []
+    out: List[Dict[str, Any]] = []
+    for hit in hits if isinstance(hits, list) else []:
+        if not isinstance(hit, dict):
+            continue
+        source = hit.get("_source") if isinstance(hit.get("_source"), dict) else {}
+        title = str(source.get("title") or "").strip()
+        if not title:
+            continue
+        description = str(source.get("description") or "").strip()
+        contributors = source.get("contributors") if isinstance(source.get("contributors"), list) else []
+        contributor_names = []
+        for contributor in contributors[:3]:
+            if not isinstance(contributor, dict):
+                continue
+            name = str(contributor.get("name") or contributor.get("cited_as") or "").strip()
+            if name:
+                contributor_names.append(name)
+        date_value = str(source.get("date") or source.get("date_published") or "").strip()
+        subjects = source.get("subjects") if isinstance(source.get("subjects"), list) else []
+        subject_names = [str(item).strip() for item in subjects[:4] if str(item).strip()]
+        pieces = []
+        if contributor_names:
+            pieces.append("Contributors: " + ", ".join(contributor_names))
+        if date_value:
+            pieces.append(f"Date: {date_value[:10]}")
+        if subject_names:
+            pieces.append("Subjects: " + ", ".join(subject_names))
+        if description:
+            pieces.append(description[:220])
+        score = float(hit.get("_score") or 0.0)
+        identifiers = source.get("identifiers") if isinstance(source.get("identifiers"), list) else []
+        reference = str(identifiers[0] or "").strip() if identifiers else None
+        out.append(
+            {
+                "title": title,
+                "content_chunk": " | ".join(pieces) or "Academic discovery record from SHARE",
+                "page_number": 0,
+                "source_type": "EXTERNAL_KB",
+                "score": max(0.55, min(0.78, 0.55 + (0.03 * min(score, 6.0)))),
+                "external_weight": 0.15,
+                "provider": "SHARE",
+                "source_url": None,
+                "reference": reference,
+            }
+        )
+    return out[: max(1, min(int(limit or 3), 5))]
+
+
+def _search_arxiv_direct(query: str, limit: int = 3) -> List[Dict[str, Any]]:
+    text = str(query or "").strip()
+    if not text:
+        return []
+    params = {
+        "search_query": f"all:{text}",
+        "start": 0,
+        "max_results": max(1, min(int(limit or 3), 5)),
+    }
+    url = f"http://export.arxiv.org/api/query?{urllib_parse.urlencode(params)}"
+    retries = max(0, int(getattr(settings, "EXTERNAL_KB_HTTP_MAX_RETRY", 1)))
+    req = urllib_request.Request(
+        url=url,
+        headers={"User-Agent": "TomeHub-ExternalKB/1.0 (+https://tomehub.nl)"},
+        method="GET",
+    )
+    raw = None
+    for idx in range(retries + 1):
+        try:
+            with urllib_request.urlopen(req, timeout=4.0) as resp:
+                charset = resp.headers.get_content_charset() or "utf-8"
+                raw = resp.read().decode(charset, errors="replace")
+                break
+        except HTTPError as e:
+            code = int(getattr(e, "code", 0) or 0)
+            if idx < retries and (code == 429 or code >= 500):
+                time.sleep(0.2 * (idx + 1))
+                continue
+            logger.warning("external_kb arXiv request failed: status=%s url=%s", code, url)
+            return []
+        except Exception as exc:
+            if idx < retries:
+                time.sleep(0.2 * (idx + 1))
+                continue
+            logger.warning("external_kb arXiv request failed: url=%s error=%s", url, exc)
+            return []
+    if not raw:
+        return []
+
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError as exc:
+        logger.warning("external_kb arXiv parse failed: %s", exc)
+        return []
+
+    ns = {
+        "atom": "http://www.w3.org/2005/Atom",
+        "arxiv": "http://arxiv.org/schemas/atom",
+    }
+    out: List[Dict[str, Any]] = []
+    for entry in root.findall("atom:entry", ns):
+        title = str(entry.findtext("atom:title", default="", namespaces=ns) or "").strip()
+        if not title:
+            continue
+        summary = str(entry.findtext("atom:summary", default="", namespaces=ns) or "").strip()
+        published = str(entry.findtext("atom:published", default="", namespaces=ns) or "").strip()
+        entry_id = str(entry.findtext("atom:id", default="", namespaces=ns) or "").strip()
+        categories = [
+            str(cat.attrib.get("term") or "").strip()
+            for cat in entry.findall("atom:category", ns)
+            if str(cat.attrib.get("term") or "").strip()
+        ][:4]
+        authors = [
+            str(author.findtext("atom:name", default="", namespaces=ns) or "").strip()
+            for author in entry.findall("atom:author", ns)
+            if str(author.findtext("atom:name", default="", namespaces=ns) or "").strip()
+        ][:3]
+        pieces = []
+        if authors:
+            pieces.append("Authors: " + ", ".join(authors))
+        if published:
+            pieces.append(f"Published: {published[:10]}")
+        if categories:
+            pieces.append("Categories: " + ", ".join(categories))
+        if summary:
+            pieces.append(summary[:220])
+        reference = ""
+        if entry_id:
+            reference = entry_id.rstrip("/").rsplit("/", 1)[-1]
+        out.append(
+            {
+                "title": title,
+                "content_chunk": " | ".join(pieces) or "Academic preprint from arXiv",
+                "page_number": 0,
+                "source_type": "EXTERNAL_KB",
+                "score": 0.63,
+                "external_weight": 0.16,
+                "provider": "ARXIV",
+                "source_url": entry_id or None,
+                "reference": reference or None,
+            }
+        )
+    return out[: max(1, min(int(limit or 3), 5))]
+
+
+def _search_europeana_direct(query: str, limit: int = 3) -> List[Dict[str, Any]]:
+    text = str(query or "").strip()
+    api_key = str(getattr(settings, "EUROPEANA_API_KEY", "") or "").strip()
+    if not text or not api_key:
+        return []
+    params = {
+        "wskey": api_key,
+        "query": text,
+        "rows": max(1, min(int(limit or 3), 5)),
+        "profile": "minimal",
+    }
+    url = f"https://api.europeana.eu/record/v2/search.json?{urllib_parse.urlencode(params)}"
+    data = _http_get_json(url, timeout_sec=4.0)
+    rows = (data or {}).get("items", []) if isinstance(data, dict) else []
+    out: List[Dict[str, Any]] = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict):
+            continue
+        title_arr = row.get("title") or []
+        title = str(title_arr[0] or "").strip() if isinstance(title_arr, list) and title_arr else ""
+        if not title:
+            continue
+        provider = row.get("dataProvider") or []
+        provider_name = str(provider[0] or "").strip() if isinstance(provider, list) and provider else ""
+        item_type = str(row.get("type") or "").strip()
+        country = str(row.get("country") or "").strip()
+        pieces = []
+        if provider_name:
+            pieces.append(f"Provider: {provider_name}")
+        if item_type:
+            pieces.append(f"Type: {item_type}")
+        if country:
+            pieces.append(f"Country: {country}")
+        out.append(
+            {
+                "title": title,
+                "content_chunk": " | ".join(pieces) or "Cultural heritage record from Europeana",
+                "page_number": 0,
+                "source_type": "EXTERNAL_KB",
+                "score": 0.64,
+                "external_weight": 0.18,
+                "provider": "EUROPEANA",
+                "source_url": str(row.get("guid") or "").strip() or None,
+                "reference": str(row.get("id") or "").strip() or None,
+            }
+        )
+    return out[: max(1, min(int(limit or 3), 5))]
+
+
+def _search_internet_archive_direct(query: str, limit: int = 3) -> List[Dict[str, Any]]:
+    text = str(query or "").strip()
+    if not text:
+        return []
+    params = {
+        "q": text,
+        "fl[]": ["identifier", "title", "creator", "year", "mediatype"],
+        "rows": max(1, min(int(limit or 3), 5)),
+        "page": 1,
+        "output": "json",
+    }
+    # Keep repeated fl[] parameters
+    query_string = urllib_parse.urlencode(params, doseq=True)
+    url = f"https://archive.org/advancedsearch.php?{query_string}"
+    data = _http_get_json(url, timeout_sec=4.0)
+    rows = (((data or {}).get("response")) or {}).get("docs", []) if isinstance(data, dict) else []
+    out: List[Dict[str, Any]] = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict):
+            continue
+        title = str(row.get("title") or "").strip()
+        identifier = str(row.get("identifier") or "").strip()
+        if not title or not identifier:
+            continue
+        creator = row.get("creator")
+        if isinstance(creator, list):
+            creator = ", ".join(str(x).strip() for x in creator[:3] if str(x).strip())
+        creator = str(creator or "").strip()
+        year = str(row.get("year") or "").strip()
+        mediatype = str(row.get("mediatype") or "").strip()
+        pieces = []
+        if creator:
+            pieces.append(f"Creator: {creator}")
+        if year:
+            pieces.append(f"Year: {year}")
+        if mediatype:
+            pieces.append(f"Type: {mediatype}")
+        out.append(
+            {
+                "title": title,
+                "content_chunk": " | ".join(pieces) or "Archive record from Internet Archive",
+                "page_number": 0,
+                "source_type": "EXTERNAL_KB",
+                "score": 0.58,
+                "external_weight": 0.14,
+                "provider": "INTERNET_ARCHIVE",
+                "source_url": f"https://archive.org/details/{identifier}",
+                "reference": identifier,
+            }
+        )
+    return out[: max(1, min(int(limit or 3), 5))]
+
+
+def _search_gutendex_direct(query: str, limit: int = 3) -> List[Dict[str, Any]]:
+    text = str(query or "").strip()
+    if not text:
+        return []
+    params = {"search": text}
+    url = f"https://gutendex.com/books?{urllib_parse.urlencode(params)}"
+    data = _http_get_json(url, timeout_sec=4.0)
+    rows = (data or {}).get("results", []) if isinstance(data, dict) else []
+    out: List[Dict[str, Any]] = []
+    for row in rows[: max(1, min(int(limit or 3), 5))]:
+        if not isinstance(row, dict):
+            continue
+        title = str(row.get("title") or "").strip()
+        if not title:
+            continue
+        authors = [
+            str(a.get("name") or "").strip()
+            for a in (row.get("authors") or [])
+            if isinstance(a, dict) and str(a.get("name") or "").strip()
+        ][:3]
+        languages = [str(lang).strip() for lang in (row.get("languages") or []) if str(lang).strip()][:3]
+        shelves = [str(item).strip() for item in (row.get("bookshelves") or []) if str(item).strip()][:3]
+        summaries = [str(item).strip() for item in (row.get("summaries") or []) if str(item).strip()]
+        formats = row.get("formats") if isinstance(row.get("formats"), dict) else {}
+        source_url = str(formats.get("text/html") or formats.get("text/plain; charset=utf-8") or "").strip() or None
+        pieces = []
+        if authors:
+            pieces.append("Authors: " + ", ".join(authors))
+        if languages:
+            pieces.append("Languages: " + ", ".join(languages))
+        if shelves:
+            pieces.append("Shelves: " + ", ".join(shelves))
+        if summaries:
+            pieces.append(summaries[0][:220])
+        out.append(
+            {
+                "title": title,
+                "content_chunk": " | ".join(pieces) or "Literary record from Gutendex",
+                "page_number": 0,
+                "source_type": "EXTERNAL_KB",
+                "score": min(0.72, 0.58 + (0.02 * len(authors))),
+                "external_weight": 0.16,
+                "provider": "GUTENDEX",
+                "source_url": source_url,
+                "reference": str(row.get("id") or "").strip() or None,
+            }
+        )
+    return out
+
+
+def _search_poetrydb_direct(query: str, limit: int = 3) -> List[Dict[str, Any]]:
+    text = str(query or "").strip()
+    if not text:
+        return []
+    safe = urllib_parse.quote(text)
+    urls = [
+        f"https://poetrydb.org/title/{safe}",
+        f"https://poetrydb.org/author/{safe}",
+        f"https://poetrydb.org/author,title/{safe};{safe}",
+    ]
+    rows: List[Dict[str, Any]] = []
+    for url in urls:
+        data = _http_get_json(url, timeout_sec=3.5)
+        if isinstance(data, list) and data:
+            rows = [row for row in data if isinstance(row, dict)]
+            if rows:
+                break
+    out: List[Dict[str, Any]] = []
+    for row in rows[: max(1, min(int(limit or 3), 5))]:
+        title = str(row.get("title") or "").strip()
+        if not title:
+            continue
+        author = str(row.get("author") or "").strip()
+        lines = row.get("lines") if isinstance(row.get("lines"), list) else []
+        excerpt = " ".join(str(line).strip() for line in lines[:3] if str(line).strip())
+        linecount = str(row.get("linecount") or "").strip()
+        pieces = []
+        if author:
+            pieces.append(f"Author: {author}")
+        if linecount:
+            pieces.append(f"Lines: {linecount}")
+        if excerpt:
+            pieces.append(excerpt[:220])
+        out.append(
+            {
+                "title": title,
+                "content_chunk": " | ".join(pieces) or "Poem record from PoetryDB",
+                "page_number": 0,
+                "source_type": "EXTERNAL_KB",
+                "score": 0.61,
+                "external_weight": 0.16,
+                "provider": "POETRYDB",
+                "source_url": None,
+                "reference": author or None,
+            }
+        )
+    return out
+
+
+def _search_artic_direct(query: str, limit: int = 3) -> List[Dict[str, Any]]:
+    text = str(query or "").strip()
+    if not text:
+        return []
+    params = {
+        "q": text,
+        "limit": max(1, min(int(limit or 3), 5)),
+        "fields": "id,title,artist_title,date_display,thumbnail,api_link",
+    }
+    url = f"https://api.artic.edu/api/v1/artworks/search?{urllib_parse.urlencode(params)}"
+    data = _http_get_json(url, timeout_sec=4.0)
+    rows = (data or {}).get("data", []) if isinstance(data, dict) else []
+    out: List[Dict[str, Any]] = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict):
+            continue
+        title = str(row.get("title") or "").strip()
+        if not title:
+            continue
+        artist = str(row.get("artist_title") or "").strip()
+        date_display = str(row.get("date_display") or "").strip()
+        thumb = row.get("thumbnail") if isinstance(row.get("thumbnail"), dict) else {}
+        alt_text = str(thumb.get("alt_text") or "").strip()
+        pieces = []
+        if artist:
+            pieces.append(f"Artist: {artist}")
+        if date_display:
+            pieces.append(f"Date: {date_display}")
+        if alt_text:
+            pieces.append(alt_text[:220])
+        out.append(
+            {
+                "title": title,
+                "content_chunk": " | ".join(pieces) or "Art context record",
+                "page_number": 0,
+                "source_type": "EXTERNAL_KB",
+                "score": 0.57,
+                "external_weight": 0.14,
+                "provider": "ART_SEARCH_API",
+                "source_url": str(row.get("api_link") or "").strip() or None,
+                "reference": str(row.get("id") or "").strip() or None,
+            }
+        )
+    return out[: max(1, min(int(limit or 3), 5))]
+
+
+def _is_ascii_lexical_term(term: str) -> bool:
+    text = str(term or "").strip()
+    if not text:
+        return False
+    return bool(re.fullmatch(r"[A-Za-z][A-Za-z\-']{1,40}", text))
+
+
+def _is_lexical_query(question: str) -> bool:
+    text = _norm(question)
+    if not text:
+        return False
+    signals = (
+        "etymology",
+        "etimoloji",
+        "meaning",
+        "anlami",
+        "anlami",
+        "ne demek",
+        "nedir",
+        "definition",
+    )
+    return any(signal in text for signal in signals)
+
+
+def _extract_lookup_term(question: str) -> str:
+    text = str(question or "").strip()
+    if not text:
+        return ""
+    quoted = re.findall(r"['\"]([^'\"]{2,80})['\"]", text)
+    if quoted:
+        return str(quoted[0]).strip()
+
+    patterns = [
+        r"([A-Za-zÇĞİÖŞÜçğıöşü\-]{3,40})\s+(?:nedir|ne demek|anlamı|anlami|etimolojisi|etymology)",
+        r"(?:meaning of|definition of|etymology of)\s+([A-Za-zÇĞİÖŞÜçğıöşü\-]{3,40})",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            return str(match.group(1) or "").strip()
+
+    tokens = [tok for tok in re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü\-]{3,40}", text) if len(tok) >= 3]
+    if not tokens:
+        return ""
+    stop = {
+        "ayet",
+        "hadis",
+        "poem",
+        "poetry",
+        "literature",
+        "tarih",
+        "archive",
+        "history",
+        "anlami",
+        "meaning",
+        "definition",
+        "etimoloji",
+        "etymology",
+    }
+    ranked = [tok for tok in tokens if _norm(tok) not in stop]
+    return str(ranked[0] if ranked else tokens[0]).strip()
+
+
+def _search_words_api_lexical(term: str) -> Optional[Dict[str, Any]]:
+    text = str(term or "").strip()
+    api_key = str(getattr(settings, "WORDS_API_KEY", "") or "").strip()
+    if not text or not api_key or not _is_ascii_lexical_term(text):
+        return None
+
+    host = "wordsapiv1.p.rapidapi.com"
+    url = f"https://{host}/words/{urllib_parse.quote(text)}"
+    data = _http_get_json(
+        url,
+        timeout_sec=3.5,
+        headers=_rapidapi_headers(host, api_key),
+    )
+    if not isinstance(data, dict):
+        return None
+
+    pronunciation = data.get("pronunciation")
+    pronunciation_text = ""
+    if isinstance(pronunciation, dict):
+        pronunciation_text = str(pronunciation.get("all") or pronunciation.get("noun") or pronunciation.get("verb") or "").strip()
+    elif isinstance(pronunciation, str):
+        pronunciation_text = pronunciation.strip()
+
+    results = data.get("results") if isinstance(data.get("results"), list) else []
+    parts_of_speech = []
+    definitions = []
+    synonyms = []
+    for item in results[:4]:
+        if not isinstance(item, dict):
+            continue
+        pos = str(item.get("partOfSpeech") or "").strip()
+        if pos and pos not in parts_of_speech:
+            parts_of_speech.append(pos)
+        definition = str(item.get("definition") or "").strip()
+        if definition:
+            definitions.append(definition)
+        for syn in item.get("synonyms") or []:
+            syn_text = str(syn or "").strip()
+            if syn_text and syn_text not in synonyms:
+                synonyms.append(syn_text)
+
+    pieces = []
+    if parts_of_speech:
+        pieces.append("POS: " + ", ".join(parts_of_speech[:3]))
+    if pronunciation_text:
+        pieces.append(f"Pronunciation: {pronunciation_text}")
+    if definitions:
+        pieces.append("Definitions: " + " ; ".join(definitions[:2]))
+    if synonyms:
+        pieces.append("Synonyms: " + ", ".join(synonyms[:5]))
+
+    if not pieces:
+        return None
+    return {
+        "title": f"Words API - {text}",
+        "content_chunk": " | ".join(pieces),
+        "page_number": 0,
+        "source_type": "EXTERNAL_KB",
+        "score": 0.58,
+        "external_weight": 0.12,
+        "provider": "WORDS_API",
+        "source_url": url,
+        "reference": text,
+    }
+
+
+def _search_lingua_robot_lexical(term: str) -> Optional[Dict[str, Any]]:
+    text = str(term or "").strip()
+    api_key = str(getattr(settings, "LINGUA_ROBOT_API_KEY", "") or "").strip()
+    if not text or not api_key or not _is_ascii_lexical_term(text):
+        return None
+
+    host = "lingua-robot.p.rapidapi.com"
+    headers = _rapidapi_headers(host, api_key)
+    urls = [
+        f"https://{host}/language/v1/entries/en/{urllib_parse.quote(text)}",
+        f"https://{host}/language/v1/entries/{urllib_parse.quote(text)}",
+    ]
+    data = None
+    for url in urls:
+        data = _http_get_json(url, timeout_sec=3.5, headers=headers)
+        if isinstance(data, dict) and data:
+            break
+    if not isinstance(data, dict):
+        return None
+
+    entries = data.get("entries") if isinstance(data.get("entries"), list) else []
+    if not entries:
+        return None
+    entry = entries[0] if isinstance(entries[0], dict) else {}
+    pronunciations = entry.get("pronunciations") if isinstance(entry.get("pronunciations"), list) else []
+    lexemes = entry.get("lexemes") if isinstance(entry.get("lexemes"), list) else []
+
+    pronunciation_text = ""
+    for item in pronunciations:
+        if not isinstance(item, dict):
+            continue
+        value = str(item.get("transcriptions") or item.get("transcription") or item.get("pronunciation") or "").strip()
+        if value:
+            pronunciation_text = value
+            break
+
+    pos_values = []
+    definitions = []
+    for lexeme in lexemes[:3]:
+        if not isinstance(lexeme, dict):
+            continue
+        pos = str(lexeme.get("posTag") or lexeme.get("partOfSpeech") or "").strip()
+        if pos and pos not in pos_values:
+            pos_values.append(pos)
+        paraphrases = lexeme.get("paraphrases") if isinstance(lexeme.get("paraphrases"), list) else []
+        for paraphrase in paraphrases[:2]:
+            if isinstance(paraphrase, dict):
+                text_value = str(paraphrase.get("text") or paraphrase.get("definition") or "").strip()
+            else:
+                text_value = str(paraphrase or "").strip()
+            if text_value:
+                definitions.append(text_value)
+        senses = lexeme.get("senses") if isinstance(lexeme.get("senses"), list) else []
+        for sense in senses[:2]:
+            if not isinstance(sense, dict):
+                continue
+            definition = str(sense.get("definition") or sense.get("gloss") or "").strip()
+            if definition:
+                definitions.append(definition)
+
+    pieces = []
+    if pos_values:
+        pieces.append("POS: " + ", ".join(pos_values[:3]))
+    if pronunciation_text:
+        pieces.append(f"Pronunciation: {pronunciation_text}")
+    if definitions:
+        pieces.append("Definitions: " + " ; ".join(definitions[:2]))
+    if not pieces:
+        return None
+
+    return {
+        "title": f"Lingua Robot - {text}",
+        "content_chunk": " | ".join(pieces),
+        "page_number": 0,
+        "source_type": "EXTERNAL_KB",
+        "score": 0.57,
+        "external_weight": 0.12,
+        "provider": "LINGUA_ROBOT",
+        "source_url": urls[0],
+        "reference": text,
+    }
+
+
+def _fetch_wiktionary_extract(term: str, *, host: str) -> Optional[Dict[str, Any]]:
+    text = str(term or "").strip()
+    if not text:
+        return None
+    params = {
+        "action": "query",
+        "prop": "extracts",
+        "explaintext": 1,
+        "exintro": 1,
+        "redirects": 1,
+        "format": "json",
+        "titles": text,
+    }
+    url = f"https://{host}/w/api.php?{urllib_parse.urlencode(params)}"
+    data = _http_get_json(url, timeout_sec=3.5)
+    pages = (((data or {}).get("query")) or {}).get("pages", {}) if isinstance(data, dict) else {}
+    if not isinstance(pages, dict):
+        return None
+    for page in pages.values():
+        if not isinstance(page, dict):
+            continue
+        title = str(page.get("title") or "").strip()
+        extract = str(page.get("extract") or "").strip()
+        if title and extract and "may refer to" not in extract.lower():
+            return {"title": title, "extract": extract}
+    return None
+
+
+def get_lexical_support_candidates(question: str, domain_mode: str, limit: int = 2) -> List[Dict[str, Any]]:
+    normalized_domain = str(domain_mode or "").strip().upper()
+    if normalized_domain not in {"RELIGIOUS", "LITERARY", "CULTURE_HISTORY"}:
+        return []
+    if not _is_lexical_query(question):
+        return []
+    term = _extract_lookup_term(question)
+    if not term:
+        return []
+
+    rows: List[Dict[str, Any]] = []
+    for host in ("tr.wiktionary.org", "en.wiktionary.org"):
+        payload = _fetch_wiktionary_extract(term, host=host)
+        if not payload:
+            continue
+        rows.append(
+            {
+                "title": f"Wiktionary - {payload['title']}",
+                "content_chunk": str(payload["extract"])[:420],
+                "page_number": 0,
+                "source_type": "EXTERNAL_KB",
+                "score": 0.56 if host.startswith("tr.") else 0.52,
+                "external_weight": 0.12,
+                "provider": "WIKTIONARY",
+                "source_url": f"https://{host}/wiki/{urllib_parse.quote(payload['title'])}",
+                "reference": payload["title"],
+            }
+        )
+        if len(rows) >= max(1, min(int(limit or 2), 3)):
+            break
+    words_api_row = _search_words_api_lexical(term)
+    if words_api_row:
+        rows.append(words_api_row)
+    lingua_robot_row = _search_lingua_robot_lexical(term)
+    if lingua_robot_row:
+        rows.append(lingua_robot_row)
+    deduped: List[Dict[str, Any]] = []
+    seen = set()
+    for row in rows:
+        key = (str(row.get("provider") or "").strip().upper(), _norm(str(row.get("reference") or "")))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(row)
+    deduped.sort(key=lambda item: float(item.get("score") or 0.0), reverse=True)
+    return deduped[: max(1, min(int(limit or 2), 4))]
+
+
+def get_domain_external_candidates(question: str, domain_mode: str, limit: int = 5) -> List[Dict[str, Any]]:
+    normalized_domain = str(domain_mode or "").strip().upper()
+    hard_limit = max(1, min(int(limit or 5), 8))
+    query = str(question or "").strip()
+    if not query:
+        return []
+
+    provider_rows: List[Dict[str, Any]] = []
+    if normalized_domain == "ACADEMIC":
+        provider_rows.extend(_search_openalex_direct(query, limit=min(3, hard_limit)))
+        provider_rows.extend(_search_crossref_direct(query, limit=min(3, hard_limit)))
+        provider_rows.extend(_search_semantic_scholar_direct(query, limit=min(3, hard_limit)))
+        provider_rows.extend(_search_share_direct(query, limit=min(3, hard_limit)))
+        provider_rows.extend(_search_arxiv_direct(query, limit=min(3, hard_limit)))
+    elif normalized_domain == "CULTURE_HISTORY":
+        provider_rows.extend(_search_europeana_direct(query, limit=min(3, hard_limit)))
+        provider_rows.extend(_search_internet_archive_direct(query, limit=min(3, hard_limit)))
+    elif normalized_domain == "LITERARY":
+        provider_rows.extend(_search_gutendex_direct(query, limit=min(3, hard_limit)))
+        provider_rows.extend(_search_poetrydb_direct(query, limit=min(3, hard_limit)))
+        provider_rows.extend(_search_artic_direct(query, limit=min(2, hard_limit)))
+
+    deduped: List[Dict[str, Any]] = []
+    seen = set()
+    for row in provider_rows:
+        key = (
+            str(row.get("provider") or "").strip().upper(),
+            _norm(str(row.get("title") or "")),
+            _norm(str(row.get("reference") or "")),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(row)
+    deduped.sort(key=lambda item: float(item.get("score") or 0.0), reverse=True)
+    return deduped[:hard_limit]
 
 
 def _iter_dbpedia_queries(title: str, author: Optional[str]) -> List[str]:

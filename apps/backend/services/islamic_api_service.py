@@ -160,6 +160,9 @@ def _build_candidate(
     external_weight: float,
     reference: Optional[str] = None,
     source_url: Optional[str] = None,
+    canonical_reference: Optional[str] = None,
+    is_exact_match: bool = False,
+    religious_query_kind: Optional[str] = None,
 ) -> Dict[str, Any]:
     return {
         "title": title,
@@ -171,8 +174,26 @@ def _build_candidate(
         "provider": provider,
         "religious_source_kind": kind,
         "reference": reference,
+        "canonical_reference": canonical_reference or reference,
         "source_url": source_url,
+        "is_exact_match": bool(is_exact_match),
+        "religious_query_kind": religious_query_kind,
     }
+
+
+def _infer_religious_query_kind(question: str) -> str:
+    query = str(question or "").strip()
+    if _looks_quran_query(query):
+        if _extract_verse_key(query):
+            if any(tok in _normalize_ascii(query) for tok in ("tefsir", "tafsir")):
+                return "TAFSIR_REQUEST"
+            return "EXACT_QURAN_VERSE"
+        return "TOPICAL_QURAN"
+    if _looks_hadith_query(query):
+        if _HADITH_NUMBER_RE.search(query):
+            return "EXACT_HADITH"
+        return "TOPICAL_HADITH"
+    return "GENERAL_RELIGIOUS"
 
 
 def _quran_foundation_token() -> Optional[str]:
@@ -305,7 +326,9 @@ def _normalize_quran_foundation_search(question: str, rows: List[Dict[str, Any]]
                 score=score,
                 external_weight=weight,
                 reference=verse_key or None,
+                canonical_reference=verse_key or None,
                 source_url=f"https://quran.com/{verse_key}" if verse_key else None,
+                religious_query_kind="TOPICAL_QURAN",
             )
         )
     return out
@@ -345,7 +368,10 @@ def _normalize_quran_foundation_exact(verse: Dict[str, Any]) -> Optional[Dict[st
         score=0.86,
         external_weight=float(getattr(settings, "ISLAMIC_API_QURAN_WEIGHT", 0.22)),
         reference=verse_key or None,
+        canonical_reference=verse_key or None,
         source_url=f"https://quran.com/{verse_key}" if verse_key else None,
+        is_exact_match=True,
+        religious_query_kind="EXACT_QURAN_VERSE",
     )
 
 
@@ -394,7 +420,10 @@ def _diyanet_fetch_verse(verse_key: str) -> Optional[Dict[str, Any]]:
             score=0.80,
             external_weight=float(getattr(settings, "ISLAMIC_API_QURAN_WEIGHT", 0.22)),
             reference=verse_key,
+            canonical_reference=verse_key,
             source_url=f"{str(getattr(settings, 'DIYANET_QURAN_BASE_URL', '')).rstrip('/')}/api/v1/chapters/{surah_id}",
+            is_exact_match=True,
+            religious_query_kind="EXACT_QURAN_VERSE",
         )
     return None
 
@@ -510,6 +539,7 @@ def _hadeethenc_candidates(question: str, limit: int) -> List[Dict[str, Any]]:
                     external_weight=weight,
                     reference=hadith_id or None,
                     source_url=f"https://hadeethenc.com/tr/browse/hadith/{hadith_id}" if hadith_id else None,
+                    religious_query_kind="TOPICAL_HADITH",
                 )
             )
             if len(out) >= max(1, limit):
@@ -582,6 +612,7 @@ def _hadith_api_candidates(question: str, limit: int) -> List[Dict[str, Any]]:
                 external_weight=weight,
                 reference=hadith_number or None,
                 source_url="https://hadithapi.com/",
+                religious_query_kind="TOPICAL_HADITH",
             )
         )
     return out
@@ -602,6 +633,7 @@ def get_islamic_external_candidates(question: str, limit: int = 4) -> Tuple[List
     verse_key = _extract_verse_key(query)
     quran_used = False
     hadith_used = False
+    religious_query_kind = _infer_religious_query_kind(query)
 
     if _looks_quran_query(query):
         quran_used = True
@@ -629,6 +661,9 @@ def get_islamic_external_candidates(question: str, limit: int = 4) -> Tuple[List
     seen = set()
     floor = float(getattr(settings, "ISLAMIC_API_MIN_CONFIDENCE", 0.45))
     for candidate in candidates:
+        candidate["religious_query_kind"] = candidate.get("religious_query_kind") or religious_query_kind
+        if religious_query_kind in {"EXACT_HADITH", "EXACT_QURAN_VERSE"}:
+            candidate["is_exact_match"] = bool(candidate.get("is_exact_match", False) or candidate.get("reference"))
         key = (
             str(candidate.get("provider") or "").strip().upper(),
             str(candidate.get("reference") or "").strip(),
@@ -652,4 +687,5 @@ def get_islamic_external_candidates(question: str, limit: int = 4) -> Tuple[List
         "providers": provider_counts,
         "quran_used": quran_used and any(str(c.get("religious_source_kind")) == "QURAN" for c in deduped),
         "hadith_used": hadith_used and any(str(c.get("religious_source_kind")) == "HADITH" for c in deduped),
+        "religious_query_kind": religious_query_kind,
     }

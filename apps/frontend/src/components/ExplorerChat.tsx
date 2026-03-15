@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, BookOpen, ChevronDown, ChevronUp, RotateCcw, MessageCircle, User, Bot, Compass, Brain, Gauge, Quote, ExternalLink, FileSearch } from 'lucide-react';
-import { sendChatMessage } from '../services/backendApiService';
+import { Send, Loader2, BookOpen, ChevronDown, ChevronUp, RotateCcw, MessageCircle, User, Bot, Compass, Brain, Gauge, Quote, ExternalLink, FileSearch, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { BackendDomainMode, sendChatMessage, submitFeedback } from '../services/backendApiService';
 import { ContextBar } from './ContextBar';
 import { cleanLayer3Answer, Layer3ReportDraftInput } from '../lib/layer3Report';
 
@@ -19,6 +19,8 @@ interface Message {
         source_url?: string;
         reference?: string;
         religious_source_kind?: string;
+        canonical_reference?: string;
+        is_exact_match?: boolean;
     }>;
     thinkingHistory?: Array<{
         attempt: number;
@@ -31,6 +33,12 @@ interface Message {
         latency: number;
     }>;
     timestamp: string;
+    metadata?: {
+        search_log_id?: number;
+        model_name?: string;
+        status?: string;
+        [key: string]: any;
+    };
 }
 
 interface ExplorerChatProps {
@@ -51,6 +59,9 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack, onSa
     const [savedReportIds, setSavedReportIds] = useState<Set<number>>(new Set());
     const [hoveredCitation, setHoveredCitation] = useState<{ id: number; messageId: number; x: number; y: number } | null>(null);
     const [scopeMode, setScopeMode] = useState<'AUTO' | 'BOOK_FIRST'>('AUTO');
+    const [domainMode, setDomainMode] = useState<BackendDomainMode>('AUTO');
+    const [feedbackStates, setFeedbackStates] = useState<Record<number, 'liked' | 'disliked'>>({});
+    const [isSubmittingFeedback, setIsSubmittingFeedback] = useState<Set<number>>(new Set());
 
     // Structured Context State
     const [conversationState, setConversationState] = useState<{
@@ -116,7 +127,8 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack, onSa
                 'EXPLORER',
                 null,
                 20,
-                scopeMode
+                scopeMode,
+                domainMode
             );
 
             if (response.session_id) {
@@ -133,7 +145,8 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack, onSa
                 content: response.answer || '',
                 sources: response.sources || [],
                 thinkingHistory: response.thinking_history || [],
-                timestamp: response.timestamp || new Date().toISOString()
+                timestamp: response.timestamp || new Date().toISOString(),
+                metadata: response.metadata
             };
             setMessages(prev => [...prev, assistantMessage]);
         } catch (err) {
@@ -141,6 +154,33 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack, onSa
         } finally {
             setIsLoading(false);
             inputRef.current?.focus();
+        }
+    };
+
+    const handleFeedback = async (message: Message, rating: 1 | 0) => {
+        if (!userId || isSubmittingFeedback.has(message.id)) return;
+
+        setIsSubmittingFeedback(prev => new Set(prev).add(message.id));
+        try {
+            await submitFeedback({
+                firebase_uid: userId,
+                query: messages.find(m => m.id < message.id && m.role === 'user')?.content || '',
+                answer: message.content,
+                rating,
+                search_log_id: message.metadata?.search_log_id,
+            });
+            setFeedbackStates(prev => ({
+                ...prev,
+                [message.id]: rating === 1 ? 'liked' : 'disliked'
+            }));
+        } catch (err) {
+            console.error('Feedback failed:', err);
+        } finally {
+            setIsSubmittingFeedback(prev => {
+                const next = new Set(prev);
+                next.delete(message.id);
+                return next;
+            });
         }
     };
 
@@ -182,6 +222,7 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack, onSa
         setConversationState({});
         setSavingReportId(null);
         setSavedReportIds(new Set());
+        setFeedbackStates({});
         inputRef.current?.focus();
     };
 
@@ -293,7 +334,7 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack, onSa
                     >
                         <p className="text-sm text-slate-700 dark:text-slate-200 flex items-center gap-3">
                             <span className="w-6 h-6 flex-shrink-0 bg-[#CC561E]/10 dark:bg-[#CC561E]/20 rounded-full flex items-center justify-center text-[10px] font-bold text-[#CC561E] group-hover:bg-[#CC561E] group-hover:text-white transition-colors">
-                                {i - 10} {/* Arbitrary index-based number or just icon */}
+                                {i - 10}
                             </span>
                             {pathText}
                         </p>
@@ -327,6 +368,21 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack, onSa
                         </div>
                     </div>
                     <div className="flex items-center gap-1.5 md:gap-2">
+                        <label className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-[10px] md:text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800">
+                            <span className="hidden md:inline">Mode</span>
+                            <select
+                                value={domainMode}
+                                onChange={(e) => setDomainMode(e.target.value as BackendDomainMode)}
+                                className="bg-transparent outline-none text-[10px] md:text-xs"
+                                aria-label="Explorer domain mode"
+                            >
+                                <option value="AUTO">Auto</option>
+                                <option value="ACADEMIC">Academic</option>
+                                <option value="RELIGIOUS">Religious</option>
+                                <option value="LITERARY">Literary</option>
+                                <option value="CULTURE_HISTORY">Culture &amp; History</option>
+                            </select>
+                        </label>
                         <label className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-[10px] md:text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800">
                             <input
                                 type="checkbox"
@@ -468,21 +524,38 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack, onSa
 
                                 {message.role === 'assistant' && (
                                     <div className="mt-2 flex flex-wrap items-center gap-2">
+                                        <div className="flex items-center gap-1 mr-2 px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                                            <button
+                                                onClick={() => handleFeedback(message, 1)}
+                                                disabled={feedbackStates[message.id] !== undefined || isSubmittingFeedback.has(message.id)}
+                                                className={`p-1 rounded-md transition-colors ${feedbackStates[message.id] === 'liked' ? 'bg-green-100 text-green-600' : 'text-slate-400 hover:text-green-600'}`}
+                                            >
+                                                <ThumbsUp className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleFeedback(message, 0)}
+                                                disabled={feedbackStates[message.id] !== undefined || isSubmittingFeedback.has(message.id)}
+                                                className={`p-1 rounded-md transition-colors ${feedbackStates[message.id] === 'disliked' ? 'bg-red-100 text-red-600' : 'text-slate-400 hover:text-red-600'}`}
+                                            >
+                                                <ThumbsDown className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
+
                                         <button
                                             type="button"
                                             onClick={() => handleSaveReport(message)}
                                             disabled={savingReportId === message.id || savedReportIds.has(message.id) || !cleanAnswer(message.content)}
-                                            className={`inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${savedReportIds.has(message.id)
+                                            className={`inline-flex min-h-8 items-center justify-center gap-2 rounded-lg border px-3 py-1 text-[10px] font-semibold transition-colors ${savedReportIds.has(message.id)
                                                 ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
                                                 : 'border-[#CC561E]/20 text-[#CC561E] hover:bg-[#CC561E]/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#CC561E]/30 dark:hover:bg-[#CC561E]/15'
                                                 }`}
                                         >
                                             {savingReportId === message.id ? (
-                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                <Loader2 className="h-3 w-3 animate-spin" />
                                             ) : (
-                                                <FileSearch className="h-4 w-4" />
+                                                <FileSearch className="h-3 w-3" />
                                             )}
-                                            {savedReportIds.has(message.id) ? 'Saved to Reports' : 'Save as Report'}
+                                            {savedReportIds.has(message.id) ? 'Saved' : 'Save as Report'}
                                         </button>
                                     </div>
                                 )}
@@ -585,7 +658,7 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack, onSa
                         </div>
                     ))}
 
-                    {/* Source Preview Popover (Fixed position relative to viewport or parent) */}
+                    {/* Source Preview Popover */}
                     {hoveredCitation && (
                         <div
                             className="fixed z-50 pointer-events-none"
@@ -614,7 +687,6 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack, onSa
                                 ) : (
                                     <p className="text-xs text-slate-400">Loading source info...</p>
                                 )}
-                                {/* Little triangle arrow */}
                                 <div className="absolute -bottom-1 left-4 w-2 h-2 bg-white dark:bg-slate-800 border-r border-b border-slate-200 dark:border-slate-700 rotate-45" />
                             </div>
                         </div>

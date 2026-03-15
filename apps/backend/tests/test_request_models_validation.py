@@ -58,6 +58,21 @@ class RequestModelValidationTests(unittest.TestCase):
         )
         self.assertEqual(req.compare_mode, "EXPLICIT_ONLY")
 
+    def test_search_domain_mode_default(self):
+        req = SearchRequest(
+            question="test",
+            firebase_uid="u1",
+        )
+        self.assertEqual(req.domain_mode, "AUTO")
+
+    def test_search_domain_mode_validation(self):
+        with self.assertRaises(ValidationError):
+            SearchRequest(
+                question="test",
+                firebase_uid="u1",
+                domain_mode="random",
+            )
+
     def test_search_surface_default(self):
         req = SearchRequest(
             question="test",
@@ -118,6 +133,21 @@ class RequestModelValidationTests(unittest.TestCase):
             firebase_uid="u1",
         )
         self.assertEqual(req.compare_mode, "EXPLICIT_ONLY")
+
+    def test_chat_domain_mode_default(self):
+        req = ChatRequest(
+            message="hello",
+            firebase_uid="u1",
+        )
+        self.assertEqual(req.domain_mode, "AUTO")
+
+    def test_chat_domain_mode_validation(self):
+        with self.assertRaises(ValidationError):
+            ChatRequest(
+                message="hello",
+                firebase_uid="u1",
+                domain_mode="random",
+            )
 
     def test_chat_target_book_ids_normalization(self):
         req = ChatRequest(

@@ -17,6 +17,7 @@ class SearchRequest(BaseModel):
     context_book_id: Optional[str] = Field(default=None, max_length=_BOOK_ID_MAX)
     resource_type: Optional[str] = Field(default=None, max_length=64)
     scope_mode: str = Field(default="AUTO")
+    domain_mode: str = Field(default="AUTO")
     compare_mode: str = Field(default="EXPLICIT_ONLY")
     target_book_ids: Optional[List[str]] = None
     mode: str = Field(default="STANDARD")  # STANDARD or EXPLORER
@@ -59,6 +60,14 @@ class SearchRequest(BaseModel):
         if scope_mode not in {"AUTO", "BOOK_FIRST", "HIGHLIGHT_FIRST", "GLOBAL"}:
             raise ValueError("scope_mode must be AUTO, BOOK_FIRST, HIGHLIGHT_FIRST, or GLOBAL")
         return scope_mode
+
+    @field_validator("domain_mode", mode="before")
+    @classmethod
+    def normalize_domain_mode(cls, value: Optional[str]) -> str:
+        domain_mode = str(value or "AUTO").strip().upper()
+        if domain_mode not in {"AUTO", "ACADEMIC", "RELIGIOUS", "LITERARY", "CULTURE_HISTORY"}:
+            raise ValueError("domain_mode must be AUTO, ACADEMIC, RELIGIOUS, LITERARY, or CULTURE_HISTORY")
+        return domain_mode
 
     @field_validator("mode", mode="before")
     @classmethod
@@ -415,6 +424,7 @@ class ChatRequest(BaseModel):
     context_book_id: Optional[str] = Field(default=None, max_length=_BOOK_ID_MAX)
     resource_type: Optional[str] = Field(default=None, max_length=64)
     scope_mode: str = Field(default="AUTO")
+    domain_mode: str = Field(default="AUTO")
     compare_mode: str = Field(default="EXPLICIT_ONLY")
     target_book_ids: Optional[List[str]] = None
     mode: str = Field(default="STANDARD")
@@ -454,6 +464,14 @@ class ChatRequest(BaseModel):
         if scope_mode not in {"AUTO", "BOOK_FIRST", "HIGHLIGHT_FIRST", "GLOBAL"}:
             raise ValueError("scope_mode must be AUTO, BOOK_FIRST, HIGHLIGHT_FIRST, or GLOBAL")
         return scope_mode
+
+    @field_validator("domain_mode", mode="before")
+    @classmethod
+    def normalize_chat_domain_mode(cls, value: Optional[str]) -> str:
+        domain_mode = str(value or "AUTO").strip().upper()
+        if domain_mode not in {"AUTO", "ACADEMIC", "RELIGIOUS", "LITERARY", "CULTURE_HISTORY"}:
+            raise ValueError("domain_mode must be AUTO, ACADEMIC, RELIGIOUS, LITERARY, or CULTURE_HISTORY")
+        return domain_mode
 
     @field_validator("compare_mode", mode="before")
     @classmethod

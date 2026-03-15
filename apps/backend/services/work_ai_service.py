@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 
 from config import settings
 from services.epistemic_service import get_prompt_for_mode, build_epistemic_context
+from services.domain_policy_service import DOMAIN_MODE_AUTO
 from services.llm_client import (
     MODEL_TIER_FLASH,
     ROUTE_MODE_DEFAULT,
@@ -23,6 +24,14 @@ env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 load_dotenv(dotenv_path=env_path)
 
 logger = logging.getLogger(__name__)
+
+
+def _infer_domain_mode_from_chunks(chunks: List[Dict[str, Any]]) -> str:
+    for chunk in chunks or []:
+        mode = str(chunk.get("_domain_mode_resolved") or "").strip().upper()
+        if mode:
+            return mode
+    return DOMAIN_MODE_AUTO
 
 def _format_conversation_state(state: Dict[str, Any]) -> str:
     """
@@ -107,7 +116,8 @@ async def generate_work_ai_answer(
     """
     try:
         # 1. Build Context
-        context_str, used_chunks = build_epistemic_context(chunks, answer_mode)
+        domain_mode = _infer_domain_mode_from_chunks(chunks)
+        context_str, used_chunks = build_epistemic_context(chunks, answer_mode, domain_mode)
         graph_bridge_attempted = False
         graph_bridge_used = False
         graph_bridge_timeout = False
@@ -144,7 +154,14 @@ async def generate_work_ai_answer(
             context_str = f"{state_context}\n\n---\n\n{context_str}"
         
         # 2. Get Base Prompt
-        prompt = get_prompt_for_mode(answer_mode, context_str, question, confidence_score, network_status=network_status)
+        prompt = get_prompt_for_mode(
+            answer_mode,
+            context_str,
+            question,
+            confidence_score,
+            network_status=network_status,
+            domain_mode=domain_mode,
+        )
         
         # ... (rest of the logic) ...
         
@@ -235,6 +252,7 @@ async def generate_work_ai_answer(
                 "model": result.model_used,
                 "model_tier": result.model_tier,
                 "provider_name": result.provider_name,
+                "domain_mode": domain_mode,
                 "model_fallback_applied": bool(result.fallback_applied),
                 "secondary_fallback_applied": bool(result.secondary_fallback_applied),
                 "fallback_reason": result.fallback_reason,

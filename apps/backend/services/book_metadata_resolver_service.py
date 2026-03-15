@@ -240,6 +240,7 @@ def _fetch_json_with_retry(
     cache_key: str,
     timeout_sec: float,
     max_attempts: int = 3,
+    headers: Optional[Dict[str, str]] = None,
 ) -> Optional[Dict[str, Any]]:
     if _is_negative_cached(cache_key):
         return None
@@ -249,11 +250,10 @@ def _fetch_json_with_retry(
         user_agent = "TomeHub-BookResolver/1.0 (+https://tomehub.local)"
 
     for attempt in range(max_attempts):
-        req = urllib_request.Request(
-            url=url,
-            headers={"User-Agent": user_agent},
-            method="GET",
-        )
+        request_headers = {"User-Agent": user_agent}
+        if headers:
+            request_headers.update({str(k): str(v) for k, v in headers.items()})
+        req = urllib_request.Request(url=url, headers=request_headers, method="GET")
         try:
             with urllib_request.urlopen(req, timeout=timeout_sec) as resp:
                 charset = resp.headers.get_content_charset() or "utf-8"
@@ -671,6 +671,95 @@ def _fetch_google_books(query: str, isbn_set: Set[str]) -> List[Dict[str, Any]]:
     return out
 
 
+def _map_big_book_item(item: Dict[str, Any], query_isbns: Set[str]) -> Optional[Dict[str, Any]]:
+    if not isinstance(item, dict):
+        return None
+    all_isbns = _normalize_isbn_list(
+        [
+            item.get("isbn"),
+            item.get("isbn13"),
+            item.get("isbn_13"),
+            item.get("isbn10"),
+            item.get("isbn_10"),
+        ]
+    )
+    if query_isbns and not _has_isbn_match(all_isbns, query_isbns):
+        return None
+    title = str(item.get("title") or "").strip()
+    if not title:
+        return None
+    author = str(item.get("author") or item.get("authors") or "Unknown").strip()
+    publisher = str(item.get("publisher") or "").strip()
+    cover_url = _sanitize_cover_url(
+        item.get("cover") or item.get("cover_url") or item.get("image") or item.get("thumbnail")
+    )
+    tags = item.get("genres") or item.get("subjects") or []
+    if isinstance(tags, str):
+        tags = [part.strip() for part in re.split(r"[;,]", tags) if part.strip()]
+    elif not isinstance(tags, list):
+        tags = []
+
+    return {
+        "title": title,
+        "author": author,
+        "publisher": publisher,
+        "isbn": _pick_preferred_isbn(all_isbns, query_isbns),
+        "allIsbns": all_isbns,
+        "translator": "",
+        "tags": [str(tag).strip() for tag in tags[:5] if str(tag).strip()],
+        "summary": str(item.get("description") or item.get("summary") or "").strip(),
+        "publishedDate": str(item.get("publishedDate") or item.get("publish_date") or item.get("year") or "").strip(),
+        "url": str(item.get("url") or item.get("link") or "").strip(),
+        "coverUrl": cover_url,
+        "pageCount": int(item.get("pageCount") or item.get("pages") or 0) or None,
+        "sourceLanguageHint": str(item.get("language") or "").strip(),
+        "_provider": "big-book-api",
+    }
+
+
+def _fetch_big_book(query: str, isbn_set: Set[str]) -> List[Dict[str, Any]]:
+    api_key = str(getattr(settings, "BIG_BOOK_API_KEY", "") or "").strip()
+    if not api_key:
+        return []
+
+    search_query = next(iter(isbn_set), "") if isbn_set else str(query or "").strip()
+    if not search_query:
+        return []
+
+    params = {"query": search_query}
+    url = f"https://api.bigbookapi.com/search-books?{urllib_parse.urlencode(params)}"
+    data = _fetch_json_with_retry(
+        url,
+        provider="big-book-api",
+        cache_key=f"big-book:{search_query}",
+        timeout_sec=4.0,
+        max_attempts=2,
+        headers={"x-api-key": api_key},
+    )
+    if not isinstance(data, dict):
+        return []
+
+    books_raw = data.get("books") or []
+    if isinstance(books_raw, dict):
+        books = [books_raw]
+    elif isinstance(books_raw, list):
+        books = []
+        for item in books_raw:
+            if isinstance(item, dict):
+                books.append(item)
+            elif isinstance(item, list):
+                books.extend([sub for sub in item if isinstance(sub, dict)])
+    else:
+        books = []
+
+    out: List[Dict[str, Any]] = []
+    for item in books:
+        mapped = _map_big_book_item(item, isbn_set)
+        if mapped:
+            out.append(mapped)
+    return out[:6]
+
+
 def _run_provider_fetches_parallel(tasks: List[Tuple[str, Any]]) -> List[Dict[str, Any]]:
     merged: List[Dict[str, Any]] = []
     if not tasks:
@@ -771,6 +860,12 @@ async def resolve_book_metadata_async(query: str, limit: int = 10) -> List[Dict[
                 for res in rel_results:
                     if isinstance(res, list):
                         deduped.extend(res)
+                deduped = _dedupe_results(deduped)
+
+        if not deduped:
+            big_book_rows = await loop.run_in_executor(pool, _fetch_big_book, trimmed, isbn_set)
+            if isinstance(big_book_rows, list) and big_book_rows:
+                deduped.extend(big_book_rows)
                 deduped = _dedupe_results(deduped)
 
     ranked = _rank_results(trimmed, deduped)

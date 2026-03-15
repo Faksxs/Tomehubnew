@@ -14,6 +14,7 @@ fails to recognize that retrieved information constitutes a direct answer.
 import re
 from typing import List, Dict, Tuple, Optional
 from config import settings
+from services.domain_policy_service import DOMAIN_MODE_AUTO, domain_prompt_instructions, normalize_domain_mode
 from services.monitoring import L3_PERF_GUARD_APPLIED_TOTAL
 
 # Import semantic classifier (use fast version by default for performance)
@@ -538,7 +539,7 @@ def _select_compare_balanced_chunks(sorted_chunks: List[Dict[str, Any]], top_k: 
     return selected[:top_k]
 
 
-def build_epistemic_context(chunks: List[Dict], answer_mode: str) -> Tuple[str, List[Dict]]:
+def build_epistemic_context(chunks: List[Dict], answer_mode: str, domain_mode: str = DOMAIN_MODE_AUTO) -> Tuple[str, List[Dict]]:
     """
     Build context string with epistemic priority markers AND metadata.
     Returns (context_string, used_chunks_list)
@@ -562,12 +563,10 @@ def build_epistemic_context(chunks: List[Dict], answer_mode: str) -> Tuple[str, 
 
     # LIMIT CONTEXT: default top-12 (or lower when perf guard is enabled)
     used_chunks = _select_compare_balanced_chunks(sorted_chunks, top_k)
-    
+    resolved_domain_mode = normalize_domain_mode(domain_mode)
+
     for i, chunk in enumerate(used_chunks, 1):
         level = chunk.get('epistemic_level', 'C')
-        score = chunk.get('answerability_score', 0)
-        features = chunk.get('epistemic_features', [])
-        passage_type = chunk.get('passage_type', 'SITUATIONAL')
         quotability = chunk.get('quotability', 'MEDIUM')
         
         title = chunk.get('title', 'Unknown')
@@ -579,13 +578,32 @@ def build_epistemic_context(chunks: List[Dict], answer_mode: str) -> Tuple[str, 
         # Simple ID-focused header for LLM citations
         meta_header = f"[ID: {i} | Kaynak: {title} | Güven: {level}]"
         
+        source_bits = [f"ID: {i}", f"Kaynak: {title}", f"Guven: {level}"]
+        source_type = str(chunk.get("source_type") or "").strip().upper()
+        provider = str(chunk.get("provider") or "").strip()
+        reference = str(chunk.get("canonical_reference") or chunk.get("reference") or "").strip()
+        religious_kind = str(chunk.get("religious_source_kind") or "").strip()
+        if source_type:
+            source_bits.append(f"Tip: {source_type}")
+        if provider:
+            source_bits.append(f"Provider: {provider}")
+        if religious_kind:
+            source_bits.append(f"Religious: {religious_kind}")
+        if reference:
+            source_bits.append(f"Ref: {reference}")
+        if bool(chunk.get("is_exact_match")):
+            source_bits.append("Exact")
+        meta_header = "[" + " | ".join(source_bits) + "]"
         block = f"{meta_header}\n"
         if quotability == 'HIGH' or level == 'A':
             block += "★★★ YÜKSEK ÖNCELİKLİ KAYNAK: Doğrudan alıntı önerilir.\n"
         
         block += f"İÇERİK: {text}\n---\n"
         context_parts.append(block)
-    
+
+    if answer_mode == "EXPLORER":
+        context_parts.insert(0, f"[DOMAIN MODE: {resolved_domain_mode}]")
+
     return "\n".join(context_parts), used_chunks
 
 
@@ -597,6 +615,7 @@ def get_prompt_for_mode(
     confidence_score: float = 5.0,
     network_status: str = "IN_NETWORK",
     quote_target_count: int = 3,
+    domain_mode: str = DOMAIN_MODE_AUTO,
 ) -> str:
     """
     Get the appropriate prompt based on answer mode, confidence, and network coverage.
@@ -619,9 +638,12 @@ def get_prompt_for_mode(
 
 {grounding_rule}
 {style_instruction}"""
+    domain_instruction = domain_prompt_instructions(domain_mode)
 
     if answer_mode == 'QUOTE':
         return f"""{intro}
+
+{domain_instruction}
 
 ÖNEMLİ: Bu soruda YÜKSEK GÜVENİLİRLİKLİ notlar bulundu.
 

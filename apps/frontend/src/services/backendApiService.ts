@@ -15,6 +15,7 @@ const normalizeSourceTypeForBackend = (type: string): string => {
 };
 
 export type BackendResourceType = 'BOOK' | 'ARTICLE' | 'PERSONAL_NOTE' | 'MOVIE' | 'SERIES';
+export type BackendDomainMode = 'AUTO' | 'ACADEMIC' | 'RELIGIOUS' | 'LITERARY' | 'CULTURE_HISTORY';
 
 export interface SearchRequest {
     question: string;
@@ -25,6 +26,7 @@ export interface SearchRequest {
     context_book_id?: string;
     resource_type?: BackendResourceType | 'ALL_NOTES' | null;
     scope_mode?: 'AUTO' | 'BOOK_FIRST' | 'HIGHLIGHT_FIRST' | 'GLOBAL';
+    domain_mode?: BackendDomainMode;
 }
 
 export interface SearchResponse {
@@ -183,6 +185,7 @@ export interface ChatRequest {
     context_book_id?: string | null;
     resource_type?: BackendResourceType | 'ALL_NOTES' | null;
     scope_mode?: 'AUTO' | 'BOOK_FIRST' | 'HIGHLIGHT_FIRST' | 'GLOBAL';
+    domain_mode?: BackendDomainMode;
     mode?: 'STANDARD' | 'EXPLORER';
     limit?: number;
     offset?: number;
@@ -202,6 +205,8 @@ export interface ChatResponse {
         source_url?: string;
         reference?: string;
         religious_source_kind?: string;
+        canonical_reference?: string;
+        is_exact_match?: boolean;
     }>;
     timestamp: string;
     conversation_state?: {
@@ -220,6 +225,12 @@ export interface ChatResponse {
         };
         latency: number;
     }>;
+    metadata?: {
+        search_log_id?: number;
+        model_name?: string;
+        status?: string;
+        [key: string]: any;
+    };
 }
 
 export interface ConcordanceResponse {
@@ -330,7 +341,8 @@ export async function searchLibrary(
     mode: 'STANDARD' | 'EXPLORER' = 'STANDARD',
     bookId?: string,
     scopeMode: 'AUTO' | 'BOOK_FIRST' | 'HIGHLIGHT_FIRST' | 'GLOBAL' = 'AUTO',
-    contextBookId?: string
+    contextBookId?: string,
+    domainMode: BackendDomainMode = 'AUTO'
 ): Promise<SearchResponse> {
     if (!firebaseUid) {
         throw new Error('User must be authenticated to search');
@@ -347,7 +359,8 @@ export async function searchLibrary(
             mode,
             book_id: bookId,
             context_book_id: contextBookId,
-            scope_mode: scopeMode
+            scope_mode: scopeMode,
+            domain_mode: domainMode,
         } as SearchRequest),
     });
 
@@ -373,6 +386,7 @@ export async function sendChatMessage(
     resourceType: BackendResourceType | null = null,
     limit: number = 20,
     scopeMode: 'AUTO' | 'BOOK_FIRST' | 'HIGHLIGHT_FIRST' | 'GLOBAL' = 'AUTO',
+    domainMode: BackendDomainMode = 'AUTO',
     bookId: string | null = null,
     contextBookId: string | null = null
 ): Promise<ChatResponse> {
@@ -392,6 +406,7 @@ export async function sendChatMessage(
             mode,
             resource_type: resourceType,
             scope_mode: scopeMode,
+            domain_mode: domainMode,
             book_id: bookId,
             context_book_id: contextBookId,
             limit

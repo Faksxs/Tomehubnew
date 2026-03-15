@@ -196,6 +196,10 @@ class Settings:
         # AI
         self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
         self.GOOGLE_BOOKS_API_KEY = os.getenv("GOOGLE_BOOKS_API_KEY", "").strip() or None
+        self.BIG_BOOK_API_KEY = os.getenv("BIG_BOOK_API_KEY", "").strip() or None
+        self.BIG_BOOK_API_DAILY_LIMIT = int(os.getenv("BIG_BOOK_API_DAILY_LIMIT", "50"))
+        if self.BIG_BOOK_API_DAILY_LIMIT < 1:
+            self.BIG_BOOK_API_DAILY_LIMIT = 50
         self.LLM_MODEL_LITE = os.getenv("LLM_MODEL_LITE", "gemini-2.5-flash-lite")
         # Economic policy: keep Gemini on a single cost-efficient model by default.
         self.LLM_MODEL_FLASH = os.getenv("LLM_MODEL_FLASH", "gemini-2.5-flash-lite")
@@ -786,6 +790,10 @@ class Settings:
         self.EXTERNAL_KB_ENABLED = os.getenv("EXTERNAL_KB_ENABLED", "true").strip().lower() == "true"
         self.OPENALEX_API_KEY = os.getenv("OPENALEX_API_KEY", "").strip()
         self.OPENALEX_EMAIL = os.getenv("OPENALEX_EMAIL", "").strip()
+        self.SEMANTIC_SCHOLAR_API_KEY = os.getenv("SEMANTIC_SCHOLAR_API_KEY", "").strip()
+        self.EUROPEANA_API_KEY = os.getenv("EUROPEANA_API_KEY", "").strip()
+        self.LINGUA_ROBOT_API_KEY = os.getenv("LINGUA_ROBOT_API_KEY", "").strip()
+        self.WORDS_API_KEY = os.getenv("WORDS_API_KEY", "").strip()
         self.EXTERNAL_KB_OPENALEX_EXPLORER_ONLY = (
             os.getenv("EXTERNAL_KB_OPENALEX_EXPLORER_ONLY", "true").strip().lower() == "true"
         )
@@ -880,7 +888,7 @@ class Settings:
         self.HADITH_API_BASE_URL = (
             os.getenv("HADITH_API_BASE_URL", "https://hadithapi.com/api").strip().rstrip("/")
         )
-        
+
         # Flow (Layer 4) text repair: deterministic display-time OCR/imla fix
         self.FLOW_TEXT_REPAIR_ENABLED = os.getenv("FLOW_TEXT_REPAIR_ENABLED", "true").strip().lower() == "true"
         source_types_raw = os.getenv(

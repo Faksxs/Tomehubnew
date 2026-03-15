@@ -94,3 +94,5 @@ diff_app.txt
 
 # Temporary and Inspection Files
 tmp/
+postman/
+.postman/

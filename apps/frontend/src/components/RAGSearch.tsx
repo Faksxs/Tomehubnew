@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, BookOpen, Loader2, AlertCircle, ExternalLink, ThumbsUp, ThumbsDown, MessageCircle, ChevronLeft, Sparkles, BarChart2, LayoutPanelLeft, FileSearch } from 'lucide-react';
+import { Search, BookOpen, Loader2, AlertCircle, ExternalLink, ThumbsUp, ThumbsDown, MessageCircle, ChevronLeft, LayoutPanelLeft, FileSearch } from 'lucide-react';
 import { DeepChatbotLogo, SmartSearchLogo } from './ui/FeatureLogos';
 import { searchLibrary, submitFeedback, SearchResponse } from '../services/backendApiService';
 import { ExplorerChat } from './ExplorerChat';
@@ -29,40 +29,41 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack,
     const [isSavingReport, setIsSavingReport] = useState(false);
     const [hasSavedReport, setHasSavedReport] = useState(false);
 
-
     // If Explorer mode is active, render the dedicated chat component
     if (mode === 'EXPLORER') {
         return (
-            <div className="max-w-[1100px] w-full mx-auto p-0 md:p-6 animate-fade-in space-y-4">
-                <div className="flex justify-start">
-                    <button
-                        onClick={onBack}
-                        className="group flex items-center gap-2 text-slate-500 hover:text-[#CC561E] transition-all duration-300"
-                    >
-                        <div className="p-1.5 rounded-lg bg-[#F3F5FA] dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
-                            <ChevronLeft size={16} />
-                        </div>
-                        <span className="text-xs font-bold uppercase tracking-wider">Back</span>
-                    </button>
-                </div>
+            <div className="max-w-[1100px] w-full mx-auto p-3 md:p-6 animate-fade-in space-y-4 md:space-y-6">
+                {/* Unified Header for Explorer Mode */}
+                <div className="relative flex flex-row items-center justify-between w-full h-10 md:h-12 mb-2 md:mb-6">
+                    <div className="flex items-center gap-3 md:gap-5 z-10">
+                        <button
+                            onClick={onBack}
+                            className="group flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-[#CC561E] transition-all duration-300"
+                        >
+                            <div className="p-1.5 rounded-lg bg-[#F3F5FA] dark:bg-slate-800 group-hover:bg-[rgba(204,86,30,0.1)] transition-colors">
+                                <ChevronLeft size={16} />
+                            </div>
+                            <span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">Back</span>
+                        </button>
+                    </div>
 
-                <div className="flex justify-center mb-2 md:mb-4">
-                    <div className="bg-[#F3F5FA] dark:bg-slate-800 p-0.5 md:p-1 rounded-lg inline-flex items-center">
+                    <div className="bg-[#F3F5FA] dark:bg-slate-800 p-0.5 md:p-1 rounded-lg inline-flex items-center z-10">
                         <button
                             type="button"
                             onClick={() => setMode('STANDARD')}
-                            className="px-4 py-2 rounded-md text-sm font-medium transition-all text-slate-500 hover:text-slate-700 dark:text-slate-400"
+                            className="px-3 md:px-4 py-1.5 md:py-2 rounded-md text-xs md:text-sm font-medium transition-all text-slate-500 hover:text-slate-700 dark:text-slate-400"
                         >
                             Standard
                         </button>
                         <button
                             type="button"
-                            className="px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 bg-white dark:bg-slate-700 text-[#CC561E] shadow-sm"
+                            className="px-3 md:px-4 py-1.5 md:py-2 rounded-md text-xs md:text-sm font-medium transition-all flex items-center gap-1.5 md:gap-2 bg-white dark:bg-slate-700 text-[#CC561E] shadow-sm"
                         >
-                            <MessageCircle className="w-4 h-4 text-[#CC561E]" /> Explorer
+                            <MessageCircle className="w-3.5 h-3.5 md:w-4 md:h-4 text-[#CC561E]" /> Explorer
                         </button>
                     </div>
                 </div>
+
                 <ExplorerChat userId={userId} onBack={() => setMode('STANDARD')} onSaveReport={onSaveReport} />
             </div>
         );
@@ -148,8 +149,7 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack,
     return (
         <div className={`max-w-[1100px] w-full mx-auto p-3 md:p-6 flex flex-col transition-all duration-1000 ease-in-out ${!result ? 'min-h-[70vh]' : 'space-y-6 md:space-y-8'}`}>
             {/* Header Area */}
-            {/* Header Area */}
-            <div className="relative flex flex-row items-center justify-between w-full h-10 md:h-12 mb-2 md:mb-6">
+            <div className="relative flex flex-row items-center justify-between w-full h-10 md:h-12 mb-1 md:mb-2">
                 <div className="flex items-center gap-3 md:gap-5 z-10">
                     <button
                         onClick={onBack}
@@ -191,7 +191,7 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack,
                 </div>
             </div>
 
-            <div className={`flex-1 flex flex-col relative transition-all duration-700 ${!result ? 'justify-center items-center' : 'pt-4 md:pt-6'}`}>
+            <div className={`flex-1 flex flex-col relative transition-all duration-700 ${!result ? 'justify-center items-center' : 'pt-1 md:pt-2'}`}>
                 {!result && !isSearching && (
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-4xl h-full pointer-events-none -z-10 animate-fade-in">
                         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] md:w-[600px] h-[300px] md:h-[600px] bg-[#CC561E]/5 dark:bg-[#CC561E]/10 rounded-full blur-[80px] md:blur-[120px]" />
@@ -388,9 +388,6 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack,
                     </div>
                 </div>
             )}
-
-
         </div>
     );
 };
-

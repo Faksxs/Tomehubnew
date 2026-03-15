@@ -132,6 +132,39 @@ def test_resolve_book_metadata_text_query_merges_and_limits(monkeypatch):
     assert results[0]["title"] == "Hayatin Anlami"
 
 
+def test_resolve_book_metadata_falls_back_to_big_book_api(monkeypatch):
+    monkeypatch.setattr(resolver, "_fetch_openlibrary_by_bib", lambda isbn_set: [])
+    monkeypatch.setattr(resolver, "_fetch_openlibrary_search", lambda query, isbn_mode, isbn_set: [])
+    monkeypatch.setattr(resolver, "_fetch_google_books", lambda query, isbn_set: [])
+    monkeypatch.setattr(
+        resolver,
+        "_fetch_big_book",
+        lambda query, isbn_set: [
+            {
+                "title": "The Big Book",
+                "author": "Ada Writer",
+                "publisher": "Archive Press",
+                "isbn": "",
+                "allIsbns": [],
+                "translator": "",
+                "tags": ["essay"],
+                "summary": "Fallback metadata",
+                "publishedDate": "2018",
+                "url": "https://example.com/big-book",
+                "coverUrl": None,
+                "pageCount": 180,
+                "sourceLanguageHint": "en",
+                "_provider": "big-book-api",
+            }
+        ],
+    )
+    monkeypatch.setattr(resolver, "_verify_cover_urls", lambda items, top_n=3: None)
+
+    results = resolver.resolve_book_metadata("The Big Book Ada Writer", limit=5)
+    assert len(results) == 1
+    assert results[0]["_provider"] == "big-book-api"
+
+
 def test_map_openlibrary_bib_transliterates_cyrillic_author_in_latin_context():
     cyr_author = "\u041c\u0430\u043a\u0441\u0438\u043c \u0413\u043e\u0440\u044c\u043a\u0438\u0439"
     entry = {

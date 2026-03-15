@@ -37,6 +37,12 @@ from services.epistemic_service import (
     get_prompt_for_mode,
     classify_question_intent
 )
+from services.domain_policy_service import (
+    DOMAIN_MODE_AUTO,
+    domain_allows_provider_group,
+    reorder_chunks_for_domain,
+    resolve_domain_mode,
+)
 
 # Load environment variables - go up one level from services/ to backend/
 env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env')
@@ -81,8 +87,10 @@ from services.monitoring import (
 )
 from services.cache_service import get_cache, generate_cache_key
 from services.external_kb_service import (
+    get_domain_external_candidates,
     get_external_graph_candidates,
     get_external_meta,
+    get_lexical_support_candidates,
     maybe_refresh_external_for_explorer_async,
 )
 from services.islamic_api_service import get_islamic_external_candidates
@@ -928,7 +936,7 @@ def _append_search_log_diagnostics(search_log_id: Optional[int], diagnostics: Di
             conn.commit()
     except Exception as e:
         logger.warning("Failed to append search log diagnostics id=%s: %s", search_log_id, e)
-def get_rag_context(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, mode: str = 'STANDARD', resource_type: Optional[str] = None, limit: Optional[int] = None, offset: int = 0, session_id: Optional[int | str] = None, scope_mode: str = "GLOBAL", apply_scope_policy: bool = False, compare_mode: Optional[str] = None, target_book_ids: Optional[List[str]] = None, visibility_scope: str = "default", content_type: Optional[str] = None, ingestion_type: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def get_rag_context(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, mode: str = 'STANDARD', resource_type: Optional[str] = None, limit: Optional[int] = None, offset: int = 0, session_id: Optional[int | str] = None, scope_mode: str = "GLOBAL", apply_scope_policy: bool = False, compare_mode: Optional[str] = None, target_book_ids: Optional[List[str]] = None, visibility_scope: str = "default", content_type: Optional[str] = None, ingestion_type: Optional[str] = None, domain_mode: str = DOMAIN_MODE_AUTO) -> Optional[Dict[str, Any]]:
     """
     Retrieves and processes context for RAG.
     Shared by Legacy Search and Dual-AI Chat.
@@ -955,6 +963,15 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
                 effective_query,
             )
 
+    domain_resolution = resolve_domain_mode(
+        effective_query,
+        requested_domain_mode=domain_mode,
+        chat_history=chat_history,
+    )
+    resolved_domain_mode = str(domain_resolution.get("resolved_domain_mode") or DOMAIN_MODE_AUTO)
+    domain_confidence = float(domain_resolution.get("domain_confidence") or 0.0)
+    domain_reason = str(domain_resolution.get("domain_reason") or "unknown")
+    provider_policy_applied = dict(domain_resolution.get("provider_policy_applied") or {})
     # 1. Keyword Extraction & Intent Classification
     # We classify intent EARLY now (Phase 4) to guide retrieval strategy
     intent, complexity = classify_question_intent(effective_query)
@@ -1357,7 +1374,11 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
 
     # Optional External KB candidate injection.
     # Explorer only, but no longer requires explicit context_book_id.
-    if mode == "EXPLORER" and bool(getattr(settings, "EXTERNAL_KB_ENABLED", False)):
+    if (
+        mode == "EXPLORER"
+        and bool(getattr(settings, "EXTERNAL_KB_ENABLED", False))
+        and domain_allows_provider_group(resolved_domain_mode, "EXTERNAL_KB")
+    ):
         candidate_book_ids: List[str] = []
         if context_book_id:
             candidate_book_ids.append(str(context_book_id).strip())
@@ -1412,6 +1433,21 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
             if len(external_graph_results) >= ext_limit_total:
                 break
 
+        if len(external_graph_results) < ext_limit_total:
+            direct_external = get_domain_external_candidates(
+                effective_query,
+                resolved_domain_mode,
+                limit=max(1, ext_limit_total - len(external_graph_results)),
+            )
+            for candidate in direct_external:
+                c_key = f"{candidate.get('provider','')}_{candidate.get('title','')}_{str(candidate.get('reference',''))[:60]}"
+                if c_key in seen_external:
+                    continue
+                seen_external.add(c_key)
+                external_graph_results.append(candidate)
+                if len(external_graph_results) >= ext_limit_total:
+                    break
+
         external_graph_candidates_count = len(external_graph_results)
         external_kb_used = external_graph_candidates_count > 0
 
@@ -1426,14 +1462,45 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
                 "external_weight": float(
                     c.get("external_weight", getattr(settings, "EXTERNAL_KB_GRAPH_WEIGHT", 0.15))
                 ),
+                "provider": c.get("provider"),
+                "source_url": c.get("source_url"),
+                "reference": c.get("reference"),
             }
             key = f"{c_std['title']}_{str(c_std['content_chunk'])[:20]}"
+            if key not in all_chunks_map:
+                all_chunks_map[key] = c_std
+
+    if mode == "EXPLORER" and domain_allows_provider_group(resolved_domain_mode, "LEXICAL_ETYMOLOGY"):
+        lexical_support = get_lexical_support_candidates(
+            effective_query,
+            resolved_domain_mode,
+            limit=2,
+        )
+        if lexical_support:
+            external_kb_used = True
+        for candidate in lexical_support:
+            c_std = {
+                "title": candidate.get("title", "Lexical Support"),
+                "content_chunk": candidate.get("content_chunk", ""),
+                "page_number": candidate.get("page_number", 0),
+                "source_type": "EXTERNAL_KB",
+                "epistemic_level": "B",
+                "score": candidate.get("score", 0.5),
+                "external_weight": float(
+                    candidate.get("external_weight", getattr(settings, "EXTERNAL_KB_GRAPH_WEIGHT", 0.12))
+                ),
+                "provider": candidate.get("provider"),
+                "source_url": candidate.get("source_url"),
+                "reference": candidate.get("reference"),
+            }
+            key = f"{c_std['provider']}_{c_std['title']}_{str(c_std['reference'])[:32]}"
             if key not in all_chunks_map:
                 all_chunks_map[key] = c_std
 
     if (
         mode == "EXPLORER"
         and bool(getattr(settings, "ISLAMIC_API_ENABLED", False))
+        and domain_allows_provider_group(resolved_domain_mode, "ISLAMIC_API")
         and (not bool(getattr(settings, "ISLAMIC_API_EXPLORER_ONLY", True)) or mode == "EXPLORER")
     ):
         islamic_external_results, islamic_diag = get_islamic_external_candidates(
@@ -1464,6 +1531,9 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
                 "religious_source_kind": c.get("religious_source_kind"),
                 "source_url": c.get("source_url"),
                 "reference": c.get("reference"),
+                "canonical_reference": c.get("canonical_reference"),
+                "is_exact_match": bool(c.get("is_exact_match", False)),
+                "religious_query_kind": c.get("religious_query_kind"),
             }
             key = f"{c_std['title']}_{str(c_std['content_chunk'])[:20]}"
             if key not in all_chunks_map:
@@ -1668,7 +1738,8 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
             return base * max(0.05, min(0.30, ext_weight))
         if chunk.get('source_type') == 'ISLAMIC_EXTERNAL':
             ext_weight = float(chunk.get('external_weight', getattr(settings, "ISLAMIC_API_QURAN_WEIGHT", 0.22)))
-            return base * max(0.08, min(0.38, ext_weight))
+            exact_bonus = 1.8 if bool(chunk.get("is_exact_match")) and resolved_domain_mode == "RELIGIOUS" else 1.0
+            return base * max(0.08, min(0.38, ext_weight)) * exact_bonus
         
         weight = 1.0
         if intent in ['NARRATIVE', 'SOCIETAL']:
@@ -1713,6 +1784,12 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         L3_CONTEXT_REORDER_TOTAL.labels(status=long_context_reorder_status).inc()
     except Exception:
         pass
+
+    final_chunks = reorder_chunks_for_domain(final_chunks, resolved_domain_mode)
+    for chunk in final_chunks:
+        chunk["_domain_mode_resolved"] = resolved_domain_mode
+        chunk["_domain_confidence"] = domain_confidence
+        chunk["_provider_policy_applied"] = provider_policy_applied
     
     # Answer Mode & Confidence
     answer_mode = determine_answer_mode(final_chunks, intent, complexity)
@@ -1807,6 +1884,10 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         "network_status": network_info["status"],
         "network_reason": network_info["reason"],
         "keywords": keywords,
+        "resolved_domain_mode": resolved_domain_mode,
+        "domain_confidence": domain_confidence,
+        "domain_reason": domain_reason,
+        "provider_policy_applied": provider_policy_applied,
         "search_log_id": search_log_id,
         "graph_candidates_count": len(graph_results),
         "external_graph_candidates_count": external_graph_candidates_count,
@@ -1881,6 +1962,10 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
             "degradations": degradations,
             "status": "partial" if degradations else "healthy",
             "search_log_id": search_log_id,
+            "resolved_domain_mode": resolved_domain_mode,
+            "domain_confidence": domain_confidence,
+            "domain_reason": domain_reason,
+            "provider_policy_applied": provider_policy_applied,
             "graph_candidates_count": len(graph_results),
             "external_graph_candidates_count": external_graph_candidates_count,
             "islamic_external_candidates_count": islamic_external_candidates_count,
@@ -1960,7 +2045,7 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
     }
 
 
-def generate_answer(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, session_summary: str = "", limit: Optional[int] = None, offset: int = 0, session_id: Optional[int | str] = None, resource_type: Optional[str] = None, scope_mode: str = "GLOBAL", apply_scope_policy: bool = False, compare_mode: Optional[str] = None, target_book_ids: Optional[List[str]] = None, visibility_scope: str = "default", content_type: Optional[str] = None, ingestion_type: Optional[str] = None) -> Tuple[Optional[str], Optional[List[Dict]], Dict]:
+def generate_answer(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, session_summary: str = "", limit: Optional[int] = None, offset: int = 0, session_id: Optional[int | str] = None, resource_type: Optional[str] = None, scope_mode: str = "GLOBAL", apply_scope_policy: bool = False, compare_mode: Optional[str] = None, target_book_ids: Optional[List[str]] = None, visibility_scope: str = "default", content_type: Optional[str] = None, ingestion_type: Optional[str] = None, domain_mode: str = DOMAIN_MODE_AUTO) -> Tuple[Optional[str], Optional[List[Dict]], Dict]:
     """
     RAG generation pipeline with Memory Layer support.
     """
@@ -2027,6 +2112,7 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
         visibility_scope=visibility_scope,
         content_type=content_type,
         ingestion_type=ingestion_type,
+        domain_mode=domain_mode,
     )
     retrieval_phase_sec = time.perf_counter() - retrieval_phase_start
     try:
@@ -2057,7 +2143,12 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
     graph_insight = ""
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        future_context = executor.submit(build_epistemic_context, chunks, answer_mode)
+        future_context = executor.submit(
+            build_epistemic_context,
+            chunks,
+            answer_mode,
+            ctx.get("resolved_domain_mode", DOMAIN_MODE_AUTO),
+        )
         future_graph_bridge = None
         graph_bridge_started_at = None
 
@@ -2102,6 +2193,9 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
         'provider': c.get('provider'),
         'source_url': c.get('source_url'),
         'reference': c.get('reference'),
+        'canonical_reference': c.get('canonical_reference'),
+        'religious_source_kind': c.get('religious_source_kind'),
+        'is_exact_match': c.get('is_exact_match'),
     } for i, c in enumerate(used_chunks, 1)]
     
     try:
@@ -2133,6 +2227,7 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
             confidence_score=avg_conf, 
             network_status=network_status,
             quote_target_count=quote_target_count,
+            domain_mode=ctx.get("resolved_domain_mode", DOMAIN_MODE_AUTO),
         )
         prompt_build_phase_sec = time.perf_counter() - prompt_build_phase_start
         try:
@@ -2216,6 +2311,7 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
                     question,
                     confidence_score=max(float(avg_conf or 0.0), 4.0),
                     network_status=network_status,
+                    domain_mode=ctx.get("resolved_domain_mode", DOMAIN_MODE_AUTO),
                 )
                 recovery_prompt += (
                     "\n\nADDITIONAL REQUIREMENT:\n"
@@ -2266,6 +2362,10 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
         meta["context_budget_applied"] = context_budget_applied
         meta["quote_target_count"] = quote_target_count
         meta["short_answer_recovery_applied"] = short_answer_recovery_applied
+        meta["resolved_domain_mode"] = ctx.get("resolved_domain_mode", DOMAIN_MODE_AUTO)
+        meta["domain_confidence"] = ctx.get("domain_confidence", 0.0)
+        meta["domain_reason"] = ctx.get("domain_reason")
+        meta["provider_policy_applied"] = ctx.get("provider_policy_applied", {})
         meta["supplementary_search_skipped_reason"] = ctx.get("supplementary_search_skipped_reason")
         meta["expansion_skipped_reason"] = ctx.get("expansion_skipped_reason")
         meta["source_diversity_count"] = ctx.get("source_diversity_count", 0)
