@@ -32,9 +32,9 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack,
     // If Explorer mode is active, render the dedicated chat component
     if (mode === 'EXPLORER') {
         return (
-            <div className="max-w-[1100px] w-full mx-auto p-3 md:p-6 animate-fade-in space-y-4 md:space-y-6">
+            <div className="max-w-[1100px] w-full mx-auto p-0 md:p-6 animate-fade-in space-y-0 md:space-y-6">
                 {/* Unified Header for Explorer Mode */}
-                <div className="relative flex flex-row items-center justify-between w-full h-10 md:h-12 mb-2 md:mb-6">
+                <div className="relative flex flex-row items-center justify-between w-full h-10 md:h-12 px-3 md:px-0 mb-1 md:mb-6 mt-2 md:mt-0">
                     <div className="flex items-center gap-3 md:gap-5 z-10">
                         <button
                             onClick={onBack}

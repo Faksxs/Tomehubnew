@@ -351,9 +351,9 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack, onSa
     };
 
     return (
-        <div className="flex h-[calc(100vh-120px)] w-full gap-4">
+        <div className="flex h-[calc(100dvh-60px)] md:h-[calc(100vh-120px)] w-full gap-0 md:gap-4">
             {/* Main Chat Area */}
-            <div className="flex flex-col flex-1 min-w-0 bg-white dark:bg-slate-900 rounded-none md:rounded-xl shadow-xl border-y md:border border-slate-200 dark:border-slate-800 overflow-hidden">
+            <div className="flex flex-col flex-1 min-w-0 bg-white dark:bg-slate-900 rounded-none md:rounded-xl shadow-none md:shadow-xl border-t border-b md:border border-slate-200 dark:border-slate-800 overflow-hidden">
                 {/* Header */}
                 <div className="flex items-center justify-between p-2 md:p-4 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-none md:rounded-t-xl">
                     <div className="flex items-center gap-3">
@@ -474,7 +474,7 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack, onSa
                                         </button>
 
                                         {expandedThinking.has(message.id) && (
-                                            <div className="mt-2 mb-3 space-y-3 bg-slate-100/50 dark:bg-slate-800/50 p-3 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 animate-fade-in">
+                                            <div className="mt-2 mb-3 space-y-3 bg-slate-100/50 dark:bg-slate-800/50 p-2.5 md:p-3 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 animate-fade-in">
                                                 {message.thinkingHistory.map((step, idx) => (
                                                     <div key={idx} className="space-y-1">
                                                         <div className="flex items-center justify-between">
@@ -718,8 +718,8 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack, onSa
                 </div>
 
                 {/* Input Area */}
-                <div className="p-2 md:p-4 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-none md:rounded-b-xl">
-                    <div className="flex gap-3">
+                <div className="p-2 md:p-4 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-none md:rounded-b-xl pb-safe">
+                    <div className="flex gap-2 md:gap-3">
                         <input
                             ref={inputRef}
                             type="text"
@@ -728,12 +728,12 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack, onSa
                             onKeyPress={handleKeyPress}
                             placeholder="Ask a deep question..."
                             disabled={isLoading}
-                            className="flex-1 px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#CC561E] focus:border-transparent disabled:opacity-50"
+                            className="flex-1 px-3 md:px-4 py-2.5 md:py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#CC561E] focus:border-transparent disabled:opacity-50 text-sm md:text-base"
                         />
                         <button
                             onClick={handleSend}
                             disabled={!input.trim() || isLoading}
-                            className="px-4 py-3 bg-[#CC561E] hover:bg-[#b34b1a] disabled:bg-slate-300 dark:disabled:bg-slate-800 disabled:text-slate-500 dark:disabled:text-slate-500 disabled:opacity-50 text-white rounded-xl transition-all shadow-lg shadow-[#CC561E]/20 flex items-center gap-2"
+                            className="px-3 md:px-4 py-2.5 md:py-3 bg-[#CC561E] hover:bg-[#b34b1a] disabled:bg-slate-300 dark:disabled:bg-slate-800 disabled:text-slate-500 dark:disabled:text-slate-500 disabled:opacity-50 text-white rounded-xl transition-all shadow-lg shadow-[#CC561E]/20 flex items-center justify-center shrink-0"
                         >
                             {isLoading ? (
                                 <Loader2 className="w-5 h-5 animate-spin" />
