@@ -91,7 +91,7 @@ try:
     vector_coverage = (vectorized / total_content * 100) if total_content > 0 else 0
     print(f'   Vektörize edilmiş içerik: {vectorized:,} / {total_content:,} ({vector_coverage:.1f}%)')
     print(f'   Embedding Dimension: 768-D (FLOAT32)')
-    print(f'   Model: Google Gemini text-embedding-004')
+    print(f'   Model: Google Gemini gemini-embedding-2-preview')
     print()
     
     # 7. Session/Connection Bilgileri

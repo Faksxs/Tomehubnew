@@ -9,7 +9,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from services.embedding_service import get_embedding
 
 def test_new_model():
-    print("🚀 Testing 'gemini-embedding-001'...")
+    embedding_model_name = os.getenv("EMBEDDING_MODEL_NAME", "gemini-embedding-2-preview")
+    print(f"Testing '{embedding_model_name}'...")
     try:
         text = "Test sentence for embedding model validation."
         vec = get_embedding(text)

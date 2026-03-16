@@ -12,13 +12,11 @@ class IslamicApiServiceTests(unittest.TestCase):
             "QURAN_FOUNDATION_ENABLED": settings.QURAN_FOUNDATION_ENABLED,
             "DIYANET_QURAN_ENABLED": settings.DIYANET_QURAN_ENABLED,
             "HADEETHENC_ENABLED": settings.HADEETHENC_ENABLED,
-            "HADITH_API_ENABLED": settings.HADITH_API_ENABLED,
         }
         settings.ISLAMIC_API_ENABLED = True
         settings.QURAN_FOUNDATION_ENABLED = True
         settings.DIYANET_QURAN_ENABLED = True
         settings.HADEETHENC_ENABLED = True
-        settings.HADITH_API_ENABLED = True
 
     def tearDown(self):
         for key, value in self._saved.items():

@@ -14,6 +14,9 @@ if sys.platform == 'win32':
 env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
 load_dotenv(env_path)
 api_key = os.getenv("GEMINI_API_KEY")
+embedding_model_name = (os.getenv("EMBEDDING_MODEL_NAME", "gemini-embedding-2-preview") or "").strip()
+if embedding_model_name and not embedding_model_name.startswith("models/"):
+    embedding_model_name = f"models/{embedding_model_name}"
 if api_key:
     genai.configure(api_key=api_key)
 
@@ -25,7 +28,7 @@ def batch_get_embeddings_fallback(texts):
     if not api_key:
         raise ValueError("GEMINI_API_KEY not configured")
     result = genai.embed_content(
-        model="models/gemini-embedding-001",
+        model=embedding_model_name,
         content=texts,
         task_type="retrieval_document",
         output_dimensionality=768,

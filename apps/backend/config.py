@@ -204,7 +204,7 @@ class Settings:
         # Economic policy: keep Gemini on a single cost-efficient model by default.
         self.LLM_MODEL_FLASH = os.getenv("LLM_MODEL_FLASH", "gemini-2.5-flash-lite")
         self.LLM_MODEL_PRO = os.getenv("LLM_MODEL_PRO", "gemini-2.5-flash-lite")
-        self.EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "gemini-embedding-001")
+        self.EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "gemini-embedding-2-preview")
         self.LLM_PRO_FALLBACK_ENABLED = os.getenv("LLM_PRO_FALLBACK_ENABLED", "false").strip().lower() == "true"
         self.LLM_PRO_FALLBACK_MAX_PER_REQUEST = int(os.getenv("LLM_PRO_FALLBACK_MAX_PER_REQUEST", "1"))
         if self.LLM_PRO_FALLBACK_MAX_PER_REQUEST < 0:
@@ -738,7 +738,7 @@ class Settings:
         )
         
         # Model Versions (for cache invalidation)
-        self.EMBEDDING_MODEL_VERSION = os.getenv("EMBEDDING_MODEL_VERSION", "v3")
+        self.EMBEDDING_MODEL_VERSION = os.getenv("EMBEDDING_MODEL_VERSION", "v4")
         self.LLM_MODEL_VERSION = os.getenv("LLM_MODEL_VERSION", "v2")
         self._validate_model_versions()
 
@@ -881,12 +881,6 @@ class Settings:
         )
         self.HADEETHENC_CATEGORY_CACHE_TTL_SEC = int(
             os.getenv("HADEETHENC_CATEGORY_CACHE_TTL_SEC", "21600")
-        )
-
-        self.HADITH_API_ENABLED = os.getenv("HADITH_API_ENABLED", "false").strip().lower() == "true"
-        self.HADITH_API_KEY = os.getenv("HADITH_API_KEY", "").strip()
-        self.HADITH_API_BASE_URL = (
-            os.getenv("HADITH_API_BASE_URL", "https://hadithapi.com/api").strip().rstrip("/")
         )
 
         # Flow (Layer 4) text repair: deterministic display-time OCR/imla fix

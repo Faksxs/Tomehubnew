@@ -30,27 +30,6 @@ _RELIGIOUS_SIGNAL_TOKENS = _QURAN_SIGNAL_TOKENS.union(
 _VERSE_KEY_RE = re.compile(r"\b(?P<surah>\d{1,3})\s*[:/]\s*(?P<ayah>\d{1,3})\b")
 _HADITH_NUMBER_RE = re.compile(r"\b(?:hadis|hadith)\s*(?:no|numara|number)?\s*[:#]?\s*(\d{1,5})\b", re.IGNORECASE)
 
-_HADITH_BOOK_KEYWORDS = {
-    "buhari": "sahih-bukhari",
-    "sahih buhari": "sahih-bukhari",
-    "muslim": "sahih-muslim",
-    "sahih muslim": "sahih-muslim",
-    "tirmizi": "al-tirmidhi",
-    "tirmidhi": "al-tirmidhi",
-    "ebu davud": "abu-dawood",
-    "abu dawood": "abu-dawood",
-    "ebu davut": "abu-dawood",
-    "ibn mace": "ibn-e-majah",
-    "ibni mace": "ibn-e-majah",
-    "ibn majah": "ibn-e-majah",
-    "nesai": "sunan-nasai",
-    "nasai": "sunan-nasai",
-    "muvatta": "muwatta-imam-malik",
-    "malik": "muwatta-imam-malik",
-    "musned ahmed": "musnad-ahmad",
-    "ahmed": "musnad-ahmad",
-}
-
 _QURAN_TOKEN_CACHE: Dict[str, Any] = {"token": None, "expires_at": 0.0}
 _QURAN_TOKEN_LOCK = threading.Lock()
 _CATEGORY_CACHE: Dict[str, Dict[str, Any]] = {}
@@ -547,77 +526,6 @@ def _hadeethenc_candidates(question: str, limit: int) -> List[Dict[str, Any]]:
     return out
 
 
-def _extract_hadith_book_slug(question: str) -> Optional[str]:
-    normalized = _normalize_ascii(question)
-    for phrase, slug in _HADITH_BOOK_KEYWORDS.items():
-        if _normalize_ascii(phrase) in normalized:
-            return slug
-    return None
-
-
-def _hadith_api_candidates(question: str, limit: int) -> List[Dict[str, Any]]:
-    if not bool(getattr(settings, "HADITH_API_ENABLED", False)):
-        return []
-    api_key = str(getattr(settings, "HADITH_API_KEY", "") or "").strip()
-    base_url = str(getattr(settings, "HADITH_API_BASE_URL", "") or "").strip().rstrip("/")
-    if not api_key or not base_url:
-        return []
-
-    book_slug = _extract_hadith_book_slug(question)
-    hadith_number_match = _HADITH_NUMBER_RE.search(str(question or ""))
-    params: Dict[str, str] = {"apiKey": api_key, "paginate": str(max(1, min(limit, 3)))}
-    if book_slug:
-        params["book"] = book_slug
-    if hadith_number_match:
-        params["hadithNumber"] = hadith_number_match.group(1)
-    elif re.search(r"[A-Za-z]{3,}", str(question or "")) and all(ord(ch) < 128 for ch in str(question or "")):
-        params["hadithEnglish"] = question
-    else:
-        return []
-
-    url = f"{base_url}/hadiths?{urllib_parse.urlencode(params)}"
-    response = _http_json(url)
-    data = (((response or {}).get("hadiths") or {}).get("data") or []) if isinstance(response, dict) else []
-    if not isinstance(data, list):
-        return []
-    out: List[Dict[str, Any]] = []
-    weight = float(getattr(settings, "ISLAMIC_API_HADITH_WEIGHT", 0.18)) * 0.92
-    for row in data[: max(1, limit)]:
-        hadith_number = str(row.get("hadithNumber") or "").strip()
-        english_text = str(row.get("hadithEnglish") or "").strip()
-        narrator = str(row.get("englishNarrator") or "").strip()
-        book = ((row.get("book") or {}).get("bookName")) if isinstance(row.get("book"), dict) else None
-        chapter = ((row.get("chapter") or {}).get("chapterEnglish")) if isinstance(row.get("chapter"), dict) else None
-        content = "\n".join(
-            part
-            for part in [
-                f"Kaynak dil metni: {english_text}" if english_text else "",
-                f"Ravi: {narrator}" if narrator else "",
-                f"Bolum: {chapter}" if chapter else "",
-            ]
-            if part
-        )
-        if not content:
-            continue
-        overlap = _query_overlap_score(question, english_text)
-        score = 0.54 + min(0.12, overlap * 0.15)
-        title_parts = [str(book or "").strip(), f"Hadis {hadith_number}" if hadith_number else ""]
-        out.append(
-            _build_candidate(
-                provider="HADITH_API",
-                kind="HADITH",
-                title="Hadith API - " + " - ".join(part for part in title_parts if part) or "Hadith API",
-                content_chunk=content,
-                score=score,
-                external_weight=weight,
-                reference=hadith_number or None,
-                source_url="https://hadithapi.com/",
-                religious_query_kind="TOPICAL_HADITH",
-            )
-        )
-    return out
-
-
 def get_islamic_external_candidates(question: str, limit: int = 4) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     if not bool(getattr(settings, "ISLAMIC_API_ENABLED", False)):
         return [], {"used": False, "providers": {}, "quran_used": False, "hadith_used": False}
@@ -653,8 +561,6 @@ def get_islamic_external_candidates(question: str, limit: int = 4) -> Tuple[List
     if should_use_hadith:
         hadith_used = True
         hadith_candidates = _hadeethenc_candidates(query, hard_limit)
-        if len(hadith_candidates) < hard_limit:
-            hadith_candidates.extend(_hadith_api_candidates(query, hard_limit - len(hadith_candidates)))
         candidates.extend(hadith_candidates[:hard_limit])
 
     deduped: List[Dict[str, Any]] = []

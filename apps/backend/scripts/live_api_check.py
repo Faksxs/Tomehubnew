@@ -55,6 +55,7 @@ def test_api(name, url, headers=None, data=None, method="GET"):
 def run_all():
     env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
     env = load_env_manual(env_path)
+    embedding_model = (env.get("EMBEDDING_MODEL_NAME") or "gemini-embedding-2-preview").strip()
     
     print(f"\n--- Tomehub Comprehensive API Diagnostic (Full Suite) ---")
     print(f"Loaded {len(env)} keys from .env")
@@ -67,7 +68,7 @@ def run_all():
                                  {"model": env.get("LLM_EXPLORER_PRIMARY_MODEL", "qwen/qwen3-next-80b-a3b-instruct"), 
                                   "messages": [{"role": "user", "content": "hi"}], "max_tokens": 5}, "POST")
     
-    results["Gemini"] = test_api("Gemini", f"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={env.get('GEMINI_API_KEY')}", 
+    results["Gemini"] = test_api("Gemini", f"https://generativelanguage.googleapis.com/v1beta/models/{embedding_model}:embedContent?key={env.get('GEMINI_API_KEY')}", 
                                  None, {"content": {"parts": [{"text": "test"}]}}, "POST")
     
     # 2. BOOKS & LIBRARIES
@@ -98,8 +99,6 @@ def run_all():
     # Using production URL for Diyanet
     results["Diyanet"] = test_api("Diyanet Quran", "https://acikkaynakkuran.diyanet.gov.tr/api/v1/surah", {"Authorization": f"Bearer {env.get('DIYANET_QURAN_API_KEY')}"})
     results["HadeethEnc"] = test_api("HadeethEnc", "https://hadeethenc.com/api/v1/categories/list/?language=tr")
-    results["HadithAPI"] = test_api("HadithAPI", f"https://hadithapi.com/api/books?apiKey={env.get('HADITH_API_KEY')}")
-
     # 7. MEDIA
     results["TMDB"] = test_api("TMDB", f"https://api.themoviedb.org/3/search/movie?query=Inception&api_key={env.get('TMDB_API_KEY')}")
 
