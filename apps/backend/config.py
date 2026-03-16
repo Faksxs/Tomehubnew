@@ -845,6 +845,35 @@ class Settings:
         self.ISLAMIC_API_HTTP_TIMEOUT_SEC = float(os.getenv("ISLAMIC_API_HTTP_TIMEOUT_SEC", "6.0"))
         self.ISLAMIC_API_HTTP_MAX_RETRY = int(os.getenv("ISLAMIC_API_HTTP_MAX_RETRY", "1"))
 
+        self.QURANENC_ENABLED = os.getenv("QURANENC_ENABLED", "true").strip().lower() == "true"
+        self.QURANENC_API_BASE_URL = (
+            os.getenv("QURANENC_API_BASE_URL", "https://quranenc.com/api/v1").strip().rstrip("/")
+        )
+        self.QURANENC_DEFAULT_LANGUAGE = (
+            os.getenv("QURANENC_DEFAULT_LANGUAGE", "tr").strip().lower() or "tr"
+        )
+        self.QURANENC_DEFAULT_TRANSLATION_KEY = (
+            os.getenv("QURANENC_DEFAULT_TRANSLATION_KEY", "").strip().lower()
+        )
+        self.QURANENC_TRANSLATION_CACHE_TTL_SEC = int(
+            os.getenv("QURANENC_TRANSLATION_CACHE_TTL_SEC", "21600")
+        )
+
+        self.ISLAMHOUSE_ENABLED = os.getenv("ISLAMHOUSE_ENABLED", "true").strip().lower() == "true"
+        self.ISLAMHOUSE_API_BASE_URL = (
+            os.getenv("ISLAMHOUSE_API_BASE_URL", "https://api3.islamhouse.com/v3").strip().rstrip("/")
+        )
+        self.ISLAMHOUSE_API_KEY = os.getenv("ISLAMHOUSE_API_KEY", "paV29H2gm56kvLPy").strip()
+        self.ISLAMHOUSE_DEFAULT_LANGUAGE = (
+            os.getenv("ISLAMHOUSE_DEFAULT_LANGUAGE", "tr").strip().lower() or "tr"
+        )
+        self.ISLAMHOUSE_MAX_CATEGORIES = int(os.getenv("ISLAMHOUSE_MAX_CATEGORIES", "2"))
+        self.ISLAMHOUSE_ITEMS_PER_TYPE = int(os.getenv("ISLAMHOUSE_ITEMS_PER_TYPE", "2"))
+        self.ISLAMHOUSE_CATEGORY_CACHE_TTL_SEC = int(
+            os.getenv("ISLAMHOUSE_CATEGORY_CACHE_TTL_SEC", "21600")
+        )
+        self.ISLAMHOUSE_WEIGHT = float(os.getenv("ISLAMHOUSE_WEIGHT", "0.11"))
+
         self.QURAN_FOUNDATION_ENABLED = os.getenv("QURAN_FOUNDATION_ENABLED", "false").strip().lower() == "true"
         self.QURAN_FOUNDATION_CLIENT_ID = os.getenv("QURAN_FOUNDATION_CLIENT_ID", "").strip()
         self.QURAN_FOUNDATION_CLIENT_SECRET = os.getenv("QURAN_FOUNDATION_CLIENT_SECRET", "").strip()

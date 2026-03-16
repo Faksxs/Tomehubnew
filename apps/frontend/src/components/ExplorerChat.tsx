@@ -3,6 +3,7 @@ import { Send, Loader2, BookOpen, ChevronDown, ChevronUp, RotateCcw, MessageCirc
 import { BackendDomainMode, sendChatMessage, submitFeedback } from '../services/backendApiService';
 import { ContextBar } from './ContextBar';
 import { cleanLayer3Answer, Layer3ReportDraftInput } from '../lib/layer3Report';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface Message {
     id: number;
@@ -48,6 +49,7 @@ interface ExplorerChatProps {
 }
 
 export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack, onSaveReport }) => {
+    const { theme } = useTheme();
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -373,14 +375,15 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack, onSa
                             <select
                                 value={domainMode}
                                 onChange={(e) => setDomainMode(e.target.value as BackendDomainMode)}
-                                className="bg-transparent outline-none text-[10px] md:text-xs"
+                                className="bg-transparent outline-none text-[10px] md:text-xs text-slate-900 dark:text-slate-200 cursor-pointer"
+                                style={{ colorScheme: theme }}
                                 aria-label="Explorer domain mode"
                             >
-                                <option value="AUTO">Auto</option>
-                                <option value="ACADEMIC">Academic</option>
-                                <option value="RELIGIOUS">Religious</option>
-                                <option value="LITERARY">Literary</option>
-                                <option value="CULTURE_HISTORY">Culture &amp; History</option>
+                                <option value="AUTO" className="text-slate-900 dark:text-white bg-white dark:bg-slate-800">Auto</option>
+                                <option value="ACADEMIC" className="text-slate-900 dark:text-white bg-white dark:bg-slate-800">Academic</option>
+                                <option value="RELIGIOUS" className="text-slate-900 dark:text-white bg-white dark:bg-slate-800">Religious</option>
+                                <option value="LITERARY" className="text-slate-900 dark:text-white bg-white dark:bg-slate-800">Literary</option>
+                                <option value="CULTURE_HISTORY" className="text-slate-900 dark:text-white bg-white dark:bg-slate-800">Culture &amp; History</option>
                             </select>
                         </label>
                         <label className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-[10px] md:text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800">

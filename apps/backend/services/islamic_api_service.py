@@ -34,6 +34,10 @@ _QURAN_TOKEN_CACHE: Dict[str, Any] = {"token": None, "expires_at": 0.0}
 _QURAN_TOKEN_LOCK = threading.Lock()
 _CATEGORY_CACHE: Dict[str, Dict[str, Any]] = {}
 _CATEGORY_CACHE_LOCK = threading.Lock()
+_QURANENC_TRANSLATION_CACHE: Dict[str, Dict[str, Any]] = {}
+_QURANENC_TRANSLATION_CACHE_LOCK = threading.Lock()
+_ISLAMHOUSE_CATEGORY_TREE_CACHE: Dict[str, Dict[str, Any]] = {}
+_ISLAMHOUSE_CATEGORY_TREE_CACHE_LOCK = threading.Lock()
 
 
 def _normalize_ascii(text: str) -> str:
@@ -51,6 +55,12 @@ def _normalize_ascii(text: str) -> str:
 
 def _tokenize(text: str) -> List[str]:
     return [tok for tok in re.findall(r"[^\W_]+", _normalize_ascii(text), flags=re.UNICODE) if len(tok) >= 2]
+
+
+def _strip_html(text: Any) -> str:
+    raw = html.unescape(str(text or ""))
+    cleaned = re.sub(r"<[^>]+>", " ", raw)
+    return re.sub(r"\s+", " ", cleaned).strip()
 
 
 def _query_overlap_score(query: str, candidate: str) -> float:
@@ -173,6 +183,276 @@ def _infer_religious_query_kind(question: str) -> str:
             return "EXACT_HADITH"
         return "TOPICAL_HADITH"
     return "GENERAL_RELIGIOUS"
+
+
+def _quranenc_list_translations(language: str) -> List[Dict[str, Any]]:
+    if not bool(getattr(settings, "QURANENC_ENABLED", True)):
+        return []
+    lang = str(language or getattr(settings, "QURANENC_DEFAULT_LANGUAGE", "tr") or "tr").strip().lower() or "tr"
+    now = time.time()
+    ttl = max(300, int(getattr(settings, "QURANENC_TRANSLATION_CACHE_TTL_SEC", 21600) or 21600))
+    with _QURANENC_TRANSLATION_CACHE_LOCK:
+        cached = _QURANENC_TRANSLATION_CACHE.get(lang)
+        if cached and float(cached.get("expires_at") or 0.0) > now:
+            return list(cached.get("data") or [])
+    base_url = str(getattr(settings, "QURANENC_API_BASE_URL", "") or "").strip().rstrip("/")
+    if not base_url:
+        return []
+    url = (
+        f"{base_url}/translations/list/{urllib_parse.quote(lang)}"
+        f"?localization={urllib_parse.quote(lang)}"
+    )
+    response = _http_json(url)
+    rows = (response or {}).get("translations") if isinstance(response, dict) else None
+    translations = rows if isinstance(rows, list) else []
+    with _QURANENC_TRANSLATION_CACHE_LOCK:
+        _QURANENC_TRANSLATION_CACHE[lang] = {"expires_at": now + ttl, "data": translations}
+    return translations
+
+
+def _quranenc_translation_key(language: Optional[str] = None) -> Optional[str]:
+    configured = str(getattr(settings, "QURANENC_DEFAULT_TRANSLATION_KEY", "") or "").strip().lower()
+    if configured:
+        return configured
+    lang = str(language or getattr(settings, "QURANENC_DEFAULT_LANGUAGE", "tr") or "tr").strip().lower() or "tr"
+    rows = _quranenc_list_translations(lang)
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("language_iso_code") or "").strip().lower() != lang:
+            continue
+        key = str(row.get("key") or row.get("file") or "").strip().lower()
+        if key:
+            return key
+    return None
+
+
+def _quranenc_fetch_verse(verse_key: str, *, language: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    if not bool(getattr(settings, "QURANENC_ENABLED", True)):
+        return None
+    parts = str(verse_key or "").split(":", 1)
+    if len(parts) != 2:
+        return None
+    try:
+        surah_id = int(parts[0])
+        ayah_id = int(parts[1])
+    except ValueError:
+        return None
+    lang = str(language or getattr(settings, "QURANENC_DEFAULT_LANGUAGE", "tr") or "tr").strip().lower() or "tr"
+    translation_key = _quranenc_translation_key(lang)
+    base_url = str(getattr(settings, "QURANENC_API_BASE_URL", "") or "").strip().rstrip("/")
+    if not translation_key or not base_url:
+        return None
+    url = (
+        f"{base_url}/translation/aya/{urllib_parse.quote(translation_key)}/"
+        f"{surah_id}/{ayah_id}"
+    )
+    response = _http_json(url)
+    result = (response or {}).get("result") if isinstance(response, dict) else None
+    if not isinstance(result, dict):
+        return None
+    result["_translation_key"] = translation_key
+    result["_language"] = lang
+    result["_source_url"] = url
+    return result
+
+
+def _normalize_quranenc_exact(verse: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    if not isinstance(verse, dict):
+        return None
+    verse_key = f"{str(verse.get('sura') or '').strip()}:{str(verse.get('aya') or '').strip()}".strip(":")
+    translation = html.unescape(str(verse.get("translation") or "")).strip()
+    arabic = str(verse.get("arabic_text") or "").strip()
+    title_bits = [
+        "QuranEnc",
+        f"Ayet {verse_key}" if verse_key else "Ayet",
+    ]
+    if str(verse.get("translation_key") or verse.get("_translation_key") or "").strip():
+        title_bits.append(str(verse.get("translation_key") or verse.get("_translation_key")).strip())
+    content = "\n".join(
+        part
+        for part in [
+            translation,
+            arabic,
+            f"Kaynak: {str(verse.get('translation_key') or verse.get('_translation_key') or '').strip()}" if str(verse.get("translation_key") or verse.get("_translation_key") or "").strip() else "",
+        ]
+        if part
+    )
+    if not content:
+        return None
+    return _build_candidate(
+        provider="QURANENC",
+        kind="QURAN",
+        title=" - ".join(title_bits),
+        content_chunk=content,
+        score=0.91,
+        external_weight=float(getattr(settings, "ISLAMIC_API_QURAN_WEIGHT", 0.22)),
+        reference=verse_key or None,
+        canonical_reference=verse_key or None,
+        source_url=str(verse.get("_source_url") or "").strip() or None,
+        is_exact_match=True,
+        religious_query_kind="EXACT_QURAN_VERSE",
+    )
+
+
+def _islamhouse_category_tree(language: str) -> List[Dict[str, Any]]:
+    if not bool(getattr(settings, "ISLAMHOUSE_ENABLED", True)):
+        return []
+    lang = str(language or getattr(settings, "ISLAMHOUSE_DEFAULT_LANGUAGE", "tr") or "tr").strip().lower() or "tr"
+    now = time.time()
+    ttl = max(300, int(getattr(settings, "ISLAMHOUSE_CATEGORY_CACHE_TTL_SEC", 21600) or 21600))
+    with _ISLAMHOUSE_CATEGORY_TREE_CACHE_LOCK:
+        cached = _ISLAMHOUSE_CATEGORY_TREE_CACHE.get(lang)
+        if cached and float(cached.get("expires_at") or 0.0) > now:
+            return list(cached.get("data") or [])
+    base_url = str(getattr(settings, "ISLAMHOUSE_API_BASE_URL", "") or "").strip().rstrip("/")
+    api_key = str(getattr(settings, "ISLAMHOUSE_API_KEY", "") or "").strip()
+    if not base_url or not api_key:
+        return []
+    url = f"{base_url}/{urllib_parse.quote(api_key)}/main/get-object-category-tree/{urllib_parse.quote(lang)}/json"
+    response = _http_json(url)
+    rows = (response or {}).get("sub_categories") if isinstance(response, dict) else None
+    categories = rows if isinstance(rows, list) else []
+    with _ISLAMHOUSE_CATEGORY_TREE_CACHE_LOCK:
+        _ISLAMHOUSE_CATEGORY_TREE_CACHE[lang] = {"expires_at": now + ttl, "data": categories}
+    return categories
+
+
+def _flatten_islamhouse_categories(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    flat: List[Dict[str, Any]] = []
+    stack: List[Dict[str, Any]] = list(rows or [])
+    while stack:
+        row = stack.pop()
+        if not isinstance(row, dict):
+            continue
+        flat.append(row)
+        children = row.get("sub_categories") or []
+        if isinstance(children, list):
+            stack.extend(children)
+    return flat
+
+
+def _pick_islamhouse_categories(question: str, language: str, limit: int) -> List[Dict[str, Any]]:
+    flat = _flatten_islamhouse_categories(_islamhouse_category_tree(language))
+    scored: List[Tuple[float, Dict[str, Any]]] = []
+    query_norm = _normalize_ascii(question)
+    for row in flat:
+        title = str(row.get("title") or "").strip()
+        if not title:
+            continue
+        category_id = str(row.get("id") or "").strip()
+        if not category_id:
+            continue
+        description = _strip_html(row.get("description"))
+        combined = f"{title} {description}".strip()
+        overlap = _query_overlap_score(question, combined)
+        if overlap <= 0:
+            continue
+        score = overlap
+        title_norm = _normalize_ascii(title)
+        if query_norm and query_norm in title_norm:
+            score += 0.35
+        if bool(row.get("has_children")):
+            score -= 0.05
+        scored.append((score, row))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    for _, row in scored:
+        category_id = str(row.get("id") or "").strip()
+        if category_id in seen:
+            continue
+        seen.add(category_id)
+        out.append(row)
+        if len(out) >= max(1, limit):
+            break
+    return out
+
+
+def _islamhouse_fetch_category_items(
+    category_id: str,
+    *,
+    item_type: str,
+    language: str,
+    limit: int,
+) -> List[Dict[str, Any]]:
+    base_url = str(getattr(settings, "ISLAMHOUSE_API_BASE_URL", "") or "").strip().rstrip("/")
+    api_key = str(getattr(settings, "ISLAMHOUSE_API_KEY", "") or "").strip()
+    if not base_url or not api_key:
+        return []
+    lang = str(language or getattr(settings, "ISLAMHOUSE_DEFAULT_LANGUAGE", "tr") or "tr").strip().lower() or "tr"
+    url = (
+        f"{base_url}/{urllib_parse.quote(api_key)}/main/get-category-items/"
+        f"{urllib_parse.quote(str(category_id))}/{urllib_parse.quote(item_type)}/"
+        f"{urllib_parse.quote(lang)}/showall/1/{max(1, min(limit, 10))}/json"
+    )
+    response = _http_json(url)
+    rows = (response or {}).get("data") if isinstance(response, dict) else None
+    return rows if isinstance(rows, list) else []
+
+
+def _islamhouse_interpretive_candidates(question: str, limit: int) -> List[Dict[str, Any]]:
+    if not bool(getattr(settings, "ISLAMHOUSE_ENABLED", True)):
+        return []
+    language = str(getattr(settings, "ISLAMHOUSE_DEFAULT_LANGUAGE", "tr") or "tr").strip().lower() or "tr"
+    category_limit = max(1, int(getattr(settings, "ISLAMHOUSE_MAX_CATEGORIES", 2) or 2))
+    per_type_limit = max(1, int(getattr(settings, "ISLAMHOUSE_ITEMS_PER_TYPE", 2) or 2))
+    categories = _pick_islamhouse_categories(question, language, category_limit)
+    if not categories:
+        return []
+
+    preferred_types = ("fatwa", "articles", "books")
+    out: List[Dict[str, Any]] = []
+    weight = float(getattr(settings, "ISLAMHOUSE_WEIGHT", 0.11))
+    for category in categories:
+        category_id = str(category.get("id") or "").strip()
+        category_title = str(category.get("title") or "").strip()
+        if not category_id:
+            continue
+        for item_type in preferred_types:
+            rows = _islamhouse_fetch_category_items(
+                category_id,
+                item_type=item_type,
+                language=language,
+                limit=per_type_limit,
+            )
+            for row in rows:
+                title = _strip_html(row.get("title"))
+                description = _strip_html(row.get("description") or row.get("full_description"))
+                combined = f"{title} {description}".strip()
+                overlap = _query_overlap_score(question, combined)
+                if overlap <= 0:
+                    continue
+                score = 0.50 + min(0.18, overlap * 0.22)
+                reference = f"cat:{category_id}/item:{str(row.get('id') or '').strip()}"
+                content = "\n".join(
+                    part
+                    for part in [
+                        description[:900].strip(),
+                        f"Kategori: {category_title}" if category_title else "",
+                        f"Tur: {item_type}" if item_type else "",
+                    ]
+                    if part
+                )
+                if not content:
+                    continue
+                out.append(
+                    _build_candidate(
+                        provider="ISLAMHOUSE",
+                        kind="INTERPRETATION",
+                        title=title or f"IslamHouse {item_type}",
+                        content_chunk=content,
+                        score=score,
+                        external_weight=weight,
+                        reference=reference,
+                        canonical_reference=reference,
+                        source_url=str(row.get("api_url") or "").strip() or None,
+                        religious_query_kind="INTERPRETIVE_CONTEXT",
+                    )
+                )
+                if len(out) >= max(1, limit):
+                    return out
+    return out
 
 
 def _quran_foundation_token() -> Optional[str]:
@@ -547,6 +827,9 @@ def get_islamic_external_candidates(question: str, limit: int = 4) -> Tuple[List
         quran_used = True
         quran_candidates: List[Dict[str, Any]] = []
         if verse_key:
+            quranenc_exact = _normalize_quranenc_exact(_quranenc_fetch_verse(verse_key) or {})
+            if quranenc_exact:
+                quran_candidates.append(quranenc_exact)
             qf_exact = _normalize_quran_foundation_exact(_quran_foundation_fetch_verse(verse_key) or {})
             if qf_exact:
                 quran_candidates.append(qf_exact)
@@ -562,6 +845,14 @@ def get_islamic_external_candidates(question: str, limit: int = 4) -> Tuple[List
         hadith_used = True
         hadith_candidates = _hadeethenc_candidates(query, hard_limit)
         candidates.extend(hadith_candidates[:hard_limit])
+
+    interpretive_budget = 0
+    if religious_query_kind in {"EXACT_HADITH", "EXACT_QURAN_VERSE"}:
+        interpretive_budget = max(0, hard_limit - len(candidates))
+    else:
+        interpretive_budget = min(2, hard_limit)
+    if interpretive_budget > 0:
+        candidates.extend(_islamhouse_interpretive_candidates(query, interpretive_budget))
 
     deduped: List[Dict[str, Any]] = []
     seen = set()

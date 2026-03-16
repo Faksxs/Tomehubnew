@@ -46,20 +46,20 @@ class SearchIslamicExternalTests(unittest.TestCase):
         return_value=(
             [
                 {
-                    "title": "Quran.Foundation - Ayet 23:118",
+                    "title": "QuranEnc - Ayet 23:118 - turkish_rwwad",
                     "content_chunk": "De ki: Rabbim! Bagisla, merhamet et...",
                     "page_number": 0,
                     "source_type": "ISLAMIC_EXTERNAL",
-                    "score": 0.81,
+                    "score": 0.91,
                     "external_weight": 0.22,
-                    "provider": "QURAN_FOUNDATION",
+                    "provider": "QURANENC",
                     "religious_source_kind": "QURAN",
                     "reference": "23:118",
                 }
             ],
             {
                 "used": True,
-                "providers": {"QURAN_FOUNDATION": 1},
+                "providers": {"QURANENC": 1},
                 "quran_used": True,
                 "hadith_used": False,
             },
@@ -87,7 +87,7 @@ class SearchIslamicExternalTests(unittest.TestCase):
         self.assertIsNotNone(ctx)
         self.assertTrue(ctx.get("islamic_external_used"))
         self.assertEqual(ctx.get("islamic_external_candidates_count"), 1)
-        self.assertEqual(ctx.get("islamic_provider_counts"), {"QURAN_FOUNDATION": 1})
+        self.assertEqual(ctx.get("islamic_provider_counts"), {"QURANENC": 1})
         self.assertTrue(ctx.get("quran_external_used"))
         self.assertTrue(any(c.get("source_type") == "ISLAMIC_EXTERNAL" for c in ctx.get("chunks", [])))
         self.assertTrue(ctx.get("metadata", {}).get("islamic_external_used"))
