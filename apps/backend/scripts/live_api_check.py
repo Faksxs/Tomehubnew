@@ -65,7 +65,7 @@ def run_all():
     # 1. CORE AI
     results["NVIDIA"] = test_api("NVIDIA", "https://integrate.api.nvidia.com/v1/chat/completions", 
                                  {"Authorization": f"Bearer {env.get('NVIDIA_API_KEY')}"}, 
-                                 {"model": env.get("LLM_EXPLORER_PRIMARY_MODEL", "qwen/qwen3-next-80b-a3b-instruct"), 
+                                 {"model": env.get("LLM_EXPLORER_PRIMARY_MODEL", "qwen/qwen3.5-122b-a10b"), 
                                   "messages": [{"role": "user", "content": "hi"}], "max_tokens": 5}, "POST")
     
     results["Gemini"] = test_api("Gemini", f"https://generativelanguage.googleapis.com/v1beta/models/{embedding_model}:embedContent?key={env.get('GEMINI_API_KEY')}", 

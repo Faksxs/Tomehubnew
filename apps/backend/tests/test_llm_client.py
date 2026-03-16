@@ -204,8 +204,8 @@ class LLMClientTests(unittest.TestCase):
         self.assertEqual(state["secondary_fallback_used"], 0)
 
     def test_generate_text_explorer_parallel_nvidia_uses_faster_winner(self):
-        qwen_model = "qwen/qwen3-next-80b-a3b-thinking"
-        minimax_model = "minimaxai/minimax-m2.1"
+        qwen_model = "qwen/qwen3.5-122b-a10b"
+        minimax_model = "kimi-k2-thinking"
         provider = _ProviderModelDelays(
             delays={
                 qwen_model: 0.05,
