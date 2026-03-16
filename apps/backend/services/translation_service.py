@@ -6,13 +6,12 @@ import asyncio
 import json
 import logging
 import re
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from config import settings
 from infrastructure.db_manager import DatabaseManager
 from services.llm_client import (
     MODEL_TIER_FLASH,
-    PROVIDER_QWEN,
     generate_text,
 )
 
@@ -44,6 +43,22 @@ SOURCE TEXT:
 
 Return ONLY valid JSON in this exact format:
 {{"en": "English translation here", "nl": "Dutch translation here"}}"""
+
+
+def _resolve_translation_model() -> str:
+    model = str(getattr(settings, "LLM_TRANSLATION_MODEL", "") or "").strip()
+    if not model:
+        model = "moonshotai/kimi-k2-instruct"
+    if model.endswith("-thinking"):
+        return f"{model[:-len('-thinking')]}-instruct"
+    return model
+
+
+def _resolve_translation_provider() -> str:
+    provider = str(getattr(settings, "LLM_TRANSLATION_PROVIDER", "") or "").strip().lower()
+    return provider or "nvidia"
+
+
 def _get_cached_translation(content_id: int) -> Optional[Dict[str, Any]]:
     with DatabaseManager.get_read_connection() as conn:
         with conn.cursor() as cur:
@@ -136,7 +151,8 @@ async def translate_chunk(
         source_text=source_text,
     )
 
-    model = settings.LLM_EXPLORER_PRIMARY_MODEL.replace("-thinking", "-instruct")
+    model = _resolve_translation_model()
+    provider_hint = _resolve_translation_provider()
 
     result = await asyncio.wait_for(
         asyncio.to_thread(
@@ -151,7 +167,7 @@ async def translate_chunk(
             30.0,
             False,
             None,
-            PROVIDER_QWEN,
+            provider_hint,
         ),
         timeout=35.0,
     )

@@ -224,6 +224,13 @@ class Settings:
             os.getenv("LLM_EXPLORER_PRIMARY_MODEL", "qwen/qwen3.5-122b-a10b").strip()
             or "qwen/qwen3.5-122b-a10b"
         )
+        self.LLM_TRANSLATION_PROVIDER = (
+            os.getenv("LLM_TRANSLATION_PROVIDER", "nvidia").strip().lower() or "nvidia"
+        )
+        self.LLM_TRANSLATION_MODEL = (
+            os.getenv("LLM_TRANSLATION_MODEL", "moonshotai/kimi-k2-instruct").strip()
+            or "moonshotai/kimi-k2-instruct"
+        )
         self.LLM_EXPLORER_PARALLEL_NVIDIA_ENABLED = (
             os.getenv("LLM_EXPLORER_PARALLEL_NVIDIA_ENABLED", "false").strip().lower() == "true"
         )
