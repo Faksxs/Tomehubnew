@@ -919,6 +919,44 @@ class Settings:
             os.getenv("HADEETHENC_CATEGORY_CACHE_TTL_SEC", "21600")
         )
 
+        self.RELIGIOUS_DATASET_SEARCH_ENABLED = (
+            os.getenv("RELIGIOUS_DATASET_SEARCH_ENABLED", "false").strip().lower() == "true"
+        )
+        self.RELIGIOUS_DATASET_TIMEOUT_SEC = float(
+            os.getenv("RELIGIOUS_DATASET_TIMEOUT_SEC", "0.45")
+        )
+        self.RELIGIOUS_DATASET_TOPK = int(os.getenv("RELIGIOUS_DATASET_TOPK", "3"))
+        if self.RELIGIOUS_DATASET_TOPK < 1:
+            self.RELIGIOUS_DATASET_TOPK = 3
+        if self.RELIGIOUS_DATASET_TOPK > 6:
+            self.RELIGIOUS_DATASET_TOPK = 6
+        self.RELIGIOUS_DATASET_TYPESENSE_URL = (
+            os.getenv("RELIGIOUS_DATASET_TYPESENSE_URL", "http://typesense:8108").strip().rstrip("/")
+        )
+        self.RELIGIOUS_DATASET_TYPESENSE_API_KEY = (
+            os.getenv("RELIGIOUS_DATASET_TYPESENSE_API_KEY", "").strip()
+        )
+        self.RELIGIOUS_DATASET_HADITH_COLLECTION = (
+            os.getenv("RELIGIOUS_DATASET_HADITH_COLLECTION", "religious_hadith_current").strip()
+            or "religious_hadith_current"
+        )
+        self.RELIGIOUS_DATASET_QURAN_COLLECTION = (
+            os.getenv("RELIGIOUS_DATASET_QURAN_COLLECTION", "religious_quran_current").strip()
+            or "religious_quran_current"
+        )
+        self.RELIGIOUS_DATASET_HADITH_WEIGHT = float(
+            os.getenv("RELIGIOUS_DATASET_HADITH_WEIGHT", "0.13")
+        )
+        self.RELIGIOUS_DATASET_QURAN_WEIGHT = float(
+            os.getenv("RELIGIOUS_DATASET_QURAN_WEIGHT", "0.14")
+        )
+        self.RELIGIOUS_DATASET_CB_FAILURE_THRESHOLD = int(
+            os.getenv("RELIGIOUS_DATASET_CB_FAILURE_THRESHOLD", "3")
+        )
+        self.RELIGIOUS_DATASET_CB_RECOVERY_TIMEOUT_SEC = int(
+            os.getenv("RELIGIOUS_DATASET_CB_RECOVERY_TIMEOUT_SEC", "30")
+        )
+
         # Flow (Layer 4) text repair: deterministic display-time OCR/imla fix
         self.FLOW_TEXT_REPAIR_ENABLED = os.getenv("FLOW_TEXT_REPAIR_ENABLED", "true").strip().lower() == "true"
         source_types_raw = os.getenv(

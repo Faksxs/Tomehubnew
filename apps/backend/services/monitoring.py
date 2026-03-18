@@ -480,6 +480,26 @@ CIRCUIT_BREAKER_STATE = Gauge(
     labelnames=['service']
 )
 
+RELIGIOUS_DATASET_SEARCH_TOTAL = Counter(
+    'tomehub_religious_dataset_search_total',
+    'Religious dataset lane executions by status',
+    labelnames=['status', 'lane']
+)
+
+RELIGIOUS_DATASET_SEARCH_LATENCY_MS = Histogram(
+    'tomehub_religious_dataset_search_latency_ms',
+    'Religious dataset lane latency in milliseconds',
+    labelnames=['lane'],
+    buckets=(5, 10, 20, 35, 50, 80, 120, 200, 350, 500, 800, 1200)
+)
+
+RELIGIOUS_DATASET_SEARCH_RESULTS = Histogram(
+    'tomehub_religious_dataset_search_results',
+    'Religious dataset lane result counts',
+    labelnames=['lane'],
+    buckets=(0, 1, 2, 3, 4, 5, 8)
+)
+
 # Firestore -> Oracle sync backfill observability
 EMBEDDING_BACKFILL_TOTAL_CALLS = Counter(
     'tomehub_embedding_backfill_total_calls',

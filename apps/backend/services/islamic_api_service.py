@@ -10,6 +10,7 @@ from urllib import request as urllib_request
 from urllib.error import HTTPError
 
 from config import settings
+from services.religious_dataset_search_service import get_religious_dataset_candidates
 from utils.logger import get_logger
 
 logger = get_logger("islamic_api_service")
@@ -846,6 +847,24 @@ def get_islamic_external_candidates(question: str, limit: int = 4) -> Tuple[List
         hadith_candidates = _hadeethenc_candidates(query, hard_limit)
         candidates.extend(hadith_candidates[:hard_limit])
 
+    exact_primary_hit = bool(
+        religious_query_kind in {"EXACT_HADITH", "EXACT_QURAN_VERSE"}
+        and any(bool(c.get("is_exact_match")) for c in candidates)
+    )
+    dataset_budget = 0
+    if religious_query_kind in {"TOPICAL_QURAN", "TOPICAL_HADITH", "GENERAL_RELIGIOUS"}:
+        dataset_budget = min(max(1, int(getattr(settings, "RELIGIOUS_DATASET_TOPK", 3) or 3)), hard_limit)
+    elif not exact_primary_hit:
+        dataset_budget = max(0, min(2, hard_limit - len(candidates)))
+    if dataset_budget > 0:
+        dataset_candidates, _dataset_diag = get_religious_dataset_candidates(
+            query,
+            query_kind=religious_query_kind,
+            limit=dataset_budget,
+            skip_exact=exact_primary_hit,
+        )
+        candidates.extend(dataset_candidates[:dataset_budget])
+
     interpretive_budget = 0
     if religious_query_kind in {"EXACT_HADITH", "EXACT_QURAN_VERSE"}:
         interpretive_budget = max(0, hard_limit - len(candidates))
@@ -882,7 +901,7 @@ def get_islamic_external_candidates(question: str, limit: int = 4) -> Tuple[List
     return deduped, {
         "used": bool(deduped),
         "providers": provider_counts,
-        "quran_used": quran_used and any(str(c.get("religious_source_kind")) == "QURAN" for c in deduped),
-        "hadith_used": hadith_used and any(str(c.get("religious_source_kind")) == "HADITH" for c in deduped),
+        "quran_used": any(str(c.get("religious_source_kind")) == "QURAN" for c in deduped),
+        "hadith_used": any(str(c.get("religious_source_kind")) == "HADITH" for c in deduped),
         "religious_query_kind": religious_query_kind,
     }

@@ -63,6 +63,53 @@ services:
     networks:
       - tomehub-network
 
+  typesense:
+    image: typesense/typesense:27.1
+    container_name: tomehub-typesense
+    restart: unless-stopped
+    command:
+      - --data-dir=/data
+      - --api-key=${RELIGIOUS_DATASET_TYPESENSE_API_KEY:-change-me-typesense-key}
+      - --enable-cors=false
+    volumes:
+      - typesense_data:/data
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - tomehub-network
+
+  religious-indexer:
+    image: ${BACKEND_IMAGE_REPO:-ams.ocir.io/axrluoxw8q8k/tomehub/backend}:${BACKEND_IMAGE_TAG:-latest}
+    build:
+      context: ../apps/backend
+      dockerfile: Dockerfile
+    container_name: tomehub-religious-indexer
+    profiles: ["manual"]
+    env_file:
+      - ../apps/backend/.env
+    environment:
+      - RELIGIOUS_DATASET_TYPESENSE_URL=http://typesense:8108
+      - RELIGIOUS_DATASET_RAW_BASE_PATH=/religious-data/raw
+      - RELIGIOUS_DATASET_NORMALIZED_PATH=/religious-data/normalized
+      - RELIGIOUS_DATASET_MANIFEST_PATH=/religious-data/manifests
+      - RELIGIOUS_DATASET_CHECKPOINT_PATH=/religious-data/checkpoints
+      - RELIGIOUS_DATASET_IMPORT_BATCH_SIZE=100
+      - RELIGIOUS_DATASET_HADITH_LANGS=eng,tur
+    entrypoint: ["python", "scripts/religious_dataset_indexer.py"]
+    command: ["verify"]
+    volumes:
+      - ../apps/backend:/app
+      - ${RELIGIOUS_DATASET_HOST_PATH:-/opt/tomehub/religious-data}:/religious-data
+    depends_on:
+      typesense:
+        condition: service_healthy
+    networks:
+      - tomehub-network
+
   prometheus:
     image: prom/prometheus:latest
     container_name: tomehub-prometheus
@@ -127,6 +174,8 @@ volumes:
   grafana_data:
     driver: local
   redis_data:
+    driver: local
+  typesense_data:
     driver: local
 
 networks:

@@ -14,6 +14,7 @@ class IslamicApiServiceTests(unittest.TestCase):
             "QURAN_FOUNDATION_ENABLED": settings.QURAN_FOUNDATION_ENABLED,
             "DIYANET_QURAN_ENABLED": settings.DIYANET_QURAN_ENABLED,
             "HADEETHENC_ENABLED": settings.HADEETHENC_ENABLED,
+            "RELIGIOUS_DATASET_SEARCH_ENABLED": settings.RELIGIOUS_DATASET_SEARCH_ENABLED,
         }
         settings.ISLAMIC_API_ENABLED = True
         settings.QURANENC_ENABLED = True
@@ -21,6 +22,7 @@ class IslamicApiServiceTests(unittest.TestCase):
         settings.QURAN_FOUNDATION_ENABLED = True
         settings.DIYANET_QURAN_ENABLED = True
         settings.HADEETHENC_ENABLED = True
+        settings.RELIGIOUS_DATASET_SEARCH_ENABLED = True
 
     def tearDown(self):
         for key, value in self._saved.items():
@@ -46,12 +48,15 @@ class IslamicApiServiceTests(unittest.TestCase):
     @patch("services.islamic_api_service._diyanet_fetch_verse")
     @patch("services.islamic_api_service._quran_foundation_fetch_verse")
     @patch("services.islamic_api_service._quranenc_fetch_verse")
+    @patch("services.islamic_api_service.get_religious_dataset_candidates")
     def test_exact_quran_candidates_merge_primary_and_secondary(
         self,
+        mock_dataset_candidates,
         mock_quranenc_verse,
         mock_qf_verse,
         mock_diyanet_verse,
     ):
+        mock_dataset_candidates.return_value = ([], {"used": False, "providers": {}, "reason": "skipped"})
         mock_quranenc_verse.return_value = {
             "sura": "1",
             "aya": "1",
@@ -86,16 +91,35 @@ class IslamicApiServiceTests(unittest.TestCase):
         self.assertIn("QURANENC", meta["providers"])
         self.assertIn("QURAN_FOUNDATION", meta["providers"])
         self.assertIn("DIYANET_QURAN", meta["providers"])
+        mock_dataset_candidates.assert_not_called()
 
     @patch("services.islamic_api_service._islamhouse_fetch_category_items")
     @patch("services.islamic_api_service._islamhouse_category_tree")
     @patch("services.islamic_api_service._quran_foundation_search", return_value=[])
+    @patch("services.islamic_api_service.get_religious_dataset_candidates")
     def test_topical_religious_query_adds_islamhouse_interpretive_context(
         self,
+        mock_dataset_candidates,
         _mock_qf_search,
         mock_category_tree,
         mock_category_items,
     ):
+        mock_dataset_candidates.return_value = (
+            [
+                {
+                    "title": "Hadith API - bukhari 66",
+                    "content_chunk": "Sabir ve merhamet hakkinda hadis",
+                    "page_number": 0,
+                    "source_type": "ISLAMIC_EXTERNAL",
+                    "score": 0.63,
+                    "external_weight": 0.13,
+                    "provider": "HADITH_API_DATASET",
+                    "religious_source_kind": "HADITH",
+                    "reference": "bukhari:66",
+                }
+            ],
+            {"used": True, "providers": {"HADITH_API_DATASET": 1}, "reason": "ok"},
+        )
         mock_category_tree.return_value = [
             {
                 "id": 728011,
@@ -117,8 +141,10 @@ class IslamicApiServiceTests(unittest.TestCase):
 
         self.assertTrue(meta["used"])
         self.assertIn("ISLAMHOUSE", meta["providers"])
+        self.assertIn("HADITH_API_DATASET", meta["providers"])
         self.assertTrue(any(c["provider"] == "ISLAMHOUSE" for c in candidates))
         self.assertTrue(any(c["religious_source_kind"] == "INTERPRETATION" for c in candidates))
+        self.assertTrue(any(c["provider"] == "HADITH_API_DATASET" for c in candidates))
 
 
 if __name__ == "__main__":
