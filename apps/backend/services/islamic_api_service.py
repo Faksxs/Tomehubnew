@@ -778,7 +778,7 @@ def _hadeethenc_candidates(question: str, limit: int) -> List[Dict[str, Any]]:
             overlap = _query_overlap_score(question, combined)
             if overlap <= 0:
                 continue
-            score = 0.66 + min(0.18, overlap * 0.22)
+            score = 0.48 + min(0.12, overlap * 0.15)
             content = "\n".join(
                 part
                 for part in [
@@ -848,11 +848,11 @@ def get_islamic_external_candidates(question: str, limit: int = 4) -> Tuple[List
         candidates.extend(hadith_candidates[:hard_limit])
 
     exact_primary_hit = bool(
-        religious_query_kind in {"EXACT_HADITH", "EXACT_QURAN_VERSE"}
+        religious_query_kind == "EXACT_QURAN_VERSE"
         and any(bool(c.get("is_exact_match")) for c in candidates)
     )
     dataset_budget = 0
-    if religious_query_kind in {"TOPICAL_QURAN", "TOPICAL_HADITH", "GENERAL_RELIGIOUS"}:
+    if religious_query_kind in {"TOPICAL_QURAN", "TOPICAL_HADITH", "GENERAL_RELIGIOUS", "EXACT_HADITH"}:
         dataset_budget = min(max(1, int(getattr(settings, "RELIGIOUS_DATASET_TOPK", 3) or 3)), hard_limit)
     elif not exact_primary_hit:
         dataset_budget = max(0, min(2, hard_limit - len(candidates)))
