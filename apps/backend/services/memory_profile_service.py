@@ -391,6 +391,31 @@ def _store_memory_profile(firebase_uid: str, payload: Dict[str, Any]) -> Dict[st
     return profile
 
 
+def _build_degraded_profile(
+    firebase_uid: str,
+    *,
+    existing_profile: Optional[Dict[str, Any]],
+    evidence_counts: Optional[Dict[str, Any]],
+    exc: Exception,
+) -> Dict[str, Any]:
+    error_text = str(exc or "").strip() or "memory_profile_refresh_failed"
+    if existing_profile:
+        cached = dict(existing_profile)
+        cached["status"] = "cached"
+        cached["refresh_error"] = error_text
+        return cached
+    return {
+        "firebase_uid": firebase_uid,
+        "profile_summary": "",
+        "active_themes": [],
+        "recurring_sources": [],
+        "open_questions": [],
+        "evidence_counts": evidence_counts or {},
+        "status": "empty",
+        "refresh_error": error_text,
+    }
+
+
 def refresh_memory_profile(firebase_uid: str, *, force: bool = False) -> Dict[str, Any]:
     existing = get_memory_profile(firebase_uid)
     min_refresh_minutes = int(getattr(settings, "MEMORY_PROFILE_MIN_REFRESH_MINUTES", 30) or 30)
@@ -414,18 +439,32 @@ def refresh_memory_profile(firebase_uid: str, *, force: bool = False) -> Dict[st
         return _store_memory_profile(firebase_uid, empty)
 
     model = get_model_for_tier(MODEL_TIER_LITE)
-    result = generate_text(
-        model=model,
-        prompt=_build_profile_prompt(evidence),
-        task="memory_profile_refresh",
-        model_tier=MODEL_TIER_LITE,
-        timeout_s=45.0,
-        response_mime_type="application/json",
-    )
-    payload = parse_profile_payload(result.text if result else "", fallback_counts=evidence.get("counts", {}))
-    if not payload.get("profile_summary"):
-        payload["profile_summary"] = "User memory profile is available but the profile summary could not be synthesized."
-    return _store_memory_profile(firebase_uid, payload)
+    try:
+        result = generate_text(
+            model=model,
+            prompt=_build_profile_prompt(evidence),
+            task="memory_profile_refresh",
+            model_tier=MODEL_TIER_LITE,
+            timeout_s=45.0,
+            response_mime_type="application/json",
+        )
+        payload = parse_profile_payload(result.text if result else "", fallback_counts=evidence.get("counts", {}))
+        if not payload.get("profile_summary"):
+            payload["profile_summary"] = "User memory profile is available but the profile summary could not be synthesized."
+        return _store_memory_profile(firebase_uid, payload)
+    except Exception as exc:
+        logger.warning(
+            "Memory profile refresh degraded for %s: %s",
+            firebase_uid,
+            exc,
+            exc_info=True,
+        )
+        return _build_degraded_profile(
+            firebase_uid,
+            existing_profile=existing,
+            evidence_counts=evidence.get("counts", {}),
+            exc=exc,
+        )
 
 
 def build_memory_context_snippet(profile: Optional[Dict[str, Any]], *, max_chars: int = 1200) -> str:
