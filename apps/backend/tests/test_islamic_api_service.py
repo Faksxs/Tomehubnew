@@ -31,7 +31,37 @@ class IslamicApiServiceTests(unittest.TestCase):
     def test_religious_query_detection_and_verse_key(self):
         self.assertTrue(islamic_api_service.is_religious_query("Bakara 2:255 ayeti ne diyor"))
         self.assertTrue(islamic_api_service._looks_hadith_query("Buhari hadis no 66"))
+        self.assertTrue(islamic_api_service.is_religious_query("zekatla ilgili hadisleri araştır"))
+        self.assertTrue(islamic_api_service._looks_hadith_query("zekatla ilgili hadisleri araştır"))
         self.assertEqual(islamic_api_service._extract_verse_key("Bakara 2:255 ayeti"), "2:255")
+
+    @patch("services.islamic_api_service.get_religious_dataset_candidates")
+    def test_force_religious_override_bypasses_detection_gate(self, mock_dataset_candidates):
+        mock_dataset_candidates.return_value = (
+            [
+                {
+                    "title": "Hadith API - tirmidhi 644",
+                    "content_chunk": "Zekat hakkında hadis",
+                    "page_number": 0,
+                    "source_type": "ISLAMIC_EXTERNAL",
+                    "score": 0.81,
+                    "external_weight": 0.13,
+                    "provider": "HADITH_API_DATASET",
+                    "religious_source_kind": "HADITH",
+                    "reference": "tirmidhi:644",
+                }
+            ],
+            {"used": True, "providers": {"HADITH_API_DATASET": 1}, "reason": "ok"},
+        )
+
+        candidates, meta = islamic_api_service.get_islamic_external_candidates(
+            "zekatla ilgili hadisleri araştır",
+            limit=4,
+            force_religious=True,
+        )
+
+        self.assertTrue(meta["used"])
+        self.assertTrue(any(c["provider"] == "HADITH_API_DATASET" for c in candidates))
 
     @patch("services.islamic_api_service._get_hadeethenc_categories")
     def test_hadeethenc_category_picker_handles_turkish_normalization(self, mock_categories):

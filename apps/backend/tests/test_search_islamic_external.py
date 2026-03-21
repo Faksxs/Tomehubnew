@@ -92,6 +92,40 @@ class SearchIslamicExternalTests(unittest.TestCase):
         self.assertTrue(any(c.get("source_type") == "ISLAMIC_EXTERNAL" for c in ctx.get("chunks", [])))
         self.assertTrue(ctx.get("metadata", {}).get("islamic_external_used"))
 
+    @patch("services.search_service.perform_search")
+    @patch("services.search_service.get_graph_candidates", return_value=[])
+    @patch("services.search_service.classify_question_intent", return_value=("SYNTHESIS", "MEDIUM"))
+    @patch("services.search_service.extract_core_concepts", return_value=["zekat"])
+    @patch("services.search_service.classify_chunk", side_effect=_classify_stub)
+    @patch("services.search_service.classify_network_status", return_value={"status": "IN_NETWORK", "reason": "ok"})
+    @patch("services.search_service.get_islamic_external_candidates", return_value=([], {"used": False, "providers": {}, "quran_used": False, "hadith_used": False}))
+    def test_religious_override_forces_islamic_external_call(
+        self,
+        mock_islamic_external,
+        _mock_network,
+        _mock_classify,
+        _mock_extract,
+        _mock_intent,
+        _mock_graph,
+        mock_search,
+    ):
+        mock_search.return_value = ([], {"retrieval_path": "hybrid", "retrieval_fusion_mode": "concat"})
+
+        ctx = search_service.get_rag_context(
+            question="zekatla ilgili hadisleri araştır",
+            firebase_uid="u1",
+            context_book_id=None,
+            mode="EXPLORER",
+            domain_mode="RELIGIOUS",
+        )
+
+        self.assertIsNotNone(ctx)
+        mock_islamic_external.assert_called_once()
+        self.assertEqual(
+            mock_islamic_external.call_args.kwargs.get("force_religious"),
+            True,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1506,6 +1506,7 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         islamic_external_results, islamic_diag = get_islamic_external_candidates(
             effective_query,
             limit=max(1, min(int(getattr(settings, "ISLAMIC_API_MAX_CANDIDATES", 4) or 4), 8)),
+            force_religious=resolved_domain_mode == "RELIGIOUS",
         )
         islamic_external_candidates_count = len(islamic_external_results)
         islamic_external_used = islamic_external_candidates_count > 0

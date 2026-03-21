@@ -58,6 +58,29 @@ def _tokenize(text: str) -> List[str]:
     return [tok for tok in re.findall(r"[^\W_]+", _normalize_ascii(text), flags=re.UNICODE) if len(tok) >= 2]
 
 
+def _question_has_signal(question: str, signals: set[str]) -> bool:
+    tokens = set(_tokenize(question))
+    if not tokens:
+        return False
+    normalized_text = _normalize_ascii(question)
+    for raw_signal in signals:
+        signal = _normalize_ascii(raw_signal).strip()
+        if not signal:
+            continue
+        if " " in signal:
+            if signal in normalized_text:
+                return True
+            continue
+        if signal in tokens:
+            return True
+        for token in tokens:
+            if token.startswith(signal):
+                suffix_len = len(token) - len(signal)
+                if 0 < suffix_len <= 6:
+                    return True
+    return False
+
+
 def _strip_html(text: Any) -> str:
     raw = html.unescape(str(text or ""))
     cleaned = re.sub(r"<[^>]+>", " ", raw)
@@ -85,23 +108,15 @@ def _extract_verse_key(question: str) -> Optional[str]:
 
 
 def _looks_quran_query(question: str) -> bool:
-    lowered = set(_tokenize(question))
-    return bool(lowered.intersection({_normalize_ascii(tok) for tok in _QURAN_SIGNAL_TOKENS})) or bool(
-        _extract_verse_key(question)
-    )
+    return _question_has_signal(question, _QURAN_SIGNAL_TOKENS) or bool(_extract_verse_key(question))
 
 
 def _looks_hadith_query(question: str) -> bool:
-    lowered = set(_tokenize(question))
-    return bool(lowered.intersection({_normalize_ascii(tok) for tok in _HADITH_SIGNAL_TOKENS})) or bool(
-        _HADITH_NUMBER_RE.search(str(question or ""))
-    )
+    return _question_has_signal(question, _HADITH_SIGNAL_TOKENS) or bool(_HADITH_NUMBER_RE.search(str(question or "")))
 
 
 def is_religious_query(question: str) -> bool:
-    lowered = set(_tokenize(question))
-    normalized_signals = {_normalize_ascii(tok) for tok in _RELIGIOUS_SIGNAL_TOKENS}
-    return bool(lowered.intersection(normalized_signals)) or _looks_quran_query(question) or _looks_hadith_query(question)
+    return _question_has_signal(question, _RELIGIOUS_SIGNAL_TOKENS) or _looks_quran_query(question) or _looks_hadith_query(question)
 
 
 def _http_json(
@@ -807,12 +822,18 @@ def _hadeethenc_candidates(question: str, limit: int) -> List[Dict[str, Any]]:
     return out
 
 
-def get_islamic_external_candidates(question: str, limit: int = 4) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+def get_islamic_external_candidates(
+    question: str,
+    limit: int = 4,
+    *,
+    force_religious: bool = False,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     if not bool(getattr(settings, "ISLAMIC_API_ENABLED", False)):
         return [], {"used": False, "providers": {}, "quran_used": False, "hadith_used": False}
 
     query = str(question or "").strip()
-    if not query or not is_religious_query(query):
+    religious_query_detected = is_religious_query(query)
+    if not query or (not force_religious and not religious_query_detected):
         return [], {"used": False, "providers": {}, "quran_used": False, "hadith_used": False}
 
     hard_limit = max(1, min(int(limit or 4), int(getattr(settings, "ISLAMIC_API_MAX_CANDIDATES", 4) or 4)))
@@ -841,7 +862,7 @@ def get_islamic_external_candidates(question: str, limit: int = 4) -> Tuple[List
             quran_candidates.extend(_normalize_quran_foundation_search(query, _quran_foundation_search(query, hard_limit), hard_limit))
         candidates.extend(quran_candidates[:hard_limit])
 
-    should_use_hadith = _looks_hadith_query(query) or (is_religious_query(query) and not verse_key)
+    should_use_hadith = _looks_hadith_query(query) or ((force_religious or religious_query_detected) and not verse_key)
     if should_use_hadith:
         hadith_used = True
         hadith_candidates = _hadeethenc_candidates(query, hard_limit)
