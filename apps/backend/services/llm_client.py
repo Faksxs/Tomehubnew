@@ -429,6 +429,20 @@ def is_retryable_llm_error(exc: Exception) -> bool:
     return any(marker in msg for marker in retry_markers)
 
 
+def is_gemini_auth_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    auth_markers = (
+        "permission_denied",
+        "api key",
+        "reported as leaked",
+        "invalid api key",
+        "access denied",
+        "unauthorized",
+        "403",
+    )
+    return any(marker in msg for marker in auth_markers)
+
+
 def _can_use_pro_fallback(fallback_state: Optional[Dict[str, Any]]) -> bool:
     if not settings.LLM_PRO_FALLBACK_ENABLED:
         return False
@@ -612,7 +626,20 @@ def _resolve_secondary_model(model_tier: str) -> str:
     if secondary_provider == PROVIDER_GEMINI:
         # Explorer secondary fallback should use the stronger Gemini path.
         return get_model_for_tier(MODEL_TIER_PRO)
-    return getattr(settings, "LLM_EXPLORER_PRIMARY_MODEL", get_model_for_tier(model_tier))
+    nvidia_parallel_model = str(
+        getattr(settings, "LLM_EXPLORER_PARALLEL_NVIDIA_MODEL", "") or ""
+    ).strip()
+    if nvidia_parallel_model:
+        return nvidia_parallel_model
+    explorer_primary_model = str(
+        getattr(settings, "LLM_EXPLORER_PRIMARY_MODEL", get_model_for_tier(model_tier)) or ""
+    ).strip()
+    if explorer_primary_model and "gemini" not in explorer_primary_model.lower():
+        return explorer_primary_model
+    translation_model = str(getattr(settings, "LLM_TRANSLATION_MODEL", "") or "").strip()
+    if translation_model:
+        return translation_model
+    return get_model_for_tier(model_tier)
 
 
 def _secondary_fallback_generate(
@@ -777,6 +804,32 @@ def generate_text(
                 timeout_s=timeout_s,
                 fallback_state=fallback_state,
                 from_provider=PROVIDER_QWEN,
+                reason=fallback_reason,
+            )
+
+        if (
+            provider_name == PROVIDER_GEMINI
+            and allow_secondary_fallback
+            and _can_use_secondary_fallback(fallback_state)
+            and _resolve_secondary_provider() != PROVIDER_GEMINI
+            and is_gemini_auth_error(exc)
+        ):
+            fallback_reason = "gemini_auth_error"
+            logger.warning(
+                "Gemini primary failed with auth error; using secondary fallback",
+                extra={"reason": fallback_reason},
+                exc_info=True,
+            )
+            return _secondary_fallback_generate(
+                prompt=prompt,
+                task=task,
+                model_tier=model_tier,
+                temperature=temperature,
+                max_output_tokens=max_output_tokens,
+                response_mime_type=response_mime_type,
+                timeout_s=timeout_s,
+                fallback_state=fallback_state,
+                from_provider=PROVIDER_GEMINI,
                 reason=fallback_reason,
             )
 

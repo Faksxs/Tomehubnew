@@ -189,7 +189,7 @@ async def generate_work_ai_answer(
         # 4. Generate Content
         route_mode = ROUTE_MODE_DEFAULT
         provider_hint = None
-        allow_secondary_fallback = False
+        allow_secondary_fallback = answer_mode == 'EXPLORER'
         model = get_model_for_tier(MODEL_TIER_FLASH)
         effective_allow_pro_fallback = allow_pro_fallback
 
