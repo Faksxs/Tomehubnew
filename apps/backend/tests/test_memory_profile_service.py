@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from services.memory_profile_service import (
     _fetch_recent_messages,
+    refresh_memory_profile,
     build_memory_context_snippet,
     parse_profile_payload,
     should_refresh_profile,
@@ -78,6 +79,53 @@ class MemoryProfileServiceTests(unittest.TestCase):
 
         self.assertEqual(items, [])
         mock_warning.assert_called_once()
+
+    @patch("services.memory_profile_service.generate_text", side_effect=RuntimeError("gemini blocked"))
+    @patch(
+        "services.memory_profile_service.collect_memory_evidence",
+        return_value={"counts": {"notes": 2, "messages": 1, "reports": 0, "sessions": 0}},
+    )
+    @patch(
+        "services.memory_profile_service.get_memory_profile",
+        return_value={
+            "firebase_uid": "uid-1",
+            "profile_summary": "Existing profile",
+            "active_themes": ["ethics"],
+            "recurring_sources": [],
+            "open_questions": [],
+            "evidence_counts": {"notes": 1},
+            "status": "ready",
+        },
+    )
+    def test_refresh_memory_profile_returns_cached_profile_when_llm_fails(
+        self,
+        _mock_existing,
+        _mock_evidence,
+        _mock_generate_text,
+    ):
+        profile = refresh_memory_profile("uid-1", force=True)
+
+        self.assertEqual(profile["status"], "cached")
+        self.assertEqual(profile["profile_summary"], "Existing profile")
+        self.assertIn("gemini blocked", profile["refresh_error"])
+
+    @patch("services.memory_profile_service.generate_text", side_effect=RuntimeError("gemini blocked"))
+    @patch(
+        "services.memory_profile_service.collect_memory_evidence",
+        return_value={"counts": {"notes": 2, "messages": 1, "reports": 0, "sessions": 0}},
+    )
+    @patch("services.memory_profile_service.get_memory_profile", return_value=None)
+    def test_refresh_memory_profile_returns_empty_profile_when_llm_fails_without_cache(
+        self,
+        _mock_existing,
+        _mock_evidence,
+        _mock_generate_text,
+    ):
+        profile = refresh_memory_profile("uid-1", force=True)
+
+        self.assertEqual(profile["status"], "empty")
+        self.assertEqual(profile["evidence_counts"], {"notes": 2, "messages": 1, "reports": 0, "sessions": 0})
+        self.assertIn("gemini blocked", profile["refresh_error"])
 
 
 if __name__ == "__main__":

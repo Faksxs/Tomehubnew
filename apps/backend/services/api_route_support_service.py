@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import json
 from datetime import datetime
 from functools import partial
@@ -34,7 +35,36 @@ _HIGHLIGHT_FOCUS_TERMS = (
     "insight",
 )
 
+def _resolve_requested_domain_mode(request_obj: Any) -> str:
+    """
+    Keep route handlers compatible with older request models that may not
+    define domain_mode yet while newer service code expects it.
+    """
+    value = getattr(request_obj, "domain_mode", "AUTO")
+    text = str(value or "AUTO").strip().upper()
+    return text or "AUTO"
 
+
+def _call_with_supported_kwargs(func: Callable[..., Any], /, **kwargs: Any) -> Any:
+    """
+    Keep route support compatible with older service call signatures during
+    rolling deploys by passing only supported keyword arguments.
+    """
+    try:
+        signature = inspect.signature(func)
+    except (TypeError, ValueError):
+        return func(**kwargs)
+
+    parameters = signature.parameters
+    if any(param.kind == inspect.Parameter.VAR_KEYWORD for param in parameters.values()):
+        return func(**kwargs)
+
+    supported_kwargs = {
+        key: value
+        for key, value in kwargs.items()
+        if key in parameters
+    }
+    return func(**supported_kwargs)
 def is_scope_policy_enabled_for_chat(firebase_uid: str, mode: str) -> bool:
     if not bool(getattr(settings, "SEARCH_SCOPE_POLICY_ENABLED", False)):
         return False
@@ -377,6 +407,7 @@ async def execute_search_request(
     generate_answer_fn: Callable[..., Any],
 ) -> Dict[str, Any]:
     visibility_scope = "all" if search_request.include_private_notes else search_request.visibility_scope
+    requested_domain_mode = _resolve_requested_domain_mode(search_request)
 
     analytic_payload = build_search_analytic_response(
         firebase_uid=firebase_uid,
@@ -403,24 +434,25 @@ async def execute_search_request(
     answer, sources, metadata = await loop.run_in_executor(
         None,
         partial(
+            _call_with_supported_kwargs,
             generate_answer_fn,
-            search_request.question,
-            firebase_uid,
-            scope_ctx["resolved_book_id"],
-            None,
-            "",
-            search_request.limit,
-            search_request.offset,
-            None,
-            scope_ctx["effective_resource_type"],
-            scope_ctx["scope_mode"],
-            scope_ctx["scope_policy_active"],
-            search_request.compare_mode,
-            search_request.target_book_ids,
-            visibility_scope,
-            search_request.content_type,
-            search_request.ingestion_type,
-            search_request.domain_mode,
+            question=search_request.question,
+            firebase_uid=firebase_uid,
+            context_book_id=scope_ctx["resolved_book_id"],
+            chat_history=None,
+            session_summary="",
+            limit=search_request.limit,
+            offset=search_request.offset,
+            session_id=None,
+            resource_type=scope_ctx["effective_resource_type"],
+            scope_mode=scope_ctx["scope_mode"],
+            apply_scope_policy=scope_ctx["scope_policy_active"],
+            compare_mode=search_request.compare_mode,
+            target_book_ids=search_request.target_book_ids,
+            visibility_scope=visibility_scope,
+            content_type=search_request.content_type,
+            ingestion_type=search_request.ingestion_type,
+            domain_mode=requested_domain_mode,
         ),
     )
 
@@ -445,7 +477,7 @@ async def execute_search_request(
         metadata.setdefault("visibility_scope", visibility_scope)
         metadata.setdefault("content_type_filter", search_request.content_type)
         metadata.setdefault("ingestion_type_filter", search_request.ingestion_type)
-        metadata.setdefault("requested_domain_mode", search_request.domain_mode)
+        metadata.setdefault("requested_domain_mode", requested_domain_mode)
 
     return {
         "answer": answer,
@@ -595,6 +627,7 @@ async def execute_chat_request(
     refresh_memory_profile_fn: Callable[..., Any],
 ) -> Dict[str, Any]:
     loop = asyncio.get_running_loop()
+    requested_domain_mode = _resolve_requested_domain_mode(chat_request)
     session_id, ctx_data, memory_context_snippet = await _prepare_chat_session_context(
         loop=loop,
         firebase_uid=firebase_uid,
@@ -672,10 +705,11 @@ async def execute_chat_request(
         rag_ctx = await loop.run_in_executor(
             None,
             partial(
+                _call_with_supported_kwargs,
                 get_rag_context_fn,
-                chat_request.message,
-                firebase_uid,
-                scope_ctx["resolved_book_id"],
+                question=chat_request.message,
+                firebase_uid=firebase_uid,
+                context_book_id=scope_ctx["resolved_book_id"],
                 chat_history=ctx_data["recent_messages"],
                 mode="EXPLORER",
                 resource_type=scope_ctx["effective_resource_type"],
@@ -685,7 +719,7 @@ async def execute_chat_request(
                 target_book_ids=chat_request.target_book_ids,
                 limit=retrieval_limit,
                 offset=chat_request.offset,
-                domain_mode=chat_request.domain_mode,
+                domain_mode=requested_domain_mode,
             ),
         )
 
@@ -770,24 +804,27 @@ async def execute_chat_request(
         answer_result, sources_result, meta_result = await loop.run_in_executor(
             None,
             partial(
+                _call_with_supported_kwargs,
                 generate_answer_fn,
-                chat_request.message,
-                firebase_uid,
-                scope_ctx["resolved_book_id"],
-                ctx_data["recent_messages"],
-                "\n\n".join(part for part in [memory_context_snippet, ctx_data["summary"] or ""] if part).strip(),
-                retrieval_limit,
-                chat_request.offset,
-                session_id,
-                scope_ctx["effective_resource_type"],
-                scope_ctx["scope_mode"],
-                scope_ctx["scope_policy_active"],
-                chat_request.compare_mode,
-                chat_request.target_book_ids,
-                "default",
-                None,
-                None,
-                chat_request.domain_mode,
+                question=chat_request.message,
+                firebase_uid=firebase_uid,
+                context_book_id=scope_ctx["resolved_book_id"],
+                chat_history=ctx_data["recent_messages"],
+                session_summary="\n\n".join(
+                    part for part in [memory_context_snippet, ctx_data["summary"] or ""] if part
+                ).strip(),
+                limit=retrieval_limit,
+                offset=chat_request.offset,
+                session_id=session_id,
+                resource_type=scope_ctx["effective_resource_type"],
+                scope_mode=scope_ctx["scope_mode"],
+                apply_scope_policy=scope_ctx["scope_policy_active"],
+                compare_mode=chat_request.compare_mode,
+                target_book_ids=chat_request.target_book_ids,
+                visibility_scope="default",
+                content_type=None,
+                ingestion_type=None,
+                domain_mode=requested_domain_mode,
             ),
         )
         if answer_result:
@@ -802,7 +839,7 @@ async def execute_chat_request(
         final_metadata.setdefault("scope_mode", scope_ctx["scope_mode"])
         final_metadata.setdefault("resolved_book_id", scope_ctx["resolved_book_id"])
         final_metadata.setdefault("memory_profile_loaded", bool(memory_context_snippet))
-        final_metadata.setdefault("requested_domain_mode", chat_request.domain_mode)
+        final_metadata.setdefault("requested_domain_mode", requested_domain_mode)
 
     await loop.run_in_executor(None, add_message_fn, session_id, "assistant", answer, sources)
     background_tasks.add_task(summarize_session_history_fn, session_id)
