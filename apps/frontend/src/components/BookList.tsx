@@ -1386,7 +1386,7 @@ export const BookList: React.FC<BookListProps> = React.memo(({ books, personalNo
                                                             <div className="text-slate-600 dark:text-slate-300 text-xs md:text-sm whitespace-pre-wrap leading-relaxed max-h-[180px] overflow-hidden relative font-lora mb-3">
                                                                 {notePreview || <span className="italic text-slate-400 dark:text-slate-500">Empty</span>}
                                                                 {notePreview.length > 140 && (
-                                                                    <div className="absolute bottom-0 inset-x-0 h-8 bg-gradient-to-t from-white dark:from-slate-900 to-transparent" />
+                                                                    <div className="absolute bottom-0 inset-x-0 h-8 bg-gradient-to-t from-white dark:from-slate-800 to-transparent" />
                                                                 )}
                                                             </div>
 
