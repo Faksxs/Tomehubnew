@@ -35,7 +35,6 @@ _HIGHLIGHT_FOCUS_TERMS = (
     "insight",
 )
 
-
 def _resolve_requested_domain_mode(request_obj: Any) -> str:
     """
     Keep route handlers compatible with older request models that may not
@@ -44,7 +43,6 @@ def _resolve_requested_domain_mode(request_obj: Any) -> str:
     value = getattr(request_obj, "domain_mode", "AUTO")
     text = str(value or "AUTO").strip().upper()
     return text or "AUTO"
-
 
 def _call_with_supported_kwargs(func: Callable[..., Any], /, **kwargs: Any) -> Any:
     """
@@ -66,7 +64,6 @@ def _call_with_supported_kwargs(func: Callable[..., Any], /, **kwargs: Any) -> A
         if key in parameters
     }
     return func(**supported_kwargs)
-
 
 def is_scope_policy_enabled_for_chat(firebase_uid: str, mode: str) -> bool:
     if not bool(getattr(settings, "SEARCH_SCOPE_POLICY_ENABLED", False)):
