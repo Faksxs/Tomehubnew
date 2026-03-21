@@ -35,6 +35,16 @@ _HIGHLIGHT_FOCUS_TERMS = (
 )
 
 
+def _resolve_requested_domain_mode(request_obj: Any) -> str:
+    """
+    Keep route handlers compatible with older request models that may not
+    define domain_mode yet while newer service code expects it.
+    """
+    value = getattr(request_obj, "domain_mode", "AUTO")
+    text = str(value or "AUTO").strip().upper()
+    return text or "AUTO"
+
+
 def is_scope_policy_enabled_for_chat(firebase_uid: str, mode: str) -> bool:
     if not bool(getattr(settings, "SEARCH_SCOPE_POLICY_ENABLED", False)):
         return False
@@ -377,6 +387,7 @@ async def execute_search_request(
     generate_answer_fn: Callable[..., Any],
 ) -> Dict[str, Any]:
     visibility_scope = "all" if search_request.include_private_notes else search_request.visibility_scope
+    requested_domain_mode = _resolve_requested_domain_mode(search_request)
 
     analytic_payload = build_search_analytic_response(
         firebase_uid=firebase_uid,
@@ -420,7 +431,7 @@ async def execute_search_request(
             visibility_scope,
             search_request.content_type,
             search_request.ingestion_type,
-            search_request.domain_mode,
+            requested_domain_mode,
         ),
     )
 
@@ -445,7 +456,7 @@ async def execute_search_request(
         metadata.setdefault("visibility_scope", visibility_scope)
         metadata.setdefault("content_type_filter", search_request.content_type)
         metadata.setdefault("ingestion_type_filter", search_request.ingestion_type)
-        metadata.setdefault("requested_domain_mode", search_request.domain_mode)
+        metadata.setdefault("requested_domain_mode", requested_domain_mode)
 
     return {
         "answer": answer,
@@ -595,6 +606,7 @@ async def execute_chat_request(
     refresh_memory_profile_fn: Callable[..., Any],
 ) -> Dict[str, Any]:
     loop = asyncio.get_running_loop()
+    requested_domain_mode = _resolve_requested_domain_mode(chat_request)
     session_id, ctx_data, memory_context_snippet = await _prepare_chat_session_context(
         loop=loop,
         firebase_uid=firebase_uid,
@@ -685,7 +697,7 @@ async def execute_chat_request(
                 target_book_ids=chat_request.target_book_ids,
                 limit=retrieval_limit,
                 offset=chat_request.offset,
-                domain_mode=chat_request.domain_mode,
+                domain_mode=requested_domain_mode,
             ),
         )
 
@@ -787,7 +799,7 @@ async def execute_chat_request(
                 "default",
                 None,
                 None,
-                chat_request.domain_mode,
+                requested_domain_mode,
             ),
         )
         if answer_result:
@@ -802,7 +814,7 @@ async def execute_chat_request(
         final_metadata.setdefault("scope_mode", scope_ctx["scope_mode"])
         final_metadata.setdefault("resolved_book_id", scope_ctx["resolved_book_id"])
         final_metadata.setdefault("memory_profile_loaded", bool(memory_context_snippet))
-        final_metadata.setdefault("requested_domain_mode", chat_request.domain_mode)
+        final_metadata.setdefault("requested_domain_mode", requested_domain_mode)
 
     await loop.run_in_executor(None, add_message_fn, session_id, "assistant", answer, sources)
     background_tasks.add_task(summarize_session_history_fn, session_id)
