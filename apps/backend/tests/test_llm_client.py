@@ -176,10 +176,12 @@ class LLMClientTests(unittest.TestCase):
 
         self.assertEqual(result.text, "ok")
         self.assertEqual(result.provider_name, "gemini")
+        self.assertEqual(result.model_used, llm_client.settings.LLM_MODEL_PRO)
         self.assertTrue(result.fallback_applied)
         self.assertTrue(result.secondary_fallback_applied)
         self.assertEqual(result.fallback_reason, "qwen_retryable_error")
         self.assertEqual(state["secondary_fallback_used"], 1)
+        self.assertEqual(gemini_provider.calls[0]["model"], llm_client.settings.LLM_MODEL_PRO)
 
     def test_generate_text_explorer_qwen_rpm_cap_raises_without_secondary_fallback(self):
         state = {"secondary_fallback_used": 0}

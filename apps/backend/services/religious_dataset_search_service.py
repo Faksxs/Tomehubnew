@@ -366,7 +366,7 @@ def _normalize_hadith_doc(
     exact_bonus = 0.12 if exact_no and hadith_no == exact_no else 0.0
     collection_bonus = 0.05 if exact_collection and collection == exact_collection else 0.0
     language_bonus = 0.03 if _query_prefers_turkish(question) and language == "tur" else 0.0
-    score = max(0.46, 0.67 - (idx * 0.04) + exact_bonus + collection_bonus + language_bonus + min(0.07, overlap * 0.08))
+    score = max(0.50, 0.72 - (idx * 0.03) + exact_bonus + collection_bonus + language_bonus + min(0.12, overlap * 0.15))
     content = "\n".join(part for part in [text, f"Hukum: {grade}" if grade else "", f"Ref: {canonical_ref}" if canonical_ref else ""] if part)
     return _build_candidate(
         provider="HADITH_API_DATASET",

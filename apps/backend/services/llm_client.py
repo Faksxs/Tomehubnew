@@ -610,7 +610,8 @@ def _resolve_secondary_provider() -> str:
 def _resolve_secondary_model(model_tier: str) -> str:
     secondary_provider = _resolve_secondary_provider()
     if secondary_provider == PROVIDER_GEMINI:
-        return get_model_for_tier(model_tier)
+        # Explorer secondary fallback should use the stronger Gemini path.
+        return get_model_for_tier(MODEL_TIER_PRO)
     return getattr(settings, "LLM_EXPLORER_PRIMARY_MODEL", get_model_for_tier(model_tier))
 
 
