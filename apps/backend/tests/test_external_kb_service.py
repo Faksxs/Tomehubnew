@@ -152,6 +152,59 @@ class ExternalKBServiceTests(unittest.TestCase):
 
         self.assertEqual([row["provider"] for row in out], ["EUROPEANA", "INTERNET_ARCHIVE"])
 
+    @patch("services.external_kb_service.resolve_book_metadata")
+    @patch("services.external_kb_service._search_artic_direct", return_value=[{"provider": "ART_SEARCH_API", "title": "Art", "score": 0.59}])
+    @patch("services.external_kb_service._search_poetrydb_direct", return_value=[{"provider": "POETRYDB", "title": "Poem", "score": 0.61}])
+    @patch("services.external_kb_service._search_gutendex_direct", return_value=[{"provider": "GUTENDEX", "title": "Novel", "score": 0.65}])
+    def test_domain_external_candidates_for_literary_include_book_metadata_context(
+        self,
+        _mock_gutendex,
+        _mock_poetry,
+        _mock_art,
+        mock_resolve_book_metadata,
+    ):
+        mock_resolve_book_metadata.return_value = [
+            {
+                "title": "Collected Poems",
+                "author": "Ada Writer",
+                "publisher": "Faber",
+                "publishedDate": "1999",
+                "summary": "A modern poetry selection.",
+                "url": "https://books.example/1",
+                "isbn": "9781234567890",
+                "_provider": "google-books",
+            },
+            {
+                "title": "Collected Poems",
+                "author": "Ada Writer",
+                "publisher": "Archive Press",
+                "publishedDate": "1995",
+                "summary": "Archive entry.",
+                "url": "https://books.example/2",
+                "isbn": "9781234567890",
+                "_provider": "open-library",
+            },
+            {
+                "title": "Ignored Big Book",
+                "author": "Ada Writer",
+                "_provider": "big-book-api",
+            },
+        ]
+
+        out = external_kb_service.get_domain_external_candidates(
+            "poem imagery and metaphor",
+            "LITERARY",
+            limit=6,
+            active_providers=["GUTENDEX", "POETRYDB", "GOOGLE_BOOKS", "OPEN_LIBRARY"],
+        )
+
+        providers = [row["provider"] for row in out]
+        self.assertIn("GUTENDEX", providers)
+        self.assertIn("POETRYDB", providers)
+        self.assertIn("GOOGLE_BOOKS", providers)
+        self.assertIn("OPEN_LIBRARY", providers)
+        self.assertNotIn("BIG_BOOK_API", providers)
+
     @patch("services.external_kb_service._search_lingua_robot_lexical", return_value={"provider": "LINGUA_ROBOT", "reference": "logos", "score": 0.57})
     @patch("services.external_kb_service._search_words_api_lexical", return_value={"provider": "WORDS_API", "reference": "logos", "score": 0.58})
     @patch("services.external_kb_service._fetch_wiktionary_extract", return_value={"title": "logos", "extract": "Anlami ve kokenu."})
