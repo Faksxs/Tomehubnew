@@ -2,6 +2,16 @@
 from typing import List, Dict, Tuple, Any
 from services.epistemic_service import extract_core_concepts
 
+
+def _has_primary_religious_evidence(chunks: List[Dict[str, Any]]) -> bool:
+    for chunk in chunks[:5]:
+        source_type = str(chunk.get("source_type") or "").strip().upper()
+        religious_kind = str(chunk.get("religious_source_kind") or "").strip().upper()
+        if source_type == "ISLAMIC_EXTERNAL" and religious_kind in {"QURAN", "HADITH"}:
+            return True
+    return False
+
+
 def classify_network_status(
     query: str, 
     chunks: List[Dict], 
@@ -44,12 +54,15 @@ def classify_network_status(
     # 3. Determine Status
     status = "HYBRID"
     confidence = avg_score / 7.0 # Normalize to 0-1
+    has_primary_religious_evidence = _has_primary_religious_evidence(top_chunks)
     
     # Criteria for IN_NETWORK:
     # - High epistemic score (>4.0) indicating good definition/context
     # - OR High keyword coverage (>80%) with moderate score
     
-    if avg_score >= 5.0 and coverage_ratio >= 0.5:
+    if has_primary_religious_evidence and coverage_ratio >= 0.5:
+        status = "IN_NETWORK"
+    elif avg_score >= 5.0 and coverage_ratio >= 0.5:
         status = "IN_NETWORK"
     elif avg_score >= 3.5 and coverage_ratio >= 0.8:
         status = "IN_NETWORK"
@@ -62,7 +75,8 @@ def classify_network_status(
         "metrics": {
             "avg_epistemic_score": avg_score,
             "coverage_ratio": coverage_ratio,
-            "missing_keywords": list(set(keywords) - covered_keywords)
+            "missing_keywords": list(set(keywords) - covered_keywords),
+            "has_primary_religious_evidence": has_primary_religious_evidence,
         },
         "reason": f"Score {avg_score:.1f}, Coverage {int(coverage_ratio*100)}%"
     }
