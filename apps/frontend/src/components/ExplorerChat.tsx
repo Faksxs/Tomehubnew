@@ -405,15 +405,6 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack, onSa
                             <RotateCcw className="w-3.5 h-3.5 md:w-4 md:h-4" />
                             <span className="hidden sm:inline">New</span>
                         </button>
-                        {onBack && (
-                            <button
-                                onClick={onBack}
-                                className="px-2 md:px-3 py-1.5 text-xs md:text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors border border-slate-200 dark:border-slate-700"
-                            >
-                                <span className="sm:hidden">Back</span>
-                                <span className="hidden sm:inline">Back</span>
-                            </button>
-                        )}
                     </div>
                 </div>
 
