@@ -759,27 +759,31 @@ def generate_text(
             logger.warning("Flash model failed with retryable error; using Pro fallback", exc_info=True)
             _mark_pro_fallback_used(fallback_state)
             pro_model = get_model_for_tier(MODEL_TIER_PRO)
-            pro_result = provider.generate_text(
-                model=pro_model,
-                prompt=prompt,
-                temperature=temperature,
-                max_output_tokens=max_output_tokens,
-                response_mime_type=response_mime_type,
-                timeout_s=timeout_s,
-            )
-            pro_result.model_tier = MODEL_TIER_PRO
-            pro_result.fallback_applied = True
-            pro_result.provider_name = provider_name
-            pro_result.fallback_reason = "gemini_pro_fallback"
-            _increment_call(task=task, model_tier=MODEL_TIER_PRO, status="success")
-            _increment_provider_call(task=task, provider=provider_name, status="success")
-            _increment_fallback(
-                from_provider=provider_name,
-                to_provider=provider_name,
-                reason="gemini_flash_to_pro",
-            )
-            _observe_tokens(task=task, model_tier=MODEL_TIER_PRO, usage_metadata=pro_result.usage_metadata)
-            return pro_result
+            try:
+                pro_result = provider.generate_text(
+                    model=pro_model,
+                    prompt=prompt,
+                    temperature=temperature,
+                    max_output_tokens=max_output_tokens,
+                    response_mime_type=response_mime_type,
+                    timeout_s=timeout_s,
+                )
+                pro_result.model_tier = MODEL_TIER_PRO
+                pro_result.fallback_applied = True
+                pro_result.provider_name = provider_name
+                pro_result.fallback_reason = "gemini_pro_fallback"
+                _increment_call(task=task, model_tier=MODEL_TIER_PRO, status="success")
+                _increment_provider_call(task=task, provider=provider_name, status="success")
+                _increment_fallback(
+                    from_provider=provider_name,
+                    to_provider=provider_name,
+                    reason="gemini_flash_to_pro",
+                )
+                _observe_tokens(task=task, model_tier=MODEL_TIER_PRO, usage_metadata=pro_result.usage_metadata)
+                return pro_result
+            except Exception as pro_exc:
+                logger.warning("Gemini Pro fallback also failed: %s", pro_exc)
+                exc = pro_exc
 
         if (
             route_mode == ROUTE_MODE_EXPLORER_QWEN_PILOT
@@ -812,11 +816,11 @@ def generate_text(
             and allow_secondary_fallback
             and _can_use_secondary_fallback(fallback_state)
             and _resolve_secondary_provider() != PROVIDER_GEMINI
-            and is_gemini_auth_error(exc)
+            and (is_gemini_auth_error(exc) or is_retryable_llm_error(exc))
         ):
-            fallback_reason = "gemini_auth_error"
+            fallback_reason = "gemini_error_to_secondary"
             logger.warning(
-                "Gemini primary failed with auth error; using secondary fallback",
+                "Gemini primary failed with error; using secondary fallback",
                 extra={"reason": fallback_reason},
                 exc_info=True,
             )
