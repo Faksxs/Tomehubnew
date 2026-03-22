@@ -63,7 +63,72 @@ class TestCompareResolutionAndContext(unittest.TestCase):
         self.assertIn("book_a", used_book_ids)
         self.assertIn("book_b", used_book_ids)
 
+    def test_religious_explorer_context_prioritizes_islamic_external_chunks(self):
+        chunks = [
+            {
+                "id": "h1",
+                "title": "Hadith 1",
+                "content_chunk": "hadith-1",
+                "answerability_score": 3.0,
+                "source_type": "ISLAMIC_EXTERNAL",
+                "religious_source_kind": "HADITH",
+                "epistemic_level": "B",
+            },
+            {
+                "id": "h2",
+                "title": "Hadith 2",
+                "content_chunk": "hadith-2",
+                "answerability_score": 2.8,
+                "source_type": "ISLAMIC_EXTERNAL",
+                "religious_source_kind": "HADITH",
+                "epistemic_level": "B",
+            },
+            {
+                "id": "h3",
+                "title": "Tefsir",
+                "content_chunk": "tefsir-1",
+                "answerability_score": 2.2,
+                "source_type": "ISLAMIC_EXTERNAL",
+                "religious_source_kind": "INTERPRETATION",
+                "epistemic_level": "B",
+            },
+            {
+                "id": "l1",
+                "title": "Roman 1",
+                "content_chunk": "roman-1",
+                "answerability_score": 99.0,
+                "source_type": "HIGHLIGHT",
+                "epistemic_level": "A",
+            },
+            {
+                "id": "l2",
+                "title": "Roman 2",
+                "content_chunk": "roman-2",
+                "answerability_score": 98.0,
+                "source_type": "HIGHLIGHT",
+                "epistemic_level": "A",
+            },
+            {
+                "id": "l3",
+                "title": "Roman 3",
+                "content_chunk": "roman-3",
+                "answerability_score": 97.0,
+                "source_type": "HIGHLIGHT",
+                "epistemic_level": "A",
+            },
+        ]
+
+        _, used_chunks = build_epistemic_context(chunks, "EXPLORER", "RELIGIOUS")
+
+        self.assertEqual(
+            [chunk.get("source_type") for chunk in used_chunks[:3]],
+            ["ISLAMIC_EXTERNAL", "ISLAMIC_EXTERNAL", "ISLAMIC_EXTERNAL"],
+        )
+        self.assertLessEqual(
+            sum(1 for chunk in used_chunks if chunk.get("source_type") != "ISLAMIC_EXTERNAL"),
+            2,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
-
