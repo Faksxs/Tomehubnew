@@ -75,6 +75,30 @@ class _ProviderGeminiAuthError:
         return []
 
 
+class _ProviderFailsOnceThenSuccess:
+    name = "qwen"
+
+    def __init__(self, success_model):
+        self.calls = 0
+        self.success_model = success_model
+
+    def generate_text(self, **kwargs):
+        self.calls += 1
+        if self.calls == 1:
+            raise TimeoutError("timed out")
+        return GenerateResult(
+            text="secondary-ok",
+            model_used=kwargs["model"],
+            model_tier=MODEL_TIER_FLASH,
+            fallback_applied=False,
+            usage_metadata=None,
+            provider_name=self.name,
+        )
+
+    def embed_contents(self, **kwargs):
+        return []
+
+
 class _ProviderModelDelays:
     name = "qwen"
 
@@ -194,19 +218,20 @@ class LLMClientTests(unittest.TestCase):
                 with patch.object(llm_client.settings, "LLM_EXPLORER_PRIMARY_PROVIDER", "qwen"):
                     with patch.object(llm_client.settings, "LLM_EXPLORER_PRIMARY_MODEL", "qwen/qwen3.5-122b-a10b"):
                         with patch.object(llm_client.settings, "LLM_EXPLORER_FALLBACK_PROVIDER", "gemini"):
-                            with patch.object(llm_client.settings, "LLM_EXPLORER_SECONDARY_MAX_PER_REQUEST", 1):
-                                with patch.object(llm_client.settings, "LLM_EXPLORER_PARALLEL_NVIDIA_ENABLED", False):
-                                    with patch("services.llm_client._consume_qwen_rpm_slots", return_value=True):
-                                        result = llm_client.generate_text(
-                                            model=llm_client.settings.LLM_EXPLORER_PRIMARY_MODEL,
-                                            prompt="hello",
-                                            task="test_explorer",
-                                            model_tier=MODEL_TIER_FLASH,
-                                            provider_hint="qwen",
-                                            route_mode=ROUTE_MODE_EXPLORER_QWEN_PILOT,
-                                            allow_secondary_fallback=True,
-                                            fallback_state=state,
-                                        )
+                            with patch.object(llm_client.settings, "LLM_TRANSLATION_PROVIDER", "gemini"):
+                                with patch.object(llm_client.settings, "LLM_EXPLORER_SECONDARY_MAX_PER_REQUEST", 1):
+                                    with patch.object(llm_client.settings, "LLM_EXPLORER_PARALLEL_NVIDIA_ENABLED", False):
+                                        with patch("services.llm_client._consume_qwen_rpm_slots", return_value=True):
+                                            result = llm_client.generate_text(
+                                                model=llm_client.settings.LLM_EXPLORER_PRIMARY_MODEL,
+                                                prompt="hello",
+                                                task="test_explorer",
+                                                model_tier=MODEL_TIER_FLASH,
+                                                provider_hint="qwen",
+                                                route_mode=ROUTE_MODE_EXPLORER_QWEN_PILOT,
+                                                allow_secondary_fallback=True,
+                                                fallback_state=state,
+                                            )
 
         self.assertEqual(result.text, "ok")
         self.assertEqual(result.provider_name, "gemini")
@@ -216,6 +241,38 @@ class LLMClientTests(unittest.TestCase):
         self.assertEqual(result.fallback_reason, "qwen_retryable_error")
         self.assertEqual(state["secondary_fallback_used"], 1)
         self.assertEqual(gemini_provider.calls[0]["model"], llm_client.settings.LLM_MODEL_PRO)
+
+    def test_generate_text_explorer_qwen_prefers_non_gemini_secondary_when_available(self):
+        kimi_model = "kimi-k2-thinking"
+        qwen_provider = _ProviderFailsOnceThenSuccess(success_model=kimi_model)
+
+        with patch("services.llm_client.get_provider", return_value=qwen_provider):
+            with patch.object(llm_client.settings, "LLM_EXPLORER_QWEN_PILOT_ENABLED", True):
+                with patch.object(llm_client.settings, "LLM_EXPLORER_PRIMARY_PROVIDER", "qwen"):
+                    with patch.object(llm_client.settings, "LLM_EXPLORER_PRIMARY_MODEL", "qwen/qwen3.5-122b-a10b"):
+                        with patch.object(llm_client.settings, "LLM_EXPLORER_FALLBACK_PROVIDER", "gemini"):
+                            with patch.object(llm_client.settings, "LLM_TRANSLATION_PROVIDER", "nvidia"):
+                                with patch.object(llm_client.settings, "LLM_EXPLORER_PARALLEL_NVIDIA_MODEL", kimi_model):
+                                    with patch.object(llm_client.settings, "LLM_EXPLORER_SECONDARY_MAX_PER_REQUEST", 1):
+                                        with patch.object(llm_client.settings, "LLM_EXPLORER_PARALLEL_NVIDIA_ENABLED", False):
+                                            with patch("services.llm_client._consume_qwen_rpm_slots", return_value=True):
+                                                result = llm_client.generate_text(
+                                                    model=llm_client.settings.LLM_EXPLORER_PRIMARY_MODEL,
+                                                    prompt="hello",
+                                                    task="test_explorer_non_gemini_secondary",
+                                                    model_tier=MODEL_TIER_FLASH,
+                                                    provider_hint="qwen",
+                                                    route_mode=ROUTE_MODE_EXPLORER_QWEN_PILOT,
+                                                    allow_secondary_fallback=True,
+                                                    fallback_state={"secondary_fallback_used": 0},
+                                                )
+
+        self.assertEqual(result.text, "secondary-ok")
+        self.assertEqual(result.provider_name, "qwen")
+        self.assertEqual(result.model_used, kimi_model)
+        self.assertTrue(result.fallback_applied)
+        self.assertTrue(result.secondary_fallback_applied)
+        self.assertEqual(result.fallback_reason, "qwen_retryable_error")
 
     def test_generate_text_gemini_auth_error_falls_back_to_nvidia(self):
         gemini_provider = _ProviderGeminiAuthError()

@@ -23,6 +23,52 @@ TIMEOUT_BUDGET = {
     "SOCIETAL": 8.0,        # Complex societal analysis
 }
 
+
+def _compact_text(value: Any, max_chars: int = 260) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 3].rstrip() + "..."
+
+
+def _build_extractive_fallback_answer(question: str, chunks: List[Dict[str, Any]]) -> str:
+    if not chunks:
+        return "Uzgunum, teknik sorun nedeniyle yanit uretilemedi ve kullanilabilir kaynak bulunamadi."
+
+    top_chunks = chunks[:3]
+    has_religious_primary = any(
+        str(chunk.get("source_type") or "").strip().upper() == "ISLAMIC_EXTERNAL"
+        and str(chunk.get("religious_source_kind") or "").strip().upper() in {"QURAN", "HADITH"}
+        for chunk in top_chunks
+    )
+    intro = (
+        "Derin yanit motoru gecici olarak hata verdi. Bu sirada bulunan dini kaynaklardan dogrudan aktarim yapiyorum:"
+        if has_religious_primary
+        else "Derin yanit motoru gecici olarak hata verdi. Bu sirada bulunan kaynaklardan dogrudan aktarim yapiyorum:"
+    )
+
+    lines = [intro, f"Soru: {_compact_text(question, 180)}", ""]
+    for index, chunk in enumerate(top_chunks, start=1):
+        title = _compact_text(chunk.get("title") or chunk.get("provider") or "Kaynak", 80)
+        provider = _compact_text(chunk.get("provider") or chunk.get("source_type") or "internal", 40)
+        reference = _compact_text(
+            chunk.get("canonical_reference")
+            or chunk.get("reference")
+            or chunk.get("page_number")
+            or "",
+            60,
+        )
+        snippet = _compact_text(chunk.get("content_chunk") or "", 280)
+        meta = f"{title} | {provider}"
+        if reference:
+            meta += f" | {reference}"
+        lines.append(f"{index}. {meta}")
+        lines.append(f"   {snippet}")
+
+    lines.append("")
+    lines.append("Not: Bu yanit acil extractive fallback olarak uretildi; sistem duzeldiginde yeniden deneyebilirsin.")
+    return "\n".join(lines)
+
 async def generate_evaluated_answer(
     question: str,
     chunks: List[Dict],
@@ -166,6 +212,10 @@ async def generate_evaluated_answer(
             logger.error(f"[DualAI] Fast Track failed: {e}")
             return _create_error_response(
                 e,
+                question=question,
+                chunks=chunks,
+                answer_mode=answer_mode,
+                network_status=network_status,
                 max_attempts_configured=max_attempts,
                 max_attempts_effective=effective_max_attempts
             )
@@ -207,6 +257,10 @@ async def generate_evaluated_answer(
                     continue  # Retry with timeout-aware fallback
                 return _create_error_response(
                     TimeoutError(f"LLM generation timeout exceeded ({overall_timeout_s}s budget)"),
+                    question=question,
+                    chunks=chunks,
+                    answer_mode=answer_mode,
+                    network_status=network_status,
                     max_attempts_configured=max_attempts,
                     max_attempts_effective=effective_max_attempts
                 )
@@ -216,6 +270,10 @@ async def generate_evaluated_answer(
                     continue # Retry
                 return _create_error_response(
                     e,
+                    question=question,
+                    chunks=chunks,
+                    answer_mode=answer_mode,
+                    network_status=network_status,
                     max_attempts_configured=max_attempts,
                     max_attempts_effective=effective_max_attempts
                 )
@@ -325,13 +383,25 @@ async def generate_evaluated_answer(
             
             # Fallback: Run standard synthesis (Fast & Reliable)
             # We treat this as a "system fallback"
-            fallback_result = await generate_work_ai_answer(
-                question=question,
-                chunks=chunks,
-                answer_mode='SYNTHESIS', # Fallback to Standard
-                confidence_score=confidence_score,
-                network_status=network_status
-            )
+            try:
+                fallback_result = await generate_work_ai_answer(
+                    question=question,
+                    chunks=chunks,
+                    answer_mode='SYNTHESIS', # Fallback to Standard
+                    confidence_score=confidence_score,
+                    network_status=network_status
+                )
+            except Exception as fallback_error:
+                logger.error("[DualAI] Explorer timeout fallback failed: %s", fallback_error)
+                return _create_error_response(
+                    fallback_error,
+                    question=question,
+                    chunks=chunks,
+                    answer_mode=answer_mode,
+                    network_status=network_status,
+                    max_attempts_configured=max_attempts,
+                    max_attempts_effective=effective_max_attempts,
+                )
             
             # Create a synthetic "Timeout" evaluation
             fallback_eval = {
@@ -444,12 +514,26 @@ def _create_success_response(
     }
 
 
-def _create_error_response(error, max_attempts_configured=2, max_attempts_effective=2):
+def _create_error_response(
+    error,
+    *,
+    question: str = "",
+    chunks: List[Dict[str, Any]] | None = None,
+    answer_mode: str = "SYNTHESIS",
+    network_status: str = "IN_NETWORK",
+    max_attempts_configured=2,
+    max_attempts_effective=2,
+):
+    used_chunks = list(chunks or [])[:3]
+    fallback_answer = _build_extractive_fallback_answer(question, used_chunks) if used_chunks else "Uzgunum, bir teknik hata olustu. Lutfen tekrar deneyin."
     return {
-        "final_answer": "Uzgunum, bir teknik hata olustu. Lutfen tekrar deneyin.",
+        "final_answer": fallback_answer,
         "metadata": {
-            "verdict": "ERROR",
+            "verdict": "EXTRACTIVE_FALLBACK" if used_chunks else "ERROR",
             "error": str(error),
+            "used_chunks": used_chunks,
+            "answer_mode": answer_mode,
+            "network_status": network_status,
             "audit_cost_profile": {
                 "attempts": 0,
                 "max_attempts_configured": max_attempts_configured,
