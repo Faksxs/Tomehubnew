@@ -539,6 +539,46 @@ def _select_compare_balanced_chunks(sorted_chunks: List[Dict[str, Any]], top_k: 
     return selected[:top_k]
 
 
+def _select_religious_explorer_chunks(chunks: List[Dict[str, Any]], top_k: int) -> List[Dict[str, Any]]:
+    selected: List[Dict[str, Any]] = []
+    seen = set()
+
+    def _append(chunk: Dict[str, Any]) -> bool:
+        key = _chunk_identity(chunk)
+        if key in seen:
+            return False
+        seen.add(key)
+        selected.append(chunk)
+        return True
+
+    ordered_chunks = list(chunks or [])
+    religious_external = [
+        chunk for chunk in ordered_chunks
+        if str(chunk.get("source_type") or "").strip().upper() == "ISLAMIC_EXTERNAL"
+    ]
+
+    if not religious_external:
+        sorted_chunks = sorted(ordered_chunks, key=lambda c: c.get('answerability_score', 0), reverse=True)
+        return _select_compare_balanced_chunks(sorted_chunks, top_k)
+
+    for chunk in religious_external:
+        if len(selected) >= top_k:
+            break
+        _append(chunk)
+
+    support_cap = min(2, max(0, top_k - len(selected)))
+    support_added = 0
+    for chunk in ordered_chunks:
+        if len(selected) >= top_k or support_added >= support_cap:
+            break
+        if str(chunk.get("source_type") or "").strip().upper() == "ISLAMIC_EXTERNAL":
+            continue
+        if _append(chunk):
+            support_added += 1
+
+    return selected[:top_k]
+
+
 def build_epistemic_context(chunks: List[Dict], answer_mode: str, domain_mode: str = DOMAIN_MODE_AUTO) -> Tuple[str, List[Dict]]:
     """
     Build context string with epistemic priority markers AND metadata.
@@ -558,12 +598,13 @@ def build_epistemic_context(chunks: List[Dict], answer_mode: str, domain_mode: s
         except Exception:
             pass
 
-    # Sort by Answerability Score (High to Low)
+    resolved_domain_mode = normalize_domain_mode(domain_mode)
     sorted_chunks = sorted(chunks, key=lambda c: c.get('answerability_score', 0), reverse=True)
 
-    # LIMIT CONTEXT: default top-12 (or lower when perf guard is enabled)
-    used_chunks = _select_compare_balanced_chunks(sorted_chunks, top_k)
-    resolved_domain_mode = normalize_domain_mode(domain_mode)
+    if resolved_domain_mode == "RELIGIOUS" and answer_mode == "EXPLORER":
+        used_chunks = _select_religious_explorer_chunks(chunks, top_k)
+    else:
+        used_chunks = _select_compare_balanced_chunks(sorted_chunks, top_k)
 
     for i, chunk in enumerate(used_chunks, 1):
         level = chunk.get('epistemic_level', 'C')
