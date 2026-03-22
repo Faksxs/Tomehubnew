@@ -195,6 +195,104 @@ class SearchDomainPolicyTests(unittest.TestCase):
         self.assertTrue(any(chunk.get("provider") == "POETRYDB" for chunk in ctx.get("chunks", [])))
         mock_direct_external.assert_called_once()
 
+    @patch("services.search_service.perform_search")
+    @patch("services.search_service.resolve_domain_mode")
+    @patch("services.search_service.resolve_explorer_query_profile")
+    @patch("services.search_service.get_graph_candidates", return_value=[])
+    @patch("services.search_service.classify_question_intent", return_value=("SYNTHESIS", "MEDIUM"))
+    @patch("services.search_service.extract_core_concepts", return_value=["source"])
+    @patch("services.search_service.classify_chunk", side_effect=_classify_stub)
+    @patch("services.search_service.classify_network_status", return_value={"status": "IN_NETWORK", "reason": "ok"})
+    @patch("services.search_service.get_islamic_external_candidates", return_value=([], {"used": False, "providers": {}, "quran_used": False, "hadith_used": False}))
+    @patch("services.search_service.get_external_graph_candidates", return_value=[])
+    @patch("services.search_service.get_domain_external_candidates")
+    @patch("services.search_service.get_lexical_support_candidates", return_value=[])
+    def test_low_confidence_auto_profile_skips_optional_external_lanes(
+        self,
+        _mock_lexical,
+        mock_direct_external,
+        _mock_graph_external,
+        mock_islamic,
+        _mock_network,
+        _mock_classify,
+        _mock_extract,
+        _mock_intent,
+        _mock_graph,
+        mock_domain_resolution,
+        mock_profile,
+        mock_search,
+    ):
+        mock_search.return_value = ([_base_chunk()], {"retrieval_path": "hybrid", "retrieval_fusion_mode": "concat"})
+        mock_domain_resolution.return_value = {
+            "resolved_domain_mode": "AUTO",
+            "domain_confidence": 0.41,
+            "domain_reason": "keyword_inference",
+            "provider_policy_applied": {},
+            "secondary_domain_mode": "ACADEMIC",
+            "secondary_domain_confidence": 0.38,
+            "auto_confidence_band": "low",
+        }
+        mock_profile.return_value = {
+            "resolved_domain_mode": "AUTO",
+            "auto_confidence_band": "low",
+            "direct_external_limit": 0,
+            "lexical_support_limit": 0,
+            "islamic_external_limit": 0,
+            "source_type_multipliers": {"HIGHLIGHT": 1.1},
+            "provider_multipliers": {},
+            "religious_kind_multipliers": {},
+            "primary_source_types": ["HIGHLIGHT"],
+            "promote_primary_source_top_n": 2,
+            "max_same_source_type_top_n": 3,
+        }
+
+        ctx = search_service.get_rag_context(
+            question="source analysis and meaning",
+            firebase_uid="u1",
+            mode="EXPLORER",
+            domain_mode="AUTO",
+        )
+
+        self.assertIsNotNone(ctx)
+        self.assertEqual(ctx.get("auto_confidence_band"), "low")
+        mock_direct_external.assert_not_called()
+        mock_islamic.assert_not_called()
+
+    @patch("services.search_service.perform_search")
+    @patch("services.search_service.get_graph_candidates", return_value=[])
+    @patch("services.search_service.classify_question_intent", return_value=("SYNTHESIS", "MEDIUM"))
+    @patch("services.search_service.extract_core_concepts", return_value=["ayet"])
+    @patch("services.search_service.classify_chunk", side_effect=_classify_stub)
+    @patch("services.search_service.classify_network_status", return_value={"status": "IN_NETWORK", "reason": "ok"})
+    @patch("services.search_service.get_external_graph_candidates", return_value=[])
+    @patch("services.search_service.get_islamic_external_candidates", return_value=([], {"used": False, "providers": {}, "quran_used": False, "hadith_used": False}))
+    def test_religious_exact_profile_drives_islamic_external_limit(
+        self,
+        mock_islamic,
+        _mock_graph_external,
+        _mock_network,
+        _mock_classify,
+        _mock_extract,
+        _mock_intent,
+        _mock_graph,
+        mock_search,
+    ):
+        mock_search.return_value = ([_base_chunk()], {"retrieval_path": "hybrid", "retrieval_fusion_mode": "concat"})
+        settings.ISLAMIC_API_MAX_CANDIDATES = 8
+
+        ctx = search_service.get_rag_context(
+            question="Bakara 2:255 ayeti ne diyor",
+            firebase_uid="u1",
+            mode="EXPLORER",
+            domain_mode="RELIGIOUS",
+        )
+
+        self.assertIsNotNone(ctx)
+        self.assertEqual(ctx.get("resolved_domain_mode"), "RELIGIOUS")
+        self.assertEqual(ctx.get("explorer_query_profile", {}).get("religious_query_type"), "EXACT_QURAN_VERSE")
+        mock_islamic.assert_called_once()
+        self.assertEqual(mock_islamic.call_args.kwargs.get("limit"), 5)
+
 
 if __name__ == "__main__":
     unittest.main()

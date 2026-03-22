@@ -39,8 +39,11 @@ from services.epistemic_service import (
 )
 from services.domain_policy_service import (
     DOMAIN_MODE_AUTO,
+    compute_source_composition_weight,
     domain_allows_provider_group,
+    is_primary_source_for_profile,
     reorder_chunks_for_domain,
+    resolve_explorer_query_profile,
     resolve_domain_mode,
 )
 
@@ -93,6 +96,45 @@ from services.external_kb_service import (
     get_lexical_support_candidates,
     maybe_refresh_external_for_explorer_async,
 )
+
+
+def _apply_dynamic_source_composition_policy(
+    chunks: List[Dict[str, Any]],
+    profile: Optional[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    if not chunks or not profile:
+        return list(chunks or [])
+
+    promote_top_n = max(0, int(profile.get("promote_primary_source_top_n") or 0))
+    max_same_top_n = max(1, int(profile.get("max_same_source_type_top_n") or 4))
+    ordered = list(chunks)
+
+    if promote_top_n > 0:
+        top_slice = ordered[:promote_top_n]
+        has_primary = any(is_primary_source_for_profile(chunk, profile) for chunk in top_slice)
+        if not has_primary:
+            primary_index = next(
+                (idx for idx, chunk in enumerate(ordered) if is_primary_source_for_profile(chunk, profile)),
+                None,
+            )
+            if primary_index is not None:
+                primary_chunk = ordered.pop(primary_index)
+                insert_at = min(max(0, promote_top_n - 1), len(ordered))
+                ordered.insert(insert_at, primary_chunk)
+
+    head: List[Dict[str, Any]] = []
+    deferred: List[Dict[str, Any]] = []
+    type_counts: Dict[str, int] = {}
+    for chunk in ordered:
+        source_type = str(chunk.get("source_type") or "").strip().upper() or "UNKNOWN"
+        current_count = type_counts.get(source_type, 0)
+        if len(head) < max_same_top_n * 2 and current_count >= max_same_top_n:
+            deferred.append(chunk)
+            continue
+        head.append(chunk)
+        type_counts[source_type] = current_count + 1
+
+    return head + deferred
 from services.islamic_api_service import get_islamic_external_candidates
 from services.analytics_service import (
     is_analytic_word_count,
@@ -971,7 +1013,21 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
     resolved_domain_mode = str(domain_resolution.get("resolved_domain_mode") or DOMAIN_MODE_AUTO)
     domain_confidence = float(domain_resolution.get("domain_confidence") or 0.0)
     domain_reason = str(domain_resolution.get("domain_reason") or "unknown")
+    secondary_domain_mode = domain_resolution.get("secondary_domain_mode")
+    auto_confidence_band = str(domain_resolution.get("auto_confidence_band") or "low")
     provider_policy_applied = dict(domain_resolution.get("provider_policy_applied") or {})
+    explorer_query_profile = (
+        resolve_explorer_query_profile(
+            effective_query,
+            resolved_domain_mode=resolved_domain_mode,
+            domain_confidence=domain_confidence,
+            requested_domain_mode=domain_mode,
+            domain_reason=domain_reason,
+            secondary_domain_mode=secondary_domain_mode,
+        )
+        if mode == "EXPLORER"
+        else None
+    )
     # 1. Keyword Extraction & Intent Classification
     # We classify intent EARLY now (Phase 4) to guide retrieval strategy
     intent, complexity = classify_question_intent(effective_query)
@@ -1379,123 +1435,155 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         and bool(getattr(settings, "EXTERNAL_KB_ENABLED", False))
         and domain_allows_provider_group(resolved_domain_mode, "EXTERNAL_KB")
     ):
-        candidate_book_ids: List[str] = []
-        if context_book_id:
-            candidate_book_ids.append(str(context_book_id).strip())
-        else:
-            candidate_book_ids = _infer_explorer_book_ids(question_results, hard_limit=3)
-            if not candidate_book_ids:
-                candidate_book_ids = _infer_explorer_book_ids(list(all_chunks_map.values()), hard_limit=3)
+        profile_external_limit = int((explorer_query_profile or {}).get("direct_external_limit") or 0)
+        ext_limit_total = max(
+            0,
+            min(
+                profile_external_limit,
+                int(getattr(settings, "EXTERNAL_KB_MAX_CANDIDATES", 5) or 5),
+                10,
+            ),
+        )
+        if ext_limit_total > 0:
+            candidate_book_ids: List[str] = []
+            if context_book_id:
+                candidate_book_ids.append(str(context_book_id).strip())
+            else:
+                candidate_book_ids = _infer_explorer_book_ids(question_results, hard_limit=3)
+                if not candidate_book_ids:
+                    candidate_book_ids = _infer_explorer_book_ids(list(all_chunks_map.values()), hard_limit=3)
 
-        ext_limit_total = max(1, min(int(getattr(settings, "EXTERNAL_KB_MAX_CANDIDATES", 5) or 5), 10))
-        per_book_limit = max(1, min(3, ext_limit_total))
-        seen_external = set()
+            per_book_limit = max(1, min(3, ext_limit_total))
+            seen_external = set()
 
-        for candidate_book_id in candidate_book_ids:
-            if not candidate_book_id:
-                continue
-            external_meta = get_external_meta(candidate_book_id, firebase_uid)
-            academic_scope = academic_scope or bool(external_meta.get("academic_scope"))
-            if not wikidata_qid:
-                wikidata_qid = external_meta.get("wikidata_qid")
-            openalex_used = openalex_used or bool(external_meta.get("openalex_id"))
-            dbpedia_used = dbpedia_used or bool(external_meta.get("dbpedia_uri"))
-            orkg_used = orkg_used or bool(external_meta.get("orkg_id"))
+            for candidate_book_id in candidate_book_ids:
+                if not candidate_book_id:
+                    continue
+                external_meta = get_external_meta(candidate_book_id, firebase_uid)
+                academic_scope = academic_scope or bool(external_meta.get("academic_scope"))
+                if not wikidata_qid:
+                    wikidata_qid = external_meta.get("wikidata_qid")
+                openalex_used = openalex_used or bool(external_meta.get("openalex_id"))
+                dbpedia_used = dbpedia_used or bool(external_meta.get("dbpedia_uri"))
+                orkg_used = orkg_used or bool(external_meta.get("orkg_id"))
 
-            try:
-                maybe_refresh_external_for_explorer_async(
+                try:
+                    maybe_refresh_external_for_explorer_async(
+                        book_id=candidate_book_id,
+                        firebase_uid=firebase_uid,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Explorer external refresh scheduling failed for book_id=%s uid=%s: %s",
+                        candidate_book_id,
+                        firebase_uid,
+                        exc,
+                    )
+
+                book_external = get_external_graph_candidates(
                     book_id=candidate_book_id,
                     firebase_uid=firebase_uid,
+                    question=effective_query,
+                    limit=per_book_limit,
+                    min_confidence=float(getattr(settings, "EXTERNAL_KB_MIN_CONFIDENCE", 0.45)),
                 )
-            except Exception as exc:
-                logger.warning(
-                    "Explorer external refresh scheduling failed for book_id=%s uid=%s: %s",
-                    candidate_book_id,
-                    firebase_uid,
-                    exc,
-                )
-
-            book_external = get_external_graph_candidates(
-                book_id=candidate_book_id,
-                firebase_uid=firebase_uid,
-                question=effective_query,
-                limit=per_book_limit,
-                min_confidence=float(getattr(settings, "EXTERNAL_KB_MIN_CONFIDENCE", 0.45)),
-            )
-            for candidate in book_external:
-                c_key = f"{candidate.get('title','')}_{str(candidate.get('content_chunk',''))[:80]}"
-                if c_key in seen_external:
-                    continue
-                seen_external.add(c_key)
-                external_graph_results.append(candidate)
-                if len(external_graph_results) >= ext_limit_total:
-                    break
-            if len(external_graph_results) >= ext_limit_total:
-                break
-
-        if len(external_graph_results) < ext_limit_total:
-            direct_external = get_domain_external_candidates(
-                effective_query,
-                resolved_domain_mode,
-                limit=max(1, ext_limit_total - len(external_graph_results)),
-            )
-            for candidate in direct_external:
-                c_key = f"{candidate.get('provider','')}_{candidate.get('title','')}_{str(candidate.get('reference',''))[:60]}"
-                if c_key in seen_external:
-                    continue
-                seen_external.add(c_key)
-                external_graph_results.append(candidate)
+                for candidate in book_external:
+                    c_key = f"{candidate.get('title','')}_{str(candidate.get('content_chunk',''))[:80]}"
+                    if c_key in seen_external:
+                        continue
+                    seen_external.add(c_key)
+                    external_graph_results.append(candidate)
+                    if len(external_graph_results) >= ext_limit_total:
+                        break
                 if len(external_graph_results) >= ext_limit_total:
                     break
 
-        external_graph_candidates_count = len(external_graph_results)
-        external_kb_used = external_graph_candidates_count > 0
+            if len(external_graph_results) < ext_limit_total:
+                from services.domain_policy_service import get_domain_policy
+                try:
+                    from services.user_preferences_service import get_user_preferences
+                except Exception:
+                    get_user_preferences = None
 
-        for c in external_graph_results:
-            c_std = {
-                "title": c.get("title", "External KB"),
-                "content_chunk": c.get("content_chunk", ""),
-                "page_number": c.get("page_number", 0),
-                "source_type": "EXTERNAL_KB",
-                "epistemic_level": "B",
-                "score": c.get("score", 0.5),
-                "external_weight": float(
-                    c.get("external_weight", getattr(settings, "EXTERNAL_KB_GRAPH_WEIGHT", 0.15))
-                ),
-                "provider": c.get("provider"),
-                "source_url": c.get("source_url"),
-                "reference": c.get("reference"),
-            }
-            key = f"{c_std['title']}_{str(c_std['content_chunk'])[:20]}"
-            if key not in all_chunks_map:
-                all_chunks_map[key] = c_std
+                policy = get_domain_policy(resolved_domain_mode)
+                default_providers = policy.get("active_provider_names", [])
+                prefs = {}
+                if get_user_preferences is not None:
+                    try:
+                        prefs = get_user_preferences(firebase_uid).get("api_preferences", {})
+                    except Exception as exc:
+                        logger.warning(
+                            "Falling back to default provider preferences for uid=%s: %s",
+                            firebase_uid,
+                            exc,
+                        )
+                active_providers_list = [p for p in default_providers if prefs.get(p.upper(), True)]
+
+                direct_external = get_domain_external_candidates(
+                    effective_query,
+                    resolved_domain_mode,
+                    limit=max(1, ext_limit_total - len(external_graph_results)),
+                    active_providers=active_providers_list,
+                )
+                for candidate in direct_external:
+                    c_key = f"{candidate.get('provider','')}_{candidate.get('title','')}_{str(candidate.get('reference',''))[:60]}"
+                    if c_key in seen_external:
+                        continue
+                    seen_external.add(c_key)
+                    external_graph_results.append(candidate)
+                    if len(external_graph_results) >= ext_limit_total:
+                        break
+
+            external_graph_candidates_count = len(external_graph_results)
+            external_kb_used = external_graph_candidates_count > 0
+
+            for c in external_graph_results:
+                c_std = {
+                    "title": c.get("title", "External KB"),
+                    "content_chunk": c.get("content_chunk", ""),
+                    "page_number": c.get("page_number", 0),
+                    "source_type": "EXTERNAL_KB",
+                    "epistemic_level": "B",
+                    "score": c.get("score", 0.5),
+                    "external_weight": float(
+                        c.get("external_weight", getattr(settings, "EXTERNAL_KB_GRAPH_WEIGHT", 0.15))
+                    ),
+                    "provider": c.get("provider"),
+                    "source_url": c.get("source_url"),
+                    "reference": c.get("reference"),
+                }
+                key = f"{c_std['title']}_{str(c_std['content_chunk'])[:20]}"
+                if key not in all_chunks_map:
+                    all_chunks_map[key] = c_std
 
     if mode == "EXPLORER" and domain_allows_provider_group(resolved_domain_mode, "LEXICAL_ETYMOLOGY"):
-        lexical_support = get_lexical_support_candidates(
-            effective_query,
-            resolved_domain_mode,
-            limit=2,
-        )
-        if lexical_support:
-            external_kb_used = True
-        for candidate in lexical_support:
-            c_std = {
-                "title": candidate.get("title", "Lexical Support"),
-                "content_chunk": candidate.get("content_chunk", ""),
-                "page_number": candidate.get("page_number", 0),
-                "source_type": "EXTERNAL_KB",
-                "epistemic_level": "B",
-                "score": candidate.get("score", 0.5),
-                "external_weight": float(
-                    candidate.get("external_weight", getattr(settings, "EXTERNAL_KB_GRAPH_WEIGHT", 0.12))
-                ),
-                "provider": candidate.get("provider"),
-                "source_url": candidate.get("source_url"),
-                "reference": candidate.get("reference"),
-            }
-            key = f"{c_std['provider']}_{c_std['title']}_{str(c_std['reference'])[:32]}"
-            if key not in all_chunks_map:
-                all_chunks_map[key] = c_std
+        lexical_limit = max(0, int((explorer_query_profile or {}).get("lexical_support_limit") or 0))
+        if lexical_limit > 0:
+            lexical_support = get_lexical_support_candidates(
+                effective_query,
+                resolved_domain_mode,
+                limit=lexical_limit,
+            )
+            if lexical_support:
+                external_kb_used = True
+            for candidate in lexical_support:
+                c_std = {
+                    "title": candidate.get("title", "Lexical Support"),
+                    "content_chunk": candidate.get("content_chunk", ""),
+                    "page_number": candidate.get("page_number", 0),
+                    "source_type": "EXTERNAL_KB",
+                    "epistemic_level": "B",
+                    "score": candidate.get("score", 0.5),
+                    "external_weight": float(
+                        candidate.get("external_weight", getattr(settings, "EXTERNAL_KB_GRAPH_WEIGHT", 0.12))
+                    ),
+                    "provider": candidate.get("provider"),
+                    "source_url": candidate.get("source_url"),
+                    "reference": candidate.get("reference"),
+                }
+                key = f"{c_std['provider']}_{c_std['title']}_{str(c_std['reference'])[:32]}"
+                if key not in all_chunks_map:
+                    all_chunks_map[key] = c_std
 
     if (
         mode == "EXPLORER"
@@ -1503,42 +1591,51 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         and domain_allows_provider_group(resolved_domain_mode, "ISLAMIC_API")
         and (not bool(getattr(settings, "ISLAMIC_API_EXPLORER_ONLY", True)) or mode == "EXPLORER")
     ):
-        islamic_external_results, islamic_diag = get_islamic_external_candidates(
-            effective_query,
-            limit=max(1, min(int(getattr(settings, "ISLAMIC_API_MAX_CANDIDATES", 4) or 4), 8)),
-            force_religious=resolved_domain_mode == "RELIGIOUS",
+        islamic_external_limit = max(
+            0,
+            min(
+                int((explorer_query_profile or {}).get("islamic_external_limit") or 0),
+                int(getattr(settings, "ISLAMIC_API_MAX_CANDIDATES", 4) or 4),
+                8,
+            ),
         )
-        islamic_external_candidates_count = len(islamic_external_results)
-        islamic_external_used = islamic_external_candidates_count > 0
-        islamic_provider_counts = dict(islamic_diag.get("providers") or {})
-        quran_external_used = bool(islamic_diag.get("quran_used"))
-        hadith_external_used = bool(islamic_diag.get("hadith_used"))
+        if islamic_external_limit > 0:
+            islamic_external_results, islamic_diag = get_islamic_external_candidates(
+                effective_query,
+                limit=islamic_external_limit,
+                force_religious=resolved_domain_mode == "RELIGIOUS",
+            )
+            islamic_external_candidates_count = len(islamic_external_results)
+            islamic_external_used = islamic_external_candidates_count > 0
+            islamic_provider_counts = dict(islamic_diag.get("providers") or {})
+            quran_external_used = bool(islamic_diag.get("quran_used"))
+            hadith_external_used = bool(islamic_diag.get("hadith_used"))
 
-        for c in islamic_external_results:
-            c_std = {
-                "title": c.get("title", "Islamic External"),
-                "content_chunk": c.get("content_chunk", ""),
-                "page_number": c.get("page_number", 0),
-                "source_type": "ISLAMIC_EXTERNAL",
-                "epistemic_level": "B",
-                "score": c.get("score", 0.6),
-                "external_weight": float(
-                    c.get(
-                        "external_weight",
-                        getattr(settings, "ISLAMIC_API_QURAN_WEIGHT", 0.22),
-                    )
-                ),
-                "provider": c.get("provider"),
-                "religious_source_kind": c.get("religious_source_kind"),
-                "source_url": c.get("source_url"),
-                "reference": c.get("reference"),
-                "canonical_reference": c.get("canonical_reference"),
-                "is_exact_match": bool(c.get("is_exact_match", False)),
-                "religious_query_kind": c.get("religious_query_kind"),
-            }
-            key = f"{c_std['title']}_{str(c_std['content_chunk'])[:20]}"
-            if key not in all_chunks_map:
-                all_chunks_map[key] = c_std
+            for c in islamic_external_results:
+                c_std = {
+                    "title": c.get("title", "Islamic External"),
+                    "content_chunk": c.get("content_chunk", ""),
+                    "page_number": c.get("page_number", 0),
+                    "source_type": "ISLAMIC_EXTERNAL",
+                    "epistemic_level": "B",
+                    "score": c.get("score", 0.6),
+                    "external_weight": float(
+                        c.get(
+                            "external_weight",
+                            getattr(settings, "ISLAMIC_API_QURAN_WEIGHT", 0.22),
+                        )
+                    ),
+                    "provider": c.get("provider"),
+                    "religious_source_kind": c.get("religious_source_kind"),
+                    "source_url": c.get("source_url"),
+                    "reference": c.get("reference"),
+                    "canonical_reference": c.get("canonical_reference"),
+                    "is_exact_match": bool(c.get("is_exact_match", False)),
+                    "religious_query_kind": c.get("religious_query_kind"),
+                }
+                key = f"{c_std['title']}_{str(c_std['content_chunk'])[:20]}"
+                if key not in all_chunks_map:
+                    all_chunks_map[key] = c_std
 
     # 3. Supplementary Keyword Search (Gap Filling)
     # Only run when primary retrieval is sparse to avoid extra latency.
@@ -1713,6 +1810,10 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
             decay = float(getattr(settings, "L3_PHASE4_PARENT_SCORE_DECAY", 0.88) or 0.88)
             current = float(chunk.get("answerability_score", 0.0) or 0.0)
             chunk["answerability_score"] = max(0.0, current * max(0.0, min(1.0, decay)))
+        chunk["_composition_weight"] = compute_source_composition_weight(
+            chunk,
+            explorer_query_profile if mode == "EXPLORER" else None,
+        )
         
     # Passage Weighting & Sorting
     standard_top_40 = combined_chunks[:40]
@@ -1733,14 +1834,15 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         base = float(chunk.get('answerability_score', 0))
         level = chunk.get('epistemic_level', 'C')
         is_lit = len(str(chunk.get('content_chunk', ''))) > 300 and level != 'A'
+        composition_weight = float(chunk.get("_composition_weight", 1.0) or 1.0)
 
         if chunk.get('source_type') == 'EXTERNAL_KB':
             ext_weight = float(chunk.get('external_weight', getattr(settings, "EXTERNAL_KB_GRAPH_WEIGHT", 0.15)))
-            return base * max(0.05, min(0.30, ext_weight))
+            return base * max(0.05, min(0.30, ext_weight)) * composition_weight
         if chunk.get('source_type') == 'ISLAMIC_EXTERNAL':
             ext_weight = float(chunk.get('external_weight', getattr(settings, "ISLAMIC_API_QURAN_WEIGHT", 0.22)))
             exact_bonus = 1.8 if bool(chunk.get("is_exact_match")) and resolved_domain_mode == "RELIGIOUS" else 1.0
-            return base * max(0.08, min(0.38, ext_weight)) * exact_bonus
+            return base * max(0.08, min(0.38, ext_weight)) * exact_bonus * composition_weight
         
         weight = 1.0
         if intent in ['NARRATIVE', 'SOCIETAL']:
@@ -1750,9 +1852,11 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
             elif level == 'B': weight = 0.9
             elif is_lit: weight = 0.4
             
-        return base * weight
+        return base * weight * composition_weight
 
     final_chunks.sort(key=get_weighted_score, reverse=True)
+    if mode == "EXPLORER":
+        final_chunks = _apply_dynamic_source_composition_policy(final_chunks, explorer_query_profile)
 
     duplicate_suppression_applied = False
     duplicate_suppression_status = "disabled"
@@ -1791,6 +1895,8 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         chunk["_domain_mode_resolved"] = resolved_domain_mode
         chunk["_domain_confidence"] = domain_confidence
         chunk["_provider_policy_applied"] = provider_policy_applied
+        if explorer_query_profile:
+            chunk["_explorer_query_profile"] = explorer_query_profile
     
     # Answer Mode & Confidence
     answer_mode = determine_answer_mode(final_chunks, intent, complexity)
@@ -1886,8 +1992,11 @@ def get_rag_context(question: str, firebase_uid: str, context_book_id: str = Non
         "network_reason": network_info["reason"],
         "keywords": keywords,
         "resolved_domain_mode": resolved_domain_mode,
+        "secondary_domain_mode": secondary_domain_mode,
         "domain_confidence": domain_confidence,
+        "auto_confidence_band": auto_confidence_band,
         "domain_reason": domain_reason,
+        "explorer_query_profile": explorer_query_profile,
         "provider_policy_applied": provider_policy_applied,
         "search_log_id": search_log_id,
         "graph_candidates_count": len(graph_results),
