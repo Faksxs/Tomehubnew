@@ -7,9 +7,9 @@ from services import dual_ai_orchestrator, judge_ai_service
 
 class JudgeAIServiceTests(unittest.TestCase):
     def test_find_chunk_by_title_matches_near_normalized_titles(self):
-        target_chunk = {"title": "Stoacılık & Erdem", "content_chunk": "x"}
+        target_chunk = {"title": "Stoacilik & Erdem", "content_chunk": "x"}
         chunks = [
-            {"title": "Başka Kaynak", "content_chunk": "y"},
+            {"title": "Baska Kaynak", "content_chunk": "y"},
             target_chunk,
         ]
 
@@ -47,7 +47,7 @@ class JudgeAIServiceTests(unittest.TestCase):
             result = asyncio.run(
                 judge_ai_service.evaluate_answer(
                     question="Soru",
-                    answer="Yanıt [Kaynak: Kaynak]",
+                    answer="Yanit [Kaynak: Kaynak]",
                     chunks=chunks,
                     answer_mode="SYNTHESIS",
                     intent="DIRECT",
@@ -66,7 +66,7 @@ class JudgeAIServiceTests(unittest.TestCase):
 
 class DualAIOrchestratorTests(unittest.TestCase):
     def test_generate_evaluated_answer_passes_network_status_to_judge(self):
-        work_result = {"answer": "Yanıt", "metadata": {}}
+        work_result = {"answer": "Yanit", "metadata": {}}
         eval_result = {
             "verdict": "PASS",
             "overall_score": 0.93,
@@ -96,6 +96,47 @@ class DualAIOrchestratorTests(unittest.TestCase):
 
         self.assertEqual(mock_evaluate.await_args.kwargs["network_status"], "HYBRID")
         self.assertEqual(result["metadata"]["verdict"], "PASS")
+
+    def test_generate_evaluated_answer_explorer_timeout_fallback_returns_extractive_response(self):
+        async def _raise_timeout(awaitable, *args, **kwargs):
+            close_fn = getattr(awaitable, "close", None)
+            if callable(close_fn):
+                close_fn()
+            raise asyncio.TimeoutError()
+
+        chunks = [
+            {
+                "title": "HadeethEnc 3366",
+                "provider": "HADEETHENC",
+                "source_type": "ISLAMIC_EXTERNAL",
+                "religious_source_kind": "HADITH",
+                "reference": "3366",
+                "content_chunk": "Sabah ve yatsi namazinin agirligina dair hadis.",
+            }
+        ]
+
+        with patch("services.cache_service.get_cache", return_value=None), patch.object(
+            dual_ai_orchestrator, "classify_question_intent", return_value=("SYNTHESIS", "LOW")
+        ), patch.object(
+            dual_ai_orchestrator, "should_trigger_audit", return_value=(True, "Audit")
+        ), patch.object(
+            dual_ai_orchestrator.asyncio, "wait_for", new=AsyncMock(side_effect=_raise_timeout)
+        ), patch.object(
+            dual_ai_orchestrator, "generate_work_ai_answer", new=AsyncMock(side_effect=RuntimeError("429 quota"))
+        ):
+            result = asyncio.run(
+                dual_ai_orchestrator.generate_evaluated_answer(
+                    question="namazla ilgili hadisleri getir",
+                    chunks=chunks,
+                    answer_mode="EXPLORER",
+                    confidence_score=2.5,
+                    network_status="IN_NETWORK",
+                )
+            )
+
+        self.assertEqual(result["metadata"]["verdict"], "EXTRACTIVE_FALLBACK")
+        self.assertIn("dogrudan aktarim", result["final_answer"])
+        self.assertIn("HadeethEnc 3366", result["final_answer"])
 
 
 if __name__ == "__main__":

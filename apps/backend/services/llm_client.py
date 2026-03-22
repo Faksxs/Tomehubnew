@@ -617,12 +617,21 @@ def _parallel_nvidia_race_generate(
         executor.shutdown(wait=False, cancel_futures=True)
 
 
-def _resolve_secondary_provider() -> str:
-    return _normalize_provider_hint(getattr(settings, "LLM_EXPLORER_FALLBACK_PROVIDER", PROVIDER_GEMINI))
+def _resolve_secondary_provider(prefer_non_gemini: bool = False) -> str:
+    configured = _normalize_provider_hint(
+        getattr(settings, "LLM_EXPLORER_FALLBACK_PROVIDER", PROVIDER_GEMINI)
+    )
+    if prefer_non_gemini and configured == PROVIDER_GEMINI:
+        translation_provider = _normalize_provider_hint(
+            str(getattr(settings, "LLM_TRANSLATION_PROVIDER", "") or "").strip()
+        )
+        if translation_provider != PROVIDER_GEMINI:
+            return translation_provider
+    return configured
 
 
-def _resolve_secondary_model(model_tier: str) -> str:
-    secondary_provider = _resolve_secondary_provider()
+def _resolve_secondary_model(model_tier: str, secondary_provider_hint: Optional[str] = None) -> str:
+    secondary_provider = _normalize_provider_hint(secondary_provider_hint) if secondary_provider_hint else _resolve_secondary_provider()
     if secondary_provider == PROVIDER_GEMINI:
         # Explorer secondary fallback should use the stronger Gemini path.
         return get_model_for_tier(MODEL_TIER_PRO)
@@ -653,9 +662,10 @@ def _secondary_fallback_generate(
     fallback_state: Optional[Dict[str, Any]],
     from_provider: str,
     reason: str,
+    secondary_provider_hint: Optional[str] = None,
 ) -> GenerateResult:
-    secondary_provider_hint = _resolve_secondary_provider()
-    secondary_model = _resolve_secondary_model(model_tier)
+    secondary_provider_hint = secondary_provider_hint or _resolve_secondary_provider()
+    secondary_model = _resolve_secondary_model(model_tier, secondary_provider_hint=secondary_provider_hint)
     secondary_provider = get_provider(secondary_provider_hint)
     result = secondary_provider.generate_text(
         model=secondary_model,
@@ -809,6 +819,7 @@ def generate_text(
                 fallback_state=fallback_state,
                 from_provider=PROVIDER_QWEN,
                 reason=fallback_reason,
+                secondary_provider_hint=_resolve_secondary_provider(prefer_non_gemini=True),
             )
 
         if (
@@ -818,7 +829,7 @@ def generate_text(
             and _resolve_secondary_provider() != PROVIDER_GEMINI
             and (is_gemini_auth_error(exc) or is_retryable_llm_error(exc))
         ):
-            fallback_reason = "gemini_error_to_secondary"
+            fallback_reason = "gemini_auth_error" if is_gemini_auth_error(exc) else "gemini_error_to_secondary"
             logger.warning(
                 "Gemini primary failed with error; using secondary fallback",
                 extra={"reason": fallback_reason},
@@ -835,6 +846,7 @@ def generate_text(
                 fallback_state=fallback_state,
                 from_provider=PROVIDER_GEMINI,
                 reason=fallback_reason,
+                secondary_provider_hint=_resolve_secondary_provider(prefer_non_gemini=True),
             )
 
         raise
