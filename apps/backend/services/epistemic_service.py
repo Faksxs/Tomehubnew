@@ -14,7 +14,7 @@ fails to recognize that retrieved information constitutes a direct answer.
 import re
 from typing import List, Dict, Tuple, Optional
 from config import settings
-from services.domain_policy_service import DOMAIN_MODE_AUTO, domain_prompt_instructions, normalize_domain_mode
+from services.domain_policy_service import DOMAIN_MODE_AUTO, DOMAIN_MODE_RELIGIOUS, domain_prompt_instructions, normalize_domain_mode
 from services.monitoring import L3_PERF_GUARD_APPLIED_TOTAL
 
 # Import semantic classifier (use fast version by default for performance)
