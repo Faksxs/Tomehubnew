@@ -667,8 +667,15 @@ def get_prompt_for_mode(
     else:
         style_instruction = "STİL: ÖZETLEYİCİ ve TEMKİNLİ (Concise Mode). Veri az olduğu için kısa ve net yaz. Yorum katma."
 
+    has_religious_external_evidence = (
+        normalize_domain_mode(domain_mode) == DOMAIN_MODE_RELIGIOUS
+        and "Tip: ISLAMIC_EXTERNAL" in str(context or "")
+    )
+
     # 2. Network Grounding Instruction (Phase 3)
-    if network_status == "IN_NETWORK":
+    if has_religious_external_evidence:
+        grounding_rule = "KURAL: Sana verilen BAĞLAM içindeki dini kaynakları birincil kanıt olarak kullan. Ayet/hadis gibi doğrudan dini kaynaklar varken 'notlarda bilgi yok' uyarısı verme; önce bu kaynaklara dayan."
+    elif network_status == "IN_NETWORK":
         grounding_rule = "KURAL: SADECE sana verilen 'BAĞLAM' içerisindeki bilgileri kullan. Kendi dış bilgini ASLA ekleme. Eğer bağlamda cevap yoksa 'Bilgi bulunamadı' de ve uydurma."
     elif network_status == "OUT_OF_NETWORK":
         grounding_rule = "UYARI: Kullanıcının notlarında bu konuda yeterli bilgi BULUNAMADI. Genel bilgini kullanarak cevaplayabilirsin ANCAK cevabın başında 'Notlarınızda bu konuda yeterli bilgi bulamadım, genel bilgilere dayanarak cevaplıyorum:' ibaresini MUTLAKA kullan."

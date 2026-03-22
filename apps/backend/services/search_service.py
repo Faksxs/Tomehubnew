@@ -2350,7 +2350,7 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
         # - Gemini (FLASH tier, configured as flash-lite) secondary fallback
         route_mode = ROUTE_MODE_DEFAULT
         provider_hint = None
-        allow_secondary_fallback = False
+        allow_secondary_fallback = True  # Enable secondary fallback for Standard mode too
         allow_pro_fallback_effective = False
         model_name = get_model_for_tier(MODEL_TIER_FLASH)
 
@@ -2509,7 +2509,7 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
             extra={"error": str(e), "traceback": _tb.format_exc()},
             exc_info=True,
         )
-        return "Bir hata oluÅŸtu.", sources, {"status": "error", "error": str(e)}
+        return "Üzgünüm, cevap üretilirken bir teknik hata oluştu.", sources, {"status": "error", "error": str(e)}
 
 
 # ============================================================================
