@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { LogOut, User, ArrowLeft, Sparkles, Play, Square, Loader2, BrainCircuit, RefreshCw, BookOpenText, NotebookTabs, MessagesSquare, CircleHelp } from 'lucide-react';
 import { LibraryItem } from '../types';
 import { getMemoryProfile, MemoryProfileResponse, refreshMemoryProfile } from '../services/backendApiService';
+import { ApiIntegrations } from './ApiIntegrations';
 
 interface ProfileViewProps {
     userId: string;
@@ -220,6 +221,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     </div>
                 </div>
             </div>
+
+            {/* Application API Controls */}
+            <ApiIntegrations userId={userId} />
 
             <div className="bg-[radial-gradient(circle_at_top_left,_rgba(20,184,166,0.18),_transparent_42%),linear-gradient(135deg,_rgba(15,23,42,0.96),_rgba(30,41,59,0.94))] rounded-2xl border border-slate-800 shadow-[0_30px_80px_-45px_rgba(15,23,42,0.85)] overflow-hidden mb-8">
                 <div className="p-6 md:p-8">

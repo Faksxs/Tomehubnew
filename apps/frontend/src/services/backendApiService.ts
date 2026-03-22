@@ -1185,3 +1185,40 @@ export async function translateChunk(
 
     return response.json();
 }
+
+/**
+ * Fetch user API preferences for Layer 3 Explorer
+ */
+export async function getApiPreferences(firebaseUid: string): Promise<Record<string, boolean>> {
+    if (!firebaseUid) throw new Error('User must be authenticated');
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/user/preferences/providers`, {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Firebase-UID': firebaseUid
+        }
+    });
+    if (!response.ok) {
+        await throwApiError(response, 'Failed to fetch API preferences');
+    }
+    return response.json();
+}
+
+/**
+ * Update user API preferences for Layer 3 Explorer
+ */
+export async function updateApiPreferences(firebaseUid: string, preferences: Record<string, boolean>): Promise<{ success: boolean }> {
+    if (!firebaseUid) throw new Error('User must be authenticated');
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/user/preferences/providers`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Firebase-UID': firebaseUid
+        },
+        body: JSON.stringify(preferences)
+    });
+    if (!response.ok) {
+        await throwApiError(response, 'Failed to update API preferences');
+    }
+    return response.json();
+}
