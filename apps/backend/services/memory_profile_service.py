@@ -307,12 +307,20 @@ def parse_profile_payload(text: str, fallback_counts: Optional[Dict[str, Any]] =
         payload = json.loads(_strip_code_fences(text))
     except Exception:
         payload = {}
+        
+    def _ensure_list(val: Any) -> List[str]:
+        if isinstance(val, list):
+            return [str(x).strip() for x in val if str(x).strip()]
+        if isinstance(val, str):
+            return [x.strip() for x in val.split(",") if x.strip()]
+        return []
+
     return {
         "profile_summary": str(payload.get("profile_summary") or "").strip(),
-        "active_themes": [str(x).strip() for x in payload.get("active_themes", []) if str(x).strip()],
-        "recurring_sources": [str(x).strip() for x in payload.get("recurring_sources", []) if str(x).strip()],
-        "open_questions": [str(x).strip() for x in payload.get("open_questions", []) if str(x).strip()],
-        "evidence_counts": payload.get("evidence_counts") if isinstance(payload.get("evidence_counts"), dict) else (fallback_counts or {}),
+        "active_themes": _ensure_list(payload.get("active_themes")),
+        "recurring_sources": _ensure_list(payload.get("recurring_sources")),
+        "open_questions": _ensure_list(payload.get("open_questions")),
+        "evidence_counts": fallback_counts or {},
     }
 
 
@@ -322,15 +330,11 @@ You are building a compact long-term memory profile for a TomeHub user.
 
 Use the evidence below to infer:
 - profile_summary: 4-6 sentences on recurring interests and current focus
-- active_themes: up to 6 recurring themes or concepts
-- recurring_sources: up to 6 recurring authors, books, or source names
-- open_questions: up to 5 unresolved questions or tensions
-- evidence_counts: copy the counts object
+- active_themes: an array of strings (up to 6 recurring themes or concepts)
+- recurring_sources: an array of strings (up to 6 recurring authors, books, or source names)
+- open_questions: an array of strings (up to 5 unresolved questions or tensions)
 
-Return JSON only.
-
-EVIDENCE_COUNTS:
-{json.dumps(evidence.get("counts", {}), ensure_ascii=False)}
+Return JSON only. DO NOT include evidence_counts in the JSON.
 
 RECENT_CHAT_SUMMARIES:
 {json.dumps(evidence.get("sessions", []), ensure_ascii=False)}
