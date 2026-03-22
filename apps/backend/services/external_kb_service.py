@@ -13,6 +13,7 @@ import oracledb
 
 from config import settings
 from infrastructure.db_manager import DatabaseManager, safe_read_clob
+from services.book_metadata_resolver_service import resolve_book_metadata
 from utils.logger import get_logger
 
 logger = get_logger("external_kb_service")
@@ -1263,27 +1264,121 @@ def get_lexical_support_candidates(question: str, domain_mode: str, limit: int =
     return deduped[: max(1, min(int(limit or 2), 4))]
 
 
-def get_domain_external_candidates(question: str, domain_mode: str, limit: int = 5) -> List[Dict[str, Any]]:
+def _search_literary_book_metadata_direct(
+    query: str,
+    limit: int = 3,
+    active_providers: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    text = str(query or "").strip()
+    if not text:
+        return []
+
+    allowed = {str(provider or "").strip().upper() for provider in (active_providers or []) if str(provider or "").strip()}
+    provider_name_map = {
+        "google-books": "GOOGLE_BOOKS",
+        "open-library": "OPEN_LIBRARY",
+        "open-library-bib": "OPEN_LIBRARY",
+        "big-book-api": "BIG_BOOK_API",
+    }
+    provider_score_map = {
+        "OPEN_LIBRARY": 0.62,
+        "GOOGLE_BOOKS": 0.60,
+        "BIG_BOOK_API": 0.58,
+    }
+
+    rows = resolve_book_metadata(text, limit=max(1, min(int(limit or 3), 5)))
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    for row in rows:
+        provider_key = str(row.get("_provider") or "").strip().lower()
+        provider_name = provider_name_map.get(provider_key)
+        if not provider_name:
+            continue
+        if allowed and provider_name not in allowed:
+            continue
+
+        title = str(row.get("title") or "").strip()
+        if not title:
+            continue
+
+        author = str(row.get("author") or "").strip()
+        publisher = str(row.get("publisher") or "").strip()
+        year = str(row.get("publishedDate") or "").strip()
+        summary = str(row.get("summary") or "").strip()
+        isbn = str(row.get("isbn") or "").strip()
+
+        pieces = []
+        if author:
+            pieces.append(f"Author: {author}")
+        if publisher:
+            pieces.append(f"Publisher: {publisher}")
+        if year:
+            pieces.append(f"Year: {year}")
+        if summary:
+            pieces.append(summary[:220])
+
+        key = (
+            provider_name,
+            _norm(title),
+            _norm(isbn or author or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+
+        out.append(
+            {
+                "title": title,
+                "content_chunk": " | ".join(pieces) or "Literary metadata context",
+                "page_number": 0,
+                "source_type": "EXTERNAL_KB",
+                "score": provider_score_map.get(provider_name, 0.58),
+                "external_weight": 0.14,
+                "provider": provider_name,
+                "source_url": str(row.get("url") or "").strip() or None,
+                "reference": isbn or title,
+            }
+        )
+        if len(out) >= max(1, min(int(limit or 3), 5)):
+            break
+
+    return out
+
+
+def get_domain_external_candidates(question: str, domain_mode: str, limit: int = 5, active_providers: Optional[List[str]] = None) -> List[Dict[str, Any]]:
     normalized_domain = str(domain_mode or "").strip().upper()
     hard_limit = max(1, min(int(limit or 5), 8))
     query = str(question or "").strip()
     if not query:
         return []
 
+    # Helpers:
+    def _is_provider_active(provider_name: str) -> bool:
+        if active_providers is None:
+            return True
+        return provider_name.upper() in active_providers
+
     provider_rows: List[Dict[str, Any]] = []
     if normalized_domain == "ACADEMIC":
-        provider_rows.extend(_search_openalex_direct(query, limit=min(3, hard_limit)))
-        provider_rows.extend(_search_crossref_direct(query, limit=min(3, hard_limit)))
-        provider_rows.extend(_search_semantic_scholar_direct(query, limit=min(3, hard_limit)))
-        provider_rows.extend(_search_share_direct(query, limit=min(3, hard_limit)))
-        provider_rows.extend(_search_arxiv_direct(query, limit=min(3, hard_limit)))
+        if _is_provider_active("OPENALEX"): provider_rows.extend(_search_openalex_direct(query, limit=min(3, hard_limit)))
+        if _is_provider_active("CROSSREF"): provider_rows.extend(_search_crossref_direct(query, limit=min(3, hard_limit)))
+        if _is_provider_active("SEMANTIC_SCHOLAR"): provider_rows.extend(_search_semantic_scholar_direct(query, limit=min(3, hard_limit)))
+        if _is_provider_active("SHARE"): provider_rows.extend(_search_share_direct(query, limit=min(3, hard_limit)))
+        if _is_provider_active("ARXIV"): provider_rows.extend(_search_arxiv_direct(query, limit=min(3, hard_limit)))
     elif normalized_domain == "CULTURE_HISTORY":
-        provider_rows.extend(_search_europeana_direct(query, limit=min(3, hard_limit)))
-        provider_rows.extend(_search_internet_archive_direct(query, limit=min(3, hard_limit)))
+        if _is_provider_active("EUROPEANA"): provider_rows.extend(_search_europeana_direct(query, limit=min(3, hard_limit)))
+        if _is_provider_active("INTERNET_ARCHIVE"): provider_rows.extend(_search_internet_archive_direct(query, limit=min(3, hard_limit)))
     elif normalized_domain == "LITERARY":
-        provider_rows.extend(_search_gutendex_direct(query, limit=min(3, hard_limit)))
-        provider_rows.extend(_search_poetrydb_direct(query, limit=min(3, hard_limit)))
-        provider_rows.extend(_search_artic_direct(query, limit=min(2, hard_limit)))
+        if _is_provider_active("GUTENDEX"): provider_rows.extend(_search_gutendex_direct(query, limit=min(3, hard_limit)))
+        if _is_provider_active("POETRYDB"): provider_rows.extend(_search_poetrydb_direct(query, limit=min(3, hard_limit)))
+        if _is_provider_active("ART_SEARCH_API"): provider_rows.extend(_search_artic_direct(query, limit=min(2, hard_limit)))
+        provider_rows.extend(
+            _search_literary_book_metadata_direct(
+                query,
+                limit=min(3, hard_limit),
+                active_providers=active_providers,
+            )
+        )
 
     deduped: List[Dict[str, Any]] = []
     seen = set()
