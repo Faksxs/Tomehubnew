@@ -7,9 +7,11 @@ from models.discovery_models import (
     DiscoveryBoardResponse,
     DiscoveryCategory,
     DiscoveryInnerSpaceResponse,
+    DiscoveryPageResponse,
 )
 from services.discovery_board_service import get_discovery_board
 from services.discovery_inner_space_service import get_discovery_inner_space
+from services.discovery_page_service import get_discovery_page
 
 
 router = APIRouter(prefix="/api/discovery", tags=["Discovery"])
@@ -44,6 +46,19 @@ async def get_discovery_inner_space_endpoint(
     try:
         uid = get_verified_uid(firebase_uid_from_jwt)
         return get_discovery_inner_space(uid)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/page", response_model=DiscoveryPageResponse)
+async def get_discovery_page_endpoint(
+    firebase_uid_from_jwt: Annotated[str | None, Depends(verify_firebase_token)] = None,
+):
+    try:
+        uid = get_verified_uid(firebase_uid_from_jwt)
+        return get_discovery_page(uid)
     except HTTPException:
         raise
     except Exception as exc:

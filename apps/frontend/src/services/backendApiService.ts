@@ -155,6 +155,25 @@ export interface DiscoveryInnerSpaceResponse {
     metadata: DiscoveryInnerSpaceMetadata;
 }
 
+export interface DiscoveryPageBoards {
+    academic: DiscoveryBoardResponse;
+    religious: DiscoveryBoardResponse;
+    literary: DiscoveryBoardResponse;
+    culture_history: DiscoveryBoardResponse;
+}
+
+export interface DiscoveryPageMetadata {
+    last_updated_at: string;
+    board_errors: string[];
+    used_cached_fallbacks: boolean;
+}
+
+export interface DiscoveryPageResponse {
+    inner_space: DiscoveryInnerSpaceResponse;
+    boards: DiscoveryPageBoards;
+    metadata: DiscoveryPageMetadata;
+}
+
 
 export interface IngestRequest {
     pdf_path: string;
@@ -1341,6 +1360,7 @@ export async function getDiscoveryBoard(
     url.searchParams.set('category', category);
     const response = await fetchWithAuth(url.toString(), {
         method: 'GET',
+        cache: 'no-store',
         headers: {
             'Content-Type': 'application/json',
             'X-Firebase-UID': firebaseUid
@@ -1358,6 +1378,7 @@ export async function getDiscoveryInnerSpace(
     if (!firebaseUid) throw new Error('User must be authenticated');
     const response = await fetchWithAuth(`${API_BASE_URL}/api/discovery/inner-space`, {
         method: 'GET',
+        cache: 'no-store',
         headers: {
             'Content-Type': 'application/json',
             'X-Firebase-UID': firebaseUid,
@@ -1365,6 +1386,24 @@ export async function getDiscoveryInnerSpace(
     });
     if (!response.ok) {
         await throwApiError(response, 'Failed to load discovery inner space');
+    }
+    return response.json();
+}
+
+export async function getDiscoveryPage(
+    firebaseUid: string,
+): Promise<DiscoveryPageResponse> {
+    if (!firebaseUid) throw new Error('User must be authenticated');
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/discovery/page`, {
+        method: 'GET',
+        cache: 'no-store',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Firebase-UID': firebaseUid,
+        }
+    });
+    if (!response.ok) {
+        await throwApiError(response, 'Failed to load discovery page');
     }
     return response.json();
 }

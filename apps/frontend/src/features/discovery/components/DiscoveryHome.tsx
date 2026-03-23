@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   ArrowUpRight,
@@ -11,14 +11,14 @@ import {
   FlaskConical,
   ScrollText,
   Library,
+  RotateCw,
 } from 'lucide-react';
 import type { AppTab } from '../../app/types';
 import type { LibraryItem, PersonalNoteCategory } from '../../../types';
 import { getFriendlyApiErrorMessage } from '../../../services/apiClient';
 import {
-  getDiscoveryBoard,
-  getDiscoveryInnerSpace,
-  type DiscoveryBoardResponse,
+  getDiscoveryPage,
+  type DiscoveryPageResponse,
   type DiscoveryCard as ExternalDiscoveryCard,
   type DiscoveryInnerSpaceCard,
 } from '../../../services/backendApiService';
@@ -46,6 +46,10 @@ type DiscoveryCategory = 'Personal' | 'Academic' | 'Religious' | 'Literary' | 'C
 type DiscoveryCardSize = 'hero' | 'detail' | 'wide' | 'tall';
 type DiscoveryTone = 'light' | 'dark' | 'green' | 'blue' | 'purple' | 'amber' | 'cyan';
 
+const DISCOVERY_PAGE_CACHE_KEY = 'tomehub:discovery:page-cache:v1';
+const DISCOVERY_PAGE_CACHE_TTL_MS = 5 * 60 * 1000;
+const DISCOVERY_PAGE_CACHE_MAX_STALE_MS = 30 * 60 * 1000;
+
 interface DiscoveryCardData {
   id: string;
   category: DiscoveryCategory;
@@ -66,6 +70,13 @@ interface DiscoveryCardData {
   sourceUrl?: string;
   flowAnchorId?: string;
   flowAnchorLabel?: string;
+}
+
+interface DiscoveryViewMeta {
+  lastUpdatedAt: string | null;
+  hasCachedSnapshot: boolean;
+  hasPartialErrors: boolean;
+  boardErrorCount: number;
 }
 
 const CARDS: DiscoveryCardData[] = [
@@ -253,7 +264,11 @@ const mapInnerSpaceCard = (card: DiscoveryInnerSpaceCard): DiscoveryCardData => 
 
 type ExternalCategoryKey = 'ACADEMIC' | 'RELIGIOUS' | 'LITERARY' | 'CULTURE_HISTORY';
 
-const CATEGORY_ORDER: ExternalCategoryKey[] = ['ACADEMIC', 'RELIGIOUS', 'LITERARY', 'CULTURE_HISTORY'];
+interface DiscoveryPageCacheEntry {
+  userId: string;
+  fetchedAt: number;
+  payload: DiscoveryPageResponse;
+}
 
 const categoryVisuals: Record<ExternalCategoryKey, Pick<DiscoveryCardData, 'category' | 'tone'>> = {
   ACADEMIC: { category: 'Academic', tone: 'blue' },
@@ -271,6 +286,53 @@ const categoryIcons: Record<ExternalCategoryKey, React.ComponentType<{ size?: nu
 
 const fallbackPillarsByCategory = (category: ExternalCategoryKey): DiscoveryCardData[] =>
   CARDS.filter((card) => card.category === categoryVisuals[category].category);
+
+let discoveryPageMemoryCache: DiscoveryPageCacheEntry | null = null;
+
+const readDiscoveryPageCache = (userId: string): DiscoveryPageCacheEntry | null => {
+  if (discoveryPageMemoryCache?.userId === userId) {
+    return discoveryPageMemoryCache;
+  }
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(DISCOVERY_PAGE_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as DiscoveryPageCacheEntry;
+    if (!parsed || parsed.userId !== userId || !parsed.payload || !parsed.fetchedAt) {
+      return null;
+    }
+    const ageMs = Date.now() - parsed.fetchedAt;
+    if (ageMs > DISCOVERY_PAGE_CACHE_MAX_STALE_MS) {
+      window.sessionStorage.removeItem(DISCOVERY_PAGE_CACHE_KEY);
+      return null;
+    }
+    discoveryPageMemoryCache = parsed;
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+const writeDiscoveryPageCache = (entry: DiscoveryPageCacheEntry): void => {
+  discoveryPageMemoryCache = entry;
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(DISCOVERY_PAGE_CACHE_KEY, JSON.stringify(entry));
+  } catch {
+    // ignore cache write failures
+  }
+};
+
+const formatRelativeUpdateTime = (value: string | null): string => {
+  if (!value) return 'Update unavailable';
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return 'Update unavailable';
+  const deltaMs = Date.now() - parsed;
+  if (deltaMs < 60_000) return 'Updated just now';
+  if (deltaMs < 3_600_000) return `Updated ${Math.max(1, Math.floor(deltaMs / 60_000))}m ago`;
+  if (deltaMs < 86_400_000) return `Updated ${Math.max(1, Math.floor(deltaMs / 3_600_000))}h ago`;
+  return `Updated ${Math.max(1, Math.floor(deltaMs / 86_400_000))}d ago`;
+};
 
 const mapBoardCard = (
   category: ExternalCategoryKey,
@@ -306,7 +368,7 @@ const mapBoardCard = (
   };
 };
 
-const mapBoardResponseToCards = (board: DiscoveryBoardResponse, category: ExternalCategoryKey): DiscoveryCardData[] => {
+const mapBoardResponseToCards = (board: DiscoveryPageResponse['boards']['academic'], category: ExternalCategoryKey): DiscoveryCardData[] => {
   const cards: DiscoveryCardData[] = [];
   if (board.featured_card) {
     cards.push(mapBoardCard(category, board.featured_card, 'hero'));
@@ -318,6 +380,41 @@ const mapBoardResponseToCards = (board: DiscoveryBoardResponse, category: Extern
     });
   });
   return cards;
+};
+
+const mapDiscoveryPagePayload = (payload: DiscoveryPageResponse): {
+  innerSpace: DiscoveryCardData[];
+  pillars: Record<ExternalCategoryKey, DiscoveryCardData[]>;
+  warning: string | null;
+  meta: DiscoveryViewMeta;
+} => {
+  const pillars: Record<ExternalCategoryKey, DiscoveryCardData[]> = {
+    ACADEMIC: mapBoardResponseToCards(payload.boards.academic, 'ACADEMIC'),
+    RELIGIOUS: mapBoardResponseToCards(payload.boards.religious, 'RELIGIOUS'),
+    LITERARY: mapBoardResponseToCards(payload.boards.literary, 'LITERARY'),
+    CULTURE_HISTORY: mapBoardResponseToCards(payload.boards.culture_history, 'CULTURE_HISTORY'),
+  };
+
+  return {
+    innerSpace: Array.isArray(payload.inner_space.cards) && payload.inner_space.cards.length > 0
+      ? payload.inner_space.cards.map(mapInnerSpaceCard)
+      : buildFallbackInnerSpaceCards(),
+    pillars: {
+      ACADEMIC: pillars.ACADEMIC.length > 0 ? pillars.ACADEMIC : fallbackPillarsByCategory('ACADEMIC'),
+      RELIGIOUS: pillars.RELIGIOUS.length > 0 ? pillars.RELIGIOUS : fallbackPillarsByCategory('RELIGIOUS'),
+      LITERARY: pillars.LITERARY.length > 0 ? pillars.LITERARY : fallbackPillarsByCategory('LITERARY'),
+      CULTURE_HISTORY: pillars.CULTURE_HISTORY.length > 0 ? pillars.CULTURE_HISTORY : fallbackPillarsByCategory('CULTURE_HISTORY'),
+    },
+    warning: payload.metadata.board_errors.length > 0
+      ? 'Some discovery sources were temporarily unavailable. Showing the strongest available cards.'
+      : null,
+    meta: {
+      lastUpdatedAt: payload.metadata.last_updated_at || payload.inner_space.metadata.last_updated_at || null,
+      hasCachedSnapshot: false,
+      hasPartialErrors: payload.metadata.board_errors.length > 0,
+      boardErrorCount: payload.metadata.board_errors.length,
+    },
+  };
 };
 
 const cardStyles = (tone: DiscoveryTone) => {
@@ -343,6 +440,7 @@ const CardSurface: React.FC<{
   const isTall = card.size === 'tall';
   const isWide = card.size === 'wide';
   const isDormant = card.family === 'DORMANT GEM';
+  const canOpen = Boolean(card.sourceUrl || card.itemId || card.flowAnchorLabel);
 
   const gridClasses = className || `
     ${isHero ? 'md:col-span-2 md:row-span-2 min-h-[480px]' : ''}
@@ -436,7 +534,7 @@ const CardSurface: React.FC<{
             <div className="mt-8 flex gap-2">
               <button
                 onClick={() => (onOpen ? onOpen(card) : onAsk(card))}
-                className="px-4 py-1.5 rounded-md bg-cyan-500 text-black text-[10px] font-black uppercase tracking-wider hover:bg-cyan-400 transition-colors"
+                className={`px-4 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-colors ${canOpen ? 'bg-cyan-500 text-black hover:bg-cyan-400' : 'bg-white/10 text-white/50 hover:bg-white/10'}`}
               >
                 {card.sourceUrl ? 'OPEN_SOURCE' : card.itemId ? 'OPEN_THREAD' : 'ASK_ARCHIVE'}
               </button>
@@ -457,8 +555,17 @@ const CardSurface: React.FC<{
           <button
             type="button"
             onClick={() => (onOpen ? onOpen(card) : onAsk(card))}
-            className="opacity-20 group-hover:opacity-100 transition-opacity"
-            aria-label={card.itemId ? `Open ${card.title}` : `Ask about ${card.title}`}
+            disabled={!canOpen}
+            className={`transition-opacity ${canOpen ? 'opacity-20 group-hover:opacity-100' : 'opacity-10 cursor-not-allowed'}`}
+            aria-label={
+              card.sourceUrl
+                ? `Open source for ${card.title}`
+                : card.itemId
+                  ? `Open ${card.title}`
+                  : card.flowAnchorLabel
+                    ? `Open related flow for ${card.title}`
+                    : `Ask about ${card.title}`
+            }
           >
             <ArrowUpRight size={14} />
           </button>
@@ -487,110 +594,166 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
   onOpenDiscoveryItem,
 }) => {
   const [innerSpaceCards, setInnerSpaceCards] = useState<DiscoveryCardData[]>(() => buildFallbackInnerSpaceCards());
-  const [innerSpaceLoading, setInnerSpaceLoading] = useState(true);
-  const [innerSpaceError, setInnerSpaceError] = useState<string | null>(null);
   const [pillarCardsByCategory, setPillarCardsByCategory] = useState<Record<ExternalCategoryKey, DiscoveryCardData[]>>({
     ACADEMIC: fallbackPillarsByCategory('ACADEMIC'),
     RELIGIOUS: fallbackPillarsByCategory('RELIGIOUS'),
     LITERARY: fallbackPillarsByCategory('LITERARY'),
     CULTURE_HISTORY: fallbackPillarsByCategory('CULTURE_HISTORY'),
   });
-  const [pillarsLoading, setPillarsLoading] = useState(true);
-  const [pillarsError, setPillarsError] = useState<string | null>(null);
+  const [pageLoading, setPageLoading] = useState(true);
+  const [pageWarning, setPageWarning] = useState<string | null>(null);
+  const [pageError, setPageError] = useState<string | null>(null);
+  const [viewMeta, setViewMeta] = useState<DiscoveryViewMeta>({
+    lastUpdatedAt: null,
+    hasCachedSnapshot: false,
+    hasPartialErrors: false,
+    boardErrorCount: 0,
+  });
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const forceRefreshRef = useRef(false);
+  const requestInFlightRef = useRef(false);
+  const lastAutoRefreshAtRef = useRef(0);
+
+  const triggerRefresh = (force = true) => {
+    if (!userId || requestInFlightRef.current) {
+      return;
+    }
+    forceRefreshRef.current = force;
+    setIsRefreshing(true);
+    setRefreshNonce((value) => value + 1);
+  };
 
   useEffect(() => {
     let active = true;
 
-    const loadInnerSpace = async () => {
+    const loadPage = async () => {
+      // Avoid overlapping requests in the same component lifecycle
+      if (requestInFlightRef.current) return;
+      
+      requestInFlightRef.current = true;
+      const forceRefresh = forceRefreshRef.current;
+      forceRefreshRef.current = false;
+
       if (!userId) {
         if (active) {
-          setInnerSpaceCards(buildFallbackInnerSpaceCards());
-          setInnerSpaceLoading(false);
+          setPageLoading(false);
+          setPageWarning(null);
+          setPageError(null);
+          setIsRefreshing(false);
         }
+        requestInFlightRef.current = false;
         return;
       }
 
-      setInnerSpaceLoading(true);
-      setInnerSpaceError(null);
-      try {
-        const response = await getDiscoveryInnerSpace(userId);
-        if (!active) return;
-        const mapped = Array.isArray(response.cards) && response.cards.length > 0
-          ? response.cards.map(mapInnerSpaceCard)
-          : buildFallbackInnerSpaceCards();
-        setInnerSpaceCards(mapped);
-      } catch (error) {
-        if (!active) return;
-        setInnerSpaceError(getFriendlyApiErrorMessage(error));
-        setInnerSpaceCards(buildFallbackInnerSpaceCards());
-      } finally {
-        if (active) {
-          setInnerSpaceLoading(false);
-        }
+      // 1. Snapshot/Cache Recovery
+      const cached = readDiscoveryPageCache(userId);
+      const cacheIsFresh = !forceRefresh && Boolean(cached && (Date.now() - cached.fetchedAt) < DISCOVERY_PAGE_CACHE_TTL_MS);
+      
+      if (cached && active) {
+        const mapped = mapDiscoveryPagePayload(cached.payload);
+        setInnerSpaceCards(mapped.innerSpace);
+        setPillarCardsByCategory(mapped.pillars);
+        setPageWarning(mapped.warning);
+        setViewMeta({
+          ...mapped.meta,
+          hasCachedSnapshot: true,
+        });
+        setPageLoading(false);
+      } else if (active) {
+        setPageLoading(true);
       }
-    };
 
-    loadInnerSpace();
-    return () => {
-      active = false;
-    };
-  }, [userId]);
-
-  useEffect(() => {
-    let active = true;
-
-    const loadBoards = async () => {
-      if (!userId) {
-        if (active) {
-          setPillarsLoading(false);
-        }
+      // 2. Short-circuit if cache is still fresh enough for this view
+      if (cacheIsFresh) {
+        setPageError(null);
+        setIsRefreshing(false);
+        requestInFlightRef.current = false;
         return;
       }
 
-      setPillarsLoading(true);
-      setPillarsError(null);
+      // 3. Live Fetch Cycle
       try {
-        const results = await Promise.allSettled(
-          CATEGORY_ORDER.map((category) => getDiscoveryBoard(userId, category))
-        );
+        const payload = await getDiscoveryPage(userId);
         if (!active) return;
 
-        const nextState: Record<ExternalCategoryKey, DiscoveryCardData[]> = {
-          ACADEMIC: fallbackPillarsByCategory('ACADEMIC'),
-          RELIGIOUS: fallbackPillarsByCategory('RELIGIOUS'),
-          LITERARY: fallbackPillarsByCategory('LITERARY'),
-          CULTURE_HISTORY: fallbackPillarsByCategory('CULTURE_HISTORY'),
-        };
-        let firstError: string | null = null;
-
-        results.forEach((result, index) => {
-          const category = CATEGORY_ORDER[index];
-          if (result.status === 'fulfilled') {
-            const mapped = mapBoardResponseToCards(result.value, category);
-            nextState[category] = mapped.length > 0 ? mapped : fallbackPillarsByCategory(category);
-            return;
-          }
-          if (!firstError) {
-            firstError = getFriendlyApiErrorMessage(result.reason);
-          }
-          nextState[category] = fallbackPillarsByCategory(category);
+        writeDiscoveryPageCache({
+          userId,
+          fetchedAt: Date.now(),
+          payload,
         });
 
-        setPillarCardsByCategory(nextState);
-        setPillarsError(firstError);
+        const mapped = mapDiscoveryPagePayload(payload);
+        setInnerSpaceCards(mapped.innerSpace);
+        setPillarCardsByCategory(mapped.pillars);
+        setPageWarning(mapped.warning);
+        setViewMeta(mapped.meta);
+        setPageError(null);
       } catch (error) {
         if (!active) return;
-        setPillarsError(getFriendlyApiErrorMessage(error));
+        const message = getFriendlyApiErrorMessage(error);
+        
+        if (cached) {
+          setPageWarning('Showing the last successful discovery snapshot while live refresh is unavailable.');
+          setViewMeta((prev) => ({
+            ...prev,
+            hasCachedSnapshot: true,
+          }));
+          setPageError(null);
+        } else {
+          setPageError(message);
+          setPageWarning(null);
+          setPageError(message);
+          setInnerSpaceCards(buildFallbackInnerSpaceCards());
+          setPillarCardsByCategory({
+            ACADEMIC: fallbackPillarsByCategory('ACADEMIC'),
+            RELIGIOUS: fallbackPillarsByCategory('RELIGIOUS'),
+            LITERARY: fallbackPillarsByCategory('LITERARY'),
+            CULTURE_HISTORY: fallbackPillarsByCategory('CULTURE_HISTORY'),
+          });
+        }
       } finally {
+        requestInFlightRef.current = false;
         if (active) {
-          setPillarsLoading(false);
+          setPageLoading(false);
+          setIsRefreshing(false);
         }
       }
     };
 
-    loadBoards();
+    loadPage();
     return () => {
       active = false;
+      // Note: We don't reset requestInFlightRef here because if a new component 
+      // mounts it gets its own ref. Only global state would need careful reset.
+    };
+  }, [userId, refreshNonce]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return;
+    }
+
+    const handleFocusRefresh = () => {
+      if (document.visibilityState === 'hidden' || requestInFlightRef.current) {
+        return;
+      }
+
+      const cached = userId ? readDiscoveryPageCache(userId) : null;
+      if (!cached) return;
+      const ageMs = Date.now() - cached.fetchedAt;
+      const now = Date.now();
+      if (ageMs >= DISCOVERY_PAGE_CACHE_TTL_MS && (now - lastAutoRefreshAtRef.current) >= 15_000) {
+        lastAutoRefreshAtRef.current = now;
+        triggerRefresh(true);
+      }
+    };
+
+    window.addEventListener('focus', handleFocusRefresh);
+    document.addEventListener('visibilitychange', handleFocusRefresh);
+    return () => {
+      window.removeEventListener('focus', handleFocusRefresh);
+      document.removeEventListener('visibilitychange', handleFocusRefresh);
     };
   }, [userId]);
 
@@ -677,6 +840,19 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
               <div className="w-1.5 h-1.5 rounded-full bg-cyan-500/50" />
               <span>Curated</span>
             </div>
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-3 text-[10px] uppercase tracking-[0.24em] text-white/35">
+              <span>{formatRelativeUpdateTime(viewMeta.lastUpdatedAt)}</span>
+              {viewMeta.hasCachedSnapshot ? <span>Cached Snapshot</span> : <span>Live</span>}
+              {viewMeta.hasPartialErrors ? <span>{viewMeta.boardErrorCount} Source Issue{viewMeta.boardErrorCount === 1 ? '' : 's'}</span> : null}
+              <button
+                type="button"
+                onClick={() => triggerRefresh(true)}
+                className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1 text-[10px] font-medium tracking-[0.2em] text-white/60 transition hover:border-cyan-400/30 hover:text-cyan-300"
+              >
+                <RotateCw size={12} className={isRefreshing ? 'animate-spin' : ''} />
+                Refresh
+              </button>
+            </div>
           </div>
         </header>
 
@@ -688,13 +864,19 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
               </div>
             </div>
 
-            {innerSpaceError && (
+            {pageError && (
               <div className="mb-4 rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-100/80">
-                {innerSpaceError}
+                {pageError}
               </div>
             )}
 
-            {innerSpaceLoading ? (
+            {pageWarning && (
+              <div className="mb-4 rounded-2xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-3 text-sm text-cyan-100/80">
+                {pageWarning}
+              </div>
+            )}
+
+            {pageLoading ? (
               <InnerSpaceLoadingGrid />
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 auto-rows-fr">
@@ -712,13 +894,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
               <div className="mt-4 w-32 h-[1px] bg-gradient-to-r from-white/20 to-transparent" />
             </div>
 
-            {pillarsError && (
-              <div className="mb-4 rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-100/80">
-                {pillarsError}
-              </div>
-            )}
-
-            {pillarsLoading ? (
+            {pageLoading ? (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <div className="md:col-span-2 min-h-[280px] rounded-2xl border border-white/5 bg-white/[0.02] animate-pulse" />
                 <div className="md:col-span-1 min-h-[280px] rounded-2xl border border-white/5 bg-white/[0.02] animate-pulse" />

@@ -97,3 +97,40 @@ def test_get_discovery_board_builds_response(monkeypatch):
     assert board.featured_card.title == "Fresh paper"
     assert board.metadata.active_provider_names == ["ARXIV"]
     assert board.metadata.total_cards == 1
+
+
+def test_build_card_adds_open_source_from_doi_reference():
+    card = _build_card_from_candidate(
+        category=DiscoveryCategory.ACADEMIC,
+        family="Bridge",
+        candidate={
+            "title": "Paper with DOI",
+            "content_chunk": "Year: 2025 | Authors: A. Writer | Themes: memory, metaphor",
+            "provider": "CROSSREF",
+            "reference": "10.1000/test-doi",
+        },
+        anchors=[_make_anchor()],
+        fallback_query="memory",
+        min_match_signals=2,
+        require_reference=True,
+    )
+
+    assert card is not None
+    assert any(ref.url == "https://doi.org/10.1000/test-doi" for ref in card.source_refs)
+    assert any(action.type.value == "open_source" for action in card.actions)
+
+
+def test_get_discovery_board_survives_provider_failures(monkeypatch):
+    def _boom(*args, **kwargs):
+        raise RuntimeError("provider down")
+
+    monkeypatch.setattr("services.discovery_board_service._load_user_anchors", lambda firebase_uid: [_make_anchor()])
+    monkeypatch.setattr("services.discovery_board_service._load_user_provider_preferences", lambda firebase_uid: {})
+    monkeypatch.setattr("services.discovery_board_service._resolve_active_provider_names", lambda category, preferences: ["ARXIV"])
+    monkeypatch.setattr("services.external_kb_service._search_arxiv_direct", _boom)
+
+    board = get_discovery_board("ACADEMIC", "user-1")
+
+    assert board.category == DiscoveryCategory.ACADEMIC
+    assert board.metadata.total_cards == 0
+    assert board.featured_card is None

@@ -6,6 +6,7 @@ import re
 from collections import Counter
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+from urllib.parse import quote
 
 from infrastructure.db_manager import DatabaseManager, safe_read_clob
 from models.discovery_models import (
@@ -447,15 +448,31 @@ def _build_why_seen(
 
 def _source_refs_from_candidate(candidate: Dict[str, Any], *, extra_refs: Optional[List[DiscoverySourceRef]] = None) -> List[DiscoverySourceRef]:
     refs: List[DiscoverySourceRef] = []
-    source_url = str(candidate.get("source_url") or "").strip()
+    
+    # 1. Resolve source URL, prioritizing valid public links over internal API endpoints
+    raw_url = str(candidate.get("source_url") or "").strip()
+    is_api_url = any(x in raw_url.lower() for x in [
+        "api.", "/api/v1/", ".p.rapidapi.com", "special:entitydata", 
+        "quranenc.com/api", "diyanet.gov.tr/api"
+    ])
+    
+    source_url = ""
+    if raw_url and not is_api_url:
+        source_url = raw_url
+    else:
+        source_url = _fallback_source_url(candidate) or ""
+
     reference = str(candidate.get("reference") or candidate.get("canonical_reference") or "").strip()
     provider = str(candidate.get("provider") or "Source").strip()
+    
     if source_url:
         refs.append(DiscoverySourceRef(label=f"{provider} source", url=source_url, kind="source"))
-    if reference:
+    if reference and not reference.startswith("http"):
         refs.append(DiscoverySourceRef(label=reference, url=None, kind="reference"))
+    
     if extra_refs:
         refs.extend(extra_refs)
+        
     deduped: List[DiscoverySourceRef] = []
     seen = set()
     for ref in refs:
@@ -465,6 +482,113 @@ def _source_refs_from_candidate(candidate: Dict[str, Any], *, extra_refs: Option
         seen.add(key)
         deduped.append(ref)
     return deduped
+
+
+def _fallback_source_url(candidate: Dict[str, Any]) -> Optional[str]:
+    provider = str(candidate.get("provider") or "").strip().upper()
+    reference = str(candidate.get("reference") or candidate.get("canonical_reference") or "").strip()
+    title = str(candidate.get("title") or "").strip()
+
+    if reference.startswith("http://") or reference.startswith("https://"):
+        return reference
+    if reference.startswith("10."):
+        return f"https://doi.org/{quote(reference, safe='/:')}"
+        
+    # Religious Source Resolution
+    if provider == "QURANENC" and ":" in reference:
+        return f"https://quranenc.com/en/browse/turkish_rshd/{reference.replace(':', '/')}"
+    if provider == "HADEETHENC" and reference.isdigit():
+        return f"https://hadeethenc.com/tr/browse/hadith/{reference}"
+    if provider == "QURAN_FOUNDATION" and ":" in reference:
+        return f"https://quran.com/{reference}"
+    if provider == "DIYANET_QURAN" and ":" in reference:
+        # Diyanet uses a specific structure, fallback to a search if exact is hard
+        return f"https://kuran.diyanet.gov.tr/mushaf"
+    if provider == "ISLAMHOUSE" and reference.isdigit():
+        return f"https://islamhouse.com/tr/main/{reference}"
+
+    # Academic Source Resolution
+    if provider == "ARXIV":
+        arxiv_ref = reference.replace("arxiv:", "").replace("ARXIV:", "").strip()
+        if arxiv_ref:
+            return f"https://arxiv.org/abs/{quote(arxiv_ref)}"
+    if provider == "OPENALEX" and reference:
+        alex_id = reference.split("/")[-1] if "/" in reference else reference
+        return f"https://openalex.org/{quote(alex_id)}"
+    if provider == "SEMANTIC_SCHOLAR" and reference:
+        return f"https://www.semanticscholar.org/paper/{quote(reference)}"
+    if provider == "ORKG" and reference:
+        return f"https://orkg.org/paper/{quote(reference)}"
+    if provider == "CROSSREF" and reference:
+        return f"https://doi.org/{quote(reference)}"
+
+    # Culture & Literary Source Resolution
+    if provider == "WIKIDATA" and reference and reference.upper().startswith("Q"):
+        return f"https://www.wikidata.org/wiki/{quote(reference)}"
+    if provider == "DBPEDIA" and reference:
+        return f"https://dbpedia.org/page/{quote(reference)}"
+    if provider == "EUROPEANA" and reference:
+        return f"https://www.europeana.eu/item/{quote(reference)}"
+    if provider == "INTERNET_ARCHIVE" and reference:
+        return f"https://archive.org/details/{quote(reference)}"
+    if provider == "GUTENDEX" and reference.isdigit():
+        return f"https://www.gutenberg.org/ebooks/{reference}"
+    if provider == "ART_SEARCH_API" and reference:
+        return f"https://www.artic.edu/artworks/{quote(reference)}"
+    if provider == "POETRYDB" and title:
+        return f"https://poetrydb.org/title/{quote(title)}"
+
+    # Entertainment/Media
+    if provider == "TMDB" and reference.startswith("tmdb:"):
+        parts = reference.split(":")
+        if len(parts) == 3 and parts[2].isdigit():
+            kind = "tv" if parts[1] == "tv" else "movie"
+            return f"https://www.themoviedb.org/{kind}/{parts[2]}"
+            
+    # Fallbacks for titles
+    if provider == "GOOGLE_BOOKS" and title:
+        return f"https://books.google.com/books?q={quote(title)}"
+    if provider == "OPEN_LIBRARY" and title:
+        return f"https://openlibrary.org/search?q={quote(title)}"
+    
+    return None
+
+
+def _safe_fetch_list(provider_name: str, fetcher: Any, *args: Any, **kwargs: Any) -> List[Dict[str, Any]]:
+    try:
+        result = fetcher(*args, **kwargs)
+        if not result:
+            return []
+        return list(result)
+    except Exception as exc:
+        logger.warning("discovery board provider list fetch failed provider=%s error=%s", provider_name, exc)
+        return []
+
+
+def _safe_fetch_value(provider_name: str, fetcher: Any, *args: Any, **kwargs: Any) -> Optional[Dict[str, Any]]:
+    try:
+        result = fetcher(*args, **kwargs)
+        return result if isinstance(result, dict) and result else None
+    except Exception as exc:
+        logger.warning("discovery board provider value fetch failed provider=%s error=%s", provider_name, exc)
+        return None
+
+
+def _safe_search_tmdb(query: str, max_results: int) -> List[Dict[str, Any]]:
+    try:
+        return list(search_tmdb_media(query, kind="multi", max_results=max_results) or [])
+    except Exception as exc:
+        logger.warning("discovery board TMDB fetch failed query=%s error=%s", query, exc)
+        return []
+
+
+def _safe_islamic_candidates(query: str, limit: int) -> List[Dict[str, Any]]:
+    try:
+        candidates, _diag = islamic_api_service.get_islamic_external_candidates(query, limit=limit, force_religious=True)
+        return list(candidates or [])
+    except Exception as exc:
+        logger.warning("discovery board islamic fetch failed query=%s error=%s", query, exc)
+        return []
 
 
 def _actions_for_card(
@@ -684,7 +808,7 @@ def _build_academic_cards(anchors: List[_Anchor], active_provider_names: List[st
 
     for query in queries:
         if "ARXIV" in active:
-            for candidate in external_kb_service._search_arxiv_direct(query, limit=3):
+            for candidate in _safe_fetch_list("ARXIV", external_kb_service._search_arxiv_direct, query, limit=3):
                 card = _build_card_from_candidate(
                     category=DiscoveryCategory.ACADEMIC,
                     family="Fresh Signal",
@@ -697,7 +821,7 @@ def _build_academic_cards(anchors: List[_Anchor], active_provider_names: List[st
                 if card:
                     family_cards["Fresh Signal"].append(card)
         if "OPENALEX" in active:
-            for candidate in external_kb_service._search_openalex_direct(query, limit=3):
+            for candidate in _safe_fetch_list("OPENALEX", external_kb_service._search_openalex_direct, query, limit=3):
                 card = _build_card_from_candidate(
                     category=DiscoveryCategory.ACADEMIC,
                     family="Fresh Signal",
@@ -717,7 +841,7 @@ def _build_academic_cards(anchors: List[_Anchor], active_provider_names: List[st
         ):
             if provider_name not in active:
                 continue
-            for candidate in fetcher(query, limit=3):
+            for candidate in _safe_fetch_list(provider_name, fetcher, query, limit=3):
                 card = _build_card_from_candidate(
                     category=DiscoveryCategory.ACADEMIC,
                     family="Bridge",
@@ -732,7 +856,7 @@ def _build_academic_cards(anchors: List[_Anchor], active_provider_names: List[st
                     family_cards["Bridge"].append(card)
 
         if "ORKG" in active:
-            orkg = external_kb_service._fetch_orkg(query, None)
+            orkg = _safe_fetch_value("ORKG", external_kb_service._fetch_orkg, query, None)
             if orkg and orkg.get("research_fields"):
                 research_labels = [
                     str(field.get("label") or "").strip()
@@ -773,7 +897,7 @@ def _build_academic_cards(anchors: List[_Anchor], active_provider_names: List[st
         ):
             if provider_name not in active:
                 continue
-            for candidate in fetcher(query, limit=2):
+            for candidate in _safe_fetch_list(provider_name, fetcher, query, limit=2):
                 content = str(candidate.get("content_chunk") or "")
                 if not (_parse_type_label(content) or str(candidate.get("reference") or "").strip()):
                     continue
@@ -797,7 +921,7 @@ def _build_religious_cards(anchors: List[_Anchor], active_provider_names: List[s
     family_cards: Dict[str, List[DiscoveryCard]] = {"Ayet Card": [], "Ayet + Hadis Bridge": []}
 
     for query in queries:
-        candidates, _diag = islamic_api_service.get_islamic_external_candidates(query, limit=8, force_religious=True)
+        candidates = _safe_islamic_candidates(query, limit=8)
         filtered = [
             candidate for candidate in candidates
             if str(candidate.get("provider") or "").strip().upper() in active
@@ -879,7 +1003,9 @@ def _build_literary_cards(anchors: List[_Anchor], active_provider_names: List[st
     metadata_providers = [provider for provider in active_provider_names if provider in {"GOOGLE_BOOKS", "OPEN_LIBRARY", "BIG_BOOK_API"}]
     for query in queries:
         if metadata_providers:
-            metadata_candidates = external_kb_service._search_literary_book_metadata_direct(
+            metadata_candidates = _safe_fetch_list(
+                "LITERARY_METADATA",
+                external_kb_service._search_literary_book_metadata_direct,
                 query,
                 limit=4,
                 active_providers=metadata_providers,
@@ -910,7 +1036,7 @@ def _build_literary_cards(anchors: List[_Anchor], active_provider_names: List[st
                     family_cards["Parallel Work"].append(card)
 
         if "GUTENDEX" in active:
-            for candidate in external_kb_service._search_gutendex_direct(query, limit=3):
+            for candidate in _safe_fetch_list("GUTENDEX", external_kb_service._search_gutendex_direct, query, limit=3):
                 card = _build_card_from_candidate(
                     category=DiscoveryCategory.LITERARY,
                     family="Parallel Work",
@@ -924,7 +1050,7 @@ def _build_literary_cards(anchors: List[_Anchor], active_provider_names: List[st
                     family_cards["Parallel Work"].append(card)
 
         if "TMDB" in active:
-            for row in search_tmdb_media(query, kind="multi", max_results=4):
+            for row in _safe_search_tmdb(query, max_results=4):
                 tmdb_id = row.get("tmdbId")
                 tmdb_kind = str(row.get("tmdbKind") or "").strip()
                 candidate = {
@@ -967,7 +1093,7 @@ def _build_culture_history_cards(anchors: List[_Anchor], active_provider_names: 
 
     for query in queries:
         if "WIKIDATA" in active:
-            wikidata = external_kb_service._fetch_wikidata(query, None)
+            wikidata = _safe_fetch_value("WIKIDATA", external_kb_service._fetch_wikidata, query, None)
             if wikidata:
                 candidate = {
                     "title": str(wikidata.get("label") or query).strip(),
@@ -995,7 +1121,7 @@ def _build_culture_history_cards(anchors: List[_Anchor], active_provider_names: 
                 if card:
                     family_cards["Lineage"].append(card)
         if "DBPEDIA" in active:
-            dbpedia = external_kb_service._fetch_dbpedia(query, None)
+            dbpedia = _safe_fetch_value("DBPEDIA", external_kb_service._fetch_dbpedia, query, None)
             if dbpedia:
                 candidate = {
                     "title": str(dbpedia.get("label") or query).strip(),
@@ -1027,7 +1153,7 @@ def _build_culture_history_cards(anchors: List[_Anchor], active_provider_names: 
         ):
             if provider_name not in active:
                 continue
-            for candidate in fetcher(query, limit=3):
+            for candidate in _safe_fetch_list(provider_name, fetcher, query, limit=3):
                 card = _build_card_from_candidate(
                     category=DiscoveryCategory.CULTURE_HISTORY,
                     family="Archive Artifact",
@@ -1048,7 +1174,7 @@ def _build_culture_history_cards(anchors: List[_Anchor], active_provider_names: 
         ):
             if provider_name not in active:
                 continue
-            for candidate in fetcher(query, limit=2):
+            for candidate in _safe_fetch_list(provider_name, fetcher, query, limit=2):
                 card = _build_card_from_candidate(
                     category=DiscoveryCategory.CULTURE_HISTORY,
                     family="Wild Card",

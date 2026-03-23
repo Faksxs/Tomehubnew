@@ -1,0 +1,40 @@
+﻿ M apps/backend/app.py
+ M apps/backend/models/request_models.py
+ M apps/backend/services/api_route_support_service.py
+ M apps/backend/services/domain_policy_service.py
+ M apps/backend/services/memory_profile_service.py
+ M apps/backend/services/search_service.py
+ M apps/backend/services/search_system/orchestrator.py
+ M apps/backend/services/search_system/reranker.py
+ M apps/backend/services/search_system/semantic_router.py
+ M apps/backend/tests/test_l3_perf_flags.py
+ M apps/frontend/src/App.tsx
+ M apps/frontend/src/components/ApiIntegrations.tsx
+ M apps/frontend/src/components/ExplorerChat.tsx
+ M apps/frontend/src/components/FlowContainer.tsx
+ M apps/frontend/src/components/RAGSearch.tsx
+ M apps/frontend/src/components/Sidebar.tsx
+ M apps/frontend/src/features/app/components/AppMainContent.tsx
+ M apps/frontend/src/features/app/hooks/useAppUiState.ts
+ M apps/frontend/src/features/app/stateHelpers.ts
+ M apps/frontend/src/features/app/types.ts
+ M apps/frontend/src/index.css
+ M apps/frontend/src/services/backendApiService.ts
+?? apps/backend/data/search_golden_queries.json
+?? apps/backend/models/discovery_models.py
+?? apps/backend/routes/discovery_routes.py
+?? apps/backend/scripts/debug_memory_profile.py
+?? apps/backend/services/discovery_board_service.py
+?? apps/backend/services/discovery_inner_space_service.py
+?? apps/backend/services/search_diagnostics_service.py
+?? apps/backend/tests/test_discovery_board_service.py
+?? apps/backend/tests/test_discovery_inner_space_service.py
+?? apps/backend/tests/test_search_diagnostic_trace.py
+?? apps/backend/tests/test_search_endpoint_parity_golden.py
+?? apps/backend/tests/test_search_golden_queries.py
+?? apps/backend/tests/test_search_safe_rollout_guards.py
+?? apps/frontend/src/features/discovery/
+?? documentation/reports/DISCOVERY_MAINBOARD_ARCHITECTURE_PLAN_2026-03-22.md
+?? documentation/reports/DISCOVERY_UI_FIRST_REPORT_2026-03-23.md
+?? git_status_clean.txt
+?? git_status_utf8.txt

@@ -121,3 +121,22 @@ class DiscoveryInnerSpaceMetadata(BaseModel):
 class DiscoveryInnerSpaceResponse(BaseModel):
     cards: List[DiscoveryInnerSpaceCard] = Field(default_factory=list)
     metadata: DiscoveryInnerSpaceMetadata
+
+
+class DiscoveryPageBoards(BaseModel):
+    academic: DiscoveryBoardResponse
+    religious: DiscoveryBoardResponse
+    literary: DiscoveryBoardResponse
+    culture_history: DiscoveryBoardResponse
+
+
+class DiscoveryPageMetadata(BaseModel):
+    last_updated_at: str
+    board_errors: List[str] = Field(default_factory=list)
+    used_cached_fallbacks: bool = False
+
+
+class DiscoveryPageResponse(BaseModel):
+    inner_space: DiscoveryInnerSpaceResponse
+    boards: DiscoveryPageBoards
+    metadata: DiscoveryPageMetadata
