@@ -435,10 +435,10 @@ const CardSurface: React.FC<{
           {isHero && (
             <div className="mt-8 flex gap-2">
               <button
-                onClick={() => (card.itemId && onOpen ? onOpen(card) : onAsk(card))}
+                onClick={() => (onOpen ? onOpen(card) : onAsk(card))}
                 className="px-4 py-1.5 rounded-md bg-cyan-500 text-black text-[10px] font-black uppercase tracking-wider hover:bg-cyan-400 transition-colors"
               >
-                {card.itemId ? 'OPEN_THREAD' : 'ASK_ARCHIVE'}
+                {card.sourceUrl ? 'OPEN_SOURCE' : card.itemId ? 'OPEN_THREAD' : 'ASK_ARCHIVE'}
               </button>
             </div>
           )}
@@ -456,7 +456,7 @@ const CardSurface: React.FC<{
           </div>
           <button
             type="button"
-            onClick={() => (card.itemId && onOpen ? onOpen(card) : onAsk(card))}
+            onClick={() => (onOpen ? onOpen(card) : onAsk(card))}
             className="opacity-20 group-hover:opacity-100 transition-opacity"
             aria-label={card.itemId ? `Open ${card.title}` : `Ask about ${card.title}`}
           >
