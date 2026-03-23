@@ -16,6 +16,7 @@ from services.analytics_service import (
     is_analytic_word_count,
     resolve_book_id_from_question,
 )
+from services.search_diagnostics_service import enrich_search_metadata
 from services.query_plan_service import looks_explicit_compare_query
 from utils.logger import get_logger
 
@@ -478,6 +479,15 @@ async def execute_search_request(
         metadata.setdefault("content_type_filter", search_request.content_type)
         metadata.setdefault("ingestion_type_filter", search_request.ingestion_type)
         metadata.setdefault("requested_domain_mode", requested_domain_mode)
+        metadata = enrich_search_metadata(
+            metadata,
+            endpoint="/api/search",
+            query=search_request.question,
+            intent=metadata.get("intent"),
+            results=sources or [],
+            answer=answer,
+            sources=sources or [],
+        )
 
     return {
         "answer": answer,

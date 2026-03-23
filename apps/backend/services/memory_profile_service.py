@@ -224,7 +224,7 @@ def _fetch_recent_notes(firebase_uid: str, limit: int = 18) -> List[Dict[str, An
                     SELECT {title_col or "NULL"}, {content_col}, {type_col}, {created_at_col}
                     FROM {table_name}
                     WHERE FIREBASE_UID = :p_uid
-                      AND UPPER({type_col}) IN ('HIGHLIGHT', 'INSIGHT', 'PERSONAL_NOTE')
+                      AND UPPER({type_col}) IN ('HIGHLIGHT', 'INSIGHT', 'PERSONAL_NOTE', 'ARTICLE')
                     ORDER BY {created_at_col} DESC NULLS LAST
                     FETCH FIRST {safe_limit} ROWS ONLY
                     """,
@@ -279,17 +279,22 @@ def collect_memory_evidence(firebase_uid: str) -> Dict[str, Any]:
     messages = _fetch_recent_messages(firebase_uid)
     notes = _fetch_recent_notes(firebase_uid)
     reports = _fetch_recent_reports(firebase_uid)
+    counts = {
+        "sessions": len(sessions),
+        "messages": len(messages),
+        "notes": len(notes),
+        "reports": len(reports),
+    }
+    logger.info(
+        "Memory evidence collected for %s: sessions=%d messages=%d notes=%d reports=%d",
+        firebase_uid, counts["sessions"], counts["messages"], counts["notes"], counts["reports"],
+    )
     return {
         "sessions": sessions,
         "messages": messages,
         "notes": notes,
         "reports": reports,
-        "counts": {
-            "sessions": len(sessions),
-            "messages": len(messages),
-            "notes": len(notes),
-            "reports": len(reports),
-        },
+        "counts": counts,
     }
 
 
@@ -305,7 +310,8 @@ def _strip_code_fences(text: str) -> str:
 def parse_profile_payload(text: str, fallback_counts: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     try:
         payload = json.loads(_strip_code_fences(text))
-    except Exception:
+    except Exception as exc:
+        logger.warning("Failed to parse LLM profile JSON: %s – raw (first 300 chars): %s", exc, str(text or "")[:300])
         payload = {}
         
     def _ensure_list(val: Any) -> List[str]:
@@ -315,13 +321,16 @@ def parse_profile_payload(text: str, fallback_counts: Optional[Dict[str, Any]] =
             return [x.strip() for x in val.split(",") if x.strip()]
         return []
 
-    return {
+    result = {
         "profile_summary": str(payload.get("profile_summary") or "").strip(),
         "active_themes": _ensure_list(payload.get("active_themes")),
         "recurring_sources": _ensure_list(payload.get("recurring_sources")),
         "open_questions": _ensure_list(payload.get("open_questions")),
         "evidence_counts": fallback_counts or {},
     }
+    if result["profile_summary"] and not result["active_themes"] and not result["recurring_sources"] and not result["open_questions"]:
+        logger.warning("LLM returned profile_summary but all structured arrays are empty – raw (first 500 chars): %s", str(text or "")[:500])
+    return result
 
 
 def _build_profile_prompt(evidence: Dict[str, Any]) -> str:
@@ -431,6 +440,7 @@ def refresh_memory_profile(firebase_uid: str, *, force: bool = False) -> Dict[st
     evidence = collect_memory_evidence(firebase_uid)
     total_evidence = sum(int(v or 0) for v in evidence.get("counts", {}).values())
     if total_evidence == 0:
+        logger.info("No evidence found for %s – storing empty profile.", firebase_uid)
         empty = {
             "firebase_uid": firebase_uid,
             "profile_summary": "",
@@ -452,7 +462,18 @@ def refresh_memory_profile(firebase_uid: str, *, force: bool = False) -> Dict[st
             timeout_s=45.0,
             response_mime_type="application/json",
         )
-        payload = parse_profile_payload(result.text if result else "", fallback_counts=evidence.get("counts", {}))
+        raw_text = result.text if result else ""
+        logger.info("LLM profile response for %s (len=%d): %s", firebase_uid, len(raw_text), raw_text[:400])
+        payload = parse_profile_payload(raw_text, fallback_counts=evidence.get("counts", {}))
+        logger.info(
+            "Parsed profile for %s: summary_len=%d themes=%d sources=%d questions=%d counts=%s",
+            firebase_uid,
+            len(payload.get("profile_summary", "")),
+            len(payload.get("active_themes", [])),
+            len(payload.get("recurring_sources", [])),
+            len(payload.get("open_questions", [])),
+            payload.get("evidence_counts"),
+        )
         if not payload.get("profile_summary"):
             payload["profile_summary"] = "User memory profile is available but the profile summary could not be synthesized."
         return _store_memory_profile(firebase_uid, payload)

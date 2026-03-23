@@ -1,0 +1,98 @@
+﻿[
+  {
+    "id": "gq1",
+    "question": "Hz. Ali'nin ibadet sınıflandırmasında \"tüccarların ibadeti\" neyi ifade eder?",
+    "intent": "SYNTHESIS",
+    "expected_retrieval_mode": "fast_exact",
+    "expected_buckets": ["exact", "lemma"],
+    "ascii_variant": "Hz. Ali'nin ibadet siniflandirmasinda \"tuccarlarin ibadeti\" neyi ifade eder?"
+  },
+  {
+    "id": "gq2",
+    "question": "Heraklit neden bir ırmağa iki kez girilmez der?",
+    "intent": "SYNTHESIS",
+    "expected_retrieval_mode": "semantic_focus",
+    "expected_buckets": ["lemma", "semantic", "exact"],
+    "ascii_variant": "Heraklit neden bir irmaga iki kez girilmez der?"
+  },
+  {
+    "id": "gq3",
+    "question": "Tefekkürü, teemmülden ayıran temel fark nedir?",
+    "intent": "SYNTHESIS",
+    "expected_retrieval_mode": "semantic_focus",
+    "expected_buckets": ["lemma", "semantic", "exact"],
+    "ascii_variant": "Tefekkuru, teemmulden ayiran temel fark nedir?"
+  },
+  {
+    "id": "gq4",
+    "question": "Vicdan nasıl oluşur?",
+    "intent": "SYNTHESIS",
+    "expected_retrieval_mode": "semantic_focus",
+    "expected_buckets": ["lemma", "semantic", "exact"],
+    "ascii_variant": "Vicdan nasil olusur?"
+  },
+  {
+    "id": "gq5",
+    "question": "Özgürlük nedir?",
+    "intent": "SYNTHESIS",
+    "expected_retrieval_mode": "semantic_focus",
+    "expected_buckets": ["lemma", "semantic", "exact"],
+    "ascii_variant": "Ozgurluk nedir?"
+  },
+  {
+    "id": "gq6",
+    "question": "Bunu kim söyledi?",
+    "intent": "SYNTHESIS",
+    "expected_retrieval_mode": "fast_exact",
+    "expected_buckets": ["exact", "lemma"],
+    "ascii_variant": "Bunu kim soyledi?"
+  },
+  {
+    "id": "gq7",
+    "question": "Tam alıntı ver",
+    "intent": "SYNTHESIS",
+    "expected_retrieval_mode": "fast_exact",
+    "expected_buckets": ["exact", "lemma"],
+    "ascii_variant": "Tam alinti ver"
+  },
+  {
+    "id": "gq8",
+    "question": "Kitabın adı ne?",
+    "intent": "SYNTHESIS",
+    "expected_retrieval_mode": "fast_exact",
+    "expected_buckets": ["exact", "lemma"],
+    "ascii_variant": "Kitabin adi ne?"
+  },
+  {
+    "id": "gq9",
+    "question": "Hangi sayfa?",
+    "intent": "SYNTHESIS",
+    "expected_retrieval_mode": "fast_exact",
+    "expected_buckets": ["exact", "lemma"],
+    "ascii_variant": "Hangi sayfa?"
+  },
+  {
+    "id": "gq10",
+    "question": "Vicdan",
+    "intent": "SYNTHESIS",
+    "expected_retrieval_mode": "balanced",
+    "expected_buckets": ["exact", "lemma", "semantic"],
+    "ascii_variant": "Vicdan"
+  },
+  {
+    "id": "gq11",
+    "question": "Özgürlük",
+    "intent": "SYNTHESIS",
+    "expected_retrieval_mode": "balanced",
+    "expected_buckets": ["exact", "lemma", "semantic"],
+    "ascii_variant": "Ozgurluk"
+  },
+  {
+    "id": "gq12",
+    "question": "Vicdan",
+    "intent": "CITATION_SEEKING",
+    "expected_retrieval_mode": "fast_exact",
+    "expected_buckets": ["exact", "lemma"],
+    "ascii_variant": "Vicdan"
+  }
+]

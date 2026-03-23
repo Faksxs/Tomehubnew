@@ -227,7 +227,7 @@ _DOMAIN_POLICIES: Dict[str, Dict[str, Any]] = {
         ],
         "retrieval_priority": ["primary_text", "literary_context", "internal", "lexical_support"],
         "answer_contract": "LITERARY_CLOSE_READING",
-        "active_provider_names": ["GOOGLE_BOOKS", "OPEN_LIBRARY", "GUTENDEX", "POETRYDB", "ART_SEARCH_API"],
+        "active_provider_names": ["GOOGLE_BOOKS", "OPEN_LIBRARY", "GUTENDEX", "POETRYDB", "ART_SEARCH_API", "TMDB"],
         "prepared_provider_names": ["BIG_BOOK_API"],
         "shared_provider_names": ["WIKTIONARY", "LINGUA_ROBOT", "WORDS_API"],
         "shared_capability_policy": [
@@ -246,6 +246,8 @@ _DOMAIN_POLICIES: Dict[str, Dict[str, Any]] = {
         "active_provider_names": [
             "EUROPEANA",
             "INTERNET_ARCHIVE",
+            "ART_SEARCH_API",
+            "POETRYDB",
             "WIKIDATA",
             "DBPEDIA",
             "ORKG",

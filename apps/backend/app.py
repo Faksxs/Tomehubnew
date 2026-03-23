@@ -79,6 +79,10 @@ from services.api_route_support_service import (
     execute_search_request,
     fetch_realtime_poll_payload,
 )
+from services.search_diagnostics_service import (
+    append_search_log_diagnostics,
+    enrich_search_metadata,
+)
 from models.request_models import (
     EnrichBookRequest, GenerateTagsRequest, VerifyCoverRequest, AnalyzeHighlightsRequest
 )
@@ -410,6 +414,11 @@ logger.info("Router registered", extra={"route_count": len(external_api_routes.r
 from routes import user_routes
 app.include_router(user_routes.router)
 logger.info("Router registered", extra={"route_count": len(user_routes.router.routes)})
+
+# Include Discovery Router
+from routes import discovery_routes
+app.include_router(discovery_routes.router)
+logger.info("Router registered", extra={"route_count": len(discovery_routes.router.routes)})
 
 
 # Prometheus Instrumentation (must be AFTER all routers are added)
@@ -758,7 +767,35 @@ async def perform_search(
             metadata.setdefault("search_surface", request.search_surface)
             metadata.setdefault("content_type_filter", request.content_type)
             metadata.setdefault("ingestion_type_filter", request.ingestion_type)
-        
+            metadata = enrich_search_metadata(
+                metadata,
+                endpoint="/api/smart-search",
+                query=request.question,
+                intent=metadata.get("intent", "SYNTHESIS"),
+                results=results,
+                answer=None,
+                sources=results,
+            )
+            append_search_log_diagnostics(
+                metadata.get("search_log_id"),
+                {
+                    "endpoint": "/api/smart-search",
+                    **{
+                        key: metadata.get(key)
+                        for key in (
+                            "diagnostic_trace_v1",
+                            "diagnostic_trace_line",
+                            "retrieval_failure_plane",
+                            "generation_failure_plane",
+                            "failure_plane",
+                            "freshness_plane",
+                            "search_quality_plane",
+                            "operational_plane_summary",
+                        )
+                    },
+                },
+            )
+
         return {
             "results": results,
             "total": metadata.get("total_count", len(results)),

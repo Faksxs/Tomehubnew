@@ -58,21 +58,28 @@ _LOW_SIGNAL_PATTERNS = (
     "copyright",
     "isbn",
 )
+_NON_ALNUM_RE = re.compile(r"[^a-z0-9\s]+")
+_WS_RE = re.compile(r"\s+")
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
 
 
 def _norm_text(text: str) -> str:
     value = deaccent_text(str(text or "")).lower()
-    value = re.sub(r"[^a-z0-9\s]+", " ", value)
-    value = re.sub(r"\s+", " ", value).strip()
+    value = _NON_ALNUM_RE.sub(" ", value)
+    value = _WS_RE.sub(" ", value).strip()
     return value
 
 
-def _tokens(text: str) -> List[str]:
+def _tokens_from_norm_text(text: str) -> List[str]:
     return [
         tok
-        for tok in re.findall(r"[a-z0-9]+", _norm_text(text))
+        for tok in _TOKEN_RE.findall(text)
         if len(tok) >= 2 and tok not in _STOP_TOKENS
     ]
+
+
+def _tokens(text: str) -> List[str]:
+    return _tokens_from_norm_text(_norm_text(text))
 
 
 def _match_family(match_type: str) -> str:
@@ -84,11 +91,11 @@ def _match_family(match_type: str) -> str:
     return "semantic"
 
 
-def _quality_adjustment(text: str) -> float:
+def _quality_adjustment(text: str, normalized_text: str | None = None) -> float:
     content = str(text or "").strip()
     if not content:
         return -0.30
-    lowered = _norm_text(content)
+    lowered = normalized_text if normalized_text is not None else _norm_text(content)
     if len(content) < 40:
         return -0.10
     penalty = 0.0
@@ -121,8 +128,10 @@ def rerank_candidates_fast(
         item = dict(row)
         text = str(item.get("content_chunk", "") or "")
         title = str(item.get("title", "") or "")
-        doc_text_norm = _norm_text(f"{title} {text}")
-        doc_tokens = set(_tokens(doc_text_norm))
+        title_norm = _norm_text(title)
+        text_norm = _norm_text(text)
+        doc_text_norm = f"{title_norm} {text_norm}".strip()
+        doc_tokens = set(_tokens_from_norm_text(doc_text_norm))
 
         try:
             base_score = float(item.get("score", 0.0) or 0.0) / 100.0
@@ -146,9 +155,9 @@ def rerank_candidates_fast(
         source_type = str(item.get("source_type", "") or "").strip().upper()
         source_prior = _SOURCE_PRIOR.get(source_type, 0.0)
         match_prior = _MATCH_PRIOR.get(_match_family(item.get("match_type", "")), 0.0)
-        title_hit = 0.08 if (query_norm and query_norm in _norm_text(title)) else 0.0
+        title_hit = 0.08 if (query_norm and query_norm in title_norm) else 0.0
         phrase_hit = 0.10 if (query_norm and query_norm in doc_text_norm) else 0.0
-        quality = _quality_adjustment(text)
+        quality = _quality_adjustment(text, normalized_text=text_norm)
 
         final = (
             (base_score * 0.48)

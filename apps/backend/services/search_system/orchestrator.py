@@ -178,6 +178,268 @@ class SearchOrchestrator:
         if lexical_total >= 10:
             return 4
         return 5
+
+    @staticmethod
+    def _build_search_cache_key(
+        *,
+        query: str,
+        firebase_uid: str,
+        book_id: Optional[str],
+        limit: int,
+        intent: str,
+        offset: int,
+        result_mix_policy: Optional[str],
+        semantic_tail_cap: Optional[int],
+        retrieval_mode: str,
+        noise_guard_applied: bool,
+        visibility_scope: str,
+        search_surface_effective: str,
+        content_type: Optional[str],
+        ingestion_type: Optional[str],
+        runtime_settings: Dict[str, Any],
+    ) -> str:
+        cache_key = generate_cache_key(
+            service="search",
+            query=query,
+            firebase_uid=firebase_uid,
+            book_id=book_id,
+            limit=limit,
+            version=settings.EMBEDDING_MODEL_VERSION,
+        )
+        suffixes = [
+            f"_int:{intent}_off:{offset}_router:{settings.SEARCH_ROUTER_MODE}",
+            f"_mix:{result_mix_policy or 'none'}_semcap:{semantic_tail_cap if semantic_tail_cap is not None else 'none'}",
+            f"_mixver:{SEMANTIC_MIX_POLICY_VERSION}",
+            f"_rmode:{retrieval_mode}_noise:{int(noise_guard_applied)}_modegate:{int(runtime_settings['search_mode_routing_enabled'])}",
+            f"_typo:{int(runtime_settings['search_typo_rescue_enabled'])}",
+            f"_lemseed:{int(runtime_settings['search_lemma_seed_fallback_enabled'])}",
+            f"_dyntail:{int(runtime_settings['search_dynamic_single_token_semantic_cap_enabled'])}",
+            f"_vis:{visibility_scope or 'default'}",
+            f"_surface:{search_surface_effective}",
+            f"_ct:{content_type or 'none'}",
+            f"_it:{ingestion_type or 'none'}",
+            f"_rrke:{int(runtime_settings['search_rerank_enabled'])}",
+            f"_rrks:{int(runtime_settings['search_rerank_shadow_enabled'])}",
+            f"_rrkprov:{runtime_settings['search_rerank_provider']}",
+            f"_rrktop:{runtime_settings['search_rerank_top_n']}",
+            f"_rrkpool:{runtime_settings['search_rerank_max_candidates']}",
+            f"_b25e:{int(runtime_settings['search_bm25plus_enabled'])}",
+            f"_b25s:{int(runtime_settings['search_bm25plus_shadow_enabled'])}",
+            f"_b25pool:{runtime_settings['search_bm25plus_max_candidates']}",
+            f"_b25w:{runtime_settings['search_bm25plus_blend_weight']:.3f}",
+            f"_wpe:{int(runtime_settings['search_wide_pool_enabled'])}",
+            f"_wpd:{runtime_settings['search_wide_pool_limit_direct']}",
+            f"_wpn:{runtime_settings['search_wide_pool_limit_default']}",
+            f"_wps:{runtime_settings['search_wide_pool_semantic_fetch_limit']}",
+            f"_mmre:{int(runtime_settings['search_mmr_enabled'])}",
+            f"_mmrs:{int(runtime_settings['search_mmr_shadow_enabled'])}",
+            f"_mmrpool:{runtime_settings['search_mmr_max_candidates']}",
+            f"_mmrtop:{runtime_settings['search_mmr_top_n']}",
+            f"_mmrl:{runtime_settings['search_mmr_lambda']:.3f}",
+        ]
+        return cache_key + "".join(suffixes)
+
+    @staticmethod
+    def _search_runtime_settings() -> Dict[str, Any]:
+        return {
+            "search_mode_routing_enabled": bool(getattr(settings, "SEARCH_MODE_ROUTING_ENABLED", True)),
+            "search_typo_rescue_enabled": bool(getattr(settings, "SEARCH_TYPO_RESCUE_ENABLED", True)),
+            "search_lemma_seed_fallback_enabled": bool(getattr(settings, "SEARCH_LEMMA_SEED_FALLBACK_ENABLED", True)),
+            "search_dynamic_single_token_semantic_cap_enabled": bool(
+                getattr(settings, "SEARCH_DYNAMIC_SINGLE_TOKEN_SEMANTIC_CAP_ENABLED", True)
+            ),
+            "search_smart_semantic_tail_cap": int(getattr(settings, "SEARCH_SMART_SEMANTIC_TAIL_CAP", 6) or 6),
+            "search_wide_pool_enabled": bool(getattr(settings, "SEARCH_WIDE_POOL_ENABLED", False)),
+            "search_wide_pool_canary_uids": set(getattr(settings, "SEARCH_WIDE_POOL_CANARY_UIDS", set()) or set()),
+            "search_wide_pool_limit_direct": int(getattr(settings, "SEARCH_WIDE_POOL_LIMIT_DIRECT", 900) or 900),
+            "search_wide_pool_limit_default": int(getattr(settings, "SEARCH_WIDE_POOL_LIMIT_DEFAULT", 480) or 480),
+            "search_wide_pool_semantic_fetch_limit": int(
+                getattr(settings, "SEARCH_WIDE_POOL_SEMANTIC_FETCH_LIMIT", 72) or 72
+            ),
+            "search_noise_guard_enabled": bool(getattr(settings, "SEARCH_NOISE_GUARD_ENABLED", True)),
+            "search_semantic_expansion_max_variations": int(
+                getattr(settings, "SEARCH_SEMANTIC_EXPANSION_MAX_VARIATIONS", 2) or 0
+            ),
+            "l3_perf_expansion_tail_fix_enabled": bool(getattr(settings, "L3_PERF_EXPANSION_TAIL_FIX_ENABLED", False)),
+            "search_rerank_enabled": bool(getattr(settings, "SEARCH_RERANK_ENABLED", False)),
+            "search_rerank_shadow_enabled": bool(getattr(settings, "SEARCH_RERANK_SHADOW_ENABLED", False)),
+            "search_rerank_provider": str(getattr(settings, "SEARCH_RERANK_PROVIDER", "off") or "off"),
+            "search_rerank_canary_uids": set(getattr(settings, "SEARCH_RERANK_CANARY_UIDS", set()) or set()),
+            "search_rerank_min_candidates": int(getattr(settings, "SEARCH_RERANK_MIN_CANDIDATES", 8) or 8),
+            "search_rerank_max_candidates": int(getattr(settings, "SEARCH_RERANK_MAX_CANDIDATES", 80) or 80),
+            "search_rerank_top_n": int(getattr(settings, "SEARCH_RERANK_TOP_N", 24) or 24),
+            "search_bm25plus_enabled": bool(getattr(settings, "SEARCH_BM25PLUS_ENABLED", False)),
+            "search_bm25plus_shadow_enabled": bool(getattr(settings, "SEARCH_BM25PLUS_SHADOW_ENABLED", False)),
+            "search_bm25plus_canary_uids": set(getattr(settings, "SEARCH_BM25PLUS_CANARY_UIDS", set()) or set()),
+            "search_bm25plus_min_candidates": int(getattr(settings, "SEARCH_BM25PLUS_MIN_CANDIDATES", 8) or 8),
+            "search_bm25plus_max_candidates": int(getattr(settings, "SEARCH_BM25PLUS_MAX_CANDIDATES", 120) or 120),
+            "search_bm25plus_blend_weight": float(getattr(settings, "SEARCH_BM25PLUS_BLEND_WEIGHT", 0.22) or 0.22),
+            "search_mmr_enabled": bool(getattr(settings, "SEARCH_MMR_ENABLED", False)),
+            "search_mmr_shadow_enabled": bool(getattr(settings, "SEARCH_MMR_SHADOW_ENABLED", False)),
+            "search_mmr_canary_uids": set(getattr(settings, "SEARCH_MMR_CANARY_UIDS", set()) or set()),
+            "search_mmr_min_candidates": int(getattr(settings, "SEARCH_MMR_MIN_CANDIDATES", 8) or 8),
+            "search_mmr_max_candidates": int(getattr(settings, "SEARCH_MMR_MAX_CANDIDATES", 100) or 100),
+            "search_mmr_top_n": int(getattr(settings, "SEARCH_MMR_TOP_N", 24) or 24),
+            "search_mmr_lambda": float(getattr(settings, "SEARCH_MMR_LAMBDA", 0.62) or 0.62),
+        }
+
+    @staticmethod
+    def _hydrate_cache_hit_metadata(
+        *,
+        total_count: int,
+        search_surface_effective: str,
+        retrieval_mode: str,
+        latency_budget_applied: bool,
+        graph_timeout_triggered: bool,
+        noise_guard_applied: bool,
+        wide_pool_mode: str,
+        wide_pool_status: str,
+        wide_pool_applied: bool,
+        wide_pool_skip_reason: Optional[str],
+        wide_pool_base_internal_limit: int,
+        wide_pool_internal_limit_effective: int,
+        wide_pool_base_semantic_fetch_limit: int,
+        wide_pool_semantic_fetch_limit_effective: int,
+        cached_meta: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        meta = {
+            "cached": True,
+            "CACHE_HIT": True,
+            "CACHE_LAYER": "L1_OR_L2",
+            "search_log_id": None,
+            "total_count": total_count,
+            "retrieval_fusion_mode": settings.RETRIEVAL_FUSION_MODE,
+            "retrieval_path": "hybrid",
+            "search_surface": search_surface_effective,
+            "router_mode": settings.SEARCH_ROUTER_MODE,
+            "retrieval_mode": retrieval_mode,
+            "latency_budget_applied": latency_budget_applied,
+            "graph_timeout_triggered": graph_timeout_triggered,
+            "noise_guard_applied": noise_guard_applied,
+            "wide_pool_mode": wide_pool_mode,
+            "wide_pool_status": wide_pool_status,
+            "wide_pool_applied": wide_pool_applied,
+            "wide_pool_skip_reason": wide_pool_skip_reason,
+            "wide_pool_base_internal_limit": wide_pool_base_internal_limit,
+            "wide_pool_internal_limit_effective": wide_pool_internal_limit_effective,
+            "wide_pool_base_semantic_fetch_limit": wide_pool_base_semantic_fetch_limit,
+            "wide_pool_semantic_fetch_limit_effective": wide_pool_semantic_fetch_limit_effective,
+        }
+        meta.update(cached_meta)
+        meta["cached"] = True
+        meta["CACHE_HIT"] = True
+        meta["CACHE_LAYER"] = "L1_OR_L2"
+        meta["search_log_id"] = None
+        return meta
+
+    @staticmethod
+    def _rollout_metadata(
+        *,
+        wide_pool_mode: str,
+        wide_pool_status: str,
+        wide_pool_applied: bool,
+        wide_pool_skip_reason: Optional[str],
+        wide_pool_base_internal_limit: int,
+        wide_pool_internal_limit_effective: int,
+        wide_pool_base_semantic_fetch_limit: int,
+        wide_pool_semantic_fetch_limit_effective: int,
+        bm25plus_mode: str,
+        bm25plus_status: str,
+        bm25plus_applied: bool,
+        bm25plus_shadow: bool,
+        bm25plus_skip_reason: Optional[str],
+        bm25plus_candidate_count: int,
+        bm25plus_top1_changed: bool,
+        bm25plus_latency_ms: int,
+        mmr_mode: str,
+        mmr_status: str,
+        mmr_applied: bool,
+        mmr_shadow: bool,
+        mmr_skip_reason: Optional[str],
+        mmr_candidate_count: int,
+        mmr_top1_changed: bool,
+        mmr_latency_ms: int,
+        rerank_provider: str,
+        rerank_mode: str,
+        rerank_status: str,
+        rerank_applied: bool,
+        rerank_shadow: bool,
+        rerank_skip_reason: Optional[str],
+        rerank_candidate_count: int,
+        rerank_top1_changed: bool,
+        rerank_latency_ms: int,
+    ) -> Dict[str, Any]:
+        return {
+            "wide_pool_mode": wide_pool_mode,
+            "wide_pool_status": wide_pool_status,
+            "wide_pool_applied": wide_pool_applied,
+            "wide_pool_skip_reason": wide_pool_skip_reason,
+            "wide_pool_base_internal_limit": wide_pool_base_internal_limit,
+            "wide_pool_internal_limit_effective": wide_pool_internal_limit_effective,
+            "wide_pool_base_semantic_fetch_limit": wide_pool_base_semantic_fetch_limit,
+            "wide_pool_semantic_fetch_limit_effective": wide_pool_semantic_fetch_limit_effective,
+            "bm25plus_mode": bm25plus_mode,
+            "bm25plus_status": bm25plus_status,
+            "bm25plus_applied": bm25plus_applied,
+            "bm25plus_shadow": bm25plus_shadow,
+            "bm25plus_skip_reason": bm25plus_skip_reason,
+            "bm25plus_candidate_count": bm25plus_candidate_count,
+            "bm25plus_top1_changed": bm25plus_top1_changed,
+            "BM25PLUS_TIME_MS": bm25plus_latency_ms,
+            "mmr_mode": mmr_mode,
+            "mmr_status": mmr_status,
+            "mmr_applied": mmr_applied,
+            "mmr_shadow": mmr_shadow,
+            "mmr_skip_reason": mmr_skip_reason,
+            "mmr_candidate_count": mmr_candidate_count,
+            "mmr_top1_changed": mmr_top1_changed,
+            "MMR_TIME_MS": mmr_latency_ms,
+            "rerank_provider": rerank_provider,
+            "rerank_mode": rerank_mode,
+            "rerank_status": rerank_status,
+            "rerank_applied": rerank_applied,
+            "rerank_shadow": rerank_shadow,
+            "rerank_skip_reason": rerank_skip_reason,
+            "rerank_candidate_count": rerank_candidate_count,
+            "rerank_top1_changed": rerank_top1_changed,
+            "RERANK_TIME_MS": rerank_latency_ms,
+        }
+
+    @staticmethod
+    def _observability_summary(
+        *,
+        retrieval_mode: str,
+        result_mix_policy: Optional[str],
+        wide_pool_mode: str,
+        wide_pool_status: str,
+        bm25plus_mode: str,
+        bm25plus_status: str,
+        mmr_mode: str,
+        mmr_status: str,
+        rerank_mode: str,
+        rerank_status: str,
+        strategy_timing_ms: Dict[str, int],
+        bm25plus_latency_ms: int,
+        mmr_latency_ms: int,
+        rerank_latency_ms: int,
+    ) -> Dict[str, Any]:
+        return {
+            "search_path_summary": {
+                "retrieval_mode": retrieval_mode,
+                "result_mix_policy": result_mix_policy or "none",
+                "wide_pool": f"{wide_pool_mode}:{wide_pool_status}",
+                "bm25plus": f"{bm25plus_mode}:{bm25plus_status}",
+                "mmr": f"{mmr_mode}:{mmr_status}",
+                "rerank": f"{rerank_mode}:{rerank_status}",
+            },
+            "latency_trace_ms": {
+                "semantic_strategy": strategy_timing_ms.get("SemanticMatchStrategy"),
+                "semantic_variations": strategy_timing_ms.get("SemanticMatchStrategy_Var"),
+                "bm25plus": bm25plus_latency_ms,
+                "mmr": mmr_latency_ms,
+                "rerank": rerank_latency_ms,
+            },
+        }
             
     def search(
         self,
@@ -197,6 +459,7 @@ class SearchOrchestrator:
         ingestion_type: Optional[str] = None,
     ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         start_time = time.time()
+        runtime_settings = self._search_runtime_settings()
         search_surface_effective = str(search_surface or "CORE").strip().upper()
         if search_surface_effective not in {"CORE", "PDF_ONLY"}:
             search_surface_effective = "CORE"
@@ -223,7 +486,7 @@ class SearchOrchestrator:
         # Determine internal POOL_SIZE based on intent
         # We fetch a large pool to ensure good fusion, even on later pages
         internal_pool_limit = 700 if intent in ['DIRECT', 'CITATION_SEEKING'] else 320
-        default_semantic_tail_cap = int(getattr(settings, "SEARCH_SMART_SEMANTIC_TAIL_CAP", 6) or 6)
+        default_semantic_tail_cap = runtime_settings["search_smart_semantic_tail_cap"]
         semantic_tail_cap_value_for_fetch = (
             semantic_tail_cap
             if isinstance(semantic_tail_cap, int) and semantic_tail_cap > 0
@@ -242,26 +505,21 @@ class SearchOrchestrator:
         wide_pool_internal_limit_effective = int(internal_pool_limit)
         wide_pool_semantic_fetch_limit_effective = int(semantic_fetch_limit)
 
-        if bool(getattr(settings, "SEARCH_WIDE_POOL_ENABLED", False)):
+        if runtime_settings["search_wide_pool_enabled"]:
             wide_pool_mode = "apply"
-            canary_uids = set(getattr(settings, "SEARCH_WIDE_POOL_CANARY_UIDS", set()) or set())
+            canary_uids = runtime_settings["search_wide_pool_canary_uids"]
             if not self._is_uid_allowed(firebase_uid, canary_uids):
                 wide_pool_status = "skipped"
                 wide_pool_skip_reason = "uid_not_in_canary"
             else:
                 direct_intents = {"DIRECT", "CITATION_SEEKING"}
-                target_internal_limit = int(
-                    getattr(
-                        settings,
-                        "SEARCH_WIDE_POOL_LIMIT_DIRECT" if intent in direct_intents else "SEARCH_WIDE_POOL_LIMIT_DEFAULT",
-                        900 if intent in direct_intents else 480,
-                    )
-                    or (900 if intent in direct_intents else 480)
+                target_internal_limit = (
+                    runtime_settings["search_wide_pool_limit_direct"]
+                    if intent in direct_intents
+                    else runtime_settings["search_wide_pool_limit_default"]
                 )
                 target_internal_limit = max(wide_pool_base_internal_limit, min(2500, target_internal_limit))
-                target_semantic_limit = int(
-                    getattr(settings, "SEARCH_WIDE_POOL_SEMANTIC_FETCH_LIMIT", 72) or 72
-                )
+                target_semantic_limit = runtime_settings["search_wide_pool_semantic_fetch_limit"]
                 target_semantic_limit = max(wide_pool_base_semantic_fetch_limit, min(180, target_semantic_limit))
                 internal_pool_limit = target_internal_limit
                 semantic_fetch_limit = target_semantic_limit
@@ -287,12 +545,12 @@ class SearchOrchestrator:
         selected_buckets = ["exact", "lemma", "semantic"]
         executed_strategies: List[str] = []
         retrieval_mode = "balanced"
-        noise_guard_applied = bool(getattr(settings, "SEARCH_NOISE_GUARD_ENABLED", True))
+        noise_guard_applied = runtime_settings["search_noise_guard_enabled"]
         latency_budget_applied = False
         graph_timeout_triggered = False
 
 
-        if getattr(settings, "SEARCH_MODE_ROUTING_ENABLED", True):
+        if runtime_settings["search_mode_routing_enabled"]:
             if settings.SEARCH_ROUTER_MODE == "rule_based":
                 decision = self.router.route(
                     query=query,
@@ -315,45 +573,23 @@ class SearchOrchestrator:
 
         # Check cache first
         if self.cache:
-            cache_key = generate_cache_key(
-                service="search",
+            cache_key = self._build_search_cache_key(
                 query=query,
                 firebase_uid=firebase_uid,
                 book_id=book_id,
                 limit=limit,
-                version=settings.EMBEDDING_MODEL_VERSION
+                intent=intent,
+                offset=offset,
+                result_mix_policy=result_mix_policy,
+                semantic_tail_cap=semantic_tail_cap,
+                retrieval_mode=retrieval_mode,
+                noise_guard_applied=noise_guard_applied,
+                visibility_scope=visibility_scope,
+                search_surface_effective=search_surface_effective,
+                content_type=content_type,
+                ingestion_type=ingestion_type,
+                runtime_settings=runtime_settings,
             )
-            cache_key += f"_int:{intent}_off:{offset}_router:{settings.SEARCH_ROUTER_MODE}"
-            cache_key += f"_mix:{result_mix_policy or 'none'}_semcap:{semantic_tail_cap if semantic_tail_cap is not None else 'none'}"
-            cache_key += f"_mixver:{SEMANTIC_MIX_POLICY_VERSION}"
-            cache_key += f"_rmode:{retrieval_mode}_noise:{int(noise_guard_applied)}_modegate:{int(getattr(settings, 'SEARCH_MODE_ROUTING_ENABLED', True))}"
-            cache_key += f"_typo:{int(getattr(settings, 'SEARCH_TYPO_RESCUE_ENABLED', True))}"
-            cache_key += f"_lemseed:{int(getattr(settings, 'SEARCH_LEMMA_SEED_FALLBACK_ENABLED', True))}"
-            cache_key += f"_dyntail:{int(getattr(settings, 'SEARCH_DYNAMIC_SINGLE_TOKEN_SEMANTIC_CAP_ENABLED', True))}"
-            cache_key += f"_vis:{(visibility_scope or 'default')}"
-            cache_key += f"_surface:{search_surface_effective}"
-            cache_key += f"_ct:{(content_type or 'none')}"
-            cache_key += f"_it:{(ingestion_type or 'none')}"
-            cache_key += f"_rrke:{int(bool(getattr(settings, 'SEARCH_RERANK_ENABLED', False)))}"
-            cache_key += f"_rrks:{int(bool(getattr(settings, 'SEARCH_RERANK_SHADOW_ENABLED', False)))}"
-            cache_key += f"_rrkprov:{str(getattr(settings, 'SEARCH_RERANK_PROVIDER', 'off') or 'off')}"
-            cache_key += f"_rrktop:{int(getattr(settings, 'SEARCH_RERANK_TOP_N', 24) or 24)}"
-            cache_key += f"_rrkpool:{int(getattr(settings, 'SEARCH_RERANK_MAX_CANDIDATES', 80) or 80)}"
-            cache_key += f"_b25e:{int(bool(getattr(settings, 'SEARCH_BM25PLUS_ENABLED', False)))}"
-            cache_key += f"_b25s:{int(bool(getattr(settings, 'SEARCH_BM25PLUS_SHADOW_ENABLED', False)))}"
-            cache_key += f"_b25pool:{int(getattr(settings, 'SEARCH_BM25PLUS_MAX_CANDIDATES', 120) or 120)}"
-            cache_key += f"_b25w:{float(getattr(settings, 'SEARCH_BM25PLUS_BLEND_WEIGHT', 0.22) or 0.22):.3f}"
-            cache_key += f"_wpe:{int(bool(getattr(settings, 'SEARCH_WIDE_POOL_ENABLED', False)))}"
-            cache_key += f"_wpd:{int(getattr(settings, 'SEARCH_WIDE_POOL_LIMIT_DIRECT', 900) or 900)}"
-            cache_key += f"_wpn:{int(getattr(settings, 'SEARCH_WIDE_POOL_LIMIT_DEFAULT', 480) or 480)}"
-            cache_key += f"_wps:{int(getattr(settings, 'SEARCH_WIDE_POOL_SEMANTIC_FETCH_LIMIT', 72) or 72)}"
-            cache_key += f"_mmre:{int(bool(getattr(settings, 'SEARCH_MMR_ENABLED', False)))}"
-            cache_key += f"_mmrs:{int(bool(getattr(settings, 'SEARCH_MMR_SHADOW_ENABLED', False)))}"
-            cache_key += f"_mmrpool:{int(getattr(settings, 'SEARCH_MMR_MAX_CANDIDATES', 100) or 100)}"
-            cache_key += f"_mmrtop:{int(getattr(settings, 'SEARCH_MMR_TOP_N', 24) or 24)}"
-            cache_key += f"_mmrl:{float(getattr(settings, 'SEARCH_MMR_LAMBDA', 0.62) or 0.62):.3f}"
-
-            
             cached_payload = self.cache.get(cache_key)
             if cached_payload:
                 # Cache stores just the list. For now, return None for log_id on cache hit 
@@ -368,31 +604,23 @@ class SearchOrchestrator:
                     cached_results = cached_payload
                     total_count = len(cached_results)
                     cached_meta = {}
-                meta = {
-                    "cached": True,
-                    "CACHE_HIT": True,
-                    "CACHE_LAYER": "L1_OR_L2",
-                    "search_log_id": None,
-                    "total_count": total_count,
-                    "retrieval_fusion_mode": settings.RETRIEVAL_FUSION_MODE,
-                    "retrieval_path": "hybrid",
-                    "search_surface": search_surface_effective,
-                    "router_mode": settings.SEARCH_ROUTER_MODE,
-                    "retrieval_mode": retrieval_mode,
-                    "latency_budget_applied": latency_budget_applied,
-                    "graph_timeout_triggered": graph_timeout_triggered,
-                    "noise_guard_applied": noise_guard_applied,
-
-                    "wide_pool_mode": wide_pool_mode,
-                    "wide_pool_status": wide_pool_status,
-                    "wide_pool_applied": wide_pool_applied,
-                    "wide_pool_skip_reason": wide_pool_skip_reason,
-                    "wide_pool_base_internal_limit": wide_pool_base_internal_limit,
-                    "wide_pool_internal_limit_effective": wide_pool_internal_limit_effective,
-                    "wide_pool_base_semantic_fetch_limit": wide_pool_base_semantic_fetch_limit,
-                    "wide_pool_semantic_fetch_limit_effective": wide_pool_semantic_fetch_limit_effective,
-                }
-                meta.update(cached_meta)
+                meta = self._hydrate_cache_hit_metadata(
+                    total_count=total_count,
+                    search_surface_effective=search_surface_effective,
+                    retrieval_mode=retrieval_mode,
+                    latency_budget_applied=latency_budget_applied,
+                    graph_timeout_triggered=graph_timeout_triggered,
+                    noise_guard_applied=noise_guard_applied,
+                    wide_pool_mode=wide_pool_mode,
+                    wide_pool_status=wide_pool_status,
+                    wide_pool_applied=wide_pool_applied,
+                    wide_pool_skip_reason=wide_pool_skip_reason,
+                    wide_pool_base_internal_limit=wide_pool_base_internal_limit,
+                    wide_pool_internal_limit_effective=wide_pool_internal_limit_effective,
+                    wide_pool_base_semantic_fetch_limit=wide_pool_base_semantic_fetch_limit,
+                    wide_pool_semantic_fetch_limit_effective=wide_pool_semantic_fetch_limit_effective,
+                    cached_meta=cached_meta,
+                )
                 return cached_results, meta
         
         # 0. Query Expansion (Phase 2) - PARALLELIZED with strategy execution
@@ -416,17 +644,20 @@ class SearchOrchestrator:
             future_started_at: Dict[Any, float] = {}
             
             # A. Start Expansion
-            expansion_variation_limit = int(
-                getattr(settings, "SEARCH_SEMANTIC_EXPANSION_MAX_VARIATIONS", 2) or 0
-            )
+            expansion_variation_limit = runtime_settings["search_semantic_expansion_max_variations"]
             expansion_variation_limit = max(0, min(3, expansion_variation_limit))
+            should_run_expansion = route_flags["run_semantic"] and expansion_variation_limit > 0
             expansion_future = (
                 executor.submit(self.expander.expand_query, query, expansion_variation_limit)
-                if expansion_variation_limit > 0
+                if should_run_expansion
                 else None
             )
             if expansion_future is None:
-                expansion_skipped_reason = "expansion_disabled"
+                expansion_skipped_reason = (
+                    "semantic_lane_disabled"
+                    if not route_flags["run_semantic"]
+                    else "expansion_disabled"
+                )
             
             # B. Run Strategies
             for strat in self.strategies:
@@ -501,14 +732,14 @@ class SearchOrchestrator:
             if expansion_future:
                 try:
                     expansion_timeout_s = 6.0
-                    if getattr(settings, "L3_PERF_EXPANSION_TAIL_FIX_ENABLED", False):
+                    if runtime_settings["l3_perf_expansion_tail_fix_enabled"]:
                         expansion_timeout_s = 2.0
                     variations = expansion_future.result(timeout=expansion_timeout_s)
                 except FutureTimeoutError:
                     variations = []
                     expansion_future.cancel()
                     expansion_skipped_reason = "expansion_timeout"
-                    if getattr(settings, "L3_PERF_EXPANSION_TAIL_FIX_ENABLED", False):
+                    if runtime_settings["l3_perf_expansion_tail_fix_enabled"]:
                         try:
                             L3_PERF_GUARD_APPLIED_TOTAL.labels(guard_name="expansion_tail_timeout").inc()
                         except Exception:
@@ -557,7 +788,7 @@ class SearchOrchestrator:
                     except Exception:
                         pass
         finally:
-            if getattr(settings, "L3_PERF_EXPANSION_TAIL_FIX_ENABLED", False):
+            if runtime_settings["l3_perf_expansion_tail_fix_enabled"]:
                 executor.shutdown(wait=False, cancel_futures=True)
             else:
                 executor.shutdown(wait=True)
@@ -568,7 +799,7 @@ class SearchOrchestrator:
 
         # Typo rescue for low-lexical cases: re-run lexical strategies once with corrected query.
         if (
-            getattr(settings, "SEARCH_TYPO_RESCUE_ENABLED", True)
+            runtime_settings["search_typo_rescue_enabled"]
             and initial_lexical_raw_count <= 2
             and (route_flags["run_exact"] or route_flags["run_lemma"])
         ):
@@ -619,7 +850,7 @@ class SearchOrchestrator:
 
         # Lemma-seed fallback: if no lemma hits at all, run exact search for top 1-2 lemmas.
         if (
-            getattr(settings, "SEARCH_LEMMA_SEED_FALLBACK_ENABLED", True)
+            runtime_settings["search_lemma_seed_fallback_enabled"]
             and route_flags["run_exact"]
             and exact_strat
             and len(bucket_lemma) == 0
@@ -824,7 +1055,7 @@ class SearchOrchestrator:
         rerank_latency_ms: Optional[int] = None
         rerank_candidate_count = 0
         rerank_top1_changed = False
-        rerank_provider = str(getattr(settings, "SEARCH_RERANK_PROVIDER", "off") or "off")
+        rerank_provider = runtime_settings["search_rerank_provider"]
         bm25plus_mode = "disabled"
         bm25plus_status = "disabled"
         bm25plus_skip_reason = "feature_off"
@@ -958,7 +1189,7 @@ class SearchOrchestrator:
             semantic_total_raw = len(semantic_list_raw)
             lexical_total = len(lexical_list)
             if (
-                getattr(settings, "SEARCH_DYNAMIC_SINGLE_TOKEN_SEMANTIC_CAP_ENABLED", True)
+                runtime_settings["search_dynamic_single_token_semantic_cap_enabled"]
                 and self._token_count(query_original) == 1
             ):
                 semantic_tail_policy = "dynamic_single_token"
@@ -990,26 +1221,26 @@ class SearchOrchestrator:
         elif search_surface_effective == "PDF_ONLY":
             final_list = [item for item in final_list if is_pdf_like_item(item)]
 
-        bm25_enabled_flag = bool(getattr(settings, "SEARCH_BM25PLUS_ENABLED", False))
-        bm25_shadow_flag = bool(getattr(settings, "SEARCH_BM25PLUS_SHADOW_ENABLED", False))
+        bm25_enabled_flag = runtime_settings["search_bm25plus_enabled"]
+        bm25_shadow_flag = runtime_settings["search_bm25plus_shadow_enabled"]
         if bm25_enabled_flag or bm25_shadow_flag:
             bm25plus_mode = "apply" if bm25_enabled_flag else "shadow"
-            canary_uids = set(getattr(settings, "SEARCH_BM25PLUS_CANARY_UIDS", set()) or set())
+            canary_uids = runtime_settings["search_bm25plus_canary_uids"]
             if not self._is_uid_allowed(firebase_uid, canary_uids):
                 bm25plus_status = "skipped"
                 bm25plus_skip_reason = "uid_not_in_canary"
             else:
-                min_candidates = max(2, int(getattr(settings, "SEARCH_BM25PLUS_MIN_CANDIDATES", 8) or 8))
+                min_candidates = max(2, runtime_settings["search_bm25plus_min_candidates"])
                 max_candidates = max(
                     min_candidates,
-                    min(300, int(getattr(settings, "SEARCH_BM25PLUS_MAX_CANDIDATES", 120) or 120)),
+                    min(300, runtime_settings["search_bm25plus_max_candidates"]),
                 )
                 if len(final_list) < min_candidates:
                     bm25plus_status = "skipped"
                     bm25plus_skip_reason = "insufficient_candidates"
                 else:
                     bm25plus_candidate_count = min(len(final_list), max_candidates)
-                    bm25_weight = float(getattr(settings, "SEARCH_BM25PLUS_BLEND_WEIGHT", 0.22) or 0.22)
+                    bm25_weight = runtime_settings["search_bm25plus_blend_weight"]
                     bm25_weight = max(0.0, min(1.0, bm25_weight))
                     original_top_key = self._item_key(final_list[0]) if final_list else None
                     try:
@@ -1078,29 +1309,29 @@ class SearchOrchestrator:
                 except Exception:
                     pass
 
-        mmr_enabled_flag = bool(getattr(settings, "SEARCH_MMR_ENABLED", False))
-        mmr_shadow_flag = bool(getattr(settings, "SEARCH_MMR_SHADOW_ENABLED", False))
+        mmr_enabled_flag = runtime_settings["search_mmr_enabled"]
+        mmr_shadow_flag = runtime_settings["search_mmr_shadow_enabled"]
         if mmr_enabled_flag or mmr_shadow_flag:
             mmr_mode = "apply" if mmr_enabled_flag else "shadow"
-            canary_uids = set(getattr(settings, "SEARCH_MMR_CANARY_UIDS", set()) or set())
+            canary_uids = runtime_settings["search_mmr_canary_uids"]
             if not self._is_uid_allowed(firebase_uid, canary_uids):
                 mmr_status = "skipped"
                 mmr_skip_reason = "uid_not_in_canary"
             else:
-                min_candidates = max(2, int(getattr(settings, "SEARCH_MMR_MIN_CANDIDATES", 8) or 8))
+                min_candidates = max(2, runtime_settings["search_mmr_min_candidates"])
                 max_candidates = max(
                     min_candidates,
-                    min(300, int(getattr(settings, "SEARCH_MMR_MAX_CANDIDATES", 100) or 100)),
+                    min(300, runtime_settings["search_mmr_max_candidates"]),
                 )
                 if len(final_list) < min_candidates:
                     mmr_status = "skipped"
                     mmr_skip_reason = "insufficient_candidates"
                 else:
                     mmr_candidate_count = min(len(final_list), max_candidates)
-                    mmr_top_n = int(getattr(settings, "SEARCH_MMR_TOP_N", 24) or 24)
+                    mmr_top_n = runtime_settings["search_mmr_top_n"]
                     mmr_top_n = max(4, mmr_top_n)
                     mmr_top_n = min(mmr_candidate_count, mmr_top_n)
-                    mmr_lambda = float(getattr(settings, "SEARCH_MMR_LAMBDA", 0.62) or 0.62)
+                    mmr_lambda = runtime_settings["search_mmr_lambda"]
                     mmr_lambda = max(0.0, min(1.0, mmr_lambda))
                     original_top_key = self._item_key(final_list[0]) if final_list else None
                     try:
@@ -1163,26 +1394,26 @@ class SearchOrchestrator:
                 except Exception:
                     pass
 
-        rerank_enabled_flag = bool(getattr(settings, "SEARCH_RERANK_ENABLED", False))
-        rerank_shadow_flag = bool(getattr(settings, "SEARCH_RERANK_SHADOW_ENABLED", False))
+        rerank_enabled_flag = runtime_settings["search_rerank_enabled"]
+        rerank_shadow_flag = runtime_settings["search_rerank_shadow_enabled"]
         if rerank_enabled_flag or rerank_shadow_flag:
             rerank_mode = "apply" if rerank_enabled_flag else "shadow"
-            canary_uids = set(getattr(settings, "SEARCH_RERANK_CANARY_UIDS", set()) or set())
+            canary_uids = runtime_settings["search_rerank_canary_uids"]
             if not self._is_uid_allowed(firebase_uid, canary_uids):
                 rerank_status = "skipped"
                 rerank_skip_reason = "uid_not_in_canary"
             else:
-                min_candidates = max(2, int(getattr(settings, "SEARCH_RERANK_MIN_CANDIDATES", 8) or 8))
+                min_candidates = max(2, runtime_settings["search_rerank_min_candidates"])
                 max_candidates = max(
                     min_candidates,
-                    min(300, int(getattr(settings, "SEARCH_RERANK_MAX_CANDIDATES", 80) or 80)),
+                    min(300, runtime_settings["search_rerank_max_candidates"]),
                 )
                 if len(final_list) < min_candidates:
                     rerank_status = "skipped"
                     rerank_skip_reason = "insufficient_candidates"
                 else:
                     rerank_candidate_count = min(len(final_list), max_candidates)
-                    top_n = int(getattr(settings, "SEARCH_RERANK_TOP_N", 24) or 24)
+                    top_n = runtime_settings["search_rerank_top_n"]
                     top_n = max(4, top_n)
                     top_n = min(rerank_candidate_count, top_n)
                     candidate_pool = [dict(item) for item in final_list[:rerank_candidate_count]]
@@ -1269,7 +1500,58 @@ class SearchOrchestrator:
 
         # Log search (best-effort)
         search_log_id = None
-        diagnostic_payload = {
+        rollout_metadata = self._rollout_metadata(
+            wide_pool_mode=wide_pool_mode,
+            wide_pool_status=wide_pool_status,
+            wide_pool_applied=wide_pool_applied,
+            wide_pool_skip_reason=wide_pool_skip_reason,
+            wide_pool_base_internal_limit=wide_pool_base_internal_limit,
+            wide_pool_internal_limit_effective=wide_pool_internal_limit_effective,
+            wide_pool_base_semantic_fetch_limit=wide_pool_base_semantic_fetch_limit,
+            wide_pool_semantic_fetch_limit_effective=wide_pool_semantic_fetch_limit_effective,
+            bm25plus_mode=bm25plus_mode,
+            bm25plus_status=bm25plus_status,
+            bm25plus_applied=bm25plus_applied,
+            bm25plus_shadow=bm25plus_shadow,
+            bm25plus_skip_reason=bm25plus_skip_reason,
+            bm25plus_candidate_count=bm25plus_candidate_count,
+            bm25plus_top1_changed=bm25plus_top1_changed,
+            bm25plus_latency_ms=bm25plus_latency_ms,
+            mmr_mode=mmr_mode,
+            mmr_status=mmr_status,
+            mmr_applied=mmr_applied,
+            mmr_shadow=mmr_shadow,
+            mmr_skip_reason=mmr_skip_reason,
+            mmr_candidate_count=mmr_candidate_count,
+            mmr_top1_changed=mmr_top1_changed,
+            mmr_latency_ms=mmr_latency_ms,
+            rerank_provider=rerank_provider,
+            rerank_mode=rerank_mode,
+            rerank_status=rerank_status,
+            rerank_applied=rerank_applied,
+            rerank_shadow=rerank_shadow,
+            rerank_skip_reason=rerank_skip_reason,
+            rerank_candidate_count=rerank_candidate_count,
+            rerank_top1_changed=rerank_top1_changed,
+            rerank_latency_ms=rerank_latency_ms,
+        )
+        observability_summary = self._observability_summary(
+            retrieval_mode=retrieval_mode,
+            result_mix_policy=mix_policy_applied,
+            wide_pool_mode=wide_pool_mode,
+            wide_pool_status=wide_pool_status,
+            bm25plus_mode=bm25plus_mode,
+            bm25plus_status=bm25plus_status,
+            mmr_mode=mmr_mode,
+            mmr_status=mmr_status,
+            rerank_mode=rerank_mode,
+            rerank_status=rerank_status,
+            strategy_timing_ms=strategy_timing_ms,
+            bm25plus_latency_ms=bm25plus_latency_ms,
+            mmr_latency_ms=mmr_latency_ms,
+            rerank_latency_ms=rerank_latency_ms,
+        )
+        shared_metadata = {
             "retrieval_fusion_mode": fusion_mode,
             "retrieval_path": "hybrid",
             "retrieval_steps": bucket_raw_counts,
@@ -1300,44 +1582,19 @@ class SearchOrchestrator:
             "strategy_timing_ms": strategy_timing_ms,
             "report_noise_suppressed_count": report_noise_suppressed_count,
             "pdf_like_suppressed_count": pdf_like_suppressed_count,
-            "wide_pool_mode": wide_pool_mode,
-            "wide_pool_status": wide_pool_status,
-            "wide_pool_applied": wide_pool_applied,
-            "wide_pool_skip_reason": wide_pool_skip_reason,
-            "wide_pool_base_internal_limit": wide_pool_base_internal_limit,
-            "wide_pool_internal_limit_effective": wide_pool_internal_limit_effective,
-            "wide_pool_base_semantic_fetch_limit": wide_pool_base_semantic_fetch_limit,
-            "wide_pool_semantic_fetch_limit_effective": wide_pool_semantic_fetch_limit_effective,
-            "bm25plus_mode": bm25plus_mode,
-            "bm25plus_status": bm25plus_status,
-            "bm25plus_applied": bm25plus_applied,
-            "bm25plus_shadow": bm25plus_shadow,
-            "bm25plus_skip_reason": bm25plus_skip_reason,
-            "bm25plus_candidate_count": bm25plus_candidate_count,
-            "bm25plus_top1_changed": bm25plus_top1_changed,
-            "BM25PLUS_TIME_MS": bm25plus_latency_ms,
-            "mmr_mode": mmr_mode,
-            "mmr_status": mmr_status,
-            "mmr_applied": mmr_applied,
-            "mmr_shadow": mmr_shadow,
-            "mmr_skip_reason": mmr_skip_reason,
-            "mmr_candidate_count": mmr_candidate_count,
-            "mmr_top1_changed": mmr_top1_changed,
-            "MMR_TIME_MS": mmr_latency_ms,
-            "rerank_provider": rerank_provider,
-            "rerank_mode": rerank_mode,
-            "rerank_status": rerank_status,
-            "rerank_applied": rerank_applied,
-            "rerank_shadow": rerank_shadow,
-            "rerank_skip_reason": rerank_skip_reason,
-            "rerank_candidate_count": rerank_candidate_count,
-            "rerank_top1_changed": rerank_top1_changed,
+            **rollout_metadata,
             "VECTOR_TIME_MS": strategy_timing_ms.get("SemanticMatchStrategy"),
             "GRAPH_TIME_MS": None,
-            "RERANK_TIME_MS": rerank_latency_ms,
             "LLM_TIME_MS": None,
+            **observability_summary,
+        }
+        cache_metadata = {
+            **shared_metadata,
             "CACHE_HIT": False,
             "CACHE_LAYER": "MISS",
+        }
+        diagnostic_payload = {
+            **cache_metadata,
             "total_count": total_found,
             "duration_ms": int(duration * 1000),
         }
@@ -1363,77 +1620,7 @@ class SearchOrchestrator:
                     {
                         "results": top_candidates,
                         "total_count": total_found,
-                        "metadata": {
-                            "retrieval_fusion_mode": fusion_mode,
-                            "retrieval_path": "hybrid",
-                            "retrieval_steps": bucket_raw_counts,
-                            "router_mode": settings.SEARCH_ROUTER_MODE,
-                            "router_reason": router_reason,
-                            "retrieval_mode": retrieval_mode,
-                            "selected_buckets": selected_buckets,
-                            "executed_strategies": executed_strategies,
-                            "lexical_total": lexical_total,
-                            "semantic_total_raw": semantic_total_raw,
-                            "semantic_tail_cap": semantic_tail_cap_value,
-                            "semantic_tail_cap_effective": semantic_tail_cap_value,
-                            "semantic_tail_added": semantic_tail_added,
-                            "semantic_tail_policy": semantic_tail_policy,
-                            "result_mix_policy": mix_policy_applied,
-                            "query_original": query_original,
-                            "query_corrected": query_corrected,
-                            "query_correction_applied": query_correction_applied,
-                            "typo_rescue_applied": typo_rescue_applied,
-                            "lemma_seed_fallback_applied": lemma_seed_fallback_applied,
-                            "search_surface": search_surface_effective,
-                            "visibility_scope": visibility_scope,
-                            "content_type_filter": content_type,
-                            "ingestion_type_filter": ingestion_type,
-                            "latency_budget_applied": latency_budget_applied,
-                            "graph_timeout_triggered": graph_timeout_triggered,
-                            "noise_guard_applied": noise_guard_applied,
-                            "expansion_skipped_reason": expansion_skipped_reason,
-                            "strategy_timing_ms": strategy_timing_ms,
-                            "report_noise_suppressed_count": report_noise_suppressed_count,
-                            "pdf_like_suppressed_count": pdf_like_suppressed_count,
-                            "wide_pool_mode": wide_pool_mode,
-                            "wide_pool_status": wide_pool_status,
-                            "wide_pool_applied": wide_pool_applied,
-                            "wide_pool_skip_reason": wide_pool_skip_reason,
-                            "wide_pool_base_internal_limit": wide_pool_base_internal_limit,
-                            "wide_pool_internal_limit_effective": wide_pool_internal_limit_effective,
-                            "wide_pool_base_semantic_fetch_limit": wide_pool_base_semantic_fetch_limit,
-                            "wide_pool_semantic_fetch_limit_effective": wide_pool_semantic_fetch_limit_effective,
-                            "bm25plus_mode": bm25plus_mode,
-                            "bm25plus_status": bm25plus_status,
-                            "bm25plus_applied": bm25plus_applied,
-                            "bm25plus_shadow": bm25plus_shadow,
-                            "bm25plus_skip_reason": bm25plus_skip_reason,
-                            "bm25plus_candidate_count": bm25plus_candidate_count,
-                            "bm25plus_top1_changed": bm25plus_top1_changed,
-                            "BM25PLUS_TIME_MS": bm25plus_latency_ms,
-                            "mmr_mode": mmr_mode,
-                            "mmr_status": mmr_status,
-                            "mmr_applied": mmr_applied,
-                            "mmr_shadow": mmr_shadow,
-                            "mmr_skip_reason": mmr_skip_reason,
-                            "mmr_candidate_count": mmr_candidate_count,
-                            "mmr_top1_changed": mmr_top1_changed,
-                            "MMR_TIME_MS": mmr_latency_ms,
-                            "rerank_provider": rerank_provider,
-                            "rerank_mode": rerank_mode,
-                            "rerank_status": rerank_status,
-                            "rerank_applied": rerank_applied,
-                            "rerank_shadow": rerank_shadow,
-                            "rerank_skip_reason": rerank_skip_reason,
-                            "rerank_candidate_count": rerank_candidate_count,
-                            "rerank_top1_changed": rerank_top1_changed,
-                            "VECTOR_TIME_MS": strategy_timing_ms.get("SemanticMatchStrategy"),
-                            "GRAPH_TIME_MS": None,
-                            "RERANK_TIME_MS": rerank_latency_ms,
-                            "LLM_TIME_MS": None,
-                            "CACHE_HIT": False,
-                            "CACHE_LAYER": "MISS",
-                        },
+                        "metadata": {**cache_metadata},
                     },
                     ttl=settings.CACHE_L1_TTL
                 )
@@ -1445,73 +1632,7 @@ class SearchOrchestrator:
             "cached": False,
             "search_log_id": search_log_id,
             "duration_ms": int(duration * 1000),
-            "retrieval_fusion_mode": fusion_mode,
-            "retrieval_path": "hybrid",
-            "retrieval_steps": bucket_raw_counts,
-            "router_mode": settings.SEARCH_ROUTER_MODE,
-            "router_reason": router_reason,
-            "retrieval_mode": retrieval_mode,
-            "selected_buckets": selected_buckets,
-            "executed_strategies": executed_strategies,
-            "lexical_total": lexical_total,
-            "semantic_total_raw": semantic_total_raw,
-            "semantic_tail_cap": semantic_tail_cap_value,
-            "semantic_tail_cap_effective": semantic_tail_cap_value,
-            "semantic_tail_added": semantic_tail_added,
-            "semantic_tail_policy": semantic_tail_policy,
-            "result_mix_policy": mix_policy_applied,
-            "query_original": query_original,
-            "query_corrected": query_corrected,
-            "query_correction_applied": query_correction_applied,
-            "typo_rescue_applied": typo_rescue_applied,
-            "lemma_seed_fallback_applied": lemma_seed_fallback_applied,
-            "search_surface": search_surface_effective,
-            "visibility_scope": visibility_scope,
-            "content_type_filter": content_type,
-            "ingestion_type_filter": ingestion_type,
-            "latency_budget_applied": latency_budget_applied,
-            "graph_timeout_triggered": graph_timeout_triggered,
-            "noise_guard_applied": noise_guard_applied,
-            "expansion_skipped_reason": expansion_skipped_reason,
-            "strategy_timing_ms": strategy_timing_ms,
-            "report_noise_suppressed_count": report_noise_suppressed_count,
-            "pdf_like_suppressed_count": pdf_like_suppressed_count,
-            "wide_pool_mode": wide_pool_mode,
-            "wide_pool_status": wide_pool_status,
-            "wide_pool_applied": wide_pool_applied,
-            "wide_pool_skip_reason": wide_pool_skip_reason,
-            "wide_pool_base_internal_limit": wide_pool_base_internal_limit,
-            "wide_pool_internal_limit_effective": wide_pool_internal_limit_effective,
-            "wide_pool_base_semantic_fetch_limit": wide_pool_base_semantic_fetch_limit,
-            "wide_pool_semantic_fetch_limit_effective": wide_pool_semantic_fetch_limit_effective,
-            "bm25plus_mode": bm25plus_mode,
-            "bm25plus_status": bm25plus_status,
-            "bm25plus_applied": bm25plus_applied,
-            "bm25plus_shadow": bm25plus_shadow,
-            "bm25plus_skip_reason": bm25plus_skip_reason,
-            "bm25plus_candidate_count": bm25plus_candidate_count,
-            "bm25plus_top1_changed": bm25plus_top1_changed,
-            "BM25PLUS_TIME_MS": bm25plus_latency_ms,
-            "mmr_mode": mmr_mode,
-            "mmr_status": mmr_status,
-            "mmr_applied": mmr_applied,
-            "mmr_shadow": mmr_shadow,
-            "mmr_skip_reason": mmr_skip_reason,
-            "mmr_candidate_count": mmr_candidate_count,
-            "mmr_top1_changed": mmr_top1_changed,
-            "MMR_TIME_MS": mmr_latency_ms,
-            "rerank_provider": rerank_provider,
-            "rerank_mode": rerank_mode,
-            "rerank_status": rerank_status,
-            "rerank_applied": rerank_applied,
-            "rerank_shadow": rerank_shadow,
-            "rerank_skip_reason": rerank_skip_reason,
-            "rerank_candidate_count": rerank_candidate_count,
-            "rerank_top1_changed": rerank_top1_changed,
-            "VECTOR_TIME_MS": strategy_timing_ms.get("SemanticMatchStrategy"),
-            "GRAPH_TIME_MS": None,
-            "RERANK_TIME_MS": rerank_latency_ms,
-            "LLM_TIME_MS": None,
+            **shared_metadata,
             "CACHE_HIT": False,
             "CACHE_LAYER": "MISS",
         }
@@ -1642,3 +1763,4 @@ class SearchOrchestrator:
             logger.error(f"Failed to log search analytics: {e}")
             print(f"[ERROR] LOGGING FAILED: {e}")
             return None
+

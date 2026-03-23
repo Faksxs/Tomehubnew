@@ -96,6 +96,10 @@ from services.external_kb_service import (
     get_lexical_support_candidates,
     maybe_refresh_external_for_explorer_async,
 )
+from services.search_diagnostics_service import (
+    append_search_log_diagnostics,
+    enrich_search_metadata,
+)
 
 
 def _apply_dynamic_source_composition_policy(
@@ -948,36 +952,7 @@ def _read_search_log_strategy_details_json(cursor, search_log_id: int) -> Dict[s
 
 
 def _append_search_log_diagnostics(search_log_id: Optional[int], diagnostics: Dict[str, Any]) -> None:
-    if not search_log_id:
-        return
-    if not bool(getattr(settings, "SEARCH_LOG_DIAGNOSTICS_PERSIST_ENABLED", False)):
-        return
-    try:
-        with DatabaseManager.get_write_connection() as conn:
-            with conn.cursor() as cursor:
-                payload: Dict[str, Any] = {}
-                try:
-                    payload = _read_search_log_strategy_details_json(cursor, int(search_log_id))
-                except Exception as col_err:
-                    if "ORA-00904" in str(col_err):
-                        return
-                    payload = {}
-                payload.update(diagnostics or {})
-
-                cursor.execute(
-                    """
-                    UPDATE TOMEHUB_SEARCH_LOGS
-                    SET STRATEGY_DETAILS = :p_payload
-                    WHERE ID = :p_id
-                    """,
-                    {
-                        "p_payload": json.dumps(payload, ensure_ascii=False),
-                        "p_id": search_log_id,
-                    },
-                )
-            conn.commit()
-    except Exception as e:
-        logger.warning("Failed to append search log diagnostics id=%s: %s", search_log_id, e)
+    append_search_log_diagnostics(search_log_id, diagnostics)
 def get_rag_context(question: str, firebase_uid: str, context_book_id: str = None, chat_history: List[Dict] = None, mode: str = 'STANDARD', resource_type: Optional[str] = None, limit: Optional[int] = None, offset: int = 0, session_id: Optional[int | str] = None, scope_mode: str = "GLOBAL", apply_scope_policy: bool = False, compare_mode: Optional[str] = None, target_book_ids: Optional[List[str]] = None, visibility_scope: str = "default", content_type: Optional[str] = None, ingestion_type: Optional[str] = None, domain_mode: str = DOMAIN_MODE_AUTO) -> Optional[Dict[str, Any]]:
     """
     Retrieves and processes context for RAG.
@@ -2484,6 +2459,15 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
         meta["graph_bridge_used"] = graph_bridge_used
         meta["graph_bridge_timeout_triggered"] = graph_bridge_timeout_triggered
         meta["graph_bridge_latency_ms"] = graph_bridge_latency_ms
+        meta = enrich_search_metadata(
+            meta,
+            endpoint="/api/search",
+            query=question,
+            intent=ctx.get("intent"),
+            results=used_chunks,
+            answer=answer,
+            sources=sources,
+        )
         search_log_id = meta.get("search_log_id")
         if search_log_id:
             try:
@@ -2500,7 +2484,26 @@ def generate_answer(question: str, firebase_uid: str, context_book_id: str = Non
                     conn.commit()
             except Exception as e:
                 logger.warning(f"Failed to update MODEL_NAME for search_log_id={search_log_id}: {e}")
-        
+            _append_search_log_diagnostics(
+                search_log_id,
+                {
+                    "endpoint": "/api/search",
+                    **{
+                        key: meta.get(key)
+                        for key in (
+                            "diagnostic_trace_v1",
+                            "diagnostic_trace_line",
+                            "retrieval_failure_plane",
+                            "generation_failure_plane",
+                            "failure_plane",
+                            "freshness_plane",
+                            "search_quality_plane",
+                            "operational_plane_summary",
+                        )
+                    },
+                },
+            )
+
         return answer, sources, meta
     except Exception as e:
         import traceback as _tb

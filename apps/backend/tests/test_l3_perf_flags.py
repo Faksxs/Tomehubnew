@@ -39,13 +39,22 @@ class _SlowExpander:
         return [f"{query} varyasyon"] if max_variations else []
 
 
+class _CountingExpander:
+    def __init__(self):
+        self.call_count = 0
+
+    def expand_query(self, query, max_variations=0):
+        self.call_count += 1
+        return [f"{query} varyasyon"] if max_variations else []
+
+
 class _FastExact(ExactMatchStrategy):
-    def search(self, query, firebase_uid, limit=1000, offset=0, resource_type=None, book_id=None):
+    def search(self, query, firebase_uid, limit=1000, offset=0, resource_type=None, book_id=None, **kwargs):
         return [_orchestrator_row(1, "Exact Hit", "content_exact")]
 
 
 class _FastLemma(LemmaMatchStrategy):
-    def search(self, query, firebase_uid, limit=1000, offset=0, resource_type=None, book_id=None):
+    def search(self, query, firebase_uid, limit=1000, offset=0, resource_type=None, book_id=None, **kwargs):
         return []
 
 
@@ -53,7 +62,7 @@ class _FastSemantic(SemanticMatchStrategy):
     def __init__(self):
         pass
 
-    def search(self, query, firebase_uid, limit=100, offset=0, intent="SYNTHESIS", resource_type=None, book_id=None):
+    def search(self, query, firebase_uid, limit=100, offset=0, intent="SYNTHESIS", resource_type=None, book_id=None, **kwargs):
         return []
 
 
@@ -158,6 +167,30 @@ class TestL3PerfFlags(unittest.TestCase):
 
         self.assertEqual(meta.get("expansion_skipped_reason"), "expansion_timeout")
         self.assertLess(elapsed, 3.2)
+
+    def test_fast_exact_route_skips_expansion_when_semantic_lane_disabled(self):
+        settings.SEARCH_SEMANTIC_EXPANSION_MAX_VARIATIONS = 2
+        settings.SEARCH_NOISE_GUARD_ENABLED = False
+
+        expander = _CountingExpander()
+        orch = SearchOrchestrator(embedding_fn=lambda _: [0.1], cache=None)
+        orch.expander = expander
+        orch.strategies = [_FastExact(), _FastLemma(), _FastSemantic()]
+        orch._log_search = lambda *args, **kwargs: None
+
+        results, meta = orch.search(
+            query="hangi sayfa",
+            firebase_uid="u1",
+            limit=10,
+            intent="DIRECT",
+            result_mix_policy="lexical_then_semantic_tail",
+            semantic_tail_cap=6,
+        )
+
+        self.assertEqual([row["id"] for row in results], [1])
+        self.assertEqual(meta.get("retrieval_mode"), "fast_exact")
+        self.assertEqual(meta.get("expansion_skipped_reason"), "semantic_lane_disabled")
+        self.assertEqual(expander.call_count, 0)
 
     @patch("services.search_service.get_model_for_tier", return_value="gemini-2.5-flash")
     @patch("services.search_service.generate_text")

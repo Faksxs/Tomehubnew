@@ -1,8 +1,10 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import re
 from dataclasses import dataclass
 from typing import Dict, List, Set
+
+from utils.text_utils import deaccent_text
 
 
 @dataclass
@@ -24,11 +26,11 @@ class SemanticRouter:
 
     DIRECT_PATTERNS = [
         r"\bhangi sayfa\b",
-        r"\bkitab(?:i|ın|in) ad[ıi]\b",
-        r"\bkim (dedi|s[öo]yledi)\b",
-        r"\btam al[ıi]nt[ıi]\b",
-        r"\"[^\"]+\"",
+        r"\bkitab(?:i|in)? adi\b",
+        r"\bkim (dedi|soyledi)\b",
+        r"\btam alinti\b",
     ]
+    QUOTED_PHRASE_PATTERN = r'"[^"]+"'
 
     CONCEPTUAL_HINTS = {
         "nedir",
@@ -54,11 +56,16 @@ class SemanticRouter:
             return ["lemma", "semantic", "exact"]
         return ["exact", "lemma", "semantic"]
 
+    @staticmethod
+    def _normalized_query(query: str) -> str:
+        return deaccent_text(str(query or "")).strip().lower()
+
     def route(self, query: str, intent: str, default_mode: str = "balanced") -> RouterDecision:
-        q = (query or "").strip().lower()
+        q_raw = str(query or "").strip().lower()
+        q_norm = self._normalized_query(query)
         # Tokenize by words (strip punctuation) so conceptual hints still match:
         # e.g. "nedir?" -> "nedir"
-        tokens = [t for t in re.findall(r"[^\W_]+", q, flags=re.UNICODE) if t]
+        tokens = [t for t in re.findall(r"[^\W_]+", q_norm, flags=re.UNICODE) if t]
         token_set: Set[str] = set(tokens)
 
         # Intent-led fast path
@@ -71,9 +78,18 @@ class SemanticRouter:
                 retrieval_mode=retrieval_mode,
             )
 
+        if re.search(self.QUOTED_PHRASE_PATTERN, q_raw):
+            retrieval_mode = "fast_exact"
+            return RouterDecision(
+                mode="rule_based",
+                selected_buckets=self.buckets_for_mode(retrieval_mode),
+                reason="pattern:quoted_phrase",
+                retrieval_mode=retrieval_mode,
+            )
+
         # Pattern-led direct lookup style
         for pat in self.DIRECT_PATTERNS:
-            if re.search(pat, q):
+            if re.search(pat, q_norm):
                 retrieval_mode = "fast_exact"
                 return RouterDecision(
                     mode="rule_based",
