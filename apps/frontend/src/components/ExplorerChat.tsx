@@ -383,7 +383,7 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack, onSa
                                 <option value="ACADEMIC" className="text-slate-900 dark:text-white bg-white dark:bg-slate-800">Academic</option>
                                 <option value="RELIGIOUS" className="text-slate-900 dark:text-white bg-white dark:bg-slate-800">Religious</option>
                                 <option value="LITERARY" className="text-slate-900 dark:text-white bg-white dark:bg-slate-800">Literary</option>
-                                <option value="CULTURE_HISTORY" className="text-slate-900 dark:text-white bg-white dark:bg-slate-800">Culture &amp; History</option>
+                                <option value="CULTURE_HISTORY" className="text-slate-900 dark:text-white bg-white dark:bg-slate-800">Culture</option>
                             </select>
                         </label>
                         <label className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-[10px] md:text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800">

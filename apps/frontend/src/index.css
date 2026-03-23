@@ -327,3 +327,53 @@
   color: #94a3b8;
   border-bottom-color: #64748b;
 }
+/* Zen-Futurist & Glassmorphism Utilities */
+.glass-card {
+  @apply backdrop-blur-xl border border-white/10 dark:border-white/5;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.01) 100%
+  );
+}
+
+.dark .glass-card {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(255, 255, 255, 0.01) 100%
+  );
+}
+
+.glow-primary {
+  box-shadow: 0 0 40px -10px hsla(var(--primary), 0.3);
+}
+
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+.mask-fade-bottom {
+  mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+}
+
+.vertical-text {
+  writing-mode: vertical-lr;
+  text-orientation: mixed;
+}
+
+.calligraphy-bg {
+  font-family: 'Amiri', serif;
+  background-clip: text;
+  -webkit-background-clip: text;
+}

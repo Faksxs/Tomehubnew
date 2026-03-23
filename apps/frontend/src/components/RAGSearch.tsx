@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Search, BookOpen, Loader2, AlertCircle, ExternalLink, ThumbsUp, ThumbsDown, MessageCircle, ChevronLeft, LayoutPanelLeft, FileSearch } from 'lucide-react';
 import { DeepChatbotLogo, SmartSearchLogo } from './ui/FeatureLogos';
 import { searchLibrary, submitFeedback, SearchResponse } from '../services/backendApiService';
@@ -7,6 +7,7 @@ import { ConcordanceView } from './ConcordanceView';
 import { getFriendlyApiErrorMessage } from '../services/apiClient';
 import { LibraryItem } from '../types';
 import { cleanLayer3Answer, Layer3ReportDraftInput } from '../lib/layer3Report';
+import { consumeDiscoveryPromptSeed } from '../features/discovery/discoverySeeds';
 
 interface RAGSearchProps {
     userId: string;
@@ -28,6 +29,13 @@ export const RAGSearch: React.FC<RAGSearchProps> = ({ userId, userEmail, onBack,
     const [showConcordance, setShowConcordance] = useState(false);
     const [isSavingReport, setIsSavingReport] = useState(false);
     const [hasSavedReport, setHasSavedReport] = useState(false);
+
+    useEffect(() => {
+        const seed = consumeDiscoveryPromptSeed();
+        if (seed?.prompt) {
+            setQuestion(seed.prompt);
+        }
+    }, []);
 
     // If Explorer mode is active, render the dedicated chat component
     if (mode === 'EXPLORER') {

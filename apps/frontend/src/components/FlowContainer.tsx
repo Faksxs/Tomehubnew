@@ -21,6 +21,7 @@ import {
 } from '../services/flowService';
 import SourceNavigator, { SourceFilter } from './SourceNavigator';
 import { getFriendlyApiErrorMessage } from '../services/apiClient';
+import { consumeDiscoveryFlowSeed } from '../features/discovery/discoverySeeds';
 
 interface FlowContainerProps {
     firebaseUid: string;
@@ -39,11 +40,16 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
     categoryOptions,
     onClose,
 }) => {
+    const [discoverySeed] = useState(() => consumeDiscoveryFlowSeed());
+    const effectiveAnchorId = discoverySeed?.anchorId || anchorId;
+    const effectiveAnchorLabel = discoverySeed?.anchorLabel || anchorLabel;
+    const initialCategory = discoverySeed?.category || null;
+
     // State
     const [sessionId, setSessionId] = useState<string | null>(null);
     const [cards, setCards] = useState<FlowCardType[]>([]);
-    const [topicLabel, setTopicLabel] = useState(anchorLabel || 'Flux');
-    const [activeCategory, setActiveCategory] = useState<string | null>(null);
+    const [topicLabel, setTopicLabel] = useState(effectiveAnchorLabel || 'Flux');
+    const [activeCategory, setActiveCategory] = useState<string | null>(initialCategory);
     const [horizon, setHorizon] = useState(0.25); // Start at Author zone
     const [isLoading, setIsLoading] = useState(false);
     const [hasMore, setHasMore] = useState(true);
@@ -81,7 +87,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
             const startRequest = {
                 firebase_uid: firebaseUid,
                 anchor_type: anchorType,
-                anchor_id: anchorId,
+                anchor_id: effectiveAnchorId,
                 mode: 'FOCUS',
                 horizon_value: horizonValue,
                 resource_type: resourceType,
@@ -100,7 +106,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
         } finally {
             setIsLoading(false);
         }
-    }, [firebaseUid, anchorType, anchorId, resolveResourceType]);
+    }, [firebaseUid, anchorType, effectiveAnchorId, resolveResourceType]);
 
     // Auto-start session when user is ready
     useEffect(() => {
@@ -396,7 +402,7 @@ export const FlowContainer: React.FC<FlowContainerProps> = ({
                                             onClick={onClose}
                                             className="px-6 py-2.5 bg-[#CC561E] hover:bg-[#b04a1a] text-white font-medium rounded-lg transition-colors"
                                         >
-                                            Go to Dashboard
+                                            Go to Discovery
                                         </button>
                                     </div>
                                 )}

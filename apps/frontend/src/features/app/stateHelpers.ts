@@ -68,6 +68,7 @@ export const resolveAppFormInitialType = (
 ): ResourceType => {
     if (editingType) return editingType;
     if (
+        activeTab === 'DISCOVERY' ||
         activeTab === 'NOTES' ||
         activeTab === 'DASHBOARD' ||
         activeTab === 'PROFILE' ||

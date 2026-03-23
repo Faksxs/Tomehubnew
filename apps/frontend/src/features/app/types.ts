@@ -2,6 +2,7 @@ import { PersonalNoteCategory, ResourceType } from '../../types';
 
 export type AppTab =
     | ResourceType
+    | 'DISCOVERY'
     | 'NOTES'
     | 'DASHBOARD'
     | 'PROFILE'

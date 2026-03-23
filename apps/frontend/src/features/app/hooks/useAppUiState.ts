@@ -16,7 +16,7 @@ export const useAppUiState = () => {
     const [editingBookId, setEditingBookId] = useState<string | null>(null);
     const [openToHighlights, setOpenToHighlights] = useState(false);
     const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<AppTab>('DASHBOARD');
+    const [activeTab, setActiveTab] = useState<AppTab>('DISCOVERY');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [activeCategoryFilter, setActiveCategoryFilter] = useState<string | null>(null);
     const [currentPage, setCurrentPage] = useState(1);

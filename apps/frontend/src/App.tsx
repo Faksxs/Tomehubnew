@@ -869,7 +869,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
   useEffect(() => {
     if (mediaLibraryEnabled) return;
     if (activeTab === "MOVIE" || activeTab === "SERIES") {
-      handleTabChange("DASHBOARD");
+      handleTabChange("DISCOVERY");
     }
   }, [activeTab, handleTabChange, mediaLibraryEnabled]);
 
@@ -922,6 +922,15 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
     if (!exists) return;
     openBookDetail(noteId);
   }, [openBookDetail]);
+
+  const handleOpenDiscoveryItem = useCallback((item: LibraryItem, focus: 'info' | 'highlights' = 'info') => {
+    handleTabChange(item.type);
+    if (focus === 'highlights') {
+      openBookHighlights(item.id);
+      return;
+    }
+    openBookDetail(item.id);
+  }, [handleTabChange, openBookDetail, openBookHighlights]);
 
   const handleLoadMore = useCallback(async () => {
     if (!lastDoc) return;
@@ -1304,7 +1313,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
           enrichmentStats={enrichmentStats}
           onStartEnrichment={startEnrichment}
           onStopEnrichment={stopEnrichment}
-          onBackToDashboard={() => handleTabChange("DASHBOARD")}
+          onBackToDashboard={() => handleTabChange("DISCOVERY")}
           onSelectBook={(book) => openBookDetail(book.id)}
           onSelectBookWithTab={(book, tab, highlightId) => {
             if (tab === 'highlights') {
@@ -1349,6 +1358,7 @@ const Layout: React.FC<LayoutProps> = ({ userId, userEmail, onLogout }) => {
           }}
           onUpdateHighlights={handleUpdateHighlights}
           onBookUpdated={handleUpdateBookForEnrichment}
+          onOpenDiscoveryItem={handleOpenDiscoveryItem}
         />
       </main>
 

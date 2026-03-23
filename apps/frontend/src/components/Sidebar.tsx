@@ -1,8 +1,8 @@
 import React from 'react';
-import { X, User, Moon, Sun, Film } from 'lucide-react';
+import { X, User, Moon, Sun, Film, Compass } from 'lucide-react';
 import logo from '../assets/logo_v9.png';
-import { ResourceType } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
+import { AppTab } from '../features/app/types';
 import {
   KnowledgeBaseLogo,
   SmartSearchLogo,
@@ -15,8 +15,8 @@ import {
 } from './ui/FeatureLogos';
 
 interface SidebarProps {
-  activeTab: ResourceType | 'NOTES' | 'DASHBOARD' | 'PROFILE' | 'RAG_SEARCH' | 'INGEST' | 'SMART_SEARCH' | 'FLOW' | 'INSIGHTS';
-  onTabChange: (tab: ResourceType | 'NOTES' | 'DASHBOARD' | 'PROFILE' | 'RAG_SEARCH' | 'INGEST' | 'SMART_SEARCH' | 'FLOW' | 'INSIGHTS') => void;
+  activeTab: AppTab;
+  onTabChange: (tab: AppTab) => void;
   mediaLibraryEnabled?: boolean;
   isOpen: boolean;
   onClose: () => void;
@@ -26,6 +26,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, mediaL
   const { theme, toggleTheme } = useTheme();
 
   const menuItems = [
+    { id: 'DISCOVERY', label: 'Discovery', icon: Compass },
     { id: 'DASHBOARD', label: 'Dashboard', icon: KnowledgeBaseLogo },
     { id: 'SMART_SEARCH', label: 'Search (Layer 2)', icon: SmartSearchLogo },
     { id: 'RAG_SEARCH', label: 'LogosChat (Layer 3)', icon: DeepChatbotLogo },

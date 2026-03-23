@@ -9,6 +9,7 @@ import InsightsView from '../../../components/InsightsView';
 import { Highlight, LibraryItem, PersonalNoteCategory, PersonalNoteFolder, ResourceType } from '../../../types';
 import { AppTab, AppView } from '../types';
 import { Layer3ReportDraftInput } from '../../../lib/layer3Report';
+import { DiscoveryHome } from '../../discovery/components/DiscoveryHome';
 
 interface AppMainContentProps {
     activeTab: AppTab;
@@ -70,6 +71,7 @@ interface AppMainContentProps {
     onDeleteSelectedBook: () => void;
     onUpdateHighlights: (highlights: Highlight[]) => void;
     onBookUpdated: (updatedBook: LibraryItem) => void;
+    onOpenDiscoveryItem: (item: LibraryItem, focus?: 'info' | 'highlights') => void;
 }
 
 export const AppMainContent: React.FC<AppMainContentProps> = ({
@@ -126,7 +128,21 @@ export const AppMainContent: React.FC<AppMainContentProps> = ({
     onDeleteSelectedBook,
     onUpdateHighlights,
     onBookUpdated,
+    onOpenDiscoveryItem,
 }) => {
+    if (activeTab === 'DISCOVERY') {
+        return (
+            <DiscoveryHome
+                userId={userId}
+                books={books}
+                onMobileMenuClick={onMobileMenuClick}
+                onTabChange={onTabChange}
+                onQuickCreatePersonalNote={onQuickCreatePersonalNote}
+                onOpenDiscoveryItem={onOpenDiscoveryItem}
+            />
+        );
+    }
+
     if (activeTab === 'PROFILE') {
         return (
             <ProfileView

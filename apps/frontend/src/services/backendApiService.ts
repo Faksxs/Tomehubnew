@@ -15,7 +15,7 @@ const normalizeSourceTypeForBackend = (type: string): string => {
 };
 
 export type BackendResourceType = 'BOOK' | 'ARTICLE' | 'PERSONAL_NOTE' | 'MOVIE' | 'SERIES';
-export type BackendDomainMode = 'AUTO' | 'ACADEMIC' | 'RELIGIOUS' | 'LITERARY' | 'CULTURE_HISTORY';
+export type BackendDomainMode = 'AUTO' | 'ACADEMIC' | 'RELIGIOUS' | 'LITERARY' | 'CULTURE_HISTORY' | 'ANALYTICAL' | 'COMPARATIVE';
 
 export interface SearchRequest {
     question: string;
@@ -44,6 +44,115 @@ export interface SearchResponse {
         status?: string;
         analytics?: any;
     };
+}
+
+export type DiscoveryCategoryName = Exclude<BackendDomainMode, 'AUTO'>;
+export type DiscoveryActionType =
+    | 'open_source'
+    | 'open_anchor'
+    | 'ask_logoschat'
+    | 'send_to_flux'
+    | 'save_for_later';
+
+export interface DiscoverySourceRef {
+    label: string;
+    url?: string | null;
+    kind?: string | null;
+}
+
+export interface DiscoveryAnchorRef {
+    item_id: string;
+    title: string;
+    item_type?: string | null;
+}
+
+export interface DiscoveryEvidence {
+    kind: string;
+    label: string;
+    value?: string | null;
+}
+
+export interface DiscoveryAction {
+    type: DiscoveryActionType;
+    label: string;
+    url?: string | null;
+    prompt_seed?: string | null;
+    anchor_id?: string | null;
+}
+
+export interface DiscoveryCard {
+    id: string;
+    category: DiscoveryCategoryName;
+    family: string;
+    title: string;
+    summary: string;
+    why_seen: string;
+    confidence_label: 'Strong match' | 'Relevant' | 'Exploratory' | string;
+    freshness_label?: string | null;
+    primary_source: string;
+    source_refs: DiscoverySourceRef[];
+    image_url?: string | null;
+    anchor_refs: DiscoveryAnchorRef[];
+    evidence: DiscoveryEvidence[];
+    actions: DiscoveryAction[];
+    score: number;
+}
+
+export interface DiscoveryFamilySection {
+    family: string;
+    title: string;
+    description: string;
+    source_label: string;
+    cards: DiscoveryCard[];
+}
+
+export interface DiscoveryBoardMetadata {
+    category_title: string;
+    category_description: string;
+    last_updated_at: string;
+    active_provider_names: string[];
+    total_cards: number;
+}
+
+export interface DiscoveryBoardResponse {
+    category: DiscoveryCategoryName;
+    featured_card?: DiscoveryCard | null;
+    family_sections: DiscoveryFamilySection[];
+    metadata: DiscoveryBoardMetadata;
+}
+
+export type DiscoveryInnerSpaceSlot =
+    | 'continue_this'
+    | 'latest_sync'
+    | 'dormant_gem'
+    | 'theme_pulse';
+
+export interface DiscoveryInnerSpaceCard {
+    slot: DiscoveryInnerSpaceSlot;
+    family: string;
+    title: string;
+    summary: string;
+    sources: string[];
+    item_id?: string | null;
+    item_type?: string | null;
+    progress_percent?: number | null;
+    badge?: string | null;
+    metadata?: string | null;
+    prompt_seed?: string | null;
+    focus_hint?: 'info' | 'highlights' | null;
+    score: number;
+}
+
+export interface DiscoveryInnerSpaceMetadata {
+    last_updated_at: string;
+    active_theme_count: number;
+    has_memory_profile: boolean;
+    total_items_considered: number;
+}
+
+export interface DiscoveryInnerSpaceResponse {
+    cards: DiscoveryInnerSpaceCard[];
+    metadata: DiscoveryInnerSpaceMetadata;
 }
 
 
@@ -1219,6 +1328,43 @@ export async function updateApiPreferences(firebaseUid: string, preferences: Rec
     });
     if (!response.ok) {
         await throwApiError(response, 'Failed to update API preferences');
+    }
+    return response.json();
+}
+
+export async function getDiscoveryBoard(
+    firebaseUid: string,
+    category: DiscoveryCategoryName
+): Promise<DiscoveryBoardResponse> {
+    if (!firebaseUid) throw new Error('User must be authenticated');
+    const url = new URL(`${API_BASE_URL}/api/discovery/board`);
+    url.searchParams.set('category', category);
+    const response = await fetchWithAuth(url.toString(), {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Firebase-UID': firebaseUid
+        }
+    });
+    if (!response.ok) {
+        await throwApiError(response, 'Failed to load discovery board');
+    }
+    return response.json();
+}
+
+export async function getDiscoveryInnerSpace(
+    firebaseUid: string,
+): Promise<DiscoveryInnerSpaceResponse> {
+    if (!firebaseUid) throw new Error('User must be authenticated');
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/discovery/inner-space`, {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Firebase-UID': firebaseUid,
+        }
+    });
+    if (!response.ok) {
+        await throwApiError(response, 'Failed to load discovery inner space');
     }
     return response.json();
 }
