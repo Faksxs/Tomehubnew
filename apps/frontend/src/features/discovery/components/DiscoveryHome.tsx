@@ -91,6 +91,7 @@ const CARDS: DiscoveryCardData[] = [
     tone: 'blue',
     icon: GraduationCap,
     metadata: 'LEVEL: ALPHA',
+    sourceUrl: 'https://arxiv.org/search/?query=architectural+semiotics+urbanism&searchtype=all',
   },
   {
     id: 'acad-det-1',
@@ -103,6 +104,7 @@ const CARDS: DiscoveryCardData[] = [
     tone: 'blue',
     icon: Activity,
     metadata: 'SYNC: 0.882',
+    sourceUrl: 'https://scholar.google.com/scholar?q=LLM+attention+maps+cognitive+psychology',
   },
   {
     id: 'acad-det-2',
@@ -114,6 +116,7 @@ const CARDS: DiscoveryCardData[] = [
     size: 'detail',
     tone: 'purple',
     icon: ScrollText,
+    sourceUrl: 'https://www.gutenberg.org/',
   },
   {
     id: 'rel-hero',
@@ -126,6 +129,7 @@ const CARDS: DiscoveryCardData[] = [
     tone: 'green',
     icon: ScrollText,
     metadata: 'SIGIL_LEVEL: ALPHA',
+    sourceUrl: 'https://quranenc.com/en/browse/turkish_rshd',
   },
   {
     id: 'rel-det-1',
@@ -137,6 +141,7 @@ const CARDS: DiscoveryCardData[] = [
     size: 'detail',
     tone: 'green',
     icon: ScrollText,
+    sourceUrl: 'https://hadeethenc.com/tr/browse/hadith',
   },
   {
     id: 'lit-hero',
@@ -148,6 +153,7 @@ const CARDS: DiscoveryCardData[] = [
     size: 'hero',
     tone: 'purple',
     icon: FlaskConical,
+    sourceUrl: 'https://archive.org/search?query=neuromancer+cyberpunk',
   },
   {
     id: 'lit-det-1',
@@ -159,6 +165,7 @@ const CARDS: DiscoveryCardData[] = [
     size: 'detail',
     tone: 'purple',
     icon: Library,
+    sourceUrl: 'https://www.gutenberg.org/ebooks/author/314',
   },
   {
     id: 'cul-hero',
@@ -171,6 +178,7 @@ const CARDS: DiscoveryCardData[] = [
     tone: 'amber',
     icon: Activity,
     syncRate: '+12.4%',
+    sourceUrl: 'https://www.britishmuseum.org/collection/search?keyword=silk+road+mosaic',
   },
   {
     id: 'cul-det-1',
@@ -182,6 +190,7 @@ const CARDS: DiscoveryCardData[] = [
     size: 'detail',
     tone: 'amber',
     icon: Sparkles,
+    sourceUrl: 'https://www.europeana.eu/en/search?query=mediterranean+folk+music',
   },
 ];
 
