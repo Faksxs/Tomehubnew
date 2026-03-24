@@ -723,12 +723,12 @@ const limitPillarCardsForLayout = (
 
 const cardStyles = (tone: DiscoveryTone) => {
   switch (tone) {
-    case 'blue': return 'bg-blue-600/5 dark:bg-blue-600/5 border-blue-500/10 dark:border-blue-500/10 text-slate-900 dark:text-blue-50 shadow-[0_4px_24px_-10px_rgba(59,130,246,0.1)] backdrop-blur-md';
-    case 'green': return 'bg-emerald-600/5 dark:bg-emerald-600/5 border-emerald-500/10 dark:border-emerald-500/10 text-slate-900 dark:text-emerald-50 shadow-[0_4px_24px_-10px_rgba(16,185,129,0.1)] backdrop-blur-md';
-    case 'purple': return 'bg-purple-600/5 dark:bg-purple-600/5 border-purple-500/10 dark:border-purple-500/10 text-slate-900 dark:text-purple-50 shadow-[0_4px_24px_-10px_rgba(168,85,247,0.1)] backdrop-blur-md';
-    case 'amber': return 'bg-[#CC561E]/5 dark:bg-[#CC561E]/5 border-[#CC561E]/10 dark:border-[#CC561E]/10 text-slate-900 dark:text-[#CC561E]/90 shadow-[0_4px_24px_-10px_rgba(204,86,30,0.1)] backdrop-blur-md';
-    case 'dark': return 'bg-white/40 dark:bg-slate-900/40 border-black/5 dark:border-white/5 text-slate-900 dark:text-slate-100 shadow-xl backdrop-blur-2xl';
-    default: return 'bg-white/40 dark:bg-white/[0.03] border-black/5 dark:border-white/5 text-slate-900 dark:text-white backdrop-blur-sm';
+    case 'blue': return 'bg-white dark:bg-[#080C14] border-blue-500/20 text-slate-900 dark:text-blue-50 shadow-sm';
+    case 'green': return 'bg-white dark:bg-[#060D0A] border-emerald-500/20 text-slate-900 dark:text-emerald-50 shadow-sm';
+    case 'purple': return 'bg-white dark:bg-[#0B0814] border-purple-500/20 text-slate-900 dark:text-purple-50 shadow-sm';
+    case 'amber': return 'bg-white dark:bg-[#0D0806] border-[#CC561E]/30 text-slate-900 dark:text-[#CC561E]/90 shadow-sm';
+    case 'dark': return 'bg-white dark:bg-[#020408] border border-white/10 text-slate-900 dark:text-slate-100 shadow-md';
+    default: return 'bg-white dark:bg-[#0A0C10] border-white/10 text-slate-900 dark:text-white';
   }
 };
 
@@ -1147,7 +1147,7 @@ const InnerSpaceLoadingGrid: React.FC = () => (
     {[0, 1].map((index) => (
       <div
         key={index}
-        className={`${index === 0 ? 'min-h-[420px]' : 'min-h-[420px]'} rounded-2xl border border-black/5 dark:border-white/5 bg-black/[0.02] dark:bg-white/[0.02] animate-pulse`}
+        className={`${index === 0 ? 'min-h-[420px]' : 'min-h-[420px]'} rounded-2xl border border-black/5 dark:border-white/5 bg-black/[0.02] dark:bg-white/[0.02]`}
       />
     ))}
   </div>

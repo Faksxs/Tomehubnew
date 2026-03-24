@@ -329,7 +329,7 @@
 }
 /* Zen-Futurist & Glassmorphism Utilities */
 .glass-card {
-  @apply backdrop-blur-xl border border-white/10 dark:border-white/5;
+  @apply border border-white/10 dark:border-white/5;
   background: linear-gradient(
     135deg,
     rgba(255, 255, 255, 0.05) 0%,
