@@ -1310,21 +1310,25 @@ def _build_random_verse_card(anchors: List[_Anchor], active_provider_names: List
         if not arabic or not meal:
             continue
         tafsir = _pick_tafsir_candidate(theme, verse_key, active_provider_names)
-        tafsir_text = _compact_text(str((tafsir or {}).get("content_chunk") or ""), limit=320) if tafsir else ""
+        tafsir_text = str((tafsir or {}).get("content_chunk") or "").strip() if tafsir else ""
+        if tafsir_text.startswith("Kategori:"):
+            lines = tafsir_text.splitlines()
+            tafsir_text = "\n".join([l for l in lines if not l.startswith("Kategori:") and not l.startswith("Tur:")]).strip()
         anchor = suggested_anchor or _pick_anchor_for_theme(theme, anchors)
         source_refs = _religious_verse_refs(verse_key)
         tafsir_url = str((tafsir or {}).get("source_url") or "").strip()
         if tafsir_url:
             source_refs.append(DiscoverySourceRef(label="Tefsir", url=tafsir_url, kind="source"))
-        summary = tafsir_text or _compact_text(meal, limit=220)
+        summary = f"'{theme}' temasi ile baglantili Kur'an-i Kerim ayeti."
         why_seen = f"Recent archive tags pointed this board toward '{theme}', so one verse card surfaced first."
         score = 0.84
         evidence = [
-            DiscoveryEvidence(kind="theme", label="Theme", value=theme),
             DiscoveryEvidence(kind="arabic", label="Arabic", value=arabic),
             DiscoveryEvidence(kind="transliteration", label="Okunus", value=transliteration or "Okunus verisi alinmadi."),
             DiscoveryEvidence(kind="translation", label="Meal", value=meal),
         ]
+        if tafsir_text:
+            evidence.append(DiscoveryEvidence(kind="tafsir", label="Tefsir", value=tafsir_text))
         anchor_refs = [DiscoveryAnchorRef(item_id=anchor.item_id, title=anchor.title, item_type=anchor.item_type)] if anchor else []
         title = f"Ayet {verse_key}"
         return DiscoveryCard(
@@ -1381,25 +1385,35 @@ def _hadith_queries(theme: str) -> List[str]:
     return [f"{theme} hadis", f"{theme} sunnah", f"{theme} hadith"]
 
 
-def _extract_hadith_parts(candidate: Dict[str, Any]) -> Tuple[str, str]:
+def _extract_hadith_parts(candidate: Dict[str, Any]) -> Tuple[str, str, str, str]:
     provider = str(candidate.get("provider") or "").strip().upper()
     reference = str(candidate.get("canonical_reference") or candidate.get("reference") or "").strip()
+    attribution = ""
+    grade = ""
 
     if provider == "HADEETHENC" and reference:
         detail = _safe_fetch_value("HADEETHENC_ONE", islamic_api_service._hadeethenc_fetch_one, reference) or {}
-        hadith_text = _compact_text(str(detail.get("hadeeth") or ""), limit=420)
-        explanation = _compact_text(str(detail.get("explanation") or ""), limit=320)
+        hadith_text = str(detail.get("hadeeth") or "").strip()
+        explanation = str(detail.get("explanation") or "").strip()
+        attribution = str(detail.get("attribution") or "").strip()
+        grade = str(detail.get("grade") or "").strip()
         if hadith_text:
-            return hadith_text, explanation
+            return hadith_text, explanation, attribution, grade
 
     content_lines = [line.strip() for line in str(candidate.get("content_chunk") or "").splitlines() if line.strip()]
+    for line in content_lines:
+        if line.lower().startswith("hukum:"):
+            grade = line[6:].strip()
+        elif line.lower().startswith("atif:"):
+            attribution = line[5:].strip()
+
     non_meta_lines = [
         line for line in content_lines
         if not line.lower().startswith("hukum:") and not line.lower().startswith("atif:")
     ]
-    hadith_text = _compact_text(non_meta_lines[0], limit=420) if non_meta_lines else ""
-    explanation = _compact_text(" ".join(non_meta_lines[1:]), limit=320) if len(non_meta_lines) > 1 else ""
-    return hadith_text, explanation
+    hadith_text = non_meta_lines[0] if non_meta_lines else ""
+    explanation = " ".join(non_meta_lines[1:]) if len(non_meta_lines) > 1 else ""
+    return hadith_text, explanation, attribution, grade
 
 
 
@@ -1425,7 +1439,7 @@ def _build_hadith_card(anchors: List[_Anchor], active_provider_names: List[str])
             continue
 
         hadith = hadith_candidates[0]
-        hadith_text, explanation_text = _extract_hadith_parts(hadith)
+        hadith_text, explanation_text, attribution, grade = _extract_hadith_parts(hadith)
         if not hadith_text:
             continue
 
@@ -1438,13 +1452,19 @@ def _build_hadith_card(anchors: List[_Anchor], active_provider_names: List[str])
         if hadith_ref:
             source_refs.append(DiscoverySourceRef(label=f"Hadis {hadith_ref}", kind="reference"))
 
-        summary = explanation_text or _compact_text(hadith_text, limit=220)
+        summary = f"'{theme}' temasi ile baglantili kaynak hadis metni."
         why_seen = f"'{theme}' temasi son arsiv akisinla eslesti; ilgili hadis kaynagi bu baglamda one cikti."
         score = 0.84 if explanation_text else 0.8
+        
+        kaynak_text = attribution
+        if grade:
+            kaynak_text = f"{attribution} ({grade})" if attribution else grade
+
         evidence = [
-            DiscoveryEvidence(kind="theme", label="Theme", value=theme),
             DiscoveryEvidence(kind="hadith", label="Hadis", value=hadith_text),
         ]
+        if kaynak_text:
+            evidence.append(DiscoveryEvidence(kind="attribution", label="Kaynak", value=kaynak_text))
         if explanation_text:
             evidence.append(DiscoveryEvidence(kind="explanation", label="Aciklama", value=explanation_text))
         anchor_refs = [DiscoveryAnchorRef(item_id=anchor.item_id, title=anchor.title, item_type=anchor.item_type)] if anchor else []
