@@ -1367,7 +1367,9 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
   const religiousHero = religiousCards[0];
   const religiousDetail = religiousCards[1];
   const literaryHero = literaryCards[0];
+  const literaryDetail = literaryCards[1];
   const cultureHero = cultureCards[0];
+  const cultureDetail = cultureCards[1];
   const hasAnyPillarCards = [academicCards, religiousCards, literaryCards, cultureCards].some((cards) => cards.length > 0);
   const continueCard = innerSpaceCards.find((card) => card.slot === 'continue_this') || innerSpaceCards[0];
   const latestSyncCard = innerSpaceCards.find((card) => card.slot === 'latest_sync');
@@ -1391,15 +1393,10 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
   }, [continueCard, latestSyncCard, latestSyncEntries]);
   const usedAcademicCount = academicCards.length >= 2 ? 2 : academicCards.length;
   const usedReligiousCount = religiousCards.length >= 2 ? 2 : religiousCards.length;
-  const usedLiteraryCount = literaryCards.length > 0 ? 1 : 0;
-  const usedCultureCount = cultureCards.length > 0 ? 1 : 0;
+  const usedLiteraryCount = literaryCards.length >= 2 ? 2 : literaryCards.length;
+  const usedCultureCount = cultureCards.length >= 2 ? 2 : cultureCards.length;
 
-  const remainingPillarCards = [
-    ...academicCards.slice(usedAcademicCount),
-    ...religiousCards.slice(usedReligiousCount),
-    ...literaryCards.slice(usedLiteraryCount),
-    ...cultureCards.slice(usedCultureCount),
-  ];
+  const remainingPillarCards: DiscoveryCardData[] = []; // Enforce strict 2-card limit per pillar
 
   return (
     <div className="relative min-h-screen bg-[#020408] text-white overflow-y-auto selection:bg-cyan-500/30">
@@ -1533,13 +1530,47 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
               </div>
             )}
 
-            {literaryHero || cultureHero ? (
+            {literaryHero && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                {[literaryHero, cultureHero].map((card) => (
-                  card ? <CardSurface key={card.id} card={card} onAsk={handleAsk} onSave={handleSave} onOpen={handleOpen} className="md:col-span-1 min-h-[280px]" /> : null
-                ))}
+                <CardSurface
+                  card={literaryHero}
+                  onAsk={handleAsk}
+                  onSave={handleSave}
+                  onOpen={handleOpen}
+                  className={`${literaryDetail ? "md:col-span-1" : "md:col-span-full"} min-h-[280px]`}
+                />
+                {literaryDetail && (
+                  <CardSurface
+                    card={literaryDetail}
+                    onAsk={handleAsk}
+                    onSave={handleSave}
+                    onOpen={handleOpen}
+                    className="md:col-span-1 min-h-[280px]"
+                  />
+                )}
               </div>
-            ) : null}
+            )}
+
+            {cultureHero && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <CardSurface
+                  card={cultureHero}
+                  onAsk={handleAsk}
+                  onSave={handleSave}
+                  onOpen={handleOpen}
+                  className={`${cultureDetail ? "md:col-span-1" : "md:col-span-full"} min-h-[280px]`}
+                />
+                {cultureDetail && (
+                  <CardSurface
+                    card={cultureDetail}
+                    onAsk={handleAsk}
+                    onSave={handleSave}
+                    onOpen={handleOpen}
+                    className="md:col-span-1 min-h-[280px]"
+                  />
+                )}
+              </div>
+            )}
 
             {remainingPillarCards.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -101,7 +101,7 @@ _CATEGORY_META: Dict[DiscoveryCategory, Dict[str, Any]] = {
     DiscoveryCategory.LITERARY: {
         "title": "Literary",
         "description": "Author continuations, adjacent texts, and selective screen parallels grounded in your archive themes.",
-        "hero_family_order": ["Same Author / Next Book", "Parallel Work", "Notes to Screen"],
+        "hero_family_order": ["Same Author / Next Book", "Notes to Screen"],
         "families": {
             "Same Author / Next Book": {
                 "description": "The clearest next reading candidate from the same author or a near literary neighbor.",
@@ -120,7 +120,7 @@ _CATEGORY_META: Dict[DiscoveryCategory, Dict[str, Any]] = {
     DiscoveryCategory.CULTURE_HISTORY: {
         "title": "Culture",
         "description": "Lineage, archive artifacts, and controlled cultural surprises with clear provenance.",
-        "hero_family_order": ["Lineage", "Archive Artifact", "Wild Card"],
+        "hero_family_order": ["Archive Artifact", "Wild Card", "Lineage"],
         "families": {
             "Lineage": {
                 "description": "A concept, person, or movement placed inside a relation and origin graph.",
@@ -1771,14 +1771,15 @@ def _select_board_layout(
     featured_card = max(all_cards, key=lambda card: card.score, default=None)
     featured_id = featured_card.id if featured_card else None
     family_sections: List[DiscoveryFamilySection] = []
-    remaining_budget = 6
+    remaining_budget = 2
 
     for family_name in meta["hero_family_order"]:
         cards = [card for card in family_cards.get(family_name, []) if card.id != featured_id]
         if remaining_budget <= 0:
             cards = []
         else:
-            cards = cards[: min(2, remaining_budget)]
+            # Enforce 1 card per family to ensure diversity
+            cards = cards[: min(1, remaining_budget)]
             remaining_budget -= len(cards)
         family_meta = meta["families"][family_name]
         family_sections.append(
