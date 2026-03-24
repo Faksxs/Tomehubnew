@@ -927,46 +927,36 @@ const InnerSpaceMiniCard: React.FC<{
     <div className="rounded-2xl border border-black/5 dark:border-white/6 bg-white/40 dark:bg-white/[0.025] px-4 py-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[9px] uppercase tracking-[0.24em] text-cyan-700 dark:text-cyan-400">{card.family}</p>
-          <p className="mt-2 text-base font-serif text-slate-900 dark:text-white/90">{card.title}</p>
-          <p className="mt-2 text-[11px] leading-relaxed text-slate-600 dark:text-white/75">{card.summary}</p>
-          {isDormant && dormantEntries.length > 0 ? (
-            <div className="mt-4 space-y-3">
+          
+                    {isDormant && dormantEntries.length > 0 ? (
+            <div className="space-y-3">
               {dormantEntries.map((entry) => (
-                <div key={entry.key} className="rounded-xl border border-black/5 dark:border-white/6 bg-black/5 dark:bg-black/10 px-3 py-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-[9px] uppercase tracking-[0.22em] text-amber-800 dark:text-amber-300">{entry.label}</p>
-                      <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white/85">{entry.title}</p>
-                      <p className="mt-1 text-[11px] leading-relaxed text-slate-600 dark:text-white/75">{entry.reason}</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => onOpenItem(entry.item)}
-                      className="shrink-0 rounded-full border border-black/10 dark:border-white/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-white/60 transition hover:border-cyan-500/30 dark:hover:border-cyan-400/30 hover:text-cyan-600 dark:hover:text-cyan-300"
-                    >
-                      Open
-                    </button>
+                <div key={entry.key} className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="mt-1 text-base font-serif text-slate-900 dark:text-white/90">{entry.title}</p>
+                    <p className="mt-2 text-[11px] leading-relaxed text-slate-600 dark:text-white/75">{entry.reason}</p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => onOpenItem(entry.item)}
+                    className="shrink-0 rounded-full border border-black/10 dark:border-white/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-white/60 transition hover:border-cyan-500/30 dark:hover:border-cyan-400/30 hover:text-cyan-600 dark:hover:text-cyan-300"
+                  >
+                    Open
+                  </button>
                 </div>
               ))}
             </div>
-          ) : null}
+          ) : (
+            <>
+              <p className="mt-2 text-base font-serif text-slate-900 dark:text-white/90">{card.title}</p>
+              <p className="mt-2 text-[11px] leading-relaxed text-slate-600 dark:text-white/75">{card.summary}</p>
+            </>
+          )}
           {card.metadata ? (
             <p className="mt-3 text-[9px] uppercase tracking-[0.22em] text-slate-500 dark:text-white/25">{card.metadata}</p>
           ) : null}
         </div>
-        <button
-          type="button"
-          onClick={() => (canOpen ? onOpen(card) : onAsk(card))}
-          className={`shrink-0 rounded-full border px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.18em] transition ${
-            canOpen
-              ? 'border-black/10 dark:border-white/10 text-slate-500 dark:text-white/55 hover:border-cyan-500/30 dark:hover:border-cyan-400/30 hover:text-cyan-600 dark:hover:text-cyan-300'
-              : 'border-black/5 dark:border-white/5 text-slate-400 dark:text-white/25 hover:text-slate-600 dark:hover:text-white/45'
-          }`}
-        >
-          {canOpen ? 'Open' : 'Ask'}
-        </button>
+        
       </div>
     </div>
   );
@@ -1007,12 +997,7 @@ const InnerSpaceCluster: React.FC<{
         className={`relative flex min-h-[420px] flex-col rounded-2xl border p-5 transition-all duration-300 ${cardStyles('purple')}`}
       >
         <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-cyan-600 dark:text-cyan-300">{latestCard.family}</p>
-            {latestCard.sources.length > 0 ? (
-              <p className="mt-2 text-[10px] italic text-slate-500 dark:text-white/75">{latestCard.sources.join(' // ')}</p>
-            ) : null}
-          </div>
+          <div />
           {latestCard.progress !== undefined ? (
             <div className="flex h-14 w-14 items-center justify-center rounded-full border border-cyan-400/20 bg-cyan-500/5 text-sm font-bold text-cyan-300">
               {latestCard.progress}%
@@ -1061,29 +1046,7 @@ const InnerSpaceCluster: React.FC<{
           </div>
         ) : null}
 
-        <div className="mt-auto flex items-center justify-between border-t border-white/5 pt-4">
-          <div className="flex items-center gap-3">
-            <button onClick={() => onAsk(latestCard)} className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest transition-colors hover:text-cyan-400">
-              <MessageSquareText size={12} />
-              Ask
-            </button>
-            <button onClick={() => onSave(latestCard)} className="opacity-40 transition-opacity hover:opacity-100 text-slate-900 dark:text-white">
-              <BookmarkPlus size={14} />
-            </button>
-          </div>
-          <button
-            type="button"
-            onClick={() => (latestCanOpen ? onOpen(latestCard) : onAsk(latestCard))}
-            className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] transition ${
-              latestCanOpen
-                ? 'border-cyan-400/25 bg-cyan-500/90 dark:bg-cyan-500 text-white dark:text-black hover:bg-cyan-600 dark:hover:bg-cyan-400 shadow-lg shadow-cyan-500/20'
-                : 'border-black/8 dark:border-white/8 bg-black/5 dark:bg-white/5 text-slate-600 dark:text-white/55 hover:bg-black/10 dark:hover:bg-white/10'
-            }`}
-          >
-            {primaryCardActionLabel(latestCard)}
-          </button>
-        </div>
-      </motion.article>
+        </motion.article>
 
       {themePulseCard ? (
         <motion.article
@@ -1091,12 +1054,7 @@ const InnerSpaceCluster: React.FC<{
           className={`relative flex min-h-[420px] flex-col rounded-2xl border p-5 transition-all duration-300 ${cardStyles('dark')}`}
         >
           <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-cyan-400/80">{themePulseCard.family}</p>
-              <p className="text-[10px] italic text-slate-500 dark:text-white/40">
-                {topNodes.length > 0 ? 'Dashboard // Top Nodes' : themePulseCard.sources.join(' // ')}
-              </p>
-            </div>
+            <div />
             {pulseBadge ? (
               <div className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[9px] font-mono text-cyan-400">
                 {pulseBadge}
@@ -1105,7 +1063,7 @@ const InnerSpaceCluster: React.FC<{
           </div>
 
           <div className="mt-6">
-            <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500 dark:text-white/24">Personal</p>
+            
             <h3 className="mt-2 font-serif text-2xl leading-tight text-slate-900/92 dark:text-white/92">Top Nodes</h3>
           </div>
 
@@ -1131,24 +1089,9 @@ const InnerSpaceCluster: React.FC<{
             <p className="mt-6 text-sm leading-relaxed text-slate-700 dark:text-white/45">{themePulseCard.summary}</p>
           )}
 
-          {themePulseCard.metadata ? (
-            <p className="mt-6 text-[10px] uppercase tracking-[0.24em] text-slate-500 dark:text-white/22">{themePulseCard.metadata}</p>
-          ) : null}
+          
 
-          <div className="mt-auto flex items-center justify-between border-t border-black/5 dark:border-white/5 pt-4">
-            <button onClick={() => onAsk(themePulseCard)} className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest transition-colors hover:text-cyan-400">
-              <MessageSquareText size={12} />
-              Ask
-            </button>
-            <button
-              type="button"
-              onClick={() => onAsk(themePulseCard)}
-              className="rounded-full border border-black/10 dark:border-white/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-white/70 transition hover:border-cyan-500/25 dark:hover:border-cyan-400/25 hover:text-cyan-600 dark:hover:text-cyan-300"
-            >
-              Focus Map
-            </button>
-          </div>
-        </motion.article>
+          </motion.article>
       ) : null}
     </div>
   );

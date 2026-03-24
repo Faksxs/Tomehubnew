@@ -41,6 +41,8 @@ BOARD_POLICIES: Dict[DiscoveryCategory, DiscoveryCachePolicy] = {
 _LOCAL_CACHE_LOCK = threading.Lock()
 _LOCAL_DISCOVERY_CACHE: Dict[str, Dict[str, Any]] = {}
 _REFRESHING_KEYS: set[str] = set()
+_DISCOVERY_INNER_SPACE_CACHE_VERSION = "v2"
+_DISCOVERY_BOARD_CACHE_VERSION = "v3"
 
 
 def get_discovery_inner_space_cached(
@@ -49,6 +51,8 @@ def get_discovery_inner_space_cached(
     force_refresh: bool = False,
 ) -> tuple[DiscoveryInnerSpaceResponse, CacheStatus, str | None]:
     cache_key = _make_inner_space_cache_key(firebase_uid)
+    if force_refresh:
+        _delete_cache_entry(cache_key)
     cached = _get_cache_entry(cache_key)
     if cached and not force_refresh:
         state = _cache_state(cached)
@@ -68,7 +72,7 @@ def get_discovery_inner_space_cached(
         _set_cache_entry(cache_key, entry, INNER_SPACE_POLICY.stale_ttl_seconds)
         return _apply_inner_space_cache_metadata(response, "live", entry), "live", None
     except Exception as exc:
-        if cached and _cache_state(cached) in {"fresh_cache", "stale_cache"}:
+        if cached and not force_refresh and _cache_state(cached) in {"fresh_cache", "stale_cache"}:
             logger.warning("discovery inner-space serving stale cache uid=%s error=%s", firebase_uid, exc)
             return (
                 _apply_inner_space_cache_metadata(_deserialize_inner_space(cached["payload"]), "stale_cache", cached),
@@ -87,6 +91,8 @@ def get_discovery_board_cached(
 ) -> tuple[DiscoveryBoardResponse, CacheStatus, str | None]:
     policy = BOARD_POLICIES[category]
     cache_key = _make_board_cache_key(category, firebase_uid)
+    if force_refresh:
+        _delete_cache_entry(cache_key)
     cached = _get_cache_entry(cache_key)
     if cached and not force_refresh:
         state = _cache_state(cached)
@@ -110,7 +116,7 @@ def get_discovery_board_cached(
         _set_cache_entry(cache_key, entry, policy.stale_ttl_seconds)
         return _apply_board_cache_metadata(response, "live", entry), "live", None
     except Exception as exc:
-        if cached and _cache_state(cached) in {"fresh_cache", "stale_cache"}:
+        if cached and not force_refresh and _cache_state(cached) in {"fresh_cache", "stale_cache"}:
             logger.warning("discovery board serving stale cache category=%s uid=%s error=%s", category.value, firebase_uid, exc)
             return (
                 _apply_board_cache_metadata(_deserialize_board(cached["payload"]), "stale_cache", cached),
@@ -151,12 +157,12 @@ def invalidate_discovery_cache(firebase_uid: str, *, category: DiscoveryCategory
 
 
 def _make_inner_space_cache_key(firebase_uid: str) -> str:
-    return f"discovery:inner_space:{firebase_uid}:v1"
+    return f"discovery:inner_space:{firebase_uid}:{_DISCOVERY_INNER_SPACE_CACHE_VERSION}"
 
 
 def _make_board_cache_key(category: DiscoveryCategory, firebase_uid: str) -> str:
     prefs_token = _provider_preferences_token(firebase_uid)
-    return f"discovery:board:{firebase_uid}:{category.value}:{prefs_token}:v2"
+    return f"discovery:board:{firebase_uid}:{category.value}:{prefs_token}:{_DISCOVERY_BOARD_CACHE_VERSION}"
 
 
 def _provider_preferences_token(firebase_uid: str) -> str:
@@ -213,6 +219,15 @@ def _set_cache_entry(cache_key: str, entry: Dict[str, Any], ttl_seconds: int) ->
     shared_cache = get_cache()
     if shared_cache:
         shared_cache.set(cache_key, entry, ttl=ttl_seconds)
+
+
+def _delete_cache_entry(cache_key: str) -> None:
+    with _LOCAL_CACHE_LOCK:
+        _LOCAL_DISCOVERY_CACHE.pop(cache_key, None)
+        _REFRESHING_KEYS.discard(cache_key)
+    shared_cache = get_cache()
+    if shared_cache:
+        shared_cache.delete(cache_key)
 
 
 def _cache_state(entry: Dict[str, Any]) -> CacheStatus | None:
