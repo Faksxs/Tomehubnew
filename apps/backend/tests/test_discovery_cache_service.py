@@ -43,7 +43,7 @@ def test_board_force_refresh_bypasses_cache(monkeypatch):
 
     monkeypatch.setattr("services.discovery_cache_service._provider_preferences_token", lambda firebase_uid: "prefs")
 
-    def _loader(category: str, firebase_uid: str):
+    def _loader(category: str, firebase_uid: str, selection_token=None):
         calls["count"] += 1
         return DiscoveryBoardResponse(
             category=DiscoveryCategory(category),

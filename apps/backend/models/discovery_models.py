@@ -77,6 +77,8 @@ class DiscoveryFamilySection(BaseModel):
     title: str
     description: str
     source_label: str
+    generation_mode: Optional[str] = None
+    refresh_behavior: Optional[str] = None
     cards: List[DiscoveryCard] = Field(default_factory=list)
 
 
@@ -86,6 +88,8 @@ class DiscoveryBoardMetadata(BaseModel):
     last_updated_at: str
     active_provider_names: List[str] = Field(default_factory=list)
     total_cards: int = 0
+    generation_plan: List[str] = Field(default_factory=list)
+    refresh_strategy: Optional[str] = None
     cache_status: Optional[str] = None
     cache_generated_at: Optional[str] = None
     cache_expires_at: Optional[str] = None

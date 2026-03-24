@@ -26,11 +26,17 @@ def get_verified_uid(uid_from_jwt: str | None) -> str:
 async def get_discovery_board_endpoint(
     category: DiscoveryCategory = Query(...),
     force_refresh: bool = Query(False),
+    refresh_token: str | None = Query(None),
     firebase_uid_from_jwt: Annotated[str | None, Depends(verify_firebase_token)] = None,
 ):
     try:
         uid = get_verified_uid(firebase_uid_from_jwt)
-        response, _status, _error = get_discovery_board_cached(category, uid, force_refresh=force_refresh)
+        response, _status, _error = get_discovery_board_cached(
+            category,
+            uid,
+            force_refresh=force_refresh,
+            refresh_token=refresh_token,
+        )
         return response
     except HTTPException:
         raise
@@ -58,11 +64,12 @@ async def get_discovery_inner_space_endpoint(
 @router.get("/page", response_model=DiscoveryPageResponse)
 async def get_discovery_page_endpoint(
     force_refresh: bool = Query(False),
+    refresh_token: str | None = Query(None),
     firebase_uid_from_jwt: Annotated[str | None, Depends(verify_firebase_token)] = None,
 ):
     try:
         uid = get_verified_uid(firebase_uid_from_jwt)
-        return get_discovery_page(uid, force_refresh=force_refresh)
+        return get_discovery_page(uid, force_refresh=force_refresh, refresh_token=refresh_token)
     except HTTPException:
         raise
     except Exception as exc:

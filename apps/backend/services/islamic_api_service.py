@@ -407,6 +407,102 @@ def _islamhouse_fetch_category_items(
     return rows if isinstance(rows, list) else []
 
 
+def _islamhouse_fetch_item_detail(item_url: str) -> Optional[Dict[str, Any]]:
+    url = str(item_url or "").strip()
+    if not url or "islamhouse.com" not in url.lower():
+        return None
+    response = _http_json(url)
+    return response if isinstance(response, dict) else None
+
+
+def _islamhouse_preparer_names(detail: Dict[str, Any]) -> List[str]:
+    rows = detail.get("prepared_by") if isinstance(detail.get("prepared_by"), list) else []
+    names: List[str] = []
+    for row in rows[:3]:
+        if isinstance(row, dict):
+            label = _strip_html(row.get("title") or row.get("name") or row.get("description"))
+        else:
+            label = _strip_html(row)
+        if label:
+            names.append(label)
+    return names
+
+
+def _islamhouse_attachment_url(detail: Dict[str, Any]) -> Optional[str]:
+    rows = detail.get("attachments") if isinstance(detail.get("attachments"), list) else []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        url = str(row.get("url") or "").strip()
+        if url:
+            return url
+    return None
+
+
+def _islamhouse_attachment_labels(detail: Dict[str, Any]) -> List[str]:
+    rows = detail.get("attachments") if isinstance(detail.get("attachments"), list) else []
+    labels: List[str] = []
+    for row in rows[:3]:
+        if not isinstance(row, dict):
+            continue
+        description = _strip_html(row.get("description"))
+        extension = str(row.get("extension_type") or "").strip()
+        size = str(row.get("size") or "").strip()
+        parts = [part for part in [description, extension, size] if part]
+        label = " | ".join(parts).strip()
+        if label:
+            labels.append(label)
+    return labels
+
+
+def _islamhouse_interpretive_text(
+    *,
+    row: Dict[str, Any],
+    detail: Optional[Dict[str, Any]],
+    category_title: str,
+    item_type: str,
+) -> str:
+    detail = detail or {}
+    fragments: List[str] = []
+
+    title = _strip_html(detail.get("title") or row.get("title"))
+    description = _strip_html(
+        detail.get("full_description")
+        or detail.get("description")
+        or row.get("full_description")
+        or row.get("description")
+    )
+    if title:
+        fragments.append(title)
+    if description and description.lower() != title.lower():
+        fragments.append(description[:900])
+
+    attachment_labels = _islamhouse_attachment_labels(detail)
+    if attachment_labels:
+        fragments.append(attachment_labels[0][:240])
+
+    preparers = _islamhouse_preparer_names(detail)
+    if preparers:
+        fragments.append(f"Hazirlayan: {', '.join(preparers[:2])}")
+    if category_title:
+        fragments.append(f"Kategori: {category_title}")
+    if item_type:
+        fragments.append(f"Tur: {item_type}")
+
+    seen = set()
+    deduped: List[str] = []
+    for fragment in fragments:
+        cleaned = re.sub(r"\s+", " ", str(fragment or "").strip())
+        if not cleaned:
+            continue
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(cleaned)
+    return "\n".join(deduped[:4]).strip()
+
+
 def _islamhouse_interpretive_candidates(question: str, limit: int) -> List[Dict[str, Any]]:
     if not bool(getattr(settings, "ISLAMHOUSE_ENABLED", True)):
         return []
@@ -434,21 +530,25 @@ def _islamhouse_interpretive_candidates(question: str, limit: int) -> List[Dict[
             )
             for row in rows:
                 title = _strip_html(row.get("title"))
-                description = _strip_html(row.get("description") or row.get("full_description"))
+                detail_url = str(row.get("api_url") or "").strip()
+                detail = _islamhouse_fetch_item_detail(detail_url) if detail_url else None
+                description = _strip_html(
+                    row.get("description")
+                    or row.get("full_description")
+                    or (detail or {}).get("description")
+                    or (detail or {}).get("full_description")
+                )
                 combined = f"{title} {description}".strip()
                 overlap = _query_overlap_score(question, combined)
                 if overlap <= 0:
                     continue
                 score = 0.50 + min(0.18, overlap * 0.22)
                 reference = f"cat:{category_id}/item:{str(row.get('id') or '').strip()}"
-                content = "\n".join(
-                    part
-                    for part in [
-                        description[:900].strip(),
-                        f"Kategori: {category_title}" if category_title else "",
-                        f"Tur: {item_type}" if item_type else "",
-                    ]
-                    if part
+                content = _islamhouse_interpretive_text(
+                    row=row,
+                    detail=detail,
+                    category_title=category_title,
+                    item_type=item_type,
                 )
                 if not content:
                     continue
@@ -462,7 +562,7 @@ def _islamhouse_interpretive_candidates(question: str, limit: int) -> List[Dict[
                         external_weight=weight,
                         reference=reference,
                         canonical_reference=reference,
-                        source_url=str(row.get("api_url") or "").strip() or None,
+                        source_url=_islamhouse_attachment_url(detail or {}) or detail_url or None,
                         religious_query_kind="INTERPRETIVE_CONTEXT",
                     )
                 )

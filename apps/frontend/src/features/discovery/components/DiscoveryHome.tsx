@@ -601,7 +601,7 @@ const mapBoardCard = (
   const openSourceAction = card.actions.find((action) => action.type === 'open_source');
   const openAnchorAction = card.actions.find((action) => action.type === 'open_anchor');
   const flowAction = card.actions.find((action) => action.type === 'send_to_flux');
-  const metadata = [card.primary_source, card.confidence_label].filter(Boolean).join(' · ');
+  const metadata = [card.primary_source, card.confidence_label].filter(Boolean).join(' / ');
   const syncRate = card.freshness_label || undefined;
 
   return {
@@ -714,7 +714,7 @@ const CardSurface: React.FC<{
   const isDormant = card.family === 'DORMANT GEM';
   const canOpen = canOpenCard(card);
   const showHeroMedia = isHero && card.category !== 'Religious';
-  const showWhySeen = (card.category === 'Academic' || card.category === 'Literary') && !card.slot;
+  const showWhySeen = (card.category === 'Academic' || card.category === 'Literary' || card.category === 'Culture') && !card.slot;
   const whySeen = showWhySeen ? compactWhySeen(card.whySeen) : null;
   const RELIGIOUS_NO_TRUNCATE = new Set(['Hadis', 'Tefsir', 'Aciklama', 'Meal']);
   const religiousEvidence = card.category === 'Religious'
@@ -729,6 +729,15 @@ const CardSurface: React.FC<{
               ),
         }))
         .filter((item): item is { label: string; value: string } => Boolean(item.value))
+    : [];
+  const cultureEvidence = card.category === 'Culture'
+    ? ['Collection', 'Artist', 'Creator', 'Country', 'Type', 'Context', 'Part of']
+        .map((label) => ({
+          label,
+          value: compactEvidenceValue(card.evidence?.find((item) => item.label === label)?.value, 120),
+        }))
+        .filter((item): item is { label: string; value: string } => Boolean(item.value))
+        .slice(0, 3)
     : [];
 
   const gridClasses = className || `
@@ -810,6 +819,17 @@ const CardSurface: React.FC<{
                   >
                     {item.value}
                   </p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {cultureEvidence.length > 0 && (
+            <div className="mb-5 flex flex-wrap gap-2">
+              {cultureEvidence.map((item) => (
+                <div key={item.label} className="rounded-full border border-amber-300/12 bg-amber-500/[0.06] px-3 py-1.5">
+                  <span className="mr-2 text-[9px] uppercase tracking-[0.18em] text-amber-200/55">{item.label}</span>
+                  <span className="text-[11px] text-white/70">{item.value}</span>
                 </div>
               ))}
             </div>
@@ -1202,7 +1222,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
       const cached = readDiscoveryPageCache(userId);
       const cacheIsFresh = !forceRefresh && Boolean(cached && (Date.now() - cached.fetchedAt) < DISCOVERY_PAGE_CACHE_TTL_MS);
       
-      if (cached && active) {
+      if (cached && active && !forceRefresh) {
         const mapped = mapDiscoveryPagePayload(cached.payload);
         setInnerSpaceCards(mapped.innerSpace);
         setPillarCardsByCategory(limitPillarCardsForLayout(mapped.pillars));
@@ -1226,7 +1246,11 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
 
       // 3. Live Fetch Cycle
       try {
-        const payload = await getDiscoveryPage(userId, forceRefresh);
+        const payload = await getDiscoveryPage(
+          userId,
+          forceRefresh,
+          forceRefresh ? String(Date.now()) : undefined,
+        );
         if (!active) return;
 
         writeDiscoveryPageCache({

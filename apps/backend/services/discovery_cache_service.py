@@ -83,6 +83,7 @@ def get_discovery_board_cached(
     firebase_uid: str,
     *,
     force_refresh: bool = False,
+    refresh_token: str | None = None,
 ) -> tuple[DiscoveryBoardResponse, CacheStatus, str | None]:
     policy = BOARD_POLICIES[category]
     cache_key = _make_board_cache_key(category, firebase_uid)
@@ -100,7 +101,11 @@ def get_discovery_board_cached(
             return _apply_board_cache_metadata(_deserialize_board(cached["payload"]), state, cached), state, None
 
     try:
-        response = get_discovery_board(category.value, firebase_uid)
+        response = get_discovery_board(
+            category.value,
+            firebase_uid,
+            selection_token=refresh_token if force_refresh else None,
+        )
         entry = _build_cache_entry(response, policy)
         _set_cache_entry(cache_key, entry, policy.stale_ttl_seconds)
         return _apply_board_cache_metadata(response, "live", entry), "live", None

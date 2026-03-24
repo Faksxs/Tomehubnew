@@ -20,16 +20,21 @@ from utils.logger import get_logger
 logger = get_logger("discovery_page_service")
 
 
-def get_discovery_page(firebase_uid: str, *, force_refresh: bool = False) -> DiscoveryPageResponse:
+def get_discovery_page(
+    firebase_uid: str,
+    *,
+    force_refresh: bool = False,
+    refresh_token: str | None = None,
+) -> DiscoveryPageResponse:
     board_errors: List[str] = []
     used_cached_fallbacks = False
     segment_status: dict[str, str] = {}
     with ThreadPoolExecutor(max_workers=5, thread_name_prefix="discovery-page") as executor:
         inner_space_future = executor.submit(_safe_inner_space, firebase_uid, force_refresh=force_refresh)
-        academic_future = executor.submit(_safe_board, DiscoveryCategory.ACADEMIC, firebase_uid, force_refresh=force_refresh)
-        religious_future = executor.submit(_safe_board, DiscoveryCategory.RELIGIOUS, firebase_uid, force_refresh=force_refresh)
-        literary_future = executor.submit(_safe_board, DiscoveryCategory.LITERARY, firebase_uid, force_refresh=force_refresh)
-        culture_future = executor.submit(_safe_board, DiscoveryCategory.CULTURE_HISTORY, firebase_uid, force_refresh=force_refresh)
+        academic_future = executor.submit(_safe_board, DiscoveryCategory.ACADEMIC, firebase_uid, force_refresh=force_refresh, refresh_token=refresh_token)
+        religious_future = executor.submit(_safe_board, DiscoveryCategory.RELIGIOUS, firebase_uid, force_refresh=force_refresh, refresh_token=refresh_token)
+        literary_future = executor.submit(_safe_board, DiscoveryCategory.LITERARY, firebase_uid, force_refresh=force_refresh, refresh_token=refresh_token)
+        culture_future = executor.submit(_safe_board, DiscoveryCategory.CULTURE_HISTORY, firebase_uid, force_refresh=force_refresh, refresh_token=refresh_token)
 
         inner_space, inner_space_status, inner_space_error = inner_space_future.result()
         academic, academic_status, academic_error = academic_future.result()
@@ -93,9 +98,15 @@ def _safe_board(
     firebase_uid: str,
     *,
     force_refresh: bool,
+    refresh_token: str | None,
 ) -> Tuple[DiscoveryBoardResponse, str, str | None]:
     try:
-        response, cache_status, error = get_discovery_board_cached(category, firebase_uid, force_refresh=force_refresh)
+        response, cache_status, error = get_discovery_board_cached(
+            category,
+            firebase_uid,
+            force_refresh=force_refresh,
+            refresh_token=refresh_token,
+        )
         return response, cache_status, error
     except Exception as exc:
         logger.warning("discovery page board fallback category=%s uid=%s error=%s", category.value, firebase_uid, exc)

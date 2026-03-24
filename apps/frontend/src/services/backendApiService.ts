@@ -103,6 +103,8 @@ export interface DiscoveryFamilySection {
     title: string;
     description: string;
     source_label: string;
+    generation_mode?: string | null;
+    refresh_behavior?: string | null;
     cards: DiscoveryCard[];
 }
 
@@ -112,6 +114,8 @@ export interface DiscoveryBoardMetadata {
     last_updated_at: string;
     active_provider_names: string[];
     total_cards: number;
+    generation_plan: string[];
+    refresh_strategy?: string | null;
     cache_status?: string | null;
     cache_generated_at?: string | null;
     cache_expires_at?: string | null;
@@ -1412,11 +1416,13 @@ export async function getDiscoveryInnerSpace(
 export async function getDiscoveryPage(
     firebaseUid: string,
     forceRefresh = false,
+    refreshToken?: string,
 ): Promise<DiscoveryPageResponse> {
     if (!firebaseUid) throw new Error('User must be authenticated');
     const url = new URL(`${API_BASE_URL}/api/discovery/page`);
     if (forceRefresh) {
         url.searchParams.set('force_refresh', 'true');
+        url.searchParams.set('refresh_token', refreshToken || String(Date.now()));
     }
     const response = await fetchWithAuth(url.toString(), {
         method: 'GET',

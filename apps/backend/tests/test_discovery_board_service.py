@@ -88,7 +88,7 @@ def test_get_discovery_board_builds_response(monkeypatch):
     monkeypatch.setattr("services.discovery_board_service._resolve_active_provider_names", lambda category, preferences: ["ARXIV"])
     monkeypatch.setattr(
         "services.discovery_board_service._build_family_cards",
-        lambda category_enum, anchors, active_provider_names: {
+        lambda category_enum, anchors, active_provider_names, selection_token=None: {
             "Fresh Signal": [featured],
             "Bridge": [],
         },
@@ -101,6 +101,79 @@ def test_get_discovery_board_builds_response(monkeypatch):
     assert board.featured_card.title == "Fresh paper"
     assert board.metadata.active_provider_names == ["ARXIV"]
     assert board.metadata.total_cards == 1
+
+
+def test_culture_board_respects_section_budget_and_exposes_generation_mode(monkeypatch):
+    featured = DiscoveryCard(
+        id="culture-archive",
+        category=DiscoveryCategory.CULTURE_HISTORY,
+        family="Archive Artifact",
+        title="Two Actors in a Drama",
+        summary="Woodblock print with cultural provenance.",
+        why_seen="Matches your archive through drama and visual culture.",
+        confidence_label="Strong match",
+        primary_source="ART_SEARCH_API",
+        source_refs=[],
+        anchor_refs=[],
+        evidence=[],
+        actions=[],
+        score=0.84,
+    )
+    lineage = DiscoveryCard(
+        id="culture-lineage",
+        category=DiscoveryCategory.CULTURE_HISTORY,
+        family="Lineage",
+        title="Drama",
+        summary="Lineage context",
+        why_seen="Connected to your archive tags.",
+        confidence_label="Relevant",
+        primary_source="WIKIDATA",
+        source_refs=[],
+        anchor_refs=[],
+        evidence=[],
+        actions=[],
+        score=0.71,
+    )
+    wild = DiscoveryCard(
+        id="culture-wild",
+        category=DiscoveryCategory.CULTURE_HISTORY,
+        family="Wild Card",
+        title="Memory Poem",
+        summary="Controlled lateral surprise.",
+        why_seen="Matches archive mood.",
+        confidence_label="Exploratory",
+        primary_source="POETRYDB",
+        source_refs=[],
+        anchor_refs=[],
+        evidence=[],
+        actions=[],
+        score=0.67,
+    )
+
+    monkeypatch.setattr("services.discovery_board_service._load_user_anchors", lambda firebase_uid: [])
+    monkeypatch.setattr("services.discovery_board_service._load_user_provider_preferences", lambda firebase_uid: {})
+    monkeypatch.setattr(
+        "services.discovery_board_service._resolve_active_provider_names",
+        lambda category, preferences: ["ART_SEARCH_API", "WIKIDATA", "POETRYDB"],
+    )
+    monkeypatch.setattr(
+        "services.discovery_board_service._build_family_cards",
+        lambda category_enum, anchors, active_provider_names, selection_token=None: {
+            "Archive Artifact": [featured],
+            "Lineage": [lineage],
+            "Wild Card": [wild],
+        },
+    )
+
+    board = get_discovery_board("CULTURE_HISTORY", "user-1")
+
+    assert board.featured_card is not None
+    assert board.featured_card.family == "Archive Artifact"
+    assert len(board.family_sections) == 1
+    assert board.family_sections[0].family == "Lineage"
+    assert board.family_sections[0].generation_mode == "contextual"
+    assert board.metadata.generation_plan
+    assert board.metadata.refresh_strategy == "rotate ranked lineage and archive candidate pools"
 
 
 def test_build_card_adds_open_source_from_doi_reference():
@@ -471,3 +544,65 @@ def test_hadith_card_works_without_explicit_explanation(monkeypatch):
 
     assert "Hadis metni" in (evidence["Hadis"] or "")
     assert "Aciklama" not in evidence
+
+
+def test_ayet_card_uses_tafsir_title_when_interpretive_text_is_sparse(monkeypatch):
+    def _islamic_candidates_sparse_tafsir(query: str, limit: int):
+        return [
+            {
+                "provider": "QURANENC",
+                "religious_source_kind": "QURAN",
+                "canonical_reference": "17:12",
+                "reference": "17:12",
+                "title": "QuranEnc - Ayet 17:12",
+                "content_chunk": "Biz geceyi ve gunduzu iki ayet kildik.",
+                "source_url": "https://quran.com/17:12",
+            },
+            {
+                "provider": "ISLAMHOUSE",
+                "religious_source_kind": "INTERPRETATION",
+                "canonical_reference": "cat:1/item:946",
+                "reference": "cat:1/item:946",
+                "title": "Kurani nasil tefsir etmeliyiz?",
+                "content_chunk": "Kategori: Tefsir Usulu\nTur: books",
+                "source_url": "https://d1.islamhouse.com/data/tr/ih_books/single/test.pdf",
+            },
+        ]
+
+    monkeypatch.setattr("services.discovery_board_service._safe_islamic_candidates", _islamic_candidates_sparse_tafsir)
+    monkeypatch.setattr("services.discovery_board_service.random.choice", lambda seq: seq[0])
+    monkeypatch.setattr("services.discovery_board_service.random.shuffle", lambda seq: None)
+    monkeypatch.setattr(
+        "services.discovery_board_service.islamic_api_service._quranenc_fetch_verse",
+        lambda verse_key: {
+            "sura": "17",
+            "aya": "12",
+            "translation": "Biz geceyi ve gunduzu iki ayet kildik.",
+            "arabic_text": "????? ????? ??????",
+        },
+    )
+    monkeypatch.setattr(
+        "services.discovery_board_service.islamic_api_service._quran_foundation_fetch_verse",
+        lambda verse_key: {
+            "verse_key": "17:12",
+            "text_uthmani": "????? ????? ??????",
+            "translations": [{"text": "Biz geceyi ve gunduzu iki ayet kildik."}],
+            "words": [{"transliteration": {"text": "Wajaalna"}}],
+        },
+    )
+    monkeypatch.setattr(
+        "services.discovery_board_service.islamic_api_service._diyanet_fetch_verse",
+        lambda verse_key: None,
+    )
+    monkeypatch.setattr(
+        "services.discovery_board_service.islamic_api_service._hadeethenc_fetch_one",
+        lambda hadith_id: {"title": "Hadis", "hadeeth": "Hadis metni"},
+    )
+
+    cards = _build_religious_cards([_make_religious_anchor()], ["QURANENC", "ISLAMHOUSE"])
+
+    verse_card = cards["Ayet Card"][0]
+    evidence = {item.label: item.value for item in verse_card.evidence}
+
+    assert "Kurani nasil tefsir etmeliyiz?" in verse_card.summary
+    assert "Kurani nasil tefsir etmeliyiz?" in (evidence["Tefsir"] or "")

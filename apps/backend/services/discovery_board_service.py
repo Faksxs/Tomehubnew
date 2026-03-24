@@ -71,75 +71,178 @@ _CATEGORY_META: Dict[DiscoveryCategory, Dict[str, Any]] = {
     DiscoveryCategory.ACADEMIC: {
         "title": "Academic",
         "description": "Fresh academic signals from your latest local themes, plus bridge papers that connect multiple archive threads.",
+        "generation_plan": ["contextual", "evidence-ranked external lookup"],
+        "refresh_strategy": "rotate top contextual candidate pools",
+        "section_budget": 2,
         "hero_family_order": ["Fresh Signal", "Bridge"],
         "families": {
             "Fresh Signal": {
                 "description": "Recent papers and preprints inferred from your latest books, articles, and idea notes.",
                 "source_label": "ArXiv + OpenAlex + Semantic Scholar + Crossref + SHARE",
+                "generation_mode": "contextual",
+                "refresh_behavior": "rotate_top_pool",
+                "candidate_limit": 4,
+                "section_limit": 1,
+                "featured_weight": 1.05,
+                "section_priority": 1.02,
             },
             "Bridge": {
                 "description": "Works that genuinely connect two or more academic threads already present in your archive.",
                 "source_label": "OpenAlex + Semantic Scholar + Crossref + ORKG + SHARE",
+                "generation_mode": "contextual",
+                "refresh_behavior": "rotate_top_pool",
+                "candidate_limit": 4,
+                "section_limit": 1,
+                "featured_weight": 1.0,
+                "section_priority": 1.0,
             },
         },
     },
     DiscoveryCategory.RELIGIOUS: {
         "title": "Religious",
         "description": "Source-anchored Quran and hadith discovery cards with minimal interpretation and clear references.",
+        "generation_plan": ["curated-random"],
+        "refresh_strategy": "rotate curated verse and hadith pools",
+        "section_budget": 1,
         "hero_family_order": ["Ayet Card", "Hadis Card"],
         "families": {
             "Ayet Card": {
                 "description": "A verse card with Arabic text, transliteration, one meal field, and concise tafsir context.",
                 "source_label": "Quran providers + tafsir source",
+                "generation_mode": "curated_random",
+                "refresh_behavior": "rotate_curated_pool",
+                "candidate_limit": 1,
+                "section_limit": 1,
+                "featured_weight": 1.03,
+                "section_priority": 1.02,
             },
             "Hadis Card": {
                 "description": "A hadith card sourced from the hadith search providers with the matn and short explanation.",
                 "source_label": "QuranEnc + HadeethEnc",
+                "generation_mode": "curated_random",
+                "refresh_behavior": "rotate_curated_pool",
+                "candidate_limit": 1,
+                "section_limit": 1,
+                "featured_weight": 1.0,
+                "section_priority": 1.0,
             },
         },
     },
     DiscoveryCategory.LITERARY: {
         "title": "Literary",
         "description": "Author continuations, adjacent texts, and selective screen parallels grounded in your archive themes.",
+        "generation_plan": ["contextual", "contextual external adaptation"],
+        "refresh_strategy": "rotate strongest anchor-matched title pools",
+        "section_budget": 1,
         "hero_family_order": ["Same Author / Next Book", "Notes to Screen"],
         "families": {
             "Same Author / Next Book": {
                 "description": "The clearest next reading candidate from the same author or a near literary neighbor.",
                 "source_label": "Google Books + Gutendex + Open Library",
+                "generation_mode": "contextual",
+                "refresh_behavior": "rotate_top_pool",
+                "candidate_limit": 4,
+                "section_limit": 1,
+                "featured_weight": 1.04,
+                "section_priority": 1.03,
             },
             "Parallel Work": {
                 "description": "Another work, medium, or open text that parallels your current theme.",
                 "source_label": "Google Books + Gutendex + TMDb",
+                "generation_mode": "contextual_external",
+                "refresh_behavior": "rotate_top_pool",
+                "candidate_limit": 4,
+                "section_limit": 1,
+                "featured_weight": 0.96,
+                "section_priority": 0.96,
             },
             "Notes to Screen": {
                 "description": "A film or series card only when the theme overlap is strong and explicit.",
                 "source_label": "TMDb",
+                "generation_mode": "contextual_external",
+                "refresh_behavior": "rotate_top_pool",
+                "candidate_limit": 4,
+                "section_limit": 1,
+                "featured_weight": 1.01,
+                "section_priority": 1.0,
             },
         },
     },
     DiscoveryCategory.CULTURE_HISTORY: {
         "title": "Culture",
         "description": "Lineage, archive artifacts, and controlled cultural surprises with clear provenance.",
+        "generation_plan": ["contextual lineage", "external archive artifact", "controlled external surprise"],
+        "refresh_strategy": "rotate ranked lineage and archive candidate pools",
+        "section_budget": 1,
         "hero_family_order": ["Archive Artifact", "Wild Card", "Lineage"],
         "families": {
             "Lineage": {
                 "description": "A concept, person, or movement placed inside a relation and origin graph.",
                 "source_label": "Wikidata + DBpedia",
+                "generation_mode": "contextual",
+                "refresh_behavior": "rotate_top_pool",
+                "candidate_limit": 4,
+                "section_limit": 1,
+                "featured_weight": 1.0,
+                "section_priority": 0.98,
             },
             "Archive Artifact": {
                 "description": "Objects, scans, and archive items that add time, place, and provenance.",
                 "source_label": "Europeana + Internet Archive + Art Search API",
+                "generation_mode": "external",
+                "refresh_behavior": "rotate_ranked_media_pool",
+                "candidate_limit": 4,
+                "section_limit": 1,
+                "featured_weight": 1.07,
+                "section_priority": 1.05,
             },
             "Wild Card": {
                 "description": "A controlled surprise card that still keeps source and rationale explicit.",
                 "source_label": "Europeana + Art Search API + PoetryDB",
+                "generation_mode": "external",
+                "refresh_behavior": "rotate_ranked_media_pool",
+                "candidate_limit": 4,
+                "section_limit": 1,
+                "featured_weight": 0.93,
+                "section_priority": 0.94,
             },
         },
     },
 }
 
 
-def get_discovery_board(category: str, firebase_uid: str) -> DiscoveryBoardResponse:
+def _selection_offset(selection_token: Optional[str], salt: str, size: int) -> int:
+    if not selection_token or size <= 1:
+        return 0
+    digest = hashlib.md5(f"{selection_token}:{salt}".encode("utf-8")).hexdigest()
+    return int(digest[:8], 16) % size
+
+
+def _ordered_for_selection(values: List[Any], selection_token: Optional[str], salt: str) -> List[Any]:
+    items = list(values or [])
+    if len(items) <= 1:
+        return items
+    offset = _selection_offset(selection_token, salt, len(items))
+    if offset <= 0:
+        return items
+    return items[offset:] + items[:offset]
+
+
+def _pick_variant(values: List[Any], selection_token: Optional[str], salt: str) -> Any:
+    items = list(values or [])
+    if not items:
+        return None
+    if not selection_token:
+        return random.choice(items)
+    return items[_selection_offset(selection_token, salt, len(items))]
+
+
+def get_discovery_board(
+    category: str,
+    firebase_uid: str,
+    *,
+    selection_token: Optional[str] = None,
+) -> DiscoveryBoardResponse:
     normalized = normalize_domain_mode(category)
     if normalized == "AUTO":
         raise ValueError("category must be one of ACADEMIC, RELIGIOUS, LITERARY, CULTURE_HISTORY")
@@ -152,9 +255,14 @@ def get_discovery_board(category: str, firebase_uid: str) -> DiscoveryBoardRespo
         category_enum=category_enum,
         anchors=anchors,
         active_provider_names=active_provider_names,
+        selection_token=selection_token,
     )
 
-    featured_card, family_sections = _select_board_layout(category_enum, family_cards)
+    featured_card, family_sections = _select_board_layout(
+        category_enum,
+        family_cards,
+        selection_token=selection_token,
+    )
     total_cards = (1 if featured_card else 0) + sum(len(section.cards) for section in family_sections)
     meta = _CATEGORY_META[category_enum]
     return DiscoveryBoardResponse(
@@ -167,6 +275,8 @@ def get_discovery_board(category: str, firebase_uid: str) -> DiscoveryBoardRespo
             last_updated_at=datetime.now(timezone.utc).isoformat(),
             active_provider_names=active_provider_names,
             total_cards=total_cards,
+            generation_plan=list(meta.get("generation_plan") or []),
+            refresh_strategy=str(meta.get("refresh_strategy") or "").strip() or None,
         ),
     )
 
@@ -176,14 +286,54 @@ def _build_family_cards(
     category_enum: DiscoveryCategory,
     anchors: List[_Anchor],
     active_provider_names: List[str],
+    selection_token: Optional[str] = None,
 ) -> Dict[str, List[DiscoveryCard]]:
     if category_enum == DiscoveryCategory.ACADEMIC:
-        return _build_academic_cards(anchors, active_provider_names)
+        return _build_academic_cards(anchors, active_provider_names, selection_token=selection_token)
     if category_enum == DiscoveryCategory.RELIGIOUS:
-        return _build_religious_cards(anchors, active_provider_names)
+        return _build_religious_cards(anchors, active_provider_names, selection_token=selection_token)
     if category_enum == DiscoveryCategory.LITERARY:
-        return _build_literary_cards(anchors, active_provider_names)
-    return _build_culture_history_cards(anchors, active_provider_names)
+        return _build_literary_cards(anchors, active_provider_names, selection_token=selection_token)
+    return _build_culture_history_cards(anchors, active_provider_names, selection_token=selection_token)
+
+
+def _empty_family_card_map(category_enum: DiscoveryCategory) -> Dict[str, List[DiscoveryCard]]:
+    return {
+        family_name: []
+        for family_name in (_CATEGORY_META[category_enum].get("families") or {}).keys()
+    }
+
+
+def _merge_family_card_maps(
+    category_enum: DiscoveryCategory,
+    *maps: Dict[str, List[DiscoveryCard]],
+) -> Dict[str, List[DiscoveryCard]]:
+    merged = _empty_family_card_map(category_enum)
+    for family_map in maps:
+        for family_name, cards in (family_map or {}).items():
+            if family_name not in merged or not cards:
+                continue
+            merged[family_name].extend(cards)
+    return merged
+
+
+def _finalize_family_card_map(
+    category_enum: DiscoveryCategory,
+    family_cards: Dict[str, List[DiscoveryCard]],
+    *,
+    selection_token: Optional[str] = None,
+) -> Dict[str, List[DiscoveryCard]]:
+    meta = _CATEGORY_META[category_enum]
+    finalized = _empty_family_card_map(category_enum)
+    for family_name, family_meta in (meta.get("families") or {}).items():
+        candidate_limit = int(family_meta.get("candidate_limit") or 4)
+        finalized[family_name] = _dedupe_and_limit(
+            family_cards.get(family_name, []),
+            limit=max(1, candidate_limit),
+            selection_token=selection_token,
+            salt=f"{category_enum.value}:{family_name}:pool",
+        )
+    return finalized
 
 
 def _load_user_provider_preferences(firebase_uid: str) -> Dict[str, bool]:
@@ -989,11 +1139,22 @@ def _culture_evidence(candidate: Dict[str, Any], family: str) -> List[DiscoveryE
     return evidence[:4]
 
 
-def _dedupe_and_limit(cards: Iterable[DiscoveryCard], *, limit: int) -> List[DiscoveryCard]:
+def _dedupe_and_limit(
+    cards: Iterable[DiscoveryCard],
+    *,
+    limit: int,
+    selection_token: Optional[str] = None,
+    salt: str = "",
+) -> List[DiscoveryCard]:
     deduped: List[DiscoveryCard] = []
     seen = set()
     provider_counts: Dict[str, int] = {}
-    for card in sorted(cards, key=lambda item: item.score, reverse=True):
+    ordered_cards = sorted(cards, key=lambda item: item.score, reverse=True)
+    if selection_token:
+        top_cards = ordered_cards[: min(4, len(ordered_cards))]
+        remainder = ordered_cards[min(4, len(ordered_cards)) :]
+        ordered_cards = _ordered_for_selection(top_cards, selection_token, f"{salt}:top") + remainder
+    for card in ordered_cards:
         ref_key = card.source_refs[0].label if card.source_refs else card.title
         key = (card.family.lower(), card.title.strip().lower(), ref_key.strip().lower())
         if key in seen:
@@ -1010,11 +1171,18 @@ def _dedupe_and_limit(cards: Iterable[DiscoveryCard], *, limit: int) -> List[Dis
     return deduped
 
 
-def _build_academic_cards(anchors: List[_Anchor], active_provider_names: List[str]) -> Dict[str, List[DiscoveryCard]]:
+def _build_academic_contextual_cards(
+    anchors: List[_Anchor],
+    active_provider_names: List[str],
+    *,
+    selection_token: Optional[str] = None,
+) -> Dict[str, List[DiscoveryCard]]:
     active = set(active_provider_names)
     academic_anchors = _academic_anchor_pool(anchors, limit=10)
     fresh_queries = _academic_fresh_signal_queries(academic_anchors) or _seed_queries(DiscoveryCategory.ACADEMIC, anchors)
     bridge_queries = _academic_bridge_queries(academic_anchors)
+    fresh_queries = _ordered_for_selection(fresh_queries, selection_token, "academic:fresh")
+    bridge_queries = _ordered_for_selection(bridge_queries, selection_token, "academic:bridge")
     family_cards: Dict[str, List[DiscoveryCard]] = {"Fresh Signal": [], "Bridge": []}
 
     fresh_anchor_pool = academic_anchors[:4] or anchors[:4]
@@ -1110,7 +1278,25 @@ def _build_academic_cards(anchors: List[_Anchor], active_provider_names: List[st
                 if card:
                     family_cards["Bridge"].append(card)
 
-    return {family: _dedupe_and_limit(cards, limit=4) for family, cards in family_cards.items()}
+    return family_cards
+
+
+def _build_academic_cards(
+    anchors: List[_Anchor],
+    active_provider_names: List[str],
+    *,
+    selection_token: Optional[str] = None,
+) -> Dict[str, List[DiscoveryCard]]:
+    family_cards = _build_academic_contextual_cards(
+        anchors,
+        active_provider_names,
+        selection_token=selection_token,
+    )
+    return _finalize_family_card_map(
+        DiscoveryCategory.ACADEMIC,
+        family_cards,
+        selection_token=selection_token,
+    )
 
 
 def _religious_theme_candidates(anchors: List[_Anchor]) -> List[Tuple[str, Optional[_Anchor]]]:
@@ -1137,8 +1323,8 @@ def _religious_theme_candidates(anchors: List[_Anchor]) -> List[Tuple[str, Optio
 
 
 
-def _curated_random_verse_key() -> str:
-    return random.choice([
+def _curated_random_verse_key(selection_token: Optional[str] = None, *, salt: str = "verse") -> str:
+    candidates = [
         "2:152",
         "2:153",
         "2:186",
@@ -1153,7 +1339,10 @@ def _curated_random_verse_key() -> str:
         "93:5",
         "94:5",
         "94:6",
-    ])
+    ]
+    if selection_token:
+        return candidates[_selection_offset(selection_token, salt, len(candidates))]
+    return random.choice(candidates)
 
 
 
@@ -1165,7 +1354,12 @@ def _pick_anchor_for_theme(theme: str, anchors: List[_Anchor]) -> Optional[_Anch
 
 
 
-def _pick_religious_verse_candidate(theme: str, active_provider_names: List[str]) -> Optional[Dict[str, Any]]:
+def _pick_religious_verse_candidate(
+    theme: str,
+    active_provider_names: List[str],
+    *,
+    selection_token: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
     active = set(active_provider_names)
     seen = set()
     candidates: List[Dict[str, Any]] = []
@@ -1185,9 +1379,10 @@ def _pick_religious_verse_candidate(theme: str, active_provider_names: List[str]
             seen.add(key)
             candidates.append(candidate)
     if candidates:
-        return random.choice(candidates[: min(4, len(candidates))])
+        top_candidates = candidates[: min(4, len(candidates))]
+        return _pick_variant(top_candidates, selection_token, f"verse:{theme}")
 
-    reference = _curated_random_verse_key()
+    reference = _curated_random_verse_key(selection_token, salt=f"curated:{theme}")
     fallback_candidates: List[Dict[str, Any]] = []
     quranenc_exact = islamic_api_service._normalize_quranenc_exact(islamic_api_service._quranenc_fetch_verse(reference) or {})
     if quranenc_exact:
@@ -1291,11 +1486,68 @@ def _religious_verse_refs(reference: str) -> List[DiscoverySourceRef]:
 
 
 
-def _build_random_verse_card(anchors: List[_Anchor], active_provider_names: List[str]) -> Optional[DiscoveryCard]:
-    theme_candidates = _religious_theme_candidates(anchors)
-    random.shuffle(theme_candidates)
+def _extract_tafsir_text(candidate: Optional[Dict[str, Any]]) -> str:
+    if not isinstance(candidate, dict):
+        return ""
+    raw_lines = [line.strip() for line in str(candidate.get("content_chunk") or "").splitlines() if line.strip()]
+    filtered = [
+        line for line in raw_lines
+        if not line.lower().startswith("kategori:") and not line.lower().startswith("tur:")
+    ]
+    cleaned = "\n".join(filtered).strip()
+    if cleaned:
+        return cleaned
+    title = str(candidate.get("title") or "").strip()
+    if title:
+        return title
+    return ""
+
+
+def _pick_tafsir_candidate(theme: str, verse_key: str, active_provider_names: List[str]) -> Optional[Dict[str, Any]]:
+    active = set(active_provider_names)
+    seen = set()
+    candidates: List[Dict[str, Any]] = []
+    for query in _verse_tafsir_queries(theme, verse_key):
+        for candidate in _safe_islamic_candidates(query, limit=8):
+            provider = str(candidate.get("provider") or "").strip().upper()
+            kind = str(candidate.get("religious_source_kind") or "").strip().upper()
+            reference = str(candidate.get("canonical_reference") or candidate.get("reference") or "").strip()
+            key = (provider, kind, reference)
+            if provider not in active or key in seen or kind != "INTERPRETATION":
+                continue
+            seen.add(key)
+            candidates.append(candidate)
+    if not candidates:
+        return None
+    candidates.sort(
+        key=lambda item: (
+            len(_extract_tafsir_text(item)),
+            float(item.get("score") or 0.0),
+        ),
+        reverse=True,
+    )
+    return candidates[0]
+
+
+def _build_random_verse_card(
+    anchors: List[_Anchor],
+    active_provider_names: List[str],
+    *,
+    selection_token: Optional[str] = None,
+) -> Optional[DiscoveryCard]:
+    theme_candidates = _ordered_for_selection(
+        _religious_theme_candidates(anchors),
+        selection_token,
+        "religious:themes:verse",
+    )
+    if not selection_token:
+        random.shuffle(theme_candidates)
     for theme, suggested_anchor in theme_candidates:
-        verse_candidate = _pick_religious_verse_candidate(theme, active_provider_names)
+        verse_candidate = _pick_religious_verse_candidate(
+            theme,
+            active_provider_names,
+            selection_token=selection_token,
+        )
         if not verse_candidate:
             continue
         verse_key = str(verse_candidate.get("canonical_reference") or verse_candidate.get("reference") or "").strip()
@@ -1310,16 +1562,16 @@ def _build_random_verse_card(anchors: List[_Anchor], active_provider_names: List
         if not arabic or not meal:
             continue
         tafsir = _pick_tafsir_candidate(theme, verse_key, active_provider_names)
-        tafsir_text = str((tafsir or {}).get("content_chunk") or "").strip() if tafsir else ""
-        if tafsir_text.startswith("Kategori:"):
-            lines = tafsir_text.splitlines()
-            tafsir_text = "\n".join([l for l in lines if not l.startswith("Kategori:") and not l.startswith("Tur:")]).strip()
+        tafsir_text = _extract_tafsir_text(tafsir)
         anchor = suggested_anchor or _pick_anchor_for_theme(theme, anchors)
         source_refs = _religious_verse_refs(verse_key)
-        tafsir_url = str((tafsir or {}).get("source_url") or "").strip()
+        tafsir_url = str((tafsir or {}).get("source_url") or _fallback_source_url(tafsir or {}) or "").strip()
         if tafsir_url:
             source_refs.append(DiscoverySourceRef(label="Tefsir", url=tafsir_url, kind="source"))
-        summary = f"'{theme}' temasi ile baglantili Kur'an-i Kerim ayeti."
+        summary = _compact_text(
+            tafsir_text or meal or f"'{theme}' temasi ile baglantili Kur'an-i Kerim ayeti.",
+            limit=220,
+        )
         why_seen = f"Recent archive tags pointed this board toward '{theme}', so one verse card surfaced first."
         score = 0.84
         evidence = [
@@ -1356,31 +1608,12 @@ def _build_random_verse_card(anchors: List[_Anchor], active_provider_names: List
     return None
 
 
-
 def _verse_tafsir_queries(theme: str, verse_key: str) -> List[str]:
     return [
         f"{verse_key} tefsir",
         f"{theme} tefsir",
         f"{theme} ayet tefsir",
     ]
-
-
-def _pick_tafsir_candidate(theme: str, verse_key: str, active_provider_names: List[str]) -> Optional[Dict[str, Any]]:
-    active = set(active_provider_names)
-    seen = set()
-    for query in _verse_tafsir_queries(theme, verse_key):
-        for candidate in _safe_islamic_candidates(query, limit=8):
-            provider = str(candidate.get("provider") or "").strip().upper()
-            kind = str(candidate.get("religious_source_kind") or "").strip().upper()
-            reference = str(candidate.get("canonical_reference") or candidate.get("reference") or "").strip()
-            key = (provider, kind, reference)
-            if provider not in active or key in seen or kind != "INTERPRETATION":
-                continue
-            seen.add(key)
-            return candidate
-    return None
-
-
 def _hadith_queries(theme: str) -> List[str]:
     return [f"{theme} hadis", f"{theme} sunnah", f"{theme} hadith"]
 
@@ -1417,10 +1650,20 @@ def _extract_hadith_parts(candidate: Dict[str, Any]) -> Tuple[str, str, str, str
 
 
 
-def _build_hadith_card(anchors: List[_Anchor], active_provider_names: List[str]) -> Optional[DiscoveryCard]:
+def _build_hadith_card(
+    anchors: List[_Anchor],
+    active_provider_names: List[str],
+    *,
+    selection_token: Optional[str] = None,
+) -> Optional[DiscoveryCard]:
     active = set(active_provider_names)
-    theme_candidates = _religious_theme_candidates(anchors)
-    random.shuffle(theme_candidates)
+    theme_candidates = _ordered_for_selection(
+        _religious_theme_candidates(anchors),
+        selection_token,
+        "religious:themes:hadith",
+    )
+    if not selection_token:
+        random.shuffle(theme_candidates)
     for theme, suggested_anchor in theme_candidates:
         hadith_candidates: List[Dict[str, Any]] = []
         seen = set()
@@ -1438,7 +1681,7 @@ def _build_hadith_card(anchors: List[_Anchor], active_provider_names: List[str])
         if not hadith_candidates:
             continue
 
-        hadith = hadith_candidates[0]
+        hadith = _pick_variant(hadith_candidates[: min(4, len(hadith_candidates))], selection_token, f"hadith:{theme}")
         hadith_text, explanation_text, attribution, grade = _extract_hadith_parts(hadith)
         if not hadith_text:
             continue
@@ -1495,9 +1738,13 @@ def _build_hadith_card(anchors: List[_Anchor], active_provider_names: List[str])
 
 
 
-def _build_curated_fallback_verse_card(anchors: List[_Anchor]) -> Optional[DiscoveryCard]:
+def _build_curated_fallback_verse_card(
+    anchors: List[_Anchor],
+    *,
+    selection_token: Optional[str] = None,
+) -> Optional[DiscoveryCard]:
     """Fallback: pick a curated well-known verse directly when live API queries fail."""
-    verse_key = _curated_random_verse_key()
+    verse_key = _curated_random_verse_key(selection_token, salt="fallback")
     quranenc_verse = _safe_fetch_value("QURANENC_EXACT", islamic_api_service._quranenc_fetch_verse, verse_key) or {}
     quran_foundation_verse = _safe_fetch_value("QURAN_FOUNDATION_EXACT", islamic_api_service._quran_foundation_fetch_verse, verse_key) or {}
     diyanet_candidate = _safe_fetch_value("DIYANET_EXACT", islamic_api_service._diyanet_fetch_verse, verse_key) or {}
@@ -1544,28 +1791,65 @@ def _build_curated_fallback_verse_card(anchors: List[_Anchor]) -> Optional[Disco
 
 
 
-def _build_religious_cards(anchors: List[_Anchor], active_provider_names: List[str]) -> Dict[str, List[DiscoveryCard]]:
+def _build_religious_curated_cards(
+    anchors: List[_Anchor],
+    active_provider_names: List[str],
+    *,
+    selection_token: Optional[str] = None,
+) -> Dict[str, List[DiscoveryCard]]:
     family_cards: Dict[str, List[DiscoveryCard]] = {"Ayet Card": [], "Hadis Card": []}
 
-    verse_card = _build_random_verse_card(anchors, active_provider_names)
+    verse_card = _build_random_verse_card(
+        anchors,
+        active_provider_names,
+        selection_token=selection_token,
+    )
     if verse_card:
         family_cards["Ayet Card"].append(verse_card)
     else:
         # Curated fallback: pick a random well-known verse directly
-        fallback_card = _build_curated_fallback_verse_card(anchors)
+        fallback_card = _build_curated_fallback_verse_card(anchors, selection_token=selection_token)
         if fallback_card:
             family_cards["Ayet Card"].append(fallback_card)
 
-    hadith_card = _build_hadith_card(anchors, active_provider_names)
+    hadith_card = _build_hadith_card(
+        anchors,
+        active_provider_names,
+        selection_token=selection_token,
+    )
     if hadith_card:
         family_cards["Hadis Card"].append(hadith_card)
 
     return family_cards
 
 
-def _build_literary_cards(anchors: List[_Anchor], active_provider_names: List[str]) -> Dict[str, List[DiscoveryCard]]:
+def _build_religious_cards(
+    anchors: List[_Anchor],
+    active_provider_names: List[str],
+    *,
+    selection_token: Optional[str] = None,
+) -> Dict[str, List[DiscoveryCard]]:
+    family_cards = _build_religious_curated_cards(
+        anchors,
+        active_provider_names,
+        selection_token=selection_token,
+    )
+    return _finalize_family_card_map(
+        DiscoveryCategory.RELIGIOUS,
+        family_cards,
+        selection_token=selection_token,
+    )
+
+
+def _build_literary_mixed_cards(
+    anchors: List[_Anchor],
+    active_provider_names: List[str],
+    *,
+    selection_token: Optional[str] = None,
+) -> Dict[str, List[DiscoveryCard]]:
     active = set(active_provider_names)
     queries = _seed_queries(DiscoveryCategory.LITERARY, anchors)
+    queries = _ordered_for_selection(queries, selection_token, "literary:queries")
     family_cards: Dict[str, List[DiscoveryCard]] = {
         "Same Author / Next Book": [],
         "Parallel Work": [],
@@ -1655,15 +1939,34 @@ def _build_literary_cards(anchors: List[_Anchor], active_provider_names: List[st
                 if card:
                     family_cards["Notes to Screen"].append(card)
 
-    return {family: _dedupe_and_limit(cards, limit=4) for family, cards in family_cards.items()}
+    return family_cards
 
 
-def _build_culture_history_cards(anchors: List[_Anchor], active_provider_names: List[str]) -> Dict[str, List[DiscoveryCard]]:
+def _build_literary_cards(
+    anchors: List[_Anchor],
+    active_provider_names: List[str],
+    *,
+    selection_token: Optional[str] = None,
+) -> Dict[str, List[DiscoveryCard]]:
+    family_cards = _build_literary_mixed_cards(
+        anchors,
+        active_provider_names,
+        selection_token=selection_token,
+    )
+    return _finalize_family_card_map(
+        DiscoveryCategory.LITERARY,
+        family_cards,
+        selection_token=selection_token,
+    )
+
+
+def _build_culture_contextual_cards(
+    queries: List[str],
+    culture_anchor_pool: List[_Anchor],
+    active_provider_names: List[str],
+) -> Dict[str, List[DiscoveryCard]]:
     active = set(active_provider_names)
-    queries = _seed_queries(DiscoveryCategory.CULTURE_HISTORY, anchors)
-    family_cards: Dict[str, List[DiscoveryCard]] = {"Lineage": [], "Archive Artifact": [], "Wild Card": []}
-    culture_anchor_pool = _select_domain_anchors(DiscoveryCategory.CULTURE_HISTORY, anchors) or anchors
-
+    family_cards: Dict[str, List[DiscoveryCard]] = {"Lineage": []}
     for query in queries:
         if "WIKIDATA" in active:
             wikidata = _safe_fetch_value("WIKIDATA", external_kb_service._fetch_wikidata, query, None)
@@ -1674,7 +1977,7 @@ def _build_culture_history_cards(anchors: List[_Anchor], active_provider_names: 
                     "content_chunk": " | ".join(
                         part for part in [
                             str(wikidata.get("description") or "").strip(),
-                            f"Type: relation graph",
+                            "Type: relation graph",
                         ] if part
                     ),
                     "provider": "WIKIDATA",
@@ -1732,11 +2035,21 @@ def _build_culture_history_cards(anchors: List[_Anchor], active_provider_names: 
                 )
                 if card:
                     family_cards["Lineage"].append(card)
+    return family_cards
 
-        for provider_name, fetcher in (
-            ("EUROPEANA", external_kb_service._search_europeana_direct),
-            ("INTERNET_ARCHIVE", external_kb_service._search_internet_archive_direct),
-            ("ART_SEARCH_API", external_kb_service._search_artic_direct),
+
+def _build_culture_external_cards(
+    queries: List[str],
+    culture_anchor_pool: List[_Anchor],
+    active_provider_names: List[str],
+) -> Dict[str, List[DiscoveryCard]]:
+    active = set(active_provider_names)
+    family_cards: Dict[str, List[DiscoveryCard]] = {"Archive Artifact": [], "Wild Card": []}
+    for query in queries:
+        for provider_name, fetcher, provider_score_bonus in (
+            ("ART_SEARCH_API", external_kb_service._search_artic_direct, 0.09),
+            ("EUROPEANA", external_kb_service._search_europeana_direct, -0.03),
+            ("INTERNET_ARCHIVE", external_kb_service._search_internet_archive_direct, 0.0),
         ):
             if provider_name not in active:
                 continue
@@ -1752,7 +2065,7 @@ def _build_culture_history_cards(anchors: List[_Anchor], active_provider_names: 
                     require_reference=True,
                     summary_override=artifact_summary,
                     extra_evidence=_culture_evidence(candidate, "Archive Artifact"),
-                    score_bonus=0.03,
+                    score_bonus=0.03 + provider_score_bonus,
                 )
                 if card:
                     family_cards["Archive Artifact"].append(card)
@@ -1778,37 +2091,90 @@ def _build_culture_history_cards(anchors: List[_Anchor], active_provider_names: 
                 )
                 if card:
                     family_cards["Wild Card"].append(card)
+    return family_cards
 
-    return {family: _dedupe_and_limit(cards, limit=4) for family, cards in family_cards.items()}
+
+def _build_culture_history_cards(
+    anchors: List[_Anchor],
+    active_provider_names: List[str],
+    *,
+    selection_token: Optional[str] = None,
+) -> Dict[str, List[DiscoveryCard]]:
+    queries = _seed_queries(DiscoveryCategory.CULTURE_HISTORY, anchors)
+    queries = _ordered_for_selection(queries, selection_token, "culture:queries")
+    culture_anchor_pool = _select_domain_anchors(DiscoveryCategory.CULTURE_HISTORY, anchors) or anchors
+    family_cards = _merge_family_card_maps(
+        DiscoveryCategory.CULTURE_HISTORY,
+        _build_culture_contextual_cards(queries, culture_anchor_pool, active_provider_names),
+        _build_culture_external_cards(queries, culture_anchor_pool, active_provider_names),
+    )
+    return _finalize_family_card_map(
+        DiscoveryCategory.CULTURE_HISTORY,
+        family_cards,
+        selection_token=selection_token,
+    )
 
 
 def _select_board_layout(
     category_enum: DiscoveryCategory,
     family_cards: Dict[str, List[DiscoveryCard]],
+    *,
+    selection_token: Optional[str] = None,
 ) -> Tuple[Optional[DiscoveryCard], List[DiscoveryFamilySection]]:
     meta = _CATEGORY_META[category_enum]
-    all_cards = [card for cards in family_cards.values() for card in cards]
-    featured_card = max(all_cards, key=lambda card: card.score, default=None)
+    family_meta_map = meta["families"]
+    preferred_order = list(meta.get("hero_family_order") or [])
+    order_index = {family_name: idx for idx, family_name in enumerate(preferred_order)}
+
+    featured_ranked: List[Tuple[float, int, DiscoveryCard]] = []
+    for family_name, cards in family_cards.items():
+        family_meta = family_meta_map.get(family_name, {})
+        featured_weight = float(family_meta.get("featured_weight") or 1.0)
+        for card in cards[: min(2, len(cards))]:
+            featured_ranked.append(
+                (
+                    float(card.score) * featured_weight,
+                    -order_index.get(family_name, len(order_index)),
+                    card,
+                )
+            )
+    featured_ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    featured_pool = [card for _score, _priority, card in featured_ranked[: min(4, len(featured_ranked))]]
+    featured_card = _pick_variant(featured_pool, selection_token, f"{category_enum.value}:featured") if featured_pool else None
     featured_id = featured_card.id if featured_card else None
     family_sections: List[DiscoveryFamilySection] = []
-    remaining_budget = 2
+    section_budget = max(0, int(meta.get("section_budget") or 0))
+    ranked_families: List[Tuple[float, int, str, List[DiscoveryCard]]] = []
 
-    for family_name in meta["hero_family_order"]:
+    for family_name, family_meta in family_meta_map.items():
         cards = [card for card in family_cards.get(family_name, []) if card.id != featured_id]
-        if remaining_budget <= 0:
-            cards = []
-        else:
-            # Enforce 1 card per family to ensure diversity
-            cards = cards[: min(1, remaining_budget)]
-            remaining_budget -= len(cards)
-        family_meta = meta["families"][family_name]
+        if not cards:
+            continue
+        cards = _ordered_for_selection(cards, selection_token, f"{category_enum.value}:{family_name}:section")
+        section_priority = float(family_meta.get("section_priority") or 1.0)
+        ranked_families.append(
+            (
+                max(float(card.score) for card in cards) * section_priority,
+                -order_index.get(family_name, len(order_index)),
+                family_name,
+                cards,
+            )
+        )
+
+    ranked_families.sort(key=lambda item: (item[0], item[1]), reverse=True)
+
+    for _score, _priority, family_name, cards in ranked_families[:section_budget]:
+        family_meta = family_meta_map[family_name]
+        section_limit = max(1, int(family_meta.get("section_limit") or 1))
         family_sections.append(
             DiscoveryFamilySection(
                 family=family_name,
                 title=family_name,
                 description=str(family_meta["description"]),
                 source_label=str(family_meta["source_label"]),
-                cards=cards,
+                generation_mode=str(family_meta.get("generation_mode") or "").strip() or None,
+                refresh_behavior=str(family_meta.get("refresh_behavior") or "").strip() or None,
+                cards=cards[:section_limit],
             )
         )
 

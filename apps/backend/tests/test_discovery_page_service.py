@@ -24,7 +24,7 @@ def test_get_discovery_page_survives_board_failure(monkeypatch):
         ),
     )
 
-    def _board(category: DiscoveryCategory, firebase_uid: str, force_refresh: bool = False):
+    def _board(category: DiscoveryCategory, firebase_uid: str, force_refresh: bool = False, refresh_token: str | None = None):
         if category == DiscoveryCategory.RELIGIOUS:
             raise RuntimeError("provider down")
         return (
@@ -74,7 +74,7 @@ def test_get_discovery_page_reports_cache_status(monkeypatch):
 
     monkeypatch.setattr(
         "services.discovery_page_service.get_discovery_board_cached",
-        lambda category, firebase_uid, force_refresh=False: (
+        lambda category, firebase_uid, force_refresh=False, refresh_token=None: (
             DiscoveryBoardResponse(
                 category=category,
                 featured_card=None,

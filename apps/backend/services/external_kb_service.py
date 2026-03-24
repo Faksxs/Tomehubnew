@@ -809,6 +809,7 @@ def _search_europeana_direct(query: str, limit: int = 3) -> List[Dict[str, Any]]
     data = _http_get_json(url, timeout_sec=4.0)
     rows = (data or {}).get("items", []) if isinstance(data, dict) else []
     out: List[Dict[str, Any]] = []
+    normalized_query = _norm(text)
     for row in rows if isinstance(rows, list) else []:
         if not isinstance(row, dict):
             continue
@@ -826,6 +827,9 @@ def _search_europeana_direct(query: str, limit: int = 3) -> List[Dict[str, Any]]
         shown_by = _first_text(row.get("edmIsShownBy"))
         preview = _first_text(row.get("edmPreview"))
         source_url = shown_at or str(row.get("guid") or "").strip() or None
+        generic_provider_summary = not description or description.lower().startswith("europeana record from")
+        if _norm(title) == normalized_query and generic_provider_summary and not preview:
+            continue
         pieces = []
         if description:
             pieces.append(description)
@@ -856,6 +860,19 @@ def _search_europeana_direct(query: str, limit: int = 3) -> List[Dict[str, Any]]
             }
         )
     return out[: max(1, min(int(limit or 3), 5))]
+
+
+def _fetch_artic_artwork_detail(api_link: str) -> Dict[str, Any]:
+    url = str(api_link or "").strip()
+    if not url:
+        return {}
+    fields = {
+        "fields": "id,title,artist_title,artist_display,date_display,place_of_origin,short_description,medium_display,thumbnail,image_id",
+    }
+    separator = "&" if "?" in url else "?"
+    response = _http_get_json(f"{url}{separator}{urllib_parse.urlencode(fields)}", timeout_sec=4.0)
+    data = (response or {}).get("data") if isinstance(response, dict) else None
+    return data if isinstance(data, dict) else {}
 
 
 def _search_internet_archive_direct(query: str, limit: int = 3) -> List[Dict[str, Any]]:
@@ -1051,15 +1068,22 @@ def _search_artic_direct(query: str, limit: int = 3) -> List[Dict[str, Any]]:
     for row in rows if isinstance(rows, list) else []:
         if not isinstance(row, dict):
             continue
+        detail = _fetch_artic_artwork_detail(str(row.get("api_link") or "").strip())
         title = str(row.get("title") or "").strip()
+        if not title and detail:
+            title = str(detail.get("title") or "").strip()
         if not title:
             continue
-        artist = str(row.get("artist_title") or "").strip()
-        date_display = str(row.get("date_display") or "").strip()
-        thumb = row.get("thumbnail") if isinstance(row.get("thumbnail"), dict) else {}
+        artist = str(detail.get("artist_title") or row.get("artist_title") or "").strip()
+        date_display = str(detail.get("date_display") or row.get("date_display") or "").strip()
+        place_of_origin = str(detail.get("place_of_origin") or "").strip()
+        medium_display = str(detail.get("medium_display") or "").strip()
+        artist_display = str(detail.get("artist_display") or "").strip()
+        short_description = _truncate_text(detail.get("short_description"))
+        thumb = detail.get("thumbnail") if isinstance(detail.get("thumbnail"), dict) else row.get("thumbnail") if isinstance(row.get("thumbnail"), dict) else {}
         alt_text = str(thumb.get("alt_text") or "").strip()
         artwork_id = str(row.get("id") or "").strip()
-        image_id = str(row.get("image_id") or "").strip()
+        image_id = str(detail.get("image_id") or row.get("image_id") or "").strip()
         image_url = f"{iiif_url}/{image_id}/full/843,/0/default.jpg" if iiif_url and image_id else None
         public_url = f"{website_url}/artworks/{artwork_id}" if website_url and artwork_id else None
         pieces = []
@@ -1068,7 +1092,13 @@ def _search_artic_direct(query: str, limit: int = 3) -> List[Dict[str, Any]]:
             pieces.append(f"Artist: {artist}")
         if date_display:
             pieces.append(f"Date: {date_display}")
-        if alt_text:
+        if place_of_origin:
+            pieces.append(f"Origin: {place_of_origin}")
+        if medium_display:
+            pieces.append(_truncate_text(medium_display, limit=180))
+        if short_description:
+            pieces.append(short_description)
+        elif alt_text:
             pieces.append(alt_text[:220])
         out.append(
             {
@@ -1081,9 +1111,11 @@ def _search_artic_direct(query: str, limit: int = 3) -> List[Dict[str, Any]]:
                 "provider": "ART_SEARCH_API",
                 "source_url": public_url or str(row.get("api_link") or "").strip() or None,
                 "reference": artwork_id or None,
-                "summary": _truncate_text(alt_text) or f"Artwork from the Art Institute of Chicago search index",
+                "summary": short_description or _truncate_text(medium_display) or _truncate_text(alt_text) or f"Artwork from the Art Institute of Chicago search index",
                 "image_url": image_url,
                 "artist": artist,
+                "creator": _truncate_text(artist_display, limit=180) if artist_display else "",
+                "country": place_of_origin,
             }
         )
     return out[: max(1, min(int(limit or 3), 5))]
