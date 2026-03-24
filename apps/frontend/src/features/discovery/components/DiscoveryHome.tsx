@@ -12,6 +12,7 @@ import {
   ScrollText,
   Library,
   RotateCw,
+  Menu,
 } from 'lucide-react';
 import type { AppTab } from '../../app/types';
 import type { LibraryItem, PersonalNoteCategory } from '../../../types';
@@ -683,13 +684,13 @@ const limitPillarCardsForLayout = (
 
 const cardStyles = (tone: DiscoveryTone) => {
   switch (tone) {
-    case 'blue': return 'bg-blue-600/5 border-blue-500/10 text-blue-50 shadow-[0_4px_24px_-10px_rgba(59,130,246,0.1)] backdrop-blur-md';
-    case 'green': return 'bg-emerald-600/5 border-emerald-500/10 text-emerald-50 shadow-[0_4px_24px_-10px_rgba(16,185,129,0.1)] backdrop-blur-md';
-    case 'purple': return 'bg-purple-600/5 border-purple-500/10 text-purple-50 shadow-[0_4px_24px_-10px_rgba(168,85,247,0.1)] backdrop-blur-md';
-    case 'amber': return 'bg-amber-600/5 border-amber-500/10 text-amber-50 shadow-[0_4px_24px_-10px_rgba(245,158,11,0.1)] backdrop-blur-md';
-    case 'cyan': return 'bg-cyan-600/5 border-cyan-500/10 text-cyan-50 shadow-[0_4px_24px_-10px_rgba(6,182,212,0.1)] backdrop-blur-md';
-    case 'dark': return 'bg-slate-900/40 border-white/5 text-slate-100 shadow-xl backdrop-blur-2xl';
-    default: return 'bg-white/[0.03] border-white/5 text-white backdrop-blur-sm';
+    case 'blue': return 'bg-blue-600/5 dark:bg-blue-600/5 border-blue-500/10 dark:border-blue-500/10 text-slate-900 dark:text-blue-50 shadow-[0_4px_24px_-10px_rgba(59,130,246,0.1)] backdrop-blur-md';
+    case 'green': return 'bg-emerald-600/5 dark:bg-emerald-600/5 border-emerald-500/10 dark:border-emerald-500/10 text-slate-900 dark:text-emerald-50 shadow-[0_4px_24px_-10px_rgba(16,185,129,0.1)] backdrop-blur-md';
+    case 'purple': return 'bg-purple-600/5 dark:bg-purple-600/5 border-purple-500/10 dark:border-purple-500/10 text-slate-900 dark:text-purple-50 shadow-[0_4px_24px_-10px_rgba(168,85,247,0.1)] backdrop-blur-md';
+    case 'amber': return 'bg-amber-600/5 dark:bg-amber-600/5 border-amber-500/10 dark:border-amber-500/10 text-slate-900 dark:text-amber-50 shadow-[0_4px_24px_-10px_rgba(245,158,11,0.1)] backdrop-blur-md';
+    case 'cyan': return 'bg-cyan-600/5 dark:bg-cyan-600/5 border-cyan-500/10 dark:border-cyan-500/10 text-slate-900 dark:text-cyan-50 shadow-[0_4px_24px_-10px_rgba(6,182,212,0.1)] backdrop-blur-md';
+    case 'dark': return 'bg-white/40 dark:bg-slate-900/40 border-black/5 dark:border-white/5 text-slate-900 dark:text-slate-100 shadow-xl backdrop-blur-2xl';
+    default: return 'bg-white/40 dark:bg-white/[0.03] border-black/5 dark:border-white/5 text-slate-900 dark:text-white backdrop-blur-sm';
   }
 };
 
@@ -788,17 +789,17 @@ const CardSurface: React.FC<{
         )}
 
         <div className="flex-1">
-          <h2 className={`font-serif leading-tight mb-4 ${isHero ? 'text-2xl md:text-3xl font-normal text-white/90' : 'text-lg font-normal text-white/80'}`}>
+          <h2 className={`font-serif leading-tight mb-4 ${isHero ? 'text-2xl md:text-3xl font-normal text-slate-900/90 dark:text-white/90' : 'text-lg font-normal text-slate-900/80 dark:text-white/80'}`}>
             {card.title}
           </h2>
-          <p className={isHero ? 'text-sm text-white/40 leading-relaxed max-w-[48ch] mb-6' : 'text-xs text-white/40 leading-relaxed max-w-[48ch] mb-6'}>
+          <p className={isHero ? 'text-sm text-slate-600/40 dark:text-white/40 leading-relaxed max-w-[48ch] mb-6' : 'text-xs text-slate-600/40 dark:text-white/40 leading-relaxed max-w-[48ch] mb-6'}>
             {card.summary}
           </p>
 
           {whySeen && (
-            <div className="mb-5 rounded-xl border border-white/6 bg-white/[0.025] px-3 py-2">
-              <p className="text-[10px] leading-relaxed text-white/42">
-                <span className="mr-1 uppercase tracking-[0.18em] text-cyan-400/70">Why:</span>
+            <div className="mb-5 rounded-xl border border-black/5 dark:border-white/6 bg-black/[0.02] dark:bg-white/[0.025] px-3 py-2">
+              <p className="text-[10px] leading-relaxed text-slate-500 dark:text-white/42">
+                <span className="mr-1 uppercase tracking-[0.18em] text-cyan-500 dark:text-cyan-400/70">Why:</span>
                 {whySeen}
               </p>
             </div>
@@ -808,14 +809,16 @@ const CardSurface: React.FC<{
             <div className="mb-5 space-y-3">
               {religiousEvidence.map((item) => (
                 <div key={item.label} className="rounded-xl border border-emerald-400/10 bg-emerald-500/[0.04] px-3 py-2">
-                  <div className="mb-1 text-[9px] uppercase tracking-[0.18em] text-emerald-300/70">
-                    {item.label}
-                  </div>
+                  {!['Hadis', 'Ayet'].includes(item.label) && (
+                    <div className="mb-1 text-[9px] uppercase tracking-[0.18em] text-emerald-800/70 dark:text-emerald-300/70">
+                      {item.label}
+                    </div>
+                  )}
                   <p
                     dir={item.label === 'Arabic' ? 'rtl' : undefined}
                     className={item.label === 'Arabic'
-                      ? `${isHero ? 'text-lg md:text-xl leading-10' : 'text-sm leading-8'} text-right text-emerald-50/95`
-                      : `${isHero ? 'text-sm' : 'text-[11px]'} leading-relaxed text-white/62`}
+                      ? `${isHero ? 'text-lg md:text-xl leading-10' : 'text-sm leading-8'} text-right text-emerald-900/95 dark:text-emerald-50/95`
+                      : `${isHero ? 'text-sm' : 'text-[11px]'} leading-relaxed text-slate-700 dark:text-white/62`}
                   >
                     {item.value}
                   </p>
@@ -828,8 +831,8 @@ const CardSurface: React.FC<{
             <div className="mb-5 flex flex-wrap gap-2">
               {cultureEvidence.map((item) => (
                 <div key={item.label} className="rounded-full border border-amber-300/12 bg-amber-500/[0.06] px-3 py-1.5">
-                  <span className="mr-2 text-[9px] uppercase tracking-[0.18em] text-amber-200/55">{item.label}</span>
-                  <span className="text-[11px] text-white/70">{item.value}</span>
+                  <span className="mr-2 text-[9px] uppercase tracking-[0.18em] text-amber-800/55 dark:text-amber-200/55">{item.label}</span>
+                  <span className="text-[11px] text-slate-800/70 dark:text-white/70">{item.value}</span>
                 </div>
               ))}
             </div>
@@ -838,7 +841,7 @@ const CardSurface: React.FC<{
           {card.progress !== undefined && (
             <div className="relative w-20 h-20 mb-6">
               <svg className="w-full h-full transform -rotate-90">
-                <circle cx="40" cy="40" r="36" stroke="currentColor" strokeWidth="4" fill="transparent" className="text-white/5" />
+                <circle cx="40" cy="40" r="36" stroke="currentColor" strokeWidth="4" fill="transparent" className="text-black/5 dark:text-white/5" />
                 <circle
                   cx="40"
                   cy="40"
@@ -861,8 +864,8 @@ const CardSurface: React.FC<{
 
 
         </div>
-
-        <div className="mt-auto pt-4 flex items-center justify-between border-t border-white/5">
+ 
+        <div className="mt-auto pt-4 flex items-center justify-between border-t border-black/5 dark:border-white/5">
           <div className="flex items-center gap-4">
             <button onClick={() => onAsk(card)} className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest hover:text-cyan-400 transition-colors">
               <MessageSquareText size={12} />
@@ -912,26 +915,26 @@ const InnerSpaceMiniCard: React.FC<{
   const isDormant = card.slot === 'dormant_gem';
 
   return (
-    <div className="rounded-2xl border border-white/6 bg-white/[0.025] px-4 py-4">
+    <div className="rounded-2xl border border-black/5 dark:border-white/6 bg-white/40 dark:bg-white/[0.025] px-4 py-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[9px] uppercase tracking-[0.24em] text-cyan-400/70">{card.family}</p>
-          <p className="mt-2 text-base font-serif text-white/90">{card.title}</p>
-          <p className="mt-2 text-[11px] leading-relaxed text-white/45">{card.summary}</p>
+          <p className="text-[9px] uppercase tracking-[0.24em] text-cyan-600 dark:text-cyan-400/70">{card.family}</p>
+          <p className="mt-2 text-base font-serif text-slate-900/90 dark:text-white/90">{card.title}</p>
+          <p className="mt-2 text-[11px] leading-relaxed text-slate-600/45 dark:text-white/45">{card.summary}</p>
           {isDormant && dormantEntries.length > 0 ? (
             <div className="mt-4 space-y-3">
               {dormantEntries.map((entry) => (
-                <div key={entry.key} className="rounded-xl border border-white/6 bg-black/10 px-3 py-3">
+                <div key={entry.key} className="rounded-xl border border-black/5 dark:border-white/6 bg-black/5 dark:bg-black/10 px-3 py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-[9px] uppercase tracking-[0.22em] text-amber-300/70">{entry.label}</p>
-                      <p className="mt-1 text-sm font-medium text-white/85">{entry.title}</p>
-                      <p className="mt-1 text-[11px] leading-relaxed text-white/45">{entry.reason}</p>
+                      <p className="text-[9px] uppercase tracking-[0.22em] text-amber-700 dark:text-amber-300/70">{entry.label}</p>
+                      <p className="mt-1 text-sm font-medium text-slate-900/85 dark:text-white/85">{entry.title}</p>
+                      <p className="mt-1 text-[11px] leading-relaxed text-slate-600/45 dark:text-white/45">{entry.reason}</p>
                     </div>
                     <button
                       type="button"
                       onClick={() => onOpenItem(entry.item)}
-                      className="shrink-0 rounded-full border border-white/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.18em] text-white/60 transition hover:border-cyan-400/30 hover:text-cyan-300"
+                      className="shrink-0 rounded-full border border-black/10 dark:border-white/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-white/60 transition hover:border-cyan-500/30 dark:hover:border-cyan-400/30 hover:text-cyan-600 dark:hover:text-cyan-300"
                     >
                       Open
                     </button>
@@ -941,7 +944,7 @@ const InnerSpaceMiniCard: React.FC<{
             </div>
           ) : null}
           {card.metadata ? (
-            <p className="mt-3 text-[9px] uppercase tracking-[0.22em] text-white/25">{card.metadata}</p>
+            <p className="mt-3 text-[9px] uppercase tracking-[0.22em] text-slate-400 dark:text-white/25">{card.metadata}</p>
           ) : null}
         </div>
         <button
@@ -949,8 +952,8 @@ const InnerSpaceMiniCard: React.FC<{
           onClick={() => (canOpen ? onOpen(card) : onAsk(card))}
           className={`shrink-0 rounded-full border px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.18em] transition ${
             canOpen
-              ? 'border-white/10 text-white/55 hover:border-cyan-400/30 hover:text-cyan-300'
-              : 'border-white/5 text-white/25 hover:text-white/45'
+              ? 'border-black/10 dark:border-white/10 text-slate-500 dark:text-white/55 hover:border-cyan-500/30 dark:hover:border-cyan-400/30 hover:text-cyan-600 dark:hover:text-cyan-300'
+              : 'border-black/5 dark:border-white/5 text-slate-400 dark:text-white/25 hover:text-slate-600 dark:hover:text-white/45'
           }`}
         >
           {canOpen ? 'Open' : 'Ask'}
@@ -996,9 +999,9 @@ const InnerSpaceCluster: React.FC<{
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-cyan-400/80">{latestCard.family}</p>
+            <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-cyan-600 dark:text-cyan-400/80">{latestCard.family}</p>
             {latestCard.sources.length > 0 ? (
-              <p className="mt-2 text-[10px] italic text-white/40">{latestCard.sources.join(' // ')}</p>
+              <p className="mt-2 text-[10px] italic text-slate-500 dark:text-white/40">{latestCard.sources.join(' // ')}</p>
             ) : null}
           </div>
           {latestCard.progress !== undefined ? (
@@ -1009,11 +1012,11 @@ const InnerSpaceCluster: React.FC<{
         </div>
 
         <div className="mt-6">
-          <p className="text-[10px] uppercase tracking-[0.24em] text-white/24">Personal</p>
-          <h3 className="mt-2 font-serif text-3xl leading-tight text-white/92">{latestCard.title}</h3>
-          <p className="mt-4 max-w-[58ch] text-sm leading-relaxed text-white/48">{latestCard.summary}</p>
+          <p className="text-[10px] uppercase tracking-[0.24em] text-slate-400 dark:text-white/24">Personal</p>
+          <h3 className="mt-2 font-serif text-3xl leading-tight text-slate-900/92 dark:text-white/92">{latestCard.title}</h3>
+          <p className="mt-4 max-w-[58ch] text-sm leading-relaxed text-slate-600/48 dark:text-white/48">{latestCard.summary}</p>
           {latestCard.metadata ? (
-            <p className="mt-5 text-[10px] uppercase tracking-[0.24em] text-white/24">{latestCard.metadata}</p>
+            <p className="mt-5 text-[10px] uppercase tracking-[0.24em] text-slate-400 dark:text-white/24">{latestCard.metadata}</p>
           ) : null}
         </div>
 
@@ -1030,7 +1033,7 @@ const InnerSpaceCluster: React.FC<{
                   <button
                     type="button"
                     onClick={() => onOpenItem(entry.item)}
-                    className="shrink-0 rounded-full border border-white/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.18em] text-white/60 transition hover:border-cyan-400/30 hover:text-cyan-300"
+                    className="shrink-0 rounded-full border border-black/10 dark:border-white/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-white/60 transition hover:border-cyan-500/30 dark:hover:border-cyan-400/30 hover:text-cyan-600 dark:hover:text-cyan-300"
                   >
                     Open
                   </button>
@@ -1058,7 +1061,7 @@ const InnerSpaceCluster: React.FC<{
               <MessageSquareText size={12} />
               Ask
             </button>
-            <button onClick={() => onSave(latestCard)} className="opacity-40 transition-opacity hover:opacity-100">
+            <button onClick={() => onSave(latestCard)} className="opacity-40 transition-opacity hover:opacity-100 text-slate-900 dark:text-white">
               <BookmarkPlus size={14} />
             </button>
           </div>
@@ -1067,8 +1070,8 @@ const InnerSpaceCluster: React.FC<{
             onClick={() => (latestCanOpen ? onOpen(latestCard) : onAsk(latestCard))}
             className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] transition ${
               latestCanOpen
-                ? 'border-cyan-400/25 bg-cyan-500 text-black hover:bg-cyan-400'
-                : 'border-white/8 bg-white/5 text-white/55 hover:bg-white/10'
+                ? 'border-cyan-400/25 bg-cyan-500/90 dark:bg-cyan-500 text-white dark:text-black hover:bg-cyan-600 dark:hover:bg-cyan-400 shadow-lg shadow-cyan-500/20'
+                : 'border-black/8 dark:border-white/8 bg-black/5 dark:bg-white/5 text-slate-600 dark:text-white/55 hover:bg-black/10 dark:hover:bg-white/10'
             }`}
           >
             {primaryCardActionLabel(latestCard)}
@@ -1084,7 +1087,7 @@ const InnerSpaceCluster: React.FC<{
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-cyan-400/80">{themePulseCard.family}</p>
-              <p className="mt-2 text-[10px] italic text-white/40">
+              <p className="text-[10px] italic text-slate-500 dark:text-white/40">
                 {topNodes.length > 0 ? 'Dashboard // Top Nodes' : themePulseCard.sources.join(' // ')}
               </p>
             </div>
@@ -1096,19 +1099,19 @@ const InnerSpaceCluster: React.FC<{
           </div>
 
           <div className="mt-6">
-            <p className="text-[10px] uppercase tracking-[0.24em] text-white/24">Personal</p>
-            <h3 className="mt-2 font-serif text-2xl leading-tight text-white/92">Top Nodes</h3>
+            <p className="text-[10px] uppercase tracking-[0.24em] text-slate-400 dark:text-white/24">Personal</p>
+            <h3 className="mt-2 font-serif text-2xl leading-tight text-slate-900/92 dark:text-white/92">Top Nodes</h3>
           </div>
 
           {topNodes.length > 0 ? (
             <div className="mt-6 space-y-3">
               {topNodes.map((node) => (
                 <div key={node.label} className="space-y-1.5">
-                  <div className="flex items-center justify-between gap-3 text-[11px] font-bold uppercase tracking-[0.14em] text-white/75">
+                  <div className="flex items-center justify-between gap-3 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-700 dark:text-white/75">
                     <span className="truncate">{node.label}</span>
-                    <span className="shrink-0 text-white/35">{node.count}</span>
+                    <span className="shrink-0 text-slate-400 dark:text-white/35">{node.count}</span>
                   </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-white/5">
+                  <div className="h-1.5 overflow-hidden rounded-full bg-black/5 dark:bg-white/5">
                     <motion.div
                       initial={{ width: 0 }}
                       animate={{ width: `${(node.count / topNodes[0].count) * 100}%` }}
@@ -1119,14 +1122,14 @@ const InnerSpaceCluster: React.FC<{
               ))}
             </div>
           ) : (
-            <p className="mt-6 text-sm leading-relaxed text-white/45">{themePulseCard.summary}</p>
+            <p className="mt-6 text-sm leading-relaxed text-slate-600/45 dark:text-white/45">{themePulseCard.summary}</p>
           )}
 
           {themePulseCard.metadata ? (
             <p className="mt-6 text-[10px] uppercase tracking-[0.24em] text-white/22">{themePulseCard.metadata}</p>
           ) : null}
 
-          <div className="mt-auto flex items-center justify-between border-t border-white/5 pt-4">
+          <div className="mt-auto flex items-center justify-between border-t border-black/5 dark:border-white/5 pt-4">
             <button onClick={() => onAsk(themePulseCard)} className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest transition-colors hover:text-cyan-400">
               <MessageSquareText size={12} />
               Ask
@@ -1134,7 +1137,7 @@ const InnerSpaceCluster: React.FC<{
             <button
               type="button"
               onClick={() => onAsk(themePulseCard)}
-              className="rounded-full border border-white/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-white/70 transition hover:border-cyan-400/25 hover:text-cyan-300"
+              className="rounded-full border border-black/10 dark:border-white/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-white/70 transition hover:border-cyan-500/25 dark:hover:border-cyan-400/25 hover:text-cyan-600 dark:hover:text-cyan-300"
             >
               Focus Map
             </button>
@@ -1150,7 +1153,7 @@ const InnerSpaceLoadingGrid: React.FC = () => (
     {[0, 1].map((index) => (
       <div
         key={index}
-        className={`${index === 0 ? 'min-h-[420px]' : 'min-h-[420px]'} rounded-2xl border border-white/5 bg-white/[0.02] animate-pulse`}
+        className={`${index === 0 ? 'min-h-[420px]' : 'min-h-[420px]'} rounded-2xl border border-black/5 dark:border-white/5 bg-black/[0.02] dark:bg-white/[0.02] animate-pulse`}
       />
     ))}
   </div>
@@ -1162,6 +1165,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
   onTabChange,
   onQuickCreatePersonalNote,
   onOpenDiscoveryItem,
+  onMobileMenuClick,
 }) => {
   const [innerSpaceCards, setInnerSpaceCards] = useState<DiscoveryCardData[]>([]);
   const [pillarCardsByCategory, setPillarCardsByCategory] = useState<Record<ExternalCategoryKey, DiscoveryCardData[]>>(
@@ -1426,16 +1430,24 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
   const remainingPillarCards: DiscoveryCardData[] = []; // Enforce strict 2-card limit per pillar
 
   return (
-    <div className="relative min-h-screen bg-[#020408] text-white overflow-y-auto selection:bg-cyan-500/30">
+    <div className="relative min-h-screen bg-[#F7F8FB] dark:bg-[#020408] text-slate-900 dark:text-white overflow-y-auto selection:bg-cyan-500/30">
       <div className="fixed inset-0 pointer-events-none z-0">
-        <div className="absolute top-0 right-0 w-full h-[600px] bg-gradient-to-b from-blue-900/10 via-transparent to-transparent" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.045)_1px,transparent_0)] bg-[size:24px_24px] opacity-[0.07]" />
+        <div className="absolute top-0 right-0 w-full h-[600px] bg-gradient-to-b from-blue-900/5 dark:from-blue-900/10 via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(0,0,0,0.05)_1px,transparent_0)] dark:bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.045)_1px,transparent_0)] bg-[size:24px_24px] opacity-[0.07] dark:opacity-[0.07]" />
       </div>
 
       <div className="relative z-10 max-w-[1700px] mx-auto px-6 lg:px-16 py-8">
         <header className="mb-10">
-          <div className="flex flex-col items-center border-b border-white/5 pb-8 text-center">
-            <h1 className="text-4xl md:text-5xl font-serif font-light tracking-wide text-white/90 italic">Discovery</h1>
+          <div className="flex flex-col items-center border-b border-black/5 dark:border-white/5 pb-8 text-center relative">
+            {/* Mobile Menu Trigger */}
+            <button
+              onClick={onMobileMenuClick}
+              className="lg:hidden absolute left-0 top-1/2 -translate-y-1/2 p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+            >
+              <Menu size={24} />
+            </button>
+
+            <h1 className="text-4xl md:text-5xl font-serif font-light tracking-wide text-slate-900 dark:text-white/90 italic">Discovery</h1>
           </div>
         </header>
 
@@ -1443,7 +1455,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
           <div className="mb-8">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-4">
-                <h2 className="text-3xl font-black uppercase tracking-[0.2em] bg-clip-text text-transparent bg-gradient-to-r from-white to-white/40">Inner Space</h2>
+                <h2 className="text-3xl font-black uppercase tracking-[0.2em] bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-500 dark:from-white dark:to-white/40">Inner Space</h2>
               </div>
             </div>
 
@@ -1475,7 +1487,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
                 onOpenItem={handleOpenLibraryItem}
               />
             ) : (
-              <div className="rounded-2xl border border-white/5 bg-white/[0.02] px-5 py-6 text-sm text-white/50">
+              <div className="rounded-2xl border border-black/5 dark:border-white/5 bg-white/40 dark:bg-white/[0.02] px-5 py-6 text-sm text-slate-500 dark:text-white/50">
                 Discovery could not load inner archive signals yet.
               </div>
             )}
@@ -1484,12 +1496,12 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
           <div className="mt-12">
             <div className="mb-8 flex flex-col gap-4 px-4 pl-6 md:flex-row md:items-end md:justify-between md:border-l-2 md:border-cyan-500/20">
               <div className="flex flex-col items-start">
-                <span className="mb-2 text-[10px] font-sans font-light uppercase tracking-[0.4em] opacity-30">Fundamental Layer</span>
-                <h2 className="text-3xl font-serif italic tracking-tight text-white/80">The Pillars</h2>
-                <div className="mt-4 h-[1px] w-32 bg-gradient-to-r from-white/20 to-transparent" />
+                <span className="mb-2 text-[10px] font-sans font-light uppercase tracking-[0.4em] text-slate-500 dark:text-white/30 italic">Fundamental Layer</span>
+                <h2 className="text-3xl font-serif italic tracking-tight text-slate-800 dark:text-white/80">The Pillars</h2>
+                <div className="mt-4 h-[1px] w-32 bg-gradient-to-r from-slate-400/20 dark:from-white/20 to-transparent" />
               </div>
               <div className="flex items-center gap-3">
-                <div className="text-[10px] uppercase tracking-[0.22em] text-white/30">
+                <div className="text-[10px] uppercase tracking-[0.22em] text-slate-400 dark:text-white/30">
                   {formatRelativeUpdateTime(viewMeta.lastUpdatedAt)}
                 </div>
                 <button
@@ -1498,8 +1510,8 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
                   disabled={isRefreshing}
                   className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] transition ${
                     isRefreshing
-                      ? 'cursor-wait border-cyan-400/15 bg-cyan-500/10 text-cyan-200/60'
-                      : 'border-cyan-400/25 bg-cyan-500/15 text-cyan-100 hover:border-cyan-300/40 hover:bg-cyan-500/25'
+                      ? 'cursor-wait border-cyan-500/15 dark:border-cyan-400/15 bg-cyan-500/5 dark:bg-cyan-500/10 text-cyan-600 dark:text-cyan-200/60'
+                      : 'border-cyan-500/20 dark:border-cyan-400/25 bg-cyan-500/10 dark:bg-cyan-500/15 text-cyan-700 dark:text-cyan-100 hover:border-cyan-500/40 dark:hover:border-cyan-300/40 hover:bg-cyan-500/20 dark:hover:bg-cyan-500/25'
                   }`}
                 >
                   <RotateCw size={12} className={isRefreshing ? 'animate-spin' : ''} />
@@ -1608,7 +1620,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
             ) : null}
 
             {!pageLoading && !hasAnyPillarCards ? (
-              <div className="rounded-2xl border border-white/5 bg-white/[0.02] px-5 py-6 text-sm text-white/50">
+              <div className="rounded-2xl border border-black/5 dark:border-white/5 bg-white/40 dark:bg-white/[0.02] px-5 py-6 text-sm text-slate-500 dark:text-white/50">
                 Pillars could not load external source cards right now.
               </div>
             ) : null}
