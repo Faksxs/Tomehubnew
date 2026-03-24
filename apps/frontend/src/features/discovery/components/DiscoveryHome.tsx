@@ -767,15 +767,15 @@ const CardSurface: React.FC<{
       <div className="relative z-10 flex flex-col h-full">
         <div className="flex justify-between items-start mb-6">
           <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-bold tracking-[0.25em] uppercase text-cyan-400">
+            <span className="text-[11px] font-bold tracking-[0.25em] uppercase text-cyan-600 dark:text-cyan-400">
               {card.category}
             </span>
-            <span className="text-[10px] font-light italic opacity-40">
+            <span className="text-[10px] font-light italic text-slate-500 dark:text-white/40">
               {card.family}
             </span>
           </div>
           {card.syncRate && (
-            <div className="px-2 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-[9px] font-mono text-cyan-400">
+            <div className="px-2 py-0.5 rounded-full bg-cyan-600/10 dark:bg-cyan-500/10 border border-cyan-600/20 dark:border-cyan-500/20 text-[9px] font-mono text-cyan-700 dark:text-cyan-400">
               {card.syncRate}
             </div>
           )}
@@ -789,17 +789,17 @@ const CardSurface: React.FC<{
         )}
 
         <div className="flex-1">
-          <h2 className={`font-serif leading-tight mb-4 ${isHero ? 'text-2xl md:text-3xl font-normal text-slate-900/90 dark:text-white/90' : 'text-lg font-normal text-slate-900/80 dark:text-white/80'}`}>
+          <h2 className={`font-serif leading-tight mb-4 ${isHero ? 'text-2xl md:text-3xl font-normal text-slate-900 dark:text-white/90' : 'text-lg font-normal text-slate-900 dark:text-white/80'}`}>
             {card.title}
           </h2>
-          <p className={isHero ? 'text-sm text-slate-600/40 dark:text-white/40 leading-relaxed max-w-[48ch] mb-6' : 'text-xs text-slate-600/40 dark:text-white/40 leading-relaxed max-w-[48ch] mb-6'}>
+          <p className={isHero ? 'text-sm text-slate-600 dark:text-white/50 leading-relaxed max-w-[48ch] mb-6' : 'text-xs text-slate-600 dark:text-white/50 leading-relaxed max-w-[48ch] mb-6'}>
             {card.summary}
           </p>
 
           {whySeen && (
-            <div className="mb-5 rounded-xl border border-black/5 dark:border-white/6 bg-black/[0.02] dark:bg-white/[0.025] px-3 py-2">
-              <p className="text-[10px] leading-relaxed text-slate-500 dark:text-white/42">
-                <span className="mr-1 uppercase tracking-[0.18em] text-cyan-500 dark:text-cyan-400/70">Why:</span>
+            <div className="mb-5 rounded-xl border border-black/5 dark:border-white/6 bg-black/[0.03] dark:bg-white/[0.025] px-3 py-2">
+              <p className="text-[10px] leading-relaxed text-slate-600 dark:text-white/42">
+                <span className="mr-1 uppercase tracking-[0.18em] text-cyan-700 dark:text-cyan-400/70">Why:</span>
                 {whySeen}
               </p>
             </div>
@@ -831,8 +831,8 @@ const CardSurface: React.FC<{
             <div className="mb-5 flex flex-wrap gap-2">
               {cultureEvidence.map((item) => (
                 <div key={item.label} className="rounded-full border border-amber-300/12 bg-amber-500/[0.06] px-3 py-1.5">
-                  <span className="mr-2 text-[9px] uppercase tracking-[0.18em] text-amber-800/55 dark:text-amber-200/55">{item.label}</span>
-                  <span className="text-[11px] text-slate-800/70 dark:text-white/70">{item.value}</span>
+                  <span className="mr-2 text-[9px] uppercase tracking-[0.18em] text-amber-800/80 dark:text-amber-200/55">{item.label}</span>
+                  <span className="text-[11px] text-slate-800 dark:text-white/70">{item.value}</span>
                 </div>
               ))}
             </div>
@@ -877,7 +877,7 @@ const CardSurface: React.FC<{
           </div>
 
           {card.metadata && (
-            <div className="text-[9px] uppercase tracking-[0.2em] font-medium text-cyan-400/40 italic">
+            <div className="text-[9px] uppercase tracking-[0.2em] font-medium text-cyan-700/60 dark:text-cyan-400/40 italic">
               {card.metadata}
             </div>
           )}
@@ -918,18 +918,18 @@ const InnerSpaceMiniCard: React.FC<{
     <div className="rounded-2xl border border-black/5 dark:border-white/6 bg-white/40 dark:bg-white/[0.025] px-4 py-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[9px] uppercase tracking-[0.24em] text-cyan-600 dark:text-cyan-400/70">{card.family}</p>
-          <p className="mt-2 text-base font-serif text-slate-900/90 dark:text-white/90">{card.title}</p>
-          <p className="mt-2 text-[11px] leading-relaxed text-slate-600/45 dark:text-white/45">{card.summary}</p>
+          <p className="text-[9px] uppercase tracking-[0.24em] text-cyan-700 dark:text-cyan-400/70">{card.family}</p>
+          <p className="mt-2 text-base font-serif text-slate-900 dark:text-white/90">{card.title}</p>
+          <p className="mt-2 text-[11px] leading-relaxed text-slate-600 dark:text-white/45">{card.summary}</p>
           {isDormant && dormantEntries.length > 0 ? (
             <div className="mt-4 space-y-3">
               {dormantEntries.map((entry) => (
                 <div key={entry.key} className="rounded-xl border border-black/5 dark:border-white/6 bg-black/5 dark:bg-black/10 px-3 py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-[9px] uppercase tracking-[0.22em] text-amber-700 dark:text-amber-300/70">{entry.label}</p>
-                      <p className="mt-1 text-sm font-medium text-slate-900/85 dark:text-white/85">{entry.title}</p>
-                      <p className="mt-1 text-[11px] leading-relaxed text-slate-600/45 dark:text-white/45">{entry.reason}</p>
+                      <p className="text-[9px] uppercase tracking-[0.22em] text-amber-800 dark:text-amber-300/70">{entry.label}</p>
+                      <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white/85">{entry.title}</p>
+                      <p className="mt-1 text-[11px] leading-relaxed text-slate-600 dark:text-white/45">{entry.reason}</p>
                     </div>
                     <button
                       type="button"
@@ -944,7 +944,7 @@ const InnerSpaceMiniCard: React.FC<{
             </div>
           ) : null}
           {card.metadata ? (
-            <p className="mt-3 text-[9px] uppercase tracking-[0.22em] text-slate-400 dark:text-white/25">{card.metadata}</p>
+            <p className="mt-3 text-[9px] uppercase tracking-[0.22em] text-slate-500 dark:text-white/25">{card.metadata}</p>
           ) : null}
         </div>
         <button
@@ -999,7 +999,7 @@ const InnerSpaceCluster: React.FC<{
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-cyan-600 dark:text-cyan-400/80">{latestCard.family}</p>
+            <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-cyan-700 dark:text-cyan-400/80">{latestCard.family}</p>
             {latestCard.sources.length > 0 ? (
               <p className="mt-2 text-[10px] italic text-slate-500 dark:text-white/40">{latestCard.sources.join(' // ')}</p>
             ) : null}
@@ -1012,11 +1012,11 @@ const InnerSpaceCluster: React.FC<{
         </div>
 
         <div className="mt-6">
-          <p className="text-[10px] uppercase tracking-[0.24em] text-slate-400 dark:text-white/24">Personal</p>
-          <h3 className="mt-2 font-serif text-3xl leading-tight text-slate-900/92 dark:text-white/92">{latestCard.title}</h3>
-          <p className="mt-4 max-w-[58ch] text-sm leading-relaxed text-slate-600/48 dark:text-white/48">{latestCard.summary}</p>
+          <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500 dark:text-white/24">Personal</p>
+          <h3 className="mt-2 font-serif text-3xl leading-tight text-slate-900 dark:text-white/92">{latestCard.title}</h3>
+          <p className="mt-4 max-w-[58ch] text-sm leading-relaxed text-slate-700 dark:text-white/48">{latestCard.summary}</p>
           {latestCard.metadata ? (
-            <p className="mt-5 text-[10px] uppercase tracking-[0.24em] text-slate-400 dark:text-white/24">{latestCard.metadata}</p>
+            <p className="mt-5 text-[10px] uppercase tracking-[0.24em] text-slate-500 dark:text-white/24">{latestCard.metadata}</p>
           ) : null}
         </div>
 
@@ -1025,9 +1025,9 @@ const InnerSpaceCluster: React.FC<{
             <div key={entry.key} className="rounded-2xl border border-white/6 bg-white/[0.025] px-4 py-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-[9px] uppercase tracking-[0.24em] text-cyan-400/70">{entry.label}</p>
-                  <p className="mt-2 text-base font-serif text-white/90">{entry.title}</p>
-                  <p className="mt-2 text-[11px] leading-relaxed text-white/45">{entry.description}</p>
+                  <p className="text-[9px] uppercase tracking-[0.24em] text-cyan-700 dark:text-cyan-400/70">{entry.label}</p>
+                  <p className="mt-2 text-base font-serif text-slate-900 dark:text-white/90">{entry.title}</p>
+                  <p className="mt-2 text-[11px] leading-relaxed text-slate-600 dark:text-white/45">{entry.description}</p>
                 </div>
                 {entry.item ? (
                   <button
@@ -1099,7 +1099,7 @@ const InnerSpaceCluster: React.FC<{
           </div>
 
           <div className="mt-6">
-            <p className="text-[10px] uppercase tracking-[0.24em] text-slate-400 dark:text-white/24">Personal</p>
+            <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500 dark:text-white/24">Personal</p>
             <h3 className="mt-2 font-serif text-2xl leading-tight text-slate-900/92 dark:text-white/92">Top Nodes</h3>
           </div>
 
@@ -1107,9 +1107,9 @@ const InnerSpaceCluster: React.FC<{
             <div className="mt-6 space-y-3">
               {topNodes.map((node) => (
                 <div key={node.label} className="space-y-1.5">
-                  <div className="flex items-center justify-between gap-3 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-700 dark:text-white/75">
+                  <div className="flex items-center justify-between gap-3 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-800 dark:text-white/75">
                     <span className="truncate">{node.label}</span>
-                    <span className="shrink-0 text-slate-400 dark:text-white/35">{node.count}</span>
+                    <span className="shrink-0 text-slate-500 dark:text-white/35">{node.count}</span>
                   </div>
                   <div className="h-1.5 overflow-hidden rounded-full bg-black/5 dark:bg-white/5">
                     <motion.div
@@ -1122,11 +1122,11 @@ const InnerSpaceCluster: React.FC<{
               ))}
             </div>
           ) : (
-            <p className="mt-6 text-sm leading-relaxed text-slate-600/45 dark:text-white/45">{themePulseCard.summary}</p>
+            <p className="mt-6 text-sm leading-relaxed text-slate-700 dark:text-white/45">{themePulseCard.summary}</p>
           )}
 
           {themePulseCard.metadata ? (
-            <p className="mt-6 text-[10px] uppercase tracking-[0.24em] text-white/22">{themePulseCard.metadata}</p>
+            <p className="mt-6 text-[10px] uppercase tracking-[0.24em] text-slate-500 dark:text-white/22">{themePulseCard.metadata}</p>
           ) : null}
 
           <div className="mt-auto flex items-center justify-between border-t border-black/5 dark:border-white/5 pt-4">
@@ -1501,7 +1501,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
                 <div className="mt-4 h-[1px] w-32 bg-gradient-to-r from-slate-400/20 dark:from-white/20 to-transparent" />
               </div>
               <div className="flex items-center gap-3">
-                <div className="text-[10px] uppercase tracking-[0.22em] text-slate-400 dark:text-white/30">
+                <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500 dark:text-white/30">
                   {formatRelativeUpdateTime(viewMeta.lastUpdatedAt)}
                 </div>
                 <button
