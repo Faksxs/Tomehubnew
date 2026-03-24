@@ -1467,10 +1467,30 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
           </div>
 
           <div className="mt-12">
-            <div className="flex flex-col items-start mb-8 px-4 border-l-2 border-cyan-500/20 pl-6">
-              <span className="text-[10px] font-sans font-light tracking-[0.4em] uppercase opacity-30 mb-2">Fundamental Layer</span>
-              <h2 className="text-3xl font-serif italic text-white/80 tracking-tight">The Pillars</h2>
-              <div className="mt-4 w-32 h-[1px] bg-gradient-to-r from-white/20 to-transparent" />
+            <div className="mb-8 flex flex-col gap-4 px-4 pl-6 md:flex-row md:items-end md:justify-between md:border-l-2 md:border-cyan-500/20">
+              <div className="flex flex-col items-start">
+                <span className="mb-2 text-[10px] font-sans font-light uppercase tracking-[0.4em] opacity-30">Fundamental Layer</span>
+                <h2 className="text-3xl font-serif italic tracking-tight text-white/80">The Pillars</h2>
+                <div className="mt-4 h-[1px] w-32 bg-gradient-to-r from-white/20 to-transparent" />
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="text-[10px] uppercase tracking-[0.22em] text-white/30">
+                  {formatRelativeUpdateTime(viewMeta.lastUpdatedAt)}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => triggerRefresh(true)}
+                  disabled={isRefreshing}
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] transition ${
+                    isRefreshing
+                      ? 'cursor-wait border-cyan-400/15 bg-cyan-500/10 text-cyan-200/60'
+                      : 'border-cyan-400/25 bg-cyan-500/15 text-cyan-100 hover:border-cyan-300/40 hover:bg-cyan-500/25'
+                  }`}
+                >
+                  <RotateCw size={12} className={isRefreshing ? 'animate-spin' : ''} />
+                  {isRefreshing ? 'Refreshing' : 'Refresh Pillars'}
+                </button>
+              </div>
             </div>
 
             {pageLoading && !hasAnyPillarCards ? (

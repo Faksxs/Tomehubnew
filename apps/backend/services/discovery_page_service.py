@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import List, Tuple
 
@@ -23,24 +24,26 @@ def get_discovery_page(firebase_uid: str, *, force_refresh: bool = False) -> Dis
     board_errors: List[str] = []
     used_cached_fallbacks = False
     segment_status: dict[str, str] = {}
+    with ThreadPoolExecutor(max_workers=5, thread_name_prefix="discovery-page") as executor:
+        inner_space_future = executor.submit(_safe_inner_space, firebase_uid, force_refresh=force_refresh)
+        academic_future = executor.submit(_safe_board, DiscoveryCategory.ACADEMIC, firebase_uid, force_refresh=force_refresh)
+        religious_future = executor.submit(_safe_board, DiscoveryCategory.RELIGIOUS, firebase_uid, force_refresh=force_refresh)
+        literary_future = executor.submit(_safe_board, DiscoveryCategory.LITERARY, firebase_uid, force_refresh=force_refresh)
+        culture_future = executor.submit(_safe_board, DiscoveryCategory.CULTURE_HISTORY, firebase_uid, force_refresh=force_refresh)
 
-    inner_space, inner_space_status, inner_space_error = _safe_inner_space(firebase_uid, force_refresh=force_refresh)
+        inner_space, inner_space_status, inner_space_error = inner_space_future.result()
+        academic, academic_status, academic_error = academic_future.result()
+        religious, religious_status, religious_error = religious_future.result()
+        literary, literary_status, literary_error = literary_future.result()
+        culture_history, culture_status, culture_history_error = culture_future.result()
+
     segment_status["inner_space"] = inner_space_status
-    if inner_space_error:
-        board_errors.append(inner_space_error)
-        used_cached_fallbacks = True
-
-    academic, academic_status, academic_error = _safe_board(DiscoveryCategory.ACADEMIC, firebase_uid, force_refresh=force_refresh)
-    religious, religious_status, religious_error = _safe_board(DiscoveryCategory.RELIGIOUS, firebase_uid, force_refresh=force_refresh)
-    literary, literary_status, literary_error = _safe_board(DiscoveryCategory.LITERARY, firebase_uid, force_refresh=force_refresh)
-    culture_history, culture_status, culture_history_error = _safe_board(DiscoveryCategory.CULTURE_HISTORY, firebase_uid, force_refresh=force_refresh)
-
     segment_status["academic"] = academic_status
     segment_status["religious"] = religious_status
     segment_status["literary"] = literary_status
     segment_status["culture_history"] = culture_status
 
-    for error in [academic_error, religious_error, literary_error, culture_history_error]:
+    for error in [inner_space_error, academic_error, religious_error, literary_error, culture_history_error]:
         if error:
             board_errors.append(error)
             used_cached_fallbacks = True
