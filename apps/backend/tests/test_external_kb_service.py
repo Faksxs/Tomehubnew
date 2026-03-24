@@ -141,16 +141,21 @@ class ExternalKBServiceTests(unittest.TestCase):
 
         self.assertEqual([row["provider"] for row in out], ["OPENALEX", "SEMANTIC_SCHOLAR", "ARXIV", "SHARE"])
 
+    @patch("services.external_kb_service._search_poetrydb_direct", return_value=[{"provider": "POETRYDB", "title": "Poem", "score": 0.61}])
+    @patch("services.external_kb_service._search_artic_direct", return_value=[{"provider": "ART_SEARCH_API", "title": "Artwork", "score": 0.62}])
     @patch("services.external_kb_service._search_internet_archive_direct", return_value=[{"provider": "INTERNET_ARCHIVE", "title": "Archive", "score": 0.58}])
     @patch("services.external_kb_service._search_europeana_direct", return_value=[{"provider": "EUROPEANA", "title": "Museum", "score": 0.64}])
-    def test_domain_external_candidates_for_culture_history(self, _mock_europeana, _mock_archive):
+    def test_domain_external_candidates_for_culture_history(self, _mock_europeana, _mock_archive, _mock_artic, _mock_poetry):
         out = external_kb_service.get_domain_external_candidates(
             "ottoman archive and museum context",
             "CULTURE_HISTORY",
             limit=4,
         )
 
-        self.assertEqual([row["provider"] for row in out], ["EUROPEANA", "INTERNET_ARCHIVE"])
+        self.assertEqual(
+            [row["provider"] for row in out],
+            ["EUROPEANA", "ART_SEARCH_API", "POETRYDB", "INTERNET_ARCHIVE"],
+        )
 
     @patch("services.external_kb_service.resolve_book_metadata")
     @patch("services.external_kb_service._search_artic_direct", return_value=[{"provider": "ART_SEARCH_API", "title": "Art", "score": 0.59}])

@@ -20,6 +20,7 @@ import {
   getDiscoveryPage,
   type DiscoveryPageResponse,
   type DiscoveryCard as ExternalDiscoveryCard,
+  type DiscoveryEvidence,
   type DiscoveryInnerSpaceCard,
   type DiscoveryInnerSpaceSlot,
 } from '../../../services/backendApiService';
@@ -58,6 +59,8 @@ interface DiscoveryCardData {
   slot?: DiscoveryInnerSpaceSlot;
   title: string;
   summary: string;
+  whySeen?: string;
+  evidence?: DiscoveryEvidence[];
   sources: string[];
   size: DiscoveryCardSize;
   tone: DiscoveryTone;
@@ -385,6 +388,20 @@ const formatRelativeUpdateTime = (value: string | null): string => {
   return `Updated ${Math.max(1, Math.floor(deltaMs / 86_400_000))}d ago`;
 };
 
+const compactWhySeen = (value?: string): string | null => {
+  const cleaned = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!cleaned) return null;
+  if (cleaned.length <= 110) return cleaned;
+  return `${cleaned.slice(0, 107).trimEnd()}...`;
+};
+
+const compactEvidenceValue = (value?: string | null, limit = 260): string | null => {
+  const cleaned = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!cleaned) return null;
+  if (cleaned.length <= limit) return cleaned;
+  return `${cleaned.slice(0, limit - 3).trimEnd()}...`;
+};
+
 const mapBoardCard = (
   category: ExternalCategoryKey,
   card: ExternalDiscoveryCard,
@@ -404,6 +421,8 @@ const mapBoardCard = (
     family: card.family,
     title: card.title,
     summary: card.summary,
+    whySeen: card.why_seen,
+    evidence: Array.isArray(card.evidence) ? card.evidence : [],
     sources: card.source_refs.slice(0, 2).map((ref) => ref.label).filter(Boolean),
     size,
     tone: visual.tone,
@@ -504,6 +523,19 @@ const CardSurface: React.FC<{
   const isWide = card.size === 'wide';
   const isDormant = card.family === 'DORMANT GEM';
   const canOpen = canOpenCard(card);
+  const showWhySeen = (card.category === 'Academic' || card.category === 'Literary') && !card.slot;
+  const whySeen = showWhySeen ? compactWhySeen(card.whySeen) : null;
+  const religiousEvidence = card.category === 'Religious' && !card.slot
+    ? ['Arabic', 'Okunus', 'Meal', 'Ayet', 'Tefsir', 'Hadis']
+        .map((label) => ({
+          label,
+          value: compactEvidenceValue(
+            card.evidence?.find((item) => item.label === label)?.value,
+            label === 'Arabic' ? 420 : 260,
+          ),
+        }))
+        .filter((item): item is { label: string; value: string } => Boolean(item.value))
+    : [];
 
   const gridClasses = className || `
     ${isHero ? 'md:col-span-2 md:row-span-2 min-h-[480px]' : ''}
@@ -564,6 +596,35 @@ const CardSurface: React.FC<{
           <p className={isHero ? 'text-sm text-white/40 leading-relaxed max-w-[48ch] mb-6' : 'text-xs text-white/40 leading-relaxed max-w-[48ch] mb-6'}>
             {card.summary}
           </p>
+
+          {whySeen && (
+            <div className="mb-5 rounded-xl border border-white/6 bg-white/[0.025] px-3 py-2">
+              <p className="text-[10px] leading-relaxed text-white/42">
+                <span className="mr-1 uppercase tracking-[0.18em] text-cyan-400/70">Why:</span>
+                {whySeen}
+              </p>
+            </div>
+          )}
+
+          {religiousEvidence.length > 0 && (
+            <div className="mb-5 space-y-3">
+              {religiousEvidence.map((item) => (
+                <div key={item.label} className="rounded-xl border border-emerald-400/10 bg-emerald-500/[0.04] px-3 py-2">
+                  <div className="mb-1 text-[9px] uppercase tracking-[0.18em] text-emerald-300/70">
+                    {item.label}
+                  </div>
+                  <p
+                    dir={item.label === 'Arabic' ? 'rtl' : undefined}
+                    className={item.label === 'Arabic'
+                      ? `${isHero ? 'text-lg md:text-xl leading-10' : 'text-sm leading-8'} text-right text-emerald-50/95`
+                      : `${isHero ? 'text-sm' : 'text-[11px]'} leading-relaxed text-white/62`}
+                  >
+                    {item.value}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
 
           {card.progress !== undefined && (
             <div className="relative w-20 h-20 mb-6">

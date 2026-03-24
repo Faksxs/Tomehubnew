@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import random
 import re
 from collections import Counter
 from datetime import datetime, timezone
@@ -30,8 +31,9 @@ from utils.logger import get_logger
 logger = get_logger("discovery_board_service")
 
 _TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
-_DATE_RE = re.compile(r"\b(19|20)\d{2}(?:-\d{2}-\d{2})?\b")
-_YEAR_LABEL_RE = re.compile(r"\b(?:Year|Published|Date):\s*((?:19|20)\d{2}(?:-\d{2}-\d{2})?)", re.IGNORECASE)
+_DATE_RE = re.compile(r"\b(?:9\d{2}|1\d{3}|20\d{2})(?:[-/–]\d{2}(?:[-/–]\d{2})?)?\b")
+_YEAR_LABEL_RE = re.compile(r"\b(?:Year|Published|Date):\s*([^|]{0,90})", re.IGNORECASE)
+_CENTURY_RE = re.compile(r"\b(?:early|late|mid(?:dle)?)?\s*\d{1,2}(?:st|nd|rd|th)\s+century\b", re.IGNORECASE)
 _TYPE_LABEL_RE = re.compile(r"\bType:\s*([A-Za-z][A-Za-z \-]+)", re.IGNORECASE)
 _STOPWORDS = {
     "and", "the", "for", "with", "from", "that", "this", "your", "into", "their", "about",
@@ -52,6 +54,7 @@ class _Anchor:
         tags: List[str],
         reading_status: str,
         source_url: str,
+        personal_note_category: str = "",
     ) -> None:
         self.item_id = item_id
         self.item_type = item_type
@@ -61,25 +64,22 @@ class _Anchor:
         self.tags = tags
         self.reading_status = reading_status
         self.source_url = source_url
+        self.personal_note_category = personal_note_category
 
 
 _CATEGORY_META: Dict[DiscoveryCategory, Dict[str, Any]] = {
     DiscoveryCategory.ACADEMIC: {
         "title": "Academic",
-        "description": "Fresh papers, bridge candidates, and structured research context from external academic sources.",
-        "hero_family_order": ["Fresh Signal", "Bridge", "Deepen"],
+        "description": "Fresh academic signals from your latest local themes, plus bridge papers that connect multiple archive threads.",
+        "hero_family_order": ["Fresh Signal", "Bridge"],
         "families": {
             "Fresh Signal": {
-                "description": "Recent papers and preprints that fit the current research direction.",
-                "source_label": "ArXiv + OpenAlex",
+                "description": "Recent papers and preprints inferred from your latest books, articles, and idea notes.",
+                "source_label": "ArXiv + OpenAlex + Semantic Scholar + Crossref + SHARE",
             },
             "Bridge": {
-                "description": "Works that connect directly to your active notes, themes, or highlights.",
-                "source_label": "OpenAlex + Crossref + Semantic Scholar",
-            },
-            "Deepen": {
-                "description": "Method, dataset, and research-structure views for going deeper.",
-                "source_label": "ORKG + SHARE + Crossref",
+                "description": "Works that genuinely connect two or more academic threads already present in your archive.",
+                "source_label": "OpenAlex + Semantic Scholar + Crossref + ORKG + SHARE",
             },
         },
     },
@@ -89,11 +89,11 @@ _CATEGORY_META: Dict[DiscoveryCategory, Dict[str, Any]] = {
         "hero_family_order": ["Ayet Card", "Ayet + Hadis Bridge"],
         "families": {
             "Ayet Card": {
-                "description": "A verse-first card with reference, translation, and a short grounded context.",
+                "description": "A random verse card with Arabic text, transliteration, and meal.",
                 "source_label": "Quran providers",
             },
             "Ayet + Hadis Bridge": {
-                "description": "A verse and hadith pair carried by the same theme.",
+                "description": "A thematic bridge that combines verse, tafsir context, and related hadith.",
                 "source_label": "QuranEnc + HadeethEnc",
             },
         },
@@ -204,9 +204,9 @@ def _resolve_active_provider_names(category: str, preferences: Dict[str, bool]) 
 
 def _load_user_anchors(firebase_uid: str, limit: int = 120) -> List[_Anchor]:
     sql = """
-        SELECT ITEM_ID, ITEM_TYPE, TITLE, AUTHOR, SUMMARY_TEXT, TAGS_JSON, READING_STATUS, SOURCE_URL
+        SELECT ITEM_ID, ITEM_TYPE, TITLE, AUTHOR, SUMMARY_TEXT, TAGS_JSON, READING_STATUS, SOURCE_URL, PERSONAL_NOTE_CATEGORY
         FROM (
-            SELECT ITEM_ID, ITEM_TYPE, TITLE, AUTHOR, SUMMARY_TEXT, TAGS_JSON, READING_STATUS, SOURCE_URL
+            SELECT ITEM_ID, ITEM_TYPE, TITLE, AUTHOR, SUMMARY_TEXT, TAGS_JSON, READING_STATUS, SOURCE_URL, PERSONAL_NOTE_CATEGORY
             FROM TOMEHUB_LIBRARY_ITEMS
             WHERE FIREBASE_UID = :p_uid
               AND NVL(SEARCH_VISIBILITY, 'VISIBLE') <> 'EXCLUDED_BY_DEFAULT'
@@ -234,6 +234,7 @@ def _load_user_anchors(firebase_uid: str, limit: int = 120) -> List[_Anchor]:
                             tags=_parse_tags(row[5]),
                             reading_status=str(row[6] or "").strip(),
                             source_url=str(row[7] or "").strip(),
+                            personal_note_category=str(row[8] or "").strip(),
                         )
                     )
     except Exception as exc:
@@ -285,6 +286,102 @@ def _top_tags(anchors: Iterable[_Anchor], *, limit: int = 6) -> List[str]:
             if norm:
                 counter[norm] += 1
     return [tag for tag, _count in counter.most_common(limit)]
+
+
+def _dedupe_text_values(values: Iterable[str], *, limit: int) -> List[str]:
+    deduped: List[str] = []
+    seen = set()
+    for value in values:
+        cleaned = re.sub(r"\s+", " ", str(value or "").strip())
+        if not cleaned:
+            continue
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(cleaned)
+        if len(deduped) >= limit:
+            break
+    return deduped
+
+
+def _anchor_title_terms(anchor: _Anchor, *, limit: int = 3) -> List[str]:
+    return _dedupe_text_values(_tokens(anchor.title), limit=limit)
+
+
+def _anchor_signal_terms(anchor: _Anchor, *, limit: int = 4) -> List[str]:
+    values: List[str] = []
+    values.extend(tag for tag in anchor.tags if str(tag or "").strip())
+    if anchor.personal_note_category and anchor.personal_note_category.strip().upper() not in {"IDEAS", "GENERAL", "NOTES"}:
+        values.append(anchor.personal_note_category.strip())
+    if anchor.item_type == "ARTICLE" and anchor.title.strip():
+        values.append(anchor.title.strip())
+    if not values and anchor.title.strip():
+        values.extend(_anchor_title_terms(anchor, limit=limit))
+    return _dedupe_text_values(values, limit=limit)
+
+
+def _is_academic_anchor(anchor: _Anchor) -> bool:
+    if anchor.item_type == "ARTICLE":
+        return True
+    if anchor.item_type == "PERSONAL_NOTE" and anchor.personal_note_category.strip().upper() == "IDEAS" and bool(anchor.tags):
+        return True
+    if external_kb_service.compute_academic_scope(anchor.tags):
+        return True
+    return _anchor_domain(anchor) == DiscoveryCategory.ACADEMIC.value
+
+
+def _academic_anchor_pool(anchors: List[_Anchor], *, limit: int = 10) -> List[_Anchor]:
+    academic = [anchor for anchor in anchors if _is_academic_anchor(anchor)]
+    return academic[:limit] if academic else anchors[: max(0, min(limit, len(anchors)))]
+
+
+def _academic_fresh_signal_queries(anchors: List[_Anchor]) -> List[str]:
+    queries: List[str] = []
+    for anchor in anchors[:4]:
+        signal_terms = _anchor_signal_terms(anchor, limit=4)
+        if len(signal_terms) >= 2:
+            queries.append(f"{signal_terms[0]} {signal_terms[1]}")
+        if signal_terms:
+            queries.append(f"{signal_terms[0]} research")
+        if anchor.item_type == "ARTICLE" and anchor.title.strip():
+            queries.append(anchor.title.strip())
+    return _dedupe_text_values(queries, limit=5)
+
+
+def _academic_bridge_queries(anchors: List[_Anchor]) -> List[str]:
+    term_counts: Counter[str] = Counter()
+    display_names: Dict[str, str] = {}
+    term_anchor_ids: Dict[str, set[str]] = {}
+
+    for anchor in anchors[:8]:
+        anchor_terms = _anchor_signal_terms(anchor, limit=4)
+        for term in anchor_terms:
+            key = term.lower()
+            display_names.setdefault(key, term)
+            term_anchor_ids.setdefault(key, set()).add(anchor.item_id)
+
+    for key, anchor_ids in term_anchor_ids.items():
+        if len(anchor_ids) >= 2:
+            term_counts[key] = len(anchor_ids)
+
+    recurring_terms = [display_names[key] for key, _count in term_counts.most_common(4)]
+    queries: List[str] = []
+    if len(recurring_terms) >= 2:
+        queries.append(f"{recurring_terms[0]} {recurring_terms[1]}")
+        queries.append(f"{recurring_terms[0]} {recurring_terms[1]} research")
+        queries.append(f"{recurring_terms[0]} {recurring_terms[1]} theory")
+    elif recurring_terms:
+        queries.append(f"{recurring_terms[0]} literature review")
+        queries.append(f"{recurring_terms[0]} research")
+    elif len(anchors) >= 2:
+        first_terms = _anchor_signal_terms(anchors[0], limit=2)
+        second_terms = _anchor_signal_terms(anchors[1], limit=2)
+        if first_terms and second_terms:
+            queries.append(f"{first_terms[0]} {second_terms[0]}")
+            queries.append(f"{first_terms[0]} {second_terms[0]} research")
+
+    return _dedupe_text_values(queries, limit=4)
 
 
 def _select_domain_anchors(category: DiscoveryCategory, anchors: List[_Anchor]) -> List[_Anchor]:
@@ -349,10 +446,21 @@ def _seed_queries(category: DiscoveryCategory, anchors: List[_Anchor]) -> List[s
 
 
 def _match_anchor(candidate_text: str, anchors: List[_Anchor]) -> Tuple[Optional[_Anchor], List[DiscoveryEvidence], int]:
+    matches = _collect_anchor_matches(candidate_text, anchors, limit=1)
+    if not matches:
+        return None, [], 0
+    anchor, evidence, score = matches[0]
+    return anchor, evidence, score
+
+
+def _collect_anchor_matches(
+    candidate_text: str,
+    anchors: List[_Anchor],
+    *,
+    limit: int = 3,
+) -> List[Tuple[_Anchor, List[DiscoveryEvidence], int]]:
     candidate_tokens = set(_tokens(candidate_text))
-    best_anchor: Optional[_Anchor] = None
-    best_score = -1
-    best_evidence: List[DiscoveryEvidence] = []
+    matches: List[Tuple[_Anchor, List[DiscoveryEvidence], int]] = []
     for anchor in anchors:
         evidence: List[DiscoveryEvidence] = []
         score = 0
@@ -373,12 +481,11 @@ def _match_anchor(candidate_text: str, anchors: List[_Anchor]) -> Tuple[Optional
             evidence.append(DiscoveryEvidence(kind="author_overlap", label="Author context", value=anchor.author))
             score += 1
 
-        if score > best_score:
-            best_score = score
-            best_anchor = anchor
-            best_evidence = evidence
+        if score > 0:
+            matches.append((anchor, evidence, score))
 
-    return best_anchor, best_evidence, max(0, best_score)
+    matches.sort(key=lambda item: item[2], reverse=True)
+    return matches[:limit]
 
 
 def _parse_year_or_date(value: str) -> Optional[str]:
@@ -387,10 +494,19 @@ def _parse_year_or_date(value: str) -> Optional[str]:
         return None
     labeled = _YEAR_LABEL_RE.search(text)
     if labeled:
-        return str(labeled.group(1) or "").strip()
+        label_text = str(labeled.group(1) or "").strip()
+        raw = _DATE_RE.search(label_text)
+        if raw:
+            return str(raw.group(0) or "").strip()
+        century = _CENTURY_RE.search(label_text)
+        if century:
+            return str(century.group(0) or "").strip()
     raw = _DATE_RE.search(text)
     if raw:
         return str(raw.group(0) or "").strip()
+    century = _CENTURY_RE.search(text)
+    if century:
+        return str(century.group(0) or "").strip()
     return None
 
 
@@ -425,6 +541,11 @@ def _summary_from_content(content: str) -> str:
     for part in parts[:3]:
         cleaned.append(part.rstrip("."))
     return ". ".join(cleaned)[:280]
+
+
+def _join_fragments(values: Iterable[str], *, limit: int = 3) -> str:
+    parts = [str(value or "").strip() for value in values if str(value or "").strip()]
+    return ". ".join(parts[:limit])[:280]
 
 
 def _build_why_seen(
@@ -654,6 +775,7 @@ def _candidate_text(candidate: Dict[str, Any]) -> str:
         part
         for part in [
             str(candidate.get("title") or "").strip(),
+            str(candidate.get("summary") or "").strip(),
             str(candidate.get("content_chunk") or "").strip(),
             str(candidate.get("reference") or candidate.get("canonical_reference") or "").strip(),
         ]
@@ -686,6 +808,8 @@ def _build_card_from_candidate(
     title_override: Optional[str] = None,
     summary_override: Optional[str] = None,
     anchor_override: Optional[_Anchor] = None,
+    anchor_candidates: Optional[List[_Anchor]] = None,
+    require_distinct_anchor_count: int = 0,
 ) -> Optional[DiscoveryCard]:
     provider = str(candidate.get("provider") or "").strip().upper()
     title = str(title_override or candidate.get("title") or "").strip()
@@ -696,17 +820,30 @@ def _build_card_from_candidate(
     anchor = anchor_override
     evidence: List[DiscoveryEvidence] = list(extra_evidence or [])
     match_signals = 0
+    anchor_refs: List[DiscoveryAnchorRef] = []
     if anchor_override:
         anchor_evidence = [
             DiscoveryEvidence(kind="anchor_override", label="Anchor context", value=anchor_override.title)
         ]
         evidence.extend(anchor_evidence)
         match_signals = len(anchor_evidence)
+        anchor_refs.append(DiscoveryAnchorRef(item_id=anchor_override.item_id, title=anchor_override.title, item_type=anchor_override.item_type))
     else:
-        matched_anchor, anchor_evidence, _anchor_score = _match_anchor(_candidate_text(candidate), anchors)
-        anchor = matched_anchor
-        evidence.extend(anchor_evidence)
-        match_signals = len(anchor_evidence)
+        candidate_anchor_pool = anchor_candidates if anchor_candidates is not None else anchors
+        anchor_matches = _collect_anchor_matches(_candidate_text(candidate), candidate_anchor_pool, limit=3)
+        if require_distinct_anchor_count and len(anchor_matches) < require_distinct_anchor_count:
+            return None
+        if anchor_matches:
+            anchor = anchor_matches[0][0]
+            evidence.extend(anchor_matches[0][1])
+            match_signals = len(anchor_matches[0][1])
+            for matched_anchor, _anchor_evidence, _score in anchor_matches:
+                anchor_refs.append(
+                    DiscoveryAnchorRef(item_id=matched_anchor.item_id, title=matched_anchor.title, item_type=matched_anchor.item_type)
+                )
+            if len(anchor_matches) > 1:
+                bridge_titles = ", ".join(match[0].title for match in anchor_matches[:3])
+                evidence.append(DiscoveryEvidence(kind="bridge_anchor", label="Bridge path", value=bridge_titles))
 
     if min_match_signals and match_signals < min_match_signals:
         return None
@@ -724,7 +861,7 @@ def _build_card_from_candidate(
     if not source_refs:
         return None
 
-    summary = str(summary_override or "").strip() or _summary_from_content(content)
+    summary = str(summary_override or candidate.get("summary") or "").strip() or _summary_from_content(content)
     if not summary:
         summary = title
     why_seen = _build_why_seen(
@@ -739,7 +876,7 @@ def _build_card_from_candidate(
 
     provider_score = _PROVIDER_BASE_SCORES.get(provider, 0.58)
     freshness_bonus = 0.04 if parsed_date else 0.0
-    anchor_bonus = min(0.16, 0.06 * match_signals)
+    anchor_bonus = min(0.18, 0.05 * max(match_signals, len(anchor_refs)))
     metadata_penalty = -0.07 if len(summary) < 40 else 0.0
     score = max(0.0, min(0.98, provider_score + freshness_bonus + anchor_bonus + metadata_penalty + score_bonus))
 
@@ -764,10 +901,7 @@ def _build_card_from_candidate(
         primary_source=_provider_label(provider),
         source_refs=source_refs,
         image_url=_image_url_from_candidate(candidate),
-        anchor_refs=(
-            [DiscoveryAnchorRef(item_id=anchor.item_id, title=anchor.title, item_type=anchor.item_type)]
-            if anchor else []
-        ),
+        anchor_refs=anchor_refs,
         evidence=evidence,
         actions=_actions_for_card(
             title=title,
@@ -778,6 +912,81 @@ def _build_card_from_candidate(
         ),
         score=score,
     )
+
+
+def _culture_summary_for_lineage(candidate: Dict[str, Any]) -> str:
+    description = str(candidate.get("summary") or candidate.get("description") or "").strip()
+    fragments: List[str] = []
+    if description:
+        fragments.append(description)
+    if candidate.get("instance_of_labels"):
+        fragments.append("Instance of: " + ", ".join((candidate.get("instance_of_labels") or [])[:3]))
+    elif candidate.get("subclass_of_labels"):
+        fragments.append("Subclass of: " + ", ".join((candidate.get("subclass_of_labels") or [])[:3]))
+    if candidate.get("part_of_labels"):
+        fragments.append("Part of: " + ", ".join((candidate.get("part_of_labels") or [])[:2]))
+    elif candidate.get("country_labels"):
+        fragments.append("Context: " + ", ".join((candidate.get("country_labels") or [])[:2]))
+    if candidate.get("types"):
+        fragments.append("Type: " + ", ".join((candidate.get("types") or [])[:3]))
+    return _join_fragments(fragments)
+
+
+def _culture_summary_for_artifact(candidate: Dict[str, Any]) -> str:
+    description = str(candidate.get("summary") or "").strip()
+    fragments: List[str] = []
+    if description:
+        fragments.append(description)
+    if candidate.get("provenance_provider"):
+        fragments.append(f"Held by {candidate.get('provenance_provider')}")
+    if candidate.get("creator"):
+        fragments.append(f"Creator: {candidate.get('creator')}")
+    if candidate.get("artist"):
+        fragments.append(f"Artist: {candidate.get('artist')}")
+    if candidate.get("country"):
+        fragments.append(f"Country: {candidate.get('country')}")
+    if candidate.get("mediatype"):
+        fragments.append(f"Type: {candidate.get('mediatype')}")
+    return _join_fragments(fragments)
+
+
+def _culture_summary_for_wild_card(candidate: Dict[str, Any]) -> str:
+    description = str(candidate.get("summary") or "").strip()
+    if description:
+        return description[:280]
+    return _summary_from_content(str(candidate.get("content_chunk") or ""))
+
+
+def _culture_evidence(candidate: Dict[str, Any], family: str) -> List[DiscoveryEvidence]:
+    evidence: List[DiscoveryEvidence] = []
+    provider = str(candidate.get("provider") or "").strip()
+    if family == "Lineage":
+        for label in (candidate.get("instance_of_labels") or [])[:2]:
+            evidence.append(DiscoveryEvidence(kind="lineage_relation", label="Instance", value=str(label)))
+        for label in (candidate.get("part_of_labels") or [])[:1]:
+            evidence.append(DiscoveryEvidence(kind="lineage_relation", label="Part of", value=str(label)))
+        for label in (candidate.get("country_labels") or [])[:1]:
+            evidence.append(DiscoveryEvidence(kind="lineage_context", label="Context", value=str(label)))
+        for label in (candidate.get("types") or [])[:1]:
+            evidence.append(DiscoveryEvidence(kind="lineage_type", label="Type", value=str(label)))
+    elif family == "Archive Artifact":
+        if candidate.get("provenance_provider"):
+            evidence.append(DiscoveryEvidence(kind="provenance", label="Collection", value=str(candidate.get("provenance_provider"))))
+        if candidate.get("creator"):
+            evidence.append(DiscoveryEvidence(kind="creator", label="Creator", value=str(candidate.get("creator"))))
+        if candidate.get("artist"):
+            evidence.append(DiscoveryEvidence(kind="creator", label="Artist", value=str(candidate.get("artist"))))
+        if candidate.get("country"):
+            evidence.append(DiscoveryEvidence(kind="place", label="Country", value=str(candidate.get("country"))))
+        if candidate.get("rights"):
+            evidence.append(DiscoveryEvidence(kind="rights", label="Rights", value=str(candidate.get("rights"))))
+    elif family == "Wild Card":
+        evidence.append(DiscoveryEvidence(kind="wild_card", label="Unexpected angle", value=provider.title()))
+        if candidate.get("author"):
+            evidence.append(DiscoveryEvidence(kind="author", label="Author", value=str(candidate.get("author"))))
+        if candidate.get("artist"):
+            evidence.append(DiscoveryEvidence(kind="creator", label="Artist", value=str(candidate.get("artist"))))
+    return evidence[:4]
 
 
 def _dedupe_and_limit(cards: Iterable[DiscoveryCard], *, limit: int) -> List[DiscoveryCard]:
@@ -803,41 +1012,45 @@ def _dedupe_and_limit(cards: Iterable[DiscoveryCard], *, limit: int) -> List[Dis
 
 def _build_academic_cards(anchors: List[_Anchor], active_provider_names: List[str]) -> Dict[str, List[DiscoveryCard]]:
     active = set(active_provider_names)
-    queries = _seed_queries(DiscoveryCategory.ACADEMIC, anchors)
-    family_cards: Dict[str, List[DiscoveryCard]] = {"Fresh Signal": [], "Bridge": [], "Deepen": []}
+    academic_anchors = _academic_anchor_pool(anchors, limit=10)
+    fresh_queries = _academic_fresh_signal_queries(academic_anchors) or _seed_queries(DiscoveryCategory.ACADEMIC, anchors)
+    bridge_queries = _academic_bridge_queries(academic_anchors)
+    family_cards: Dict[str, List[DiscoveryCard]] = {"Fresh Signal": [], "Bridge": []}
 
-    for query in queries:
-        if "ARXIV" in active:
-            for candidate in _safe_fetch_list("ARXIV", external_kb_service._search_arxiv_direct, query, limit=3):
+    fresh_anchor_pool = academic_anchors[:4] or anchors[:4]
+    bridge_anchor_pool = academic_anchors[:8] or anchors[:8]
+    bridge_anchor_requirement = 2 if len(bridge_anchor_pool) >= 2 else 1
+    bridge_signal_requirement = 2 if bridge_anchor_requirement == 1 else 0
+
+    for query in fresh_queries:
+        for provider_name, fetcher, score_bonus in (
+            ("ARXIV", external_kb_service._search_arxiv_direct, 0.07),
+            ("OPENALEX", external_kb_service._search_openalex_direct, 0.05),
+            ("SEMANTIC_SCHOLAR", external_kb_service._search_semantic_scholar_direct, 0.04),
+            ("CROSSREF", external_kb_service._search_crossref_direct, 0.03),
+            ("SHARE", external_kb_service._search_share_direct, 0.02),
+        ):
+            if provider_name not in active:
+                continue
+            for candidate in _safe_fetch_list(provider_name, fetcher, query, limit=3):
                 card = _build_card_from_candidate(
                     category=DiscoveryCategory.ACADEMIC,
                     family="Fresh Signal",
                     candidate=candidate,
-                    anchors=anchors,
+                    anchors=fresh_anchor_pool,
                     fallback_query=query,
                     require_date=True,
-                    score_bonus=0.05,
-                )
-                if card:
-                    family_cards["Fresh Signal"].append(card)
-        if "OPENALEX" in active:
-            for candidate in _safe_fetch_list("OPENALEX", external_kb_service._search_openalex_direct, query, limit=3):
-                card = _build_card_from_candidate(
-                    category=DiscoveryCategory.ACADEMIC,
-                    family="Fresh Signal",
-                    candidate=candidate,
-                    anchors=anchors,
-                    fallback_query=query,
-                    require_date=True,
-                    score_bonus=0.02,
+                    score_bonus=score_bonus,
                 )
                 if card:
                     family_cards["Fresh Signal"].append(card)
 
-        for provider_name, fetcher in (
-            ("OPENALEX", external_kb_service._search_openalex_direct),
-            ("CROSSREF", external_kb_service._search_crossref_direct),
-            ("SEMANTIC_SCHOLAR", external_kb_service._search_semantic_scholar_direct),
+    for query in bridge_queries:
+        for provider_name, fetcher, score_bonus in (
+            ("OPENALEX", external_kb_service._search_openalex_direct, 0.07),
+            ("SEMANTIC_SCHOLAR", external_kb_service._search_semantic_scholar_direct, 0.06),
+            ("CROSSREF", external_kb_service._search_crossref_direct, 0.05),
+            ("SHARE", external_kb_service._search_share_direct, 0.04),
         ):
             if provider_name not in active:
                 continue
@@ -846,11 +1059,13 @@ def _build_academic_cards(anchors: List[_Anchor], active_provider_names: List[st
                     category=DiscoveryCategory.ACADEMIC,
                     family="Bridge",
                     candidate=candidate,
-                    anchors=anchors,
+                    anchors=bridge_anchor_pool,
+                    anchor_candidates=bridge_anchor_pool,
                     fallback_query=query,
-                    min_match_signals=2,
+                    min_match_signals=bridge_signal_requirement,
                     require_reference=True,
-                    score_bonus=0.05,
+                    require_distinct_anchor_count=bridge_anchor_requirement,
+                    score_bonus=score_bonus,
                 )
                 if card:
                     family_cards["Bridge"].append(card)
@@ -874,7 +1089,7 @@ def _build_academic_cards(anchors: List[_Anchor], active_provider_names: List[st
                 if research_labels:
                     content_parts.append(f"Research fields: {', '.join(research_labels[:4])}")
                 content_parts.append("Type: structured research view")
-                deep_candidate = {
+                bridge_candidate = {
                     "title": str(orkg.get("title") or query).strip(),
                     "content_chunk": " | ".join(content_parts),
                     "provider": "ORKG",
@@ -883,112 +1098,368 @@ def _build_academic_cards(anchors: List[_Anchor], active_provider_names: List[st
                 }
                 card = _build_card_from_candidate(
                     category=DiscoveryCategory.ACADEMIC,
-                    family="Deepen",
-                    candidate=deep_candidate,
-                    anchors=anchors,
+                    family="Bridge",
+                    candidate=bridge_candidate,
+                    anchors=bridge_anchor_pool,
+                    anchor_candidates=bridge_anchor_pool,
                     fallback_query=query,
+                    min_match_signals=bridge_signal_requirement,
+                    require_distinct_anchor_count=bridge_anchor_requirement,
                     score_bonus=0.08,
                 )
                 if card:
-                    family_cards["Deepen"].append(card)
-        for provider_name, fetcher in (
-            ("SHARE", external_kb_service._search_share_direct),
-            ("CROSSREF", external_kb_service._search_crossref_direct),
-        ):
-            if provider_name not in active:
-                continue
-            for candidate in _safe_fetch_list(provider_name, fetcher, query, limit=2):
-                content = str(candidate.get("content_chunk") or "")
-                if not (_parse_type_label(content) or str(candidate.get("reference") or "").strip()):
-                    continue
-                card = _build_card_from_candidate(
-                    category=DiscoveryCategory.ACADEMIC,
-                    family="Deepen",
-                    candidate=candidate,
-                    anchors=anchors,
-                    fallback_query=query,
-                    score_bonus=0.03,
-                )
-                if card:
-                    family_cards["Deepen"].append(card)
+                    family_cards["Bridge"].append(card)
 
     return {family: _dedupe_and_limit(cards, limit=4) for family, cards in family_cards.items()}
 
 
-def _build_religious_cards(anchors: List[_Anchor], active_provider_names: List[str]) -> Dict[str, List[DiscoveryCard]]:
+def _religious_theme_candidates(anchors: List[_Anchor]) -> List[Tuple[str, Optional[_Anchor]]]:
+    weighted: Counter[str] = Counter()
+    labels: Dict[str, str] = {}
+    anchors_by_key: Dict[str, _Anchor] = {}
+    for anchor in anchors[:24]:
+        note_category = str(anchor.personal_note_category or "").strip().upper()
+        base_weight = 5 if note_category == "IDEAS" else 4 if anchor.item_type in {"BOOK", "ARTICLE"} else 3
+        if str(anchor.reading_status or "").strip().upper() == "READING":
+            base_weight += 1
+        for raw_tag in anchor.tags[:5]:
+            label = re.sub(r"\s+", " ", str(raw_tag or "").strip())
+            key = label.lower()
+            if len(label) < 3 or key in _STOPWORDS:
+                continue
+            weighted[key] += base_weight
+            labels.setdefault(key, label)
+            anchors_by_key.setdefault(key, anchor)
+    ordered = [(labels[key], anchors_by_key.get(key)) for key, _count in weighted.most_common(6)]
+    if ordered:
+        return ordered
+    return [(topic, None) for topic in ["sabir", "rahmet", "hikmet", "dua", "adalet", "tevbe"]]
+
+
+
+def _curated_random_verse_key() -> str:
+    return random.choice([
+        "2:152",
+        "2:153",
+        "2:186",
+        "2:286",
+        "3:159",
+        "8:46",
+        "13:28",
+        "16:90",
+        "24:35",
+        "39:53",
+        "39:10",
+        "93:5",
+        "94:5",
+        "94:6",
+    ])
+
+
+
+def _pick_anchor_for_theme(theme: str, anchors: List[_Anchor]) -> Optional[_Anchor]:
+    matches = _collect_anchor_matches(theme, anchors, limit=1)
+    if matches:
+        return matches[0][0]
+    return anchors[0] if anchors else None
+
+
+
+def _pick_religious_verse_candidate(theme: str, active_provider_names: List[str]) -> Optional[Dict[str, Any]]:
     active = set(active_provider_names)
-    queries = _seed_queries(DiscoveryCategory.RELIGIOUS, anchors)
+    seen = set()
+    candidates: List[Dict[str, Any]] = []
+    for query in [f"{theme} ayet", f"{theme} kuran", theme]:
+        for candidate in _safe_islamic_candidates(query, limit=10):
+            provider = str(candidate.get("provider") or "").strip().upper()
+            reference = str(candidate.get("canonical_reference") or candidate.get("reference") or "").strip()
+            if provider not in active:
+                continue
+            if str(candidate.get("religious_source_kind") or "").strip().upper() != "QURAN":
+                continue
+            if ":" not in reference:
+                continue
+            key = (provider, reference)
+            if key in seen:
+                continue
+            seen.add(key)
+            candidates.append(candidate)
+    if candidates:
+        return random.choice(candidates[: min(4, len(candidates))])
+
+    reference = _curated_random_verse_key()
+    fallback_candidates: List[Dict[str, Any]] = []
+    quranenc_exact = islamic_api_service._normalize_quranenc_exact(islamic_api_service._quranenc_fetch_verse(reference) or {})
+    if quranenc_exact:
+        fallback_candidates.append(quranenc_exact)
+    quran_foundation_exact = islamic_api_service._normalize_quran_foundation_exact(islamic_api_service._quran_foundation_fetch_verse(reference) or {})
+    if quran_foundation_exact:
+        fallback_candidates.append(quran_foundation_exact)
+    diyanet_exact = islamic_api_service._diyanet_fetch_verse(reference)
+    if diyanet_exact:
+        fallback_candidates.append(diyanet_exact)
+    return fallback_candidates[0] if fallback_candidates else None
+
+
+
+def _contains_arabic_text(value: str) -> bool:
+    return bool(re.search(r"[\u0600-\u06FF]", str(value or "")))
+
+
+
+def _compact_text(value: str, limit: int = 280) -> str:
+    cleaned = re.sub(r"\s+", " ", str(value or "")).strip()
+    if len(cleaned) <= limit:
+        return cleaned
+    return f"{cleaned[: limit - 3].rstrip()}..."
+
+
+
+def _extract_quran_meal(
+    quranenc_verse: Optional[Dict[str, Any]],
+    quran_foundation_verse: Optional[Dict[str, Any]],
+    diyanet_candidate: Optional[Dict[str, Any]],
+) -> str:
+    translation = str((quranenc_verse or {}).get("translation") or "").strip()
+    if translation:
+        return translation
+    translations = (quran_foundation_verse or {}).get("translations") or []
+    if isinstance(translations, list):
+        for item in translations:
+            if not isinstance(item, dict):
+                continue
+            text = str(item.get("text") or "").strip()
+            if text:
+                return text
+    for line in str((diyanet_candidate or {}).get("content_chunk") or "").splitlines():
+        cleaned = line.strip()
+        if not cleaned or cleaned.startswith("Kaynak:") or _contains_arabic_text(cleaned):
+            continue
+        return cleaned
+    return ""
+
+
+
+def _extract_quran_arabic(
+    quranenc_verse: Optional[Dict[str, Any]],
+    quran_foundation_verse: Optional[Dict[str, Any]],
+    diyanet_candidate: Optional[Dict[str, Any]],
+) -> str:
+    for candidate in [
+        str((quran_foundation_verse or {}).get("text_uthmani") or "").strip(),
+        str((quranenc_verse or {}).get("arabic_text") or "").strip(),
+    ]:
+        if candidate:
+            return candidate
+    for line in str((diyanet_candidate or {}).get("content_chunk") or "").splitlines():
+        cleaned = line.strip()
+        if _contains_arabic_text(cleaned):
+            return cleaned
+    return ""
+
+
+
+def _extract_quran_transliteration(quran_foundation_verse: Optional[Dict[str, Any]]) -> str:
+    words = (quran_foundation_verse or {}).get("words") or []
+    if not isinstance(words, list):
+        return ""
+    parts: List[str] = []
+    for word in words:
+        if not isinstance(word, dict):
+            continue
+        transliteration = word.get("transliteration") or {}
+        if isinstance(transliteration, dict):
+            text = str(transliteration.get("text") or "").strip()
+        else:
+            text = str(transliteration or "").strip()
+        if text:
+            parts.append(text)
+    return re.sub(r"\s+", " ", " ".join(parts)).strip()
+
+
+
+def _religious_verse_refs(reference: str) -> List[DiscoverySourceRef]:
+    refs: List[DiscoverySourceRef] = []
+    verse_key = str(reference or "").strip()
+    if verse_key:
+        refs.append(DiscoverySourceRef(label=verse_key, kind="reference"))
+        if ":" in verse_key:
+            surah_id, ayah_id = verse_key.split(":", 1)
+            refs.append(DiscoverySourceRef(label="Quran.com", url=f"https://quran.com/{verse_key}", kind="source"))
+            refs.append(DiscoverySourceRef(label="QuranEnc", url=f"https://quranenc.com/tr/browse/turkish_rshd/{surah_id}/{ayah_id}", kind="source"))
+    return refs
+
+
+
+def _build_random_verse_card(anchors: List[_Anchor], active_provider_names: List[str]) -> Optional[DiscoveryCard]:
+    theme_candidates = _religious_theme_candidates(anchors)
+    random.shuffle(theme_candidates)
+    for theme, suggested_anchor in theme_candidates:
+        verse_candidate = _pick_religious_verse_candidate(theme, active_provider_names)
+        if not verse_candidate:
+            continue
+        verse_key = str(verse_candidate.get("canonical_reference") or verse_candidate.get("reference") or "").strip()
+        if ":" not in verse_key:
+            continue
+        quranenc_verse = _safe_fetch_value("QURANENC_EXACT", islamic_api_service._quranenc_fetch_verse, verse_key) or {}
+        quran_foundation_verse = _safe_fetch_value("QURAN_FOUNDATION_EXACT", islamic_api_service._quran_foundation_fetch_verse, verse_key) or {}
+        diyanet_candidate = _safe_fetch_value("DIYANET_EXACT", islamic_api_service._diyanet_fetch_verse, verse_key) or {}
+        arabic = _extract_quran_arabic(quranenc_verse, quran_foundation_verse, diyanet_candidate)
+        transliteration = _extract_quran_transliteration(quran_foundation_verse)
+        meal = _extract_quran_meal(quranenc_verse, quran_foundation_verse, diyanet_candidate)
+        if not arabic or not meal:
+            continue
+        anchor = suggested_anchor or _pick_anchor_for_theme(theme, anchors)
+        source_refs = _religious_verse_refs(verse_key)
+        summary = _compact_text(meal, limit=220)
+        why_seen = f"Recent archive tags pointed this board toward '{theme}', so one verse card surfaced first."
+        score = 0.84
+        evidence = [
+            DiscoveryEvidence(kind="theme", label="Theme", value=theme),
+            DiscoveryEvidence(kind="arabic", label="Arabic", value=arabic),
+            DiscoveryEvidence(kind="transliteration", label="Okunus", value=transliteration or "Okunus verisi alinmadi."),
+            DiscoveryEvidence(kind="translation", label="Meal", value=meal),
+        ]
+        anchor_refs = [DiscoveryAnchorRef(item_id=anchor.item_id, title=anchor.title, item_type=anchor.item_type)] if anchor else []
+        title = f"Ayet {verse_key}"
+        return DiscoveryCard(
+            id=_card_id(DiscoveryCategory.RELIGIOUS, "Ayet Card", "QURAN_STACK", title, verse_key),
+            category=DiscoveryCategory.RELIGIOUS,
+            family="Ayet Card",
+            title=title,
+            summary=summary,
+            why_seen=why_seen,
+            confidence_label=_confidence_label(score),
+            freshness_label=verse_key,
+            primary_source="Quran sources",
+            source_refs=source_refs,
+            anchor_refs=anchor_refs,
+            evidence=evidence,
+            actions=_actions_for_card(
+                title=title,
+                summary=summary,
+                why_seen=why_seen,
+                source_refs=source_refs,
+                anchor=anchor,
+            ),
+            score=score,
+        )
+    return None
+
+
+
+def _bridge_queries(theme: str) -> List[str]:
+    return [
+        f"{theme} ayet hadis",
+        f"{theme} tefsir hadis",
+        f"{theme} hadis",
+    ]
+
+
+
+def _build_verse_hadith_bridge_card(anchors: List[_Anchor], active_provider_names: List[str]) -> Optional[DiscoveryCard]:
+    active = set(active_provider_names)
+    theme_candidates = _religious_theme_candidates(anchors)
+    random.shuffle(theme_candidates)
+    for theme, suggested_anchor in theme_candidates:
+        verse_candidates: List[Dict[str, Any]] = []
+        hadith_candidates: List[Dict[str, Any]] = []
+        interpretive_candidates: List[Dict[str, Any]] = []
+        seen = set()
+        for query in _bridge_queries(theme):
+            for candidate in _safe_islamic_candidates(query, limit=10):
+                provider = str(candidate.get("provider") or "").strip().upper()
+                kind = str(candidate.get("religious_source_kind") or "").strip().upper()
+                reference = str(candidate.get("canonical_reference") or candidate.get("reference") or "").strip()
+                key = (provider, kind, reference)
+                if provider not in active or key in seen:
+                    continue
+                seen.add(key)
+                if kind == "QURAN" and ":" in reference:
+                    verse_candidates.append(candidate)
+                elif kind == "HADITH":
+                    hadith_candidates.append(candidate)
+                elif kind == "INTERPRETATION":
+                    interpretive_candidates.append(candidate)
+        if not (verse_candidates and hadith_candidates and interpretive_candidates):
+            continue
+
+        verse = verse_candidates[0]
+        hadith = hadith_candidates[0]
+        tafsir = interpretive_candidates[0]
+        verse_key = str(verse.get("canonical_reference") or verse.get("reference") or "").strip()
+        if ":" not in verse_key:
+            continue
+        quranenc_verse = _safe_fetch_value("QURANENC_EXACT", islamic_api_service._quranenc_fetch_verse, verse_key) or {}
+        quran_foundation_verse = _safe_fetch_value("QURAN_FOUNDATION_EXACT", islamic_api_service._quran_foundation_fetch_verse, verse_key) or {}
+        diyanet_candidate = _safe_fetch_value("DIYANET_EXACT", islamic_api_service._diyanet_fetch_verse, verse_key) or {}
+        meal = _extract_quran_meal(quranenc_verse, quran_foundation_verse, diyanet_candidate) or _summary_from_content(str(verse.get("content_chunk") or ""))
+        tafsir_text = _compact_text(str(tafsir.get("content_chunk") or ""), limit=320)
+        hadith_text = _compact_text(str(hadith.get("content_chunk") or ""), limit=320)
+        if not meal or not tafsir_text or not hadith_text:
+            continue
+
+        hadith_ref = str(hadith.get("canonical_reference") or hadith.get("reference") or "").strip()
+        anchor = suggested_anchor or _pick_anchor_for_theme(theme, anchors)
+        source_refs = _religious_verse_refs(verse_key)
+        hadith_url = str(hadith.get("source_url") or "").strip()
+        tafsir_url = str(tafsir.get("source_url") or "").strip()
+        if hadith_url:
+            source_refs.append(DiscoverySourceRef(label="HadeethEnc", url=hadith_url, kind="source"))
+        if tafsir_url:
+            source_refs.append(DiscoverySourceRef(label="IslamHouse", url=tafsir_url, kind="source"))
+        if hadith_ref:
+            source_refs.append(DiscoverySourceRef(label=f"Hadis {hadith_ref}", kind="reference"))
+
+        summary = f"{theme.title()} hattinda ayet, tefsir ve hadis ayni kartta toplandi."
+        why_seen = f"'{theme}' temasi son arsiv akisinla eslesti; ayet, tefsir ve hadis ayni baglamda kuruldu."
+        score = 0.88
+        evidence = [
+            DiscoveryEvidence(kind="theme", label="Theme", value=theme),
+            DiscoveryEvidence(kind="verse", label="Ayet", value=f"{verse_key} - {meal}"),
+            DiscoveryEvidence(kind="tafsir", label="Tefsir", value=tafsir_text),
+            DiscoveryEvidence(kind="hadith", label="Hadis", value=hadith_text),
+        ]
+        anchor_refs = [DiscoveryAnchorRef(item_id=anchor.item_id, title=anchor.title, item_type=anchor.item_type)] if anchor else []
+        title = f"{theme.title()} bridge"
+        return DiscoveryCard(
+            id=_card_id(DiscoveryCategory.RELIGIOUS, "Ayet + Hadis Bridge", "RELIGIOUS_BRIDGE", title, verse_key),
+            category=DiscoveryCategory.RELIGIOUS,
+            family="Ayet + Hadis Bridge",
+            title=title,
+            summary=summary,
+            why_seen=why_seen,
+            confidence_label=_confidence_label(score),
+            freshness_label=verse_key,
+            primary_source="Quran + Hadith",
+            source_refs=source_refs,
+            anchor_refs=anchor_refs,
+            evidence=evidence,
+            actions=_actions_for_card(
+                title=title,
+                summary=summary,
+                why_seen=why_seen,
+                source_refs=source_refs,
+                anchor=anchor,
+            ),
+            score=score,
+        )
+    return None
+
+
+
+def _build_religious_cards(anchors: List[_Anchor], active_provider_names: List[str]) -> Dict[str, List[DiscoveryCard]]:
     family_cards: Dict[str, List[DiscoveryCard]] = {"Ayet Card": [], "Ayet + Hadis Bridge": []}
 
-    for query in queries:
-        candidates = _safe_islamic_candidates(query, limit=8)
-        filtered = [
-            candidate for candidate in candidates
-            if str(candidate.get("provider") or "").strip().upper() in active
-        ]
-        verse_candidates = [
-            candidate for candidate in filtered
-            if str(candidate.get("religious_source_kind") or "").strip().upper() == "QURAN"
-        ]
-        hadith_candidates = [
-            candidate for candidate in filtered
-            if str(candidate.get("religious_source_kind") or "").strip().upper() == "HADITH"
-        ]
+    verse_card = _build_random_verse_card(anchors, active_provider_names)
+    if verse_card:
+        family_cards["Ayet Card"].append(verse_card)
 
-        for candidate in verse_candidates[:3]:
-            card = _build_card_from_candidate(
-                category=DiscoveryCategory.RELIGIOUS,
-                family="Ayet Card",
-                candidate=candidate,
-                anchors=anchors,
-                fallback_query=query,
-                require_reference=True,
-                score_bonus=0.08,
-            )
-            if card:
-                family_cards["Ayet Card"].append(card)
+    bridge_card = _build_verse_hadith_bridge_card(anchors, active_provider_names)
+    if bridge_card:
+        family_cards["Ayet + Hadis Bridge"].append(bridge_card)
 
-        if verse_candidates and hadith_candidates:
-            verse = verse_candidates[0]
-            hadith = hadith_candidates[0]
-            verse_ref = str(verse.get("canonical_reference") or verse.get("reference") or "").strip()
-            hadith_ref = str(hadith.get("canonical_reference") or hadith.get("reference") or "").strip()
-            if verse_ref and hadith_ref:
-                bridge_candidate = {
-                    "title": f"Theme bridge: {verse_ref} with {hadith_ref}",
-                    "content_chunk": " | ".join(
-                        part for part in [
-                            str(verse.get("content_chunk") or "").strip(),
-                            str(hadith.get("content_chunk") or "").strip(),
-                        ] if part
-                    ),
-                    "provider": "QURANENC",
-                    "source_url": str(verse.get("source_url") or hadith.get("source_url") or "").strip() or None,
-                    "reference": verse_ref,
-                }
-                extra_refs = [
-                    DiscoverySourceRef(label=verse_ref, url=str(verse.get("source_url") or "").strip() or None, kind="reference"),
-                    DiscoverySourceRef(label=hadith_ref, url=str(hadith.get("source_url") or "").strip() or None, kind="reference"),
-                ]
-                extra_evidence = [
-                    DiscoveryEvidence(kind="bridge", label="Verse", value=verse_ref),
-                    DiscoveryEvidence(kind="bridge", label="Hadith", value=hadith_ref),
-                ]
-                card = _build_card_from_candidate(
-                    category=DiscoveryCategory.RELIGIOUS,
-                    family="Ayet + Hadis Bridge",
-                    candidate=bridge_candidate,
-                    anchors=anchors,
-                    fallback_query=query,
-                    require_reference=True,
-                    extra_refs=extra_refs,
-                    extra_evidence=extra_evidence,
-                    score_bonus=0.1,
-                )
-                if card:
-                    family_cards["Ayet + Hadis Bridge"].append(card)
-
-    return {family: _dedupe_and_limit(cards, limit=3) for family, cards in family_cards.items()}
+    return family_cards
 
 
 def _build_literary_cards(anchors: List[_Anchor], active_provider_names: List[str]) -> Dict[str, List[DiscoveryCard]]:
@@ -1090,17 +1561,19 @@ def _build_culture_history_cards(anchors: List[_Anchor], active_provider_names: 
     active = set(active_provider_names)
     queries = _seed_queries(DiscoveryCategory.CULTURE_HISTORY, anchors)
     family_cards: Dict[str, List[DiscoveryCard]] = {"Lineage": [], "Archive Artifact": [], "Wild Card": []}
+    culture_anchor_pool = _select_domain_anchors(DiscoveryCategory.CULTURE_HISTORY, anchors) or anchors
 
     for query in queries:
         if "WIKIDATA" in active:
             wikidata = _safe_fetch_value("WIKIDATA", external_kb_service._fetch_wikidata, query, None)
             if wikidata:
+                lineage_summary = _culture_summary_for_lineage(wikidata)
                 candidate = {
                     "title": str(wikidata.get("label") or query).strip(),
                     "content_chunk": " | ".join(
                         part for part in [
                             str(wikidata.get("description") or "").strip(),
-                            f"Type: relation graph" if (wikidata.get("author_ids") or wikidata.get("genre_ids")) else "",
+                            f"Type: relation graph",
                         ] if part
                     ),
                     "provider": "WIKIDATA",
@@ -1109,13 +1582,21 @@ def _build_culture_history_cards(anchors: List[_Anchor], active_provider_names: 
                         f"https://www.wikidata.org/wiki/{wikidata.get('qid')}"
                         if wikidata.get("qid") else None
                     ),
+                    "summary": lineage_summary,
+                    "instance_of_labels": list(wikidata.get("instance_of_labels") or []),
+                    "subclass_of_labels": list(wikidata.get("subclass_of_labels") or []),
+                    "part_of_labels": list(wikidata.get("part_of_labels") or []),
+                    "country_labels": list(wikidata.get("country_labels") or []),
+                    "image_url": str(wikidata.get("image_url") or "").strip() or None,
                 }
                 card = _build_card_from_candidate(
                     category=DiscoveryCategory.CULTURE_HISTORY,
                     family="Lineage",
                     candidate=candidate,
-                    anchors=anchors,
+                    anchors=culture_anchor_pool,
                     fallback_query=query,
+                    summary_override=lineage_summary,
+                    extra_evidence=_culture_evidence(candidate, "Lineage"),
                     score_bonus=0.05,
                 )
                 if card:
@@ -1123,6 +1604,7 @@ def _build_culture_history_cards(anchors: List[_Anchor], active_provider_names: 
         if "DBPEDIA" in active:
             dbpedia = _safe_fetch_value("DBPEDIA", external_kb_service._fetch_dbpedia, query, None)
             if dbpedia:
+                lineage_summary = _culture_summary_for_lineage(dbpedia)
                 candidate = {
                     "title": str(dbpedia.get("label") or query).strip(),
                     "content_chunk": " | ".join(
@@ -1134,13 +1616,17 @@ def _build_culture_history_cards(anchors: List[_Anchor], active_provider_names: 
                     "provider": "DBPEDIA",
                     "reference": str(dbpedia.get("resource_uri") or "").strip() or None,
                     "source_url": str(dbpedia.get("resource_uri") or "").strip() or None,
+                    "summary": lineage_summary,
+                    "types": list(dbpedia.get("types") or []),
                 }
                 card = _build_card_from_candidate(
                     category=DiscoveryCategory.CULTURE_HISTORY,
                     family="Lineage",
                     candidate=candidate,
-                    anchors=anchors,
+                    anchors=culture_anchor_pool,
                     fallback_query=query,
+                    summary_override=lineage_summary,
+                    extra_evidence=_culture_evidence(candidate, "Lineage"),
                     score_bonus=0.02,
                 )
                 if card:
@@ -1154,34 +1640,40 @@ def _build_culture_history_cards(anchors: List[_Anchor], active_provider_names: 
             if provider_name not in active:
                 continue
             for candidate in _safe_fetch_list(provider_name, fetcher, query, limit=3):
+                artifact_summary = _culture_summary_for_artifact(candidate)
                 card = _build_card_from_candidate(
                     category=DiscoveryCategory.CULTURE_HISTORY,
                     family="Archive Artifact",
                     candidate=candidate,
-                    anchors=anchors,
+                    anchors=culture_anchor_pool,
                     fallback_query=query,
                     require_date_or_type=True,
                     require_reference=True,
+                    summary_override=artifact_summary,
+                    extra_evidence=_culture_evidence(candidate, "Archive Artifact"),
                     score_bonus=0.03,
                 )
                 if card:
                     family_cards["Archive Artifact"].append(card)
 
-        for provider_name, fetcher in (
-            ("EUROPEANA", external_kb_service._search_europeana_direct),
-            ("ART_SEARCH_API", external_kb_service._search_artic_direct),
-            ("POETRYDB", external_kb_service._search_poetrydb_direct),
+        for provider_name, fetcher, provider_score_bonus in (
+            ("EUROPEANA", external_kb_service._search_europeana_direct, -0.04),
+            ("ART_SEARCH_API", external_kb_service._search_artic_direct, 0.01),
+            ("POETRYDB", external_kb_service._search_poetrydb_direct, 0.04),
         ):
             if provider_name not in active:
                 continue
             for candidate in _safe_fetch_list(provider_name, fetcher, query, limit=2):
+                wild_summary = _culture_summary_for_wild_card(candidate)
                 card = _build_card_from_candidate(
                     category=DiscoveryCategory.CULTURE_HISTORY,
                     family="Wild Card",
                     candidate=candidate,
-                    anchors=anchors,
+                    anchors=culture_anchor_pool,
                     fallback_query=query,
-                    score_bonus=-0.02,
+                    summary_override=wild_summary,
+                    extra_evidence=_culture_evidence(candidate, "Wild Card"),
+                    score_bonus=provider_score_bonus,
                 )
                 if card:
                     family_cards["Wild Card"].append(card)

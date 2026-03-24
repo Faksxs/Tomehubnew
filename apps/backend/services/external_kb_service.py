@@ -143,6 +143,32 @@ def _pick_lang(bucket: Dict[str, Any]) -> str:
     return ""
 
 
+def _first_text(value: Any) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, list):
+        for item in value:
+            text = str(item or "").strip()
+            if text:
+                return text
+    return ""
+
+
+def _truncate_text(value: Any, limit: int = 240) -> str:
+    text = re.sub(r"\s+", " ", str(value or "").strip())
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 1)].rstrip() + "..."
+
+
+def _commons_file_url(filename: str) -> Optional[str]:
+    clean = str(filename or "").strip().replace(" ", "_")
+    if not clean:
+        return None
+    encoded = urllib_parse.quote(clean, safe="()!~*'._-")
+    return f"https://commons.wikimedia.org/wiki/Special:FilePath/{encoded}"
+
+
 def _http_get_json(
     url: str,
     timeout_sec: float,
@@ -198,6 +224,32 @@ def _wikidata_strings(entity: Dict[str, Any], prop: str) -> List[str]:
         except Exception:
             continue
     return list(dict.fromkeys(out))
+
+
+def _wikidata_entity_label_map(ids: List[str]) -> Dict[str, str]:
+    clean_ids = [str(item or "").strip() for item in ids if str(item or "").strip()]
+    deduped_ids = list(dict.fromkeys(clean_ids))[:20]
+    if not deduped_ids:
+        return {}
+
+    params = {
+        "action": "wbgetentities",
+        "ids": "|".join(deduped_ids),
+        "languages": "tr|en",
+        "format": "json",
+        "props": "labels",
+    }
+    url = f"https://www.wikidata.org/w/api.php?{urllib_parse.urlencode(params)}"
+    data = _http_get_json(url, timeout_sec=float(getattr(settings, "EXTERNAL_KB_WIKIDATA_TIMEOUT_SEC", 2.5)))
+    entities = (data or {}).get("entities", {}) if isinstance(data, dict) else {}
+    label_map: Dict[str, str] = {}
+    for qid, payload in entities.items():
+        if not isinstance(payload, dict):
+            continue
+        label = _pick_lang(payload.get("labels", {}))
+        if label:
+            label_map[str(qid)] = label
+    return label_map
 
 
 def _sanitize_wikidata_title(title: str) -> str:
@@ -286,7 +338,15 @@ def _fetch_wikidata(title: str, author: Optional[str]) -> Optional[Dict[str, Any
         timeout_sec=float(getattr(settings, "EXTERNAL_KB_WIKIDATA_TIMEOUT_SEC", 2.5)),
     )
     entity = ((detail or {}).get("entities", {}) or {}).get(qid, {}) if isinstance(detail, dict) else {}
+    instance_of_ids = _wikidata_ids(entity, "P31")
+    subclass_of_ids = _wikidata_ids(entity, "P279")
+    part_of_ids = _wikidata_ids(entity, "P361")
+    country_ids = _wikidata_ids(entity, "P17")
+    related_label_map = _wikidata_entity_label_map(
+        instance_of_ids[:4] + subclass_of_ids[:4] + part_of_ids[:4] + country_ids[:3]
+    )
     dois = _wikidata_strings(entity, "P356")
+    image_names = _wikidata_strings(entity, "P18")
     return {
         "qid": qid,
         "label": _pick_lang(entity.get("labels", {}) if isinstance(entity, dict) else {}) or str(hit.get("label") or ""),
@@ -294,6 +354,11 @@ def _fetch_wikidata(title: str, author: Optional[str]) -> Optional[Dict[str, Any
         "doi": dois[0] if dois else None,
         "author_ids": _wikidata_ids(entity, "P50"),
         "genre_ids": _wikidata_ids(entity, "P136"),
+        "instance_of_labels": [related_label_map[item] for item in instance_of_ids if related_label_map.get(item)][:4],
+        "subclass_of_labels": [related_label_map[item] for item in subclass_of_ids if related_label_map.get(item)][:4],
+        "part_of_labels": [related_label_map[item] for item in part_of_ids if related_label_map.get(item)][:4],
+        "country_labels": [related_label_map[item] for item in country_ids if related_label_map.get(item)][:3],
+        "image_url": _commons_file_url(image_names[0]) if image_names else None,
     }
 
 
@@ -755,13 +820,23 @@ def _search_europeana_direct(query: str, limit: int = 3) -> List[Dict[str, Any]]
         provider_name = str(provider[0] or "").strip() if isinstance(provider, list) and provider else ""
         item_type = str(row.get("type") or "").strip()
         country = str(row.get("country") or "").strip()
+        description = _truncate_text(_first_text(row.get("dcDescription")) or _first_text((row.get("dcDescriptionLangAware") or {}).get("def")))
+        rights = _first_text(row.get("rights"))
+        shown_at = _first_text(row.get("edmIsShownAt"))
+        shown_by = _first_text(row.get("edmIsShownBy"))
+        preview = _first_text(row.get("edmPreview"))
+        source_url = shown_at or str(row.get("guid") or "").strip() or None
         pieces = []
+        if description:
+            pieces.append(description)
         if provider_name:
             pieces.append(f"Provider: {provider_name}")
         if item_type:
             pieces.append(f"Type: {item_type}")
         if country:
             pieces.append(f"Country: {country}")
+        if rights:
+            pieces.append(f"Rights: {rights}")
         out.append(
             {
                 "title": title,
@@ -771,8 +846,13 @@ def _search_europeana_direct(query: str, limit: int = 3) -> List[Dict[str, Any]]
                 "score": 0.64,
                 "external_weight": 0.18,
                 "provider": "EUROPEANA",
-                "source_url": str(row.get("guid") or "").strip() or None,
+                "source_url": source_url,
                 "reference": str(row.get("id") or "").strip() or None,
+                "summary": description or f"Europeana record from {provider_name or 'a European collection'}",
+                "image_url": preview or shown_by or None,
+                "provenance_provider": provider_name or "",
+                "country": country,
+                "rights": rights,
             }
         )
     return out[: max(1, min(int(limit or 3), 5))]
@@ -784,7 +864,7 @@ def _search_internet_archive_direct(query: str, limit: int = 3) -> List[Dict[str
         return []
     params = {
         "q": text,
-        "fl[]": ["identifier", "title", "creator", "year", "mediatype"],
+        "fl[]": ["identifier", "title", "creator", "year", "mediatype", "description"],
         "rows": max(1, min(int(limit or 3), 5)),
         "page": 1,
         "output": "json",
@@ -808,7 +888,13 @@ def _search_internet_archive_direct(query: str, limit: int = 3) -> List[Dict[str
         creator = str(creator or "").strip()
         year = str(row.get("year") or "").strip()
         mediatype = str(row.get("mediatype") or "").strip()
+        description = row.get("description")
+        if isinstance(description, list):
+            description = " ".join(str(item).strip() for item in description[:2] if str(item).strip())
+        description = _truncate_text(description)
         pieces = []
+        if description:
+            pieces.append(description)
         if creator:
             pieces.append(f"Creator: {creator}")
         if year:
@@ -826,6 +912,10 @@ def _search_internet_archive_direct(query: str, limit: int = 3) -> List[Dict[str
                 "provider": "INTERNET_ARCHIVE",
                 "source_url": f"https://archive.org/details/{identifier}",
                 "reference": identifier,
+                "summary": description or f"Internet Archive item in {mediatype or 'the archive'} collection",
+                "image_url": f"https://archive.org/services/img/{urllib_parse.quote(identifier)}",
+                "creator": creator,
+                "mediatype": mediatype,
             }
         )
     return out[: max(1, min(int(limit or 3), 5))]
@@ -885,12 +975,21 @@ def _search_poetrydb_direct(query: str, limit: int = 3) -> List[Dict[str, Any]]:
     text = str(query or "").strip()
     if not text:
         return []
-    safe = urllib_parse.quote(text)
-    urls = [
-        f"https://poetrydb.org/title/{safe}",
-        f"https://poetrydb.org/author/{safe}",
-        f"https://poetrydb.org/author,title/{safe};{safe}",
-    ]
+    query_variants = [text]
+    if " " in text:
+        parts = [part.strip() for part in text.split() if len(part.strip()) >= 4]
+        query_variants.extend(parts[:2])
+    deduped_variants = list(dict.fromkeys(item for item in query_variants if item))
+    urls: List[str] = []
+    for variant in deduped_variants[:3]:
+        safe = urllib_parse.quote(variant)
+        urls.extend(
+            [
+                f"https://poetrydb.org/title/{safe}",
+                f"https://poetrydb.org/author/{safe}",
+                f"https://poetrydb.org/author,title/{safe};{safe}",
+            ]
+        )
     rows: List[Dict[str, Any]] = []
     for url in urls:
         data = _http_get_json(url, timeout_sec=3.5)
@@ -914,6 +1013,7 @@ def _search_poetrydb_direct(query: str, limit: int = 3) -> List[Dict[str, Any]]:
             pieces.append(f"Lines: {linecount}")
         if excerpt:
             pieces.append(excerpt[:220])
+        source_url = f"https://poetrydb.org/title/{urllib_parse.quote(title)}"
         out.append(
             {
                 "title": title,
@@ -923,8 +1023,10 @@ def _search_poetrydb_direct(query: str, limit: int = 3) -> List[Dict[str, Any]]:
                 "score": 0.61,
                 "external_weight": 0.16,
                 "provider": "POETRYDB",
-                "source_url": None,
+                "source_url": source_url,
                 "reference": author or None,
+                "summary": _truncate_text(excerpt) or f"Poem by {author or 'an indexed poet'}",
+                "author": author,
             }
         )
     return out
@@ -937,11 +1039,14 @@ def _search_artic_direct(query: str, limit: int = 3) -> List[Dict[str, Any]]:
     params = {
         "q": text,
         "limit": max(1, min(int(limit or 3), 5)),
-        "fields": "id,title,artist_title,date_display,thumbnail,api_link",
+        "fields": "id,title,artist_title,date_display,thumbnail,image_id,api_link",
     }
     url = f"https://api.artic.edu/api/v1/artworks/search?{urllib_parse.urlencode(params)}"
     data = _http_get_json(url, timeout_sec=4.0)
     rows = (data or {}).get("data", []) if isinstance(data, dict) else []
+    config = (data or {}).get("config", {}) if isinstance(data, dict) else {}
+    iiif_url = str((config or {}).get("iiif_url") or "").strip().rstrip("/")
+    website_url = str((config or {}).get("website_url") or "").strip().rstrip("/")
     out: List[Dict[str, Any]] = []
     for row in rows if isinstance(rows, list) else []:
         if not isinstance(row, dict):
@@ -953,7 +1058,12 @@ def _search_artic_direct(query: str, limit: int = 3) -> List[Dict[str, Any]]:
         date_display = str(row.get("date_display") or "").strip()
         thumb = row.get("thumbnail") if isinstance(row.get("thumbnail"), dict) else {}
         alt_text = str(thumb.get("alt_text") or "").strip()
+        artwork_id = str(row.get("id") or "").strip()
+        image_id = str(row.get("image_id") or "").strip()
+        image_url = f"{iiif_url}/{image_id}/full/843,/0/default.jpg" if iiif_url and image_id else None
+        public_url = f"{website_url}/artworks/{artwork_id}" if website_url and artwork_id else None
         pieces = []
+        pieces.append("Type: artwork")
         if artist:
             pieces.append(f"Artist: {artist}")
         if date_display:
@@ -969,8 +1079,11 @@ def _search_artic_direct(query: str, limit: int = 3) -> List[Dict[str, Any]]:
                 "score": 0.57,
                 "external_weight": 0.14,
                 "provider": "ART_SEARCH_API",
-                "source_url": str(row.get("api_link") or "").strip() or None,
-                "reference": str(row.get("id") or "").strip() or None,
+                "source_url": public_url or str(row.get("api_link") or "").strip() or None,
+                "reference": artwork_id or None,
+                "summary": _truncate_text(alt_text) or f"Artwork from the Art Institute of Chicago search index",
+                "image_url": image_url,
+                "artist": artist,
             }
         )
     return out[: max(1, min(int(limit or 3), 5))]
@@ -1368,6 +1481,8 @@ def get_domain_external_candidates(question: str, domain_mode: str, limit: int =
     elif normalized_domain == "CULTURE_HISTORY":
         if _is_provider_active("EUROPEANA"): provider_rows.extend(_search_europeana_direct(query, limit=min(3, hard_limit)))
         if _is_provider_active("INTERNET_ARCHIVE"): provider_rows.extend(_search_internet_archive_direct(query, limit=min(3, hard_limit)))
+        if _is_provider_active("ART_SEARCH_API"): provider_rows.extend(_search_artic_direct(query, limit=min(2, hard_limit)))
+        if _is_provider_active("POETRYDB"): provider_rows.extend(_search_poetrydb_direct(query, limit=min(2, hard_limit)))
     elif normalized_domain == "LITERARY":
         if _is_provider_active("GUTENDEX"): provider_rows.extend(_search_gutendex_direct(query, limit=min(3, hard_limit)))
         if _is_provider_active("POETRYDB"): provider_rows.extend(_search_poetrydb_direct(query, limit=min(3, hard_limit)))
