@@ -14,7 +14,11 @@ from models.discovery_models import (
     DiscoveryPageMetadata,
     DiscoveryPageResponse,
 )
-from services.discovery_cache_service import get_discovery_board_cached, get_discovery_inner_space_cached
+from services.discovery_cache_service import (
+    get_discovery_board_cached,
+    get_discovery_inner_space_cached,
+    invalidate_discovery_cache,
+)
 from utils.logger import get_logger
 
 logger = get_logger("discovery_page_service")
@@ -26,6 +30,9 @@ def get_discovery_page(
     force_refresh: bool = False,
     refresh_token: str | None = None,
 ) -> DiscoveryPageResponse:
+    if force_refresh:
+        invalidate_discovery_cache(firebase_uid)
+
     board_errors: List[str] = []
     used_cached_fallbacks = False
     segment_status: dict[str, str] = {}

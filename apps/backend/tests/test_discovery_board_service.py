@@ -152,6 +152,7 @@ def test_culture_board_respects_section_budget_and_exposes_generation_mode(monke
 
     monkeypatch.setattr("services.discovery_board_service._load_user_anchors", lambda firebase_uid: [])
     monkeypatch.setattr("services.discovery_board_service._load_user_provider_preferences", lambda firebase_uid: {})
+    monkeypatch.setattr("services.discovery_board_service.random.choice", lambda seq: seq[0])
     monkeypatch.setattr(
         "services.discovery_board_service._resolve_active_provider_names",
         lambda category, preferences: ["ART_SEARCH_API", "WIKIDATA", "POETRYDB"],

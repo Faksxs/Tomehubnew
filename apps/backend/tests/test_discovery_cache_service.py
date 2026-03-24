@@ -68,3 +68,40 @@ def test_board_force_refresh_bypasses_cache(monkeypatch):
     assert second_status == "live"
     assert first.metadata.cache_status == "live"
     assert second.metadata.cache_status == "live"
+
+
+def test_board_force_refresh_does_not_fall_back_to_stale_cache(monkeypatch):
+    invalidate_discovery_cache("user-1", category=DiscoveryCategory.ACADEMIC)
+
+    monkeypatch.setattr("services.discovery_cache_service._provider_preferences_token", lambda firebase_uid: "prefs")
+
+    initial = DiscoveryBoardResponse(
+        category=DiscoveryCategory.ACADEMIC,
+        featured_card=None,
+        family_sections=[],
+        metadata=DiscoveryBoardMetadata(
+            category_title="Academic",
+            category_description="",
+            last_updated_at="2026-03-24T00:00:00+00:00",
+            active_provider_names=[],
+            total_cards=0,
+        ),
+    )
+    monkeypatch.setattr(
+        "services.discovery_cache_service.get_discovery_board",
+        lambda category, firebase_uid, selection_token=None: initial,
+    )
+
+    get_discovery_board_cached(DiscoveryCategory.ACADEMIC, "user-1")
+
+    def _boom(category: str, firebase_uid: str, selection_token=None):
+        raise RuntimeError("refresh failed")
+
+    monkeypatch.setattr("services.discovery_cache_service.get_discovery_board", _boom)
+
+    try:
+        get_discovery_board_cached(DiscoveryCategory.ACADEMIC, "user-1", force_refresh=True, refresh_token="fresh")
+    except RuntimeError as exc:
+        assert str(exc) == "refresh failed"
+    else:
+        raise AssertionError("force refresh should not fall back to stale discovery cache")

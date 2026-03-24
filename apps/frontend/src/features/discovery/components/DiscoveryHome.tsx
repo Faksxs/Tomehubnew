@@ -50,7 +50,11 @@ type DiscoveryCategory = 'Personal' | 'Academic' | 'Religious' | 'Literary' | 'C
 type DiscoveryCardSize = 'hero' | 'detail' | 'wide' | 'tall';
 type DiscoveryTone = 'light' | 'dark' | 'green' | 'blue' | 'purple' | 'amber' | 'cyan';
 
-const DISCOVERY_PAGE_CACHE_KEY = 'tomehub:discovery:page-cache:v1';
+const DISCOVERY_PAGE_CACHE_KEY = 'tomehub:discovery:page-cache:v3';
+const LEGACY_DISCOVERY_PAGE_CACHE_KEYS = [
+  'tomehub:discovery:page-cache:v1',
+  'tomehub:discovery:page-cache:v2',
+];
 const DISCOVERY_PAGE_CACHE_TTL_MS = 5 * 60 * 1000;
 const DISCOVERY_PAGE_CACHE_MAX_STALE_MS = 30 * 60 * 1000;
 
@@ -339,6 +343,26 @@ const createEmptyPillarState = (): Record<ExternalCategoryKey, DiscoveryCardData
 
 let discoveryPageMemoryCache: DiscoveryPageCacheEntry | null = null;
 
+const clearDiscoveryPageCache = (): void => {
+  discoveryPageMemoryCache = null;
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.removeItem(DISCOVERY_PAGE_CACHE_KEY);
+    LEGACY_DISCOVERY_PAGE_CACHE_KEYS.forEach((key) => window.sessionStorage.removeItem(key));
+  } catch {
+    // ignore cache clear failures
+  }
+};
+
+const purgeLegacyDiscoveryPageCaches = (): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    LEGACY_DISCOVERY_PAGE_CACHE_KEYS.forEach((key) => window.sessionStorage.removeItem(key));
+  } catch {
+    // ignore legacy cache cleanup failures
+  }
+};
+
 const readDiscoveryPageCache = (userId: string): DiscoveryPageCacheEntry | null => {
   if (discoveryPageMemoryCache?.userId === userId) {
     return discoveryPageMemoryCache;
@@ -349,16 +373,18 @@ const readDiscoveryPageCache = (userId: string): DiscoveryPageCacheEntry | null 
     if (!raw) return null;
     const parsed = JSON.parse(raw) as DiscoveryPageCacheEntry;
     if (!parsed || parsed.userId !== userId || !parsed.payload || !parsed.fetchedAt) {
+      clearDiscoveryPageCache();
       return null;
     }
     const ageMs = Date.now() - parsed.fetchedAt;
     if (ageMs > DISCOVERY_PAGE_CACHE_MAX_STALE_MS) {
-      window.sessionStorage.removeItem(DISCOVERY_PAGE_CACHE_KEY);
+      clearDiscoveryPageCache();
       return null;
     }
     discoveryPageMemoryCache = parsed;
     return parsed;
   } catch {
+    clearDiscoveryPageCache();
     return null;
   }
 };
@@ -1142,10 +1168,25 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
     if (!userId || requestInFlightRef.current) {
       return;
     }
+    if (force) {
+      clearDiscoveryPageCache();
+      setInnerSpaceCards([]);
+      setPillarCardsByCategory(createEmptyPillarState());
+      setViewMeta({
+        lastUpdatedAt: null,
+        hasCachedSnapshot: false,
+        hasPartialErrors: false,
+        boardErrorCount: 0,
+      });
+    }
     forceRefreshRef.current = force;
     setIsRefreshing(true);
     setRefreshNonce((value) => value + 1);
   };
+
+  useEffect(() => {
+    purgeLegacyDiscoveryPageCaches();
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -1159,6 +1200,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
       forceRefreshRef.current = false;
 
       if (!userId) {
+        clearDiscoveryPageCache();
         if (active) {
           setPageLoading(false);
           setPageWarning(null);
@@ -1169,6 +1211,13 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
         }
         requestInFlightRef.current = false;
         return;
+      }
+
+      if (forceRefresh && active) {
+        clearDiscoveryPageCache();
+        setPageWarning(null);
+        setPageError(null);
+        setPageLoading(true);
       }
 
       // 1. Snapshot/Cache Recovery
@@ -1222,7 +1271,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
         if (!active) return;
         const message = getFriendlyApiErrorMessage(error);
         
-        if (cached) {
+        if (cached && !forceRefresh) {
           setPageWarning('Showing the last successful discovery snapshot while live refresh is unavailable.');
           setViewMeta((prev) => ({
             ...prev,

@@ -97,3 +97,51 @@ def test_get_discovery_page_reports_cache_status(monkeypatch):
 
     assert page.metadata.cache_status == "partial_stale"
     assert page.metadata.segment_status["inner_space"] == "stale_cache"
+
+
+def test_get_discovery_page_force_refresh_invalidates_cache(monkeypatch):
+    calls = {"invalidate": 0}
+
+    monkeypatch.setattr(
+        "services.discovery_page_service.invalidate_discovery_cache",
+        lambda firebase_uid: calls.__setitem__("invalidate", calls["invalidate"] + 1),
+    )
+    monkeypatch.setattr(
+        "services.discovery_page_service.get_discovery_inner_space_cached",
+        lambda firebase_uid, force_refresh=False: (
+            DiscoveryInnerSpaceResponse(
+                cards=[],
+                metadata=DiscoveryInnerSpaceMetadata(
+                    last_updated_at="2026-03-24T00:00:00+00:00",
+                    cache_status="live",
+                ),
+            ),
+            "live",
+            None,
+        ),
+    )
+    monkeypatch.setattr(
+        "services.discovery_page_service.get_discovery_board_cached",
+        lambda category, firebase_uid, force_refresh=False, refresh_token=None: (
+            DiscoveryBoardResponse(
+                category=category,
+                featured_card=None,
+                family_sections=[],
+                metadata=DiscoveryBoardMetadata(
+                    category_title=category.value.title(),
+                    category_description="",
+                    last_updated_at="2026-03-24T00:00:00+00:00",
+                    active_provider_names=[],
+                    total_cards=0,
+                    cache_status="live",
+                ),
+            ),
+            "live",
+            None,
+        ),
+    )
+
+    page = get_discovery_page("user-1", force_refresh=True, refresh_token="force-token")
+
+    assert page.metadata.cache_status == "live"
+    assert calls["invalidate"] == 1
