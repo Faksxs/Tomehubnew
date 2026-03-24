@@ -22,6 +22,11 @@ from models.discovery_models import (
     DiscoveryFamilySection,
     DiscoverySourceRef,
 )
+from services.llm_client import (
+    MODEL_TIER_FLASH,
+    ROUTE_MODE_EXPLORER_QWEN_PILOT,
+    generate_text,
+)
 from services import external_kb_service, islamic_api_service
 from services.domain_policy_service import get_domain_policy, normalize_domain_mode, resolve_domain_mode
 from services.tmdb_service import search_tmdb_media
@@ -1004,6 +1009,18 @@ def _build_card_from_candidate(
     summary = str(summary_override or candidate.get("summary") or "").strip() or _summary_from_content(content)
     if not summary:
         summary = title
+
+    # AI Enrichment: Enhance weak or technical summaries for key categories
+    if category != DiscoveryCategory.RELIGIOUS and _description_needs_enhancement(summary, category):
+        enhanced = _enhance_card_description_llm({
+            "title": title,
+            "provider": provider,
+            "summary": summary,
+            "content_chunk": content
+        }, category.value.replace("_", " ").title())
+        if enhanced:
+            summary = enhanced
+
     why_seen = _build_why_seen(
         category=category,
         provider=provider,
@@ -1493,6 +1510,114 @@ def _extract_tafsir_text(candidate: Optional[Dict[str, Any]]) -> str:
     return ""
 
 
+def _contains_arabic_text(text: str) -> bool:
+    """Check if textual content contains characters from the Arabic Unicode block."""
+    if not text:
+        return False
+    return any('\u0600' <= char <= '\u06FF' or '\u0750' <= char <= '\u077F' or '\u08A0' <= char <= '\u08FF' for char in text)
+
+
+def _translate_religious_text_llm(text: str, context: str = "Tafsir") -> str:
+    """
+    Translates religious text (Verse/Tafsir) to Turkish faithfully.
+    Preserves Arabic script and special terminology.
+    """
+    if not text or not any(c.isalpha() for c in text):
+        return text
+    
+    # Simple heuristic: if it looks like it's already Turkish and contains Arabic, don't re-translate
+    if _contains_arabic_text(text) and (" ve " in text or " bir " in text or " olan " in text or " bu " in text):
+        return text
+
+    prompt = f"""
+    Translate the following {context} into Turkish faithfully ("birebir").
+    
+    CRITICAL RULES:
+    1. Preserve all Arabic script (Quranic verses in Arabic) EXACTLY as they are.
+    2. Maintain religious terminology and specific names.
+    3. The tone must be formal and scholarly, appropriate for a Tafsir.
+    4. Do not summarize or simplify; provide a complete and faithful translation.
+    
+    TEXT TO TRANSLATE:
+    {text}
+    
+    Return ONLY the Turkish translation. No explanations.
+    """
+    
+    try:
+        result = generate_text(
+            model=settings.LLM_MODEL_FLASH,
+            prompt=prompt,
+            task="discovery_religious_translation",
+            model_tier=MODEL_TIER_FLASH,
+            temperature=0.1,
+            timeout_s=25.0,
+        )
+        translated = result.text.strip()
+        return translated if translated else text
+    except Exception as e:
+        logger.warning("Religious translation failed: %s", e)
+        return text
+
+
+def _enhance_card_description_llm(candidate_info: Dict[str, Any], category_name: str) -> str:
+    """
+    Enhances "weak" card descriptions using LLM to make them more engaging and explanatory in Turkish.
+    """
+    title = candidate_info.get("title", "Unknown")
+    provider = candidate_info.get("provider", "Source")
+    current_summary = candidate_info.get("summary", "")
+    content = candidate_info.get("content_chunk", "")
+    
+    prompt = f"""
+    Create a compelling and informative Turkish description (2-3 sentences) for this {category_name} discovery card.
+    
+    DATA:
+    - Title: {title}
+    - Provider: {provider}
+    - Current Summary: {current_summary}
+    - Raw Metadata: {content}
+    
+    RULES:
+    1. Output MUST be in Turkish.
+    2. Make it engaging and easy to understand for a general reader.
+    3. Explain the significance of the item based on the data.
+    4. Do not hallucinate facts not present in the data.
+    5. Keep it concise (max 280 characters).
+    
+    Return ONLY the enhanced Turkish summary.
+    """
+    
+    try:
+        result = generate_text(
+            model=settings.LLM_MODEL_FLASH,
+            prompt=prompt,
+            task="discovery_summary_enhancement",
+            model_tier=MODEL_TIER_FLASH,
+            temperature=0.3,
+            timeout_s=20.0,
+            route_mode=ROUTE_MODE_EXPLORER_QWEN_PILOT,
+        )
+        enhanced = result.text.strip()
+        return enhanced if enhanced else current_summary
+    except Exception as e:
+        logger.warning("Card enhancement failed: %s", e)
+        return current_summary
+
+
+def _description_needs_enhancement(text: str, category: DiscoveryCategory) -> bool:
+    """Heuristic to decide if a description is weak (too technical, short, or non-Turkish)."""
+    if not text or len(text) < 60:
+        return True
+    # If it contains many technical-looking keywords or pipe separators
+    if "|" in text or "Type:" in text or "DOI:" in text:
+        return True
+    # Check if it's likely English when it should be Turkish (for discovery page)
+    if (" the " in text.lower() or " and " in text.lower() or " of " in text.lower()):
+        return True
+    return False
+
+
 def _pick_tafsir_candidate(theme: str, verse_key: str, active_provider_names: List[str]) -> Optional[Dict[str, Any]]:
     active = set(active_provider_names)
     seen = set()
@@ -1561,6 +1686,7 @@ def _build_verse_card(
 
     tafsir = _resolve_verse_tafsir_candidate(theme, verse_key, active_provider_names)
     tafsir_text = _extract_tafsir_text(tafsir)
+    tafsir_text = _translate_religious_text_llm(tafsir_text, context=f"Tafsir for {verse_key}")
     if not tafsir_text:
         return None
 
@@ -1569,12 +1695,8 @@ def _build_verse_card(
     if tafsir_url:
         source_refs.append(DiscoverySourceRef(label="Tefsir", url=tafsir_url, kind="source"))
 
-    summary = _compact_text(tafsir_text, limit=260)
-    why_seen = (
-        f"'{theme}' izine gore secilen bu ayet karti, mealin yanina dogrudan tefsir kanitini da zorunlu olarak ekler."
-        if theme
-        else "This verse card only renders when Arabic, transliteration, meal, and tafsir all resolve together."
-    )
+    summary = _translate_religious_text_llm(meal, context=f"Summary for Ayet {verse_key}")
+    why_seen = f"'{theme}' izine gore secilen bu ayet karti, mealin yanina dogrudan tefsir kanitini da zorunlu olarak ekler."
     score = 0.86 if str((tafsir or {}).get("provider") or "").strip().upper() == "QURAN_FOUNDATION" else 0.82
     evidence = [
         DiscoveryEvidence(kind="arabic", label="Arabic", value=arabic),

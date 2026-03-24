@@ -747,6 +747,7 @@ const CardSurface: React.FC<{
   onOpen?: (card: DiscoveryCardData) => void;
   className?: string;
 }> = ({ card, onAsk, onSave, onOpen, className }) => {
+  const [isTafsirExpanded, setIsTafsirExpanded] = useState(false);
   const isHero = card.size === 'hero';
   const isTall = card.size === 'tall';
   const isWide = card.size === 'wide';
@@ -808,7 +809,7 @@ const CardSurface: React.FC<{
             <span className="text-[11px] font-bold tracking-[0.25em] uppercase text-[#CC561E] dark:text-[#CC561E]/90">
               {card.category}
             </span>
-            <span className="text-[10px] font-light italic text-slate-500 dark:text-white/70">
+            <span className="text-[10px] font-light italic text-slate-500 dark:text-white/80">
               {card.family}
             </span>
           </div>
@@ -830,13 +831,13 @@ const CardSurface: React.FC<{
           <h2 className={`font-serif leading-tight mb-4 ${isHero ? 'text-2xl md:text-3xl font-normal text-slate-900 dark:text-white/90' : 'text-lg font-normal text-slate-900 dark:text-white/80'}`}>
             {card.title}
           </h2>
-          <p className={isHero ? 'text-sm text-slate-600 dark:text-white/70 leading-relaxed max-w-[48ch] mb-6' : 'text-xs text-slate-600 dark:text-white/70 leading-relaxed max-w-[48ch] mb-6'}>
+          <p className={isHero ? 'text-sm text-slate-600 dark:text-white/85 leading-relaxed max-w-[48ch] mb-6' : 'text-xs text-slate-600 dark:text-white/85 leading-relaxed max-w-[48ch] mb-6'}>
             {card.summary}
           </p>
 
           {whySeen && (
             <div className="mb-5 rounded-xl border border-black/5 dark:border-white/6 bg-black/[0.03] dark:bg-white/[0.025] px-3 py-2">
-              <p className="text-[10px] leading-relaxed text-slate-600 dark:text-white/75">
+              <p className="text-[10px] leading-relaxed text-slate-600 dark:text-white/80">
                 <span className="mr-1 uppercase tracking-[0.18em] text-[#CC561E] dark:text-[#CC561E]/80">Why:</span>
                 {whySeen}
               </p>
@@ -863,12 +864,20 @@ const CardSurface: React.FC<{
                       item.label === 'Arabic'
                         ? `${isHero ? 'text-lg md:text-xl leading-10' : 'text-sm leading-8'} text-right text-emerald-900/95 dark:text-emerald-50/95`
                         : item.label === 'Tefsir'
-                          ? `${isHero ? 'text-sm md:text-[15px]' : 'text-[11px]'} leading-7 text-slate-800 dark:text-white/72`
-                          : `${isHero ? 'text-sm' : 'text-[11px]'} leading-relaxed text-slate-700 dark:text-white/62`
+                          ? `${isHero ? 'text-sm md:text-[15px]' : 'text-[11px]'} leading-7 text-slate-800 dark:text-white/80 ${!isTafsirExpanded ? 'line-clamp-5' : ''}`
+                          : `${isHero ? 'text-sm' : 'text-[11px]'} leading-relaxed text-slate-700 dark:text-white/75`
                     }
                   >
                     {item.value}
                   </p>
+                  {item.label === 'Tefsir' && item.value.length > 200 && (
+                    <button
+                      onClick={() => setIsTafsirExpanded(!isTafsirExpanded)}
+                      className="mt-2 text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 hover:underline"
+                    >
+                      {isTafsirExpanded ? 'Daha Az' : 'Daha Fazla'}
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
