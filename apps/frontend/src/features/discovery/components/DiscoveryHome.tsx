@@ -716,14 +716,17 @@ const CardSurface: React.FC<{
   const showHeroMedia = isHero && card.category !== 'Religious';
   const showWhySeen = (card.category === 'Academic' || card.category === 'Literary') && !card.slot;
   const whySeen = showWhySeen ? compactWhySeen(card.whySeen) : null;
-  const religiousEvidence = card.category === 'Religious' && !card.slot
-    ? ['Arabic', 'Okunus', 'Meal', 'Ayet', 'Tefsir', 'Hadis', 'Aciklama']
+  const RELIGIOUS_NO_TRUNCATE = new Set(['Hadis', 'Tefsir', 'Aciklama', 'Meal']);
+  const religiousEvidence = card.category === 'Religious'
+    ? ['Arabic', 'Okunus', 'Meal', 'Ayet', 'Tefsir', 'Hadis', 'Kaynak', 'Aciklama']
         .map((label) => ({
           label,
-          value: compactEvidenceValue(
-            card.evidence?.find((item) => item.label === label)?.value,
-            label === 'Arabic' ? 420 : 260,
-          ),
+          value: RELIGIOUS_NO_TRUNCATE.has(label)
+            ? (card.evidence?.find((item) => item.label === label)?.value?.replace(/\s+/g, ' ').trim() || null)
+            : compactEvidenceValue(
+                card.evidence?.find((item) => item.label === label)?.value,
+                label === 'Arabic' ? 420 : 260,
+              ),
         }))
         .filter((item): item is { label: string; value: string } => Boolean(item.value))
     : [];
