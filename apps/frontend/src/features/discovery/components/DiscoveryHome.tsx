@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   ArrowUpRight,
@@ -21,6 +21,7 @@ import {
   type DiscoveryPageResponse,
   type DiscoveryCard as ExternalDiscoveryCard,
   type DiscoveryInnerSpaceCard,
+  type DiscoveryInnerSpaceSlot,
 } from '../../../services/backendApiService';
 import {
   persistDiscoveryFlowSeed,
@@ -54,6 +55,7 @@ interface DiscoveryCardData {
   id: string;
   category: DiscoveryCategory;
   family: string;
+  slot?: DiscoveryInnerSpaceSlot;
   title: string;
   summary: string;
   sources: string[];
@@ -70,6 +72,11 @@ interface DiscoveryCardData {
   sourceUrl?: string;
   flowAnchorId?: string;
   flowAnchorLabel?: string;
+}
+
+interface DiscoveryTopNode {
+  label: string;
+  count: number;
 }
 
 interface DiscoveryViewMeta {
@@ -199,6 +206,7 @@ const buildFallbackInnerSpaceCards = (): DiscoveryCardData[] => [
     id: 'fallback-continue',
     category: 'Personal',
     family: 'CONTINUE THIS',
+    slot: 'continue_this',
     title: 'Your archive is ready for a first thread',
     summary: 'Add a book, article, note, or film to start building an active continuation lane here.',
     sources: ['Local Library'],
@@ -211,6 +219,7 @@ const buildFallbackInnerSpaceCards = (): DiscoveryCardData[] => [
     id: 'fallback-latest',
     category: 'Personal',
     family: 'LATEST SYNC',
+    slot: 'latest_sync',
     title: 'No recent sync yet',
     summary: 'As soon as new library activity lands, the freshest thread will appear here with direct context.',
     sources: ['Recent Activity'],
@@ -223,6 +232,7 @@ const buildFallbackInnerSpaceCards = (): DiscoveryCardData[] => [
     id: 'fallback-dormant',
     category: 'Personal',
     family: 'DORMANT GEM',
+    slot: 'dormant_gem',
     title: 'Dormant links will surface here',
     summary: 'Once older material accumulates, Discovery will recover overlooked items that still fit your current themes.',
     sources: ['Archive Vault'],
@@ -235,6 +245,7 @@ const buildFallbackInnerSpaceCards = (): DiscoveryCardData[] => [
     id: 'fallback-pulse',
     category: 'Personal',
     family: 'THEME PULSE',
+    slot: 'theme_pulse',
     title: 'THEME_PULSE',
     summary: 'Theme pulse will strengthen as more tagged material and memory profile signals accumulate.',
     sources: ['Recent Archive'],
@@ -257,6 +268,7 @@ const mapInnerSpaceCard = (card: DiscoveryInnerSpaceCard): DiscoveryCardData => 
     id: `inner-${card.slot}`,
     category: 'Personal',
     family: card.family,
+    slot: card.slot,
     title: card.title,
     summary: card.summary,
     sources: card.sources || [],
@@ -337,6 +349,29 @@ const writeDiscoveryPageCache = (entry: DiscoveryPageCacheEntry): void => {
   } catch {
     // ignore cache write failures
   }
+};
+
+const normalizeDiscoveryTagKey = (value: string): string => value.trim().toLocaleLowerCase('tr-TR');
+
+const buildTopNodesFromLibrary = (items: LibraryItem[]): DiscoveryTopNode[] => {
+  const tagMap = new Map<string, DiscoveryTopNode>();
+
+  items.forEach((item) => {
+    const uniqueTags = Array.from(new Set((item.tags || []).map((tag) => tag.trim()).filter(Boolean)));
+    uniqueTags.forEach((tag) => {
+      const key = normalizeDiscoveryTagKey(tag);
+      if (!key) return;
+      const previous = tagMap.get(key);
+      tagMap.set(key, {
+        label: previous?.label || tag,
+        count: (previous?.count || 0) + 1,
+      });
+    });
+  });
+
+  return Array.from(tagMap.values())
+    .sort((left, right) => right.count - left.count)
+    .slice(0, 6);
 };
 
 const formatRelativeUpdateTime = (value: string | null): string => {
@@ -449,6 +484,14 @@ const cardStyles = (tone: DiscoveryTone) => {
   }
 };
 
+const canOpenCard = (card?: DiscoveryCardData): boolean => Boolean(card && (card.sourceUrl || card.itemId || card.flowAnchorLabel));
+
+const primaryCardActionLabel = (card: DiscoveryCardData): string => {
+  if (card.sourceUrl) return 'OPEN_SOURCE';
+  if (card.itemId) return 'OPEN_THREAD';
+  return 'ASK_ARCHIVE';
+};
+
 const CardSurface: React.FC<{
   card: DiscoveryCardData;
   onAsk: (card: DiscoveryCardData) => void;
@@ -460,7 +503,7 @@ const CardSurface: React.FC<{
   const isTall = card.size === 'tall';
   const isWide = card.size === 'wide';
   const isDormant = card.family === 'DORMANT GEM';
-  const canOpen = Boolean(card.sourceUrl || card.itemId || card.flowAnchorLabel);
+  const canOpen = canOpenCard(card);
 
   const gridClasses = className || `
     ${isHero ? 'md:col-span-2 md:row-span-2 min-h-[480px]' : ''}
@@ -556,7 +599,7 @@ const CardSurface: React.FC<{
                 onClick={() => (onOpen ? onOpen(card) : onAsk(card))}
                 className={`px-4 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-colors ${canOpen ? 'bg-cyan-500 text-black hover:bg-cyan-400' : 'bg-white/10 text-white/50 hover:bg-white/10'}`}
               >
-                {card.sourceUrl ? 'OPEN_SOURCE' : card.itemId ? 'OPEN_THREAD' : 'ASK_ARCHIVE'}
+                {primaryCardActionLabel(card)}
               </button>
             </div>
           )}
@@ -595,12 +638,199 @@ const CardSurface: React.FC<{
   );
 };
 
+const InnerSpaceMiniCard: React.FC<{
+  card: DiscoveryCardData;
+  onAsk: (card: DiscoveryCardData) => void;
+  onOpen: (card: DiscoveryCardData) => void;
+}> = ({ card, onAsk, onOpen }) => {
+  const canOpen = canOpenCard(card);
+
+  return (
+    <div className="rounded-2xl border border-white/6 bg-white/[0.025] px-4 py-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[9px] uppercase tracking-[0.24em] text-cyan-400/70">{card.family}</p>
+          <p className="mt-2 text-base font-serif text-white/90">{card.title}</p>
+          <p className="mt-2 text-[11px] leading-relaxed text-white/45">{card.summary}</p>
+          {card.metadata ? (
+            <p className="mt-3 text-[9px] uppercase tracking-[0.22em] text-white/25">{card.metadata}</p>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          onClick={() => (canOpen ? onOpen(card) : onAsk(card))}
+          className={`shrink-0 rounded-full border px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.18em] transition ${
+            canOpen
+              ? 'border-white/10 text-white/55 hover:border-cyan-400/30 hover:text-cyan-300'
+              : 'border-white/5 text-white/25 hover:text-white/45'
+          }`}
+        >
+          {canOpen ? 'Open' : 'Ask'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const InnerSpaceCluster: React.FC<{
+  continueCard: DiscoveryCardData;
+  latestCard?: DiscoveryCardData;
+  dormantCard?: DiscoveryCardData;
+  themePulseCard?: DiscoveryCardData;
+  topNodes: DiscoveryTopNode[];
+  onAsk: (card: DiscoveryCardData) => void;
+  onSave: (card: DiscoveryCardData) => void;
+  onOpen: (card: DiscoveryCardData) => void;
+}> = ({
+  continueCard,
+  latestCard,
+  dormantCard,
+  themePulseCard,
+  topNodes,
+  onAsk,
+  onSave,
+  onOpen,
+}) => {
+  const continueCanOpen = canOpenCard(continueCard);
+  const pulseBadge = topNodes.length > 0
+    ? `${topNodes.length} top node${topNodes.length === 1 ? '' : 's'}`
+    : themePulseCard?.syncRate;
+
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-[1.45fr_0.8fr] gap-4 auto-rows-fr">
+      <motion.article
+        whileHover={{ scale: 1.005, y: -2 }}
+        className={`relative flex min-h-[420px] flex-col rounded-2xl border p-5 transition-all duration-300 ${cardStyles('cyan')}`}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-cyan-400/80">{continueCard.family}</p>
+            {continueCard.sources.length > 0 ? (
+              <p className="mt-2 text-[10px] italic text-white/40">{continueCard.sources.join(' // ')}</p>
+            ) : null}
+          </div>
+          {continueCard.progress !== undefined ? (
+            <div className="flex h-14 w-14 items-center justify-center rounded-full border border-cyan-400/20 bg-cyan-500/5 text-sm font-bold text-cyan-300">
+              {continueCard.progress}%
+            </div>
+          ) : null}
+        </div>
+
+        <div className="mt-6">
+          <p className="text-[10px] uppercase tracking-[0.24em] text-white/24">Personal</p>
+          <h3 className="mt-2 font-serif text-3xl leading-tight text-white/92">{continueCard.title}</h3>
+          <p className="mt-4 max-w-[58ch] text-sm leading-relaxed text-white/48">{continueCard.summary}</p>
+          {continueCard.metadata ? (
+            <p className="mt-5 text-[10px] uppercase tracking-[0.24em] text-white/24">{continueCard.metadata}</p>
+          ) : null}
+        </div>
+
+        {(latestCard || dormantCard) ? (
+          <div className="mt-8 grid grid-cols-1 gap-3 lg:grid-cols-2">
+            {latestCard ? <InnerSpaceMiniCard card={latestCard} onAsk={onAsk} onOpen={onOpen} /> : null}
+            {dormantCard ? <InnerSpaceMiniCard card={dormantCard} onAsk={onAsk} onOpen={onOpen} /> : null}
+          </div>
+        ) : null}
+
+        <div className="mt-auto flex items-center justify-between border-t border-white/5 pt-4">
+          <div className="flex items-center gap-3">
+            <button onClick={() => onAsk(continueCard)} className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest transition-colors hover:text-cyan-400">
+              <MessageSquareText size={12} />
+              Ask
+            </button>
+            <button onClick={() => onSave(continueCard)} className="opacity-40 transition-opacity hover:opacity-100">
+              <BookmarkPlus size={14} />
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => (continueCanOpen ? onOpen(continueCard) : onAsk(continueCard))}
+            className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] transition ${
+              continueCanOpen
+                ? 'border-cyan-400/25 bg-cyan-500 text-black hover:bg-cyan-400'
+                : 'border-white/8 bg-white/5 text-white/55 hover:bg-white/10'
+            }`}
+          >
+            {primaryCardActionLabel(continueCard)}
+          </button>
+        </div>
+      </motion.article>
+
+      {themePulseCard ? (
+        <motion.article
+          whileHover={{ scale: 1.005, y: -2 }}
+          className={`relative flex min-h-[420px] flex-col rounded-2xl border p-5 transition-all duration-300 ${cardStyles('dark')}`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-cyan-400/80">{themePulseCard.family}</p>
+              <p className="mt-2 text-[10px] italic text-white/40">
+                {topNodes.length > 0 ? 'Dashboard // Top Nodes' : themePulseCard.sources.join(' // ')}
+              </p>
+            </div>
+            {pulseBadge ? (
+              <div className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[9px] font-mono text-cyan-400">
+                {pulseBadge}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mt-6">
+            <p className="text-[10px] uppercase tracking-[0.24em] text-white/24">Personal</p>
+            <h3 className="mt-2 font-serif text-2xl leading-tight text-white/92">Top Nodes</h3>
+          </div>
+
+          {topNodes.length > 0 ? (
+            <div className="mt-6 space-y-3">
+              {topNodes.map((node) => (
+                <div key={node.label} className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-3 text-[11px] font-bold uppercase tracking-[0.14em] text-white/75">
+                    <span className="truncate">{node.label}</span>
+                    <span className="shrink-0 text-white/35">{node.count}</span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-white/5">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${(node.count / topNodes[0].count) * 100}%` }}
+                      className="h-full bg-cyan-400/70"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-6 text-sm leading-relaxed text-white/45">{themePulseCard.summary}</p>
+          )}
+
+          {themePulseCard.metadata ? (
+            <p className="mt-6 text-[10px] uppercase tracking-[0.24em] text-white/22">{themePulseCard.metadata}</p>
+          ) : null}
+
+          <div className="mt-auto flex items-center justify-between border-t border-white/5 pt-4">
+            <button onClick={() => onAsk(themePulseCard)} className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest transition-colors hover:text-cyan-400">
+              <MessageSquareText size={12} />
+              Ask
+            </button>
+            <button
+              type="button"
+              onClick={() => onAsk(themePulseCard)}
+              className="rounded-full border border-white/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-white/70 transition hover:border-cyan-400/25 hover:text-cyan-300"
+            >
+              Focus Map
+            </button>
+          </div>
+        </motion.article>
+      ) : null}
+    </div>
+  );
+};
+
 const InnerSpaceLoadingGrid: React.FC = () => (
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 auto-rows-fr">
-    {[0, 1, 2, 3].map((index) => (
+  <div className="grid grid-cols-1 xl:grid-cols-[1.45fr_0.8fr] gap-4 auto-rows-fr">
+    {[0, 1].map((index) => (
       <div
         key={index}
-        className={`${index === 0 ? 'md:row-span-2 min-h-[420px]' : ''} ${index === 1 ? 'md:col-span-2 md:row-span-2 min-h-[480px]' : 'min-h-[220px]'} rounded-2xl border border-white/5 bg-white/[0.02] animate-pulse`}
+        className={`${index === 0 ? 'min-h-[420px]' : 'min-h-[420px]'} rounded-2xl border border-white/5 bg-white/[0.02] animate-pulse`}
       />
     ))}
   </div>
@@ -631,6 +861,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
   const forceRefreshRef = useRef(false);
   const requestInFlightRef = useRef(false);
   const lastAutoRefreshAtRef = useRef(0);
+  const topNodes = useMemo(() => buildTopNodesFromLibrary(books), [books]);
 
   const triggerRefresh = (force = false) => {
     if (!userId || requestInFlightRef.current) {
@@ -835,6 +1066,10 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
   const literaryHero = literaryCards[0];
   const cultureHero = cultureCards[0];
   const hasAnyPillarCards = [academicCards, religiousCards, literaryCards, cultureCards].some((cards) => cards.length > 0);
+  const continueCard = innerSpaceCards.find((card) => card.slot === 'continue_this') || innerSpaceCards[0];
+  const latestSyncCard = innerSpaceCards.find((card) => card.slot === 'latest_sync');
+  const dormantGemCard = innerSpaceCards.find((card) => card.slot === 'dormant_gem');
+  const themePulseCard = innerSpaceCards.find((card) => card.slot === 'theme_pulse');
   const remainingPillarCards = [
     ...academicCards.slice(2),
     ...religiousCards.slice(2),
@@ -898,12 +1133,17 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
 
             {pageLoading && innerSpaceCards.length === 0 ? (
               <InnerSpaceLoadingGrid />
-            ) : innerSpaceCards.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 auto-rows-fr">
-                {innerSpaceCards.map((card) => (
-                  <CardSurface key={card.id} card={card} onAsk={handleAsk} onSave={handleSave} onOpen={handleOpen} />
-                ))}
-              </div>
+            ) : innerSpaceCards.length > 0 && continueCard ? (
+              <InnerSpaceCluster
+                continueCard={continueCard}
+                latestCard={latestSyncCard}
+                dormantCard={dormantGemCard}
+                themePulseCard={themePulseCard}
+                topNodes={topNodes}
+                onAsk={handleAsk}
+                onSave={handleSave}
+                onOpen={handleOpen}
+              />
             ) : (
               <div className="rounded-2xl border border-white/5 bg-white/[0.02] px-5 py-6 text-sm text-white/50">
                 Discovery could not load inner archive signals yet.

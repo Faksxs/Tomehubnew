@@ -11,8 +11,7 @@ import {
     Clock,
     Calendar,
     Share2,
-    Database,
-    Binary
+    Database
 } from 'lucide-react';
 import { LibraryItem, Highlight } from '../types';
 
@@ -183,7 +182,6 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
         });
 
         const sortedTags = Array.from(tagMap.values()).sort((a, b) => b.count - a.count);
-        const topTags = sortedTags.slice(0, 10);
         const orphanCount = sortedTags.filter(t => t.count <= 2).length;
 
         // Rust index calculation
@@ -250,7 +248,6 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
         })();
 
         return {
-            topTags,
             sortedTags,
             orphanCount,
             tScore: sortedTags.length > 0 ? (sortedTags.slice(0, Math.ceil(sortedTags.length * 0.1)).reduce((s, t) => s + t.count, 0) / Math.max(1, orphanCount)).toFixed(1) : '0.0',
@@ -328,7 +325,7 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
                     {/* Activity Heatmap (7/12 Span) */}
-                    <div className="lg:col-span-8 space-y-4">
+                    <div className="lg:col-span-12 space-y-4">
                         <div className="flex items-center justify-between px-2">
                             <div className="space-y-1">
                                 <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
@@ -363,32 +360,6 @@ const InsightsView: React.FC<InsightsViewProps> = ({ items, onBack }) => {
                         </div>
                         <div className="p-6 rounded-3xl border border-slate-200 dark:border-white/5 bg-white dark:bg-slate-900/30">
                             <PulseChart data={stats.dailyActivity} />
-                        </div>
-                    </div>
-
-                    {/* Top Nodes / Focus (5/12 Span) */}
-                    <div className="lg:col-span-4 space-y-4">
-                        <div className="flex items-center justify-between px-2">
-                            <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                                <Binary size={14} className="text-indigo-500" /> Top Nodes
-                            </h3>
-                        </div>
-                        <div className="p-6 rounded-3xl border border-slate-200 dark:border-white/5 bg-white dark:bg-slate-900/30 space-y-3">
-                            {stats.topTags.slice(0, 6).map((tag, idx) => (
-                                <div key={idx} className="space-y-1.5">
-                                    <div className="flex justify-between items-center text-xs font-bold">
-                                        <span className="text-slate-700 dark:text-slate-200 uppercase tracking-tight">{tag.label}</span>
-                                        <span className="text-slate-400">{tag.count}</span>
-                                    </div>
-                                    <div className="h-1.5 w-full bg-slate-100 dark:bg-white/5 rounded-full overflow-hidden">
-                                        <motion.div
-                                            initial={{ width: 0 }}
-                                            animate={{ width: `${(tag.count / stats.topTags[0].count) * 100}%` }}
-                                            className="h-full bg-indigo-500/60"
-                                        />
-                                    </div>
-                                </div>
-                            ))}
                         </div>
                     </div>
                 </div>
