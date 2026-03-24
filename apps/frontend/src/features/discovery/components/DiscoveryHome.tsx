@@ -426,6 +426,15 @@ const mapDiscoveryPagePayload = (payload: DiscoveryPageResponse): {
   };
 };
 
+const limitPillarCardsForLayout = (
+  pillars: Record<ExternalCategoryKey, DiscoveryCardData[]>,
+): Record<ExternalCategoryKey, DiscoveryCardData[]> => ({
+  ACADEMIC: pillars.ACADEMIC.slice(0, 3),
+  RELIGIOUS: pillars.RELIGIOUS.slice(0, 2),
+  LITERARY: pillars.LITERARY.slice(0, 2),
+  CULTURE_HISTORY: pillars.CULTURE_HISTORY.slice(0, 2),
+});
+
 const cardStyles = (tone: DiscoveryTone) => {
   switch (tone) {
     case 'blue': return 'bg-blue-600/5 border-blue-500/10 text-blue-50 shadow-[0_4px_24px_-10px_rgba(59,130,246,0.1)] backdrop-blur-md';
@@ -662,7 +671,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
       if (cached && active) {
         const mapped = mapDiscoveryPagePayload(cached.payload);
         setInnerSpaceCards(mapped.innerSpace);
-        setPillarCardsByCategory(mapped.pillars);
+        setPillarCardsByCategory(limitPillarCardsForLayout(mapped.pillars));
         setPageWarning(mapped.warning);
         setViewMeta({
           ...mapped.meta,
@@ -694,7 +703,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
 
         const mapped = mapDiscoveryPagePayload(payload);
         setInnerSpaceCards(mapped.innerSpace);
-        setPillarCardsByCategory(mapped.pillars);
+        setPillarCardsByCategory(limitPillarCardsForLayout(mapped.pillars));
         setPageWarning(mapped.warning);
         setViewMeta(mapped.meta);
         setPageError(null);
