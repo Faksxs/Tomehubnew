@@ -31,6 +31,7 @@ from services import external_kb_service, islamic_api_service
 from services.domain_policy_service import get_domain_policy, normalize_domain_mode, resolve_domain_mode
 from services.tmdb_service import search_tmdb_media
 from services.user_preferences_service import get_user_preferences
+from config import settings
 from utils.logger import get_logger
 
 logger = get_logger("discovery_board_service")
