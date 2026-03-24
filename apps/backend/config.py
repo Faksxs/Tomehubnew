@@ -895,6 +895,13 @@ class Settings:
         self.QURAN_FOUNDATION_DEFAULT_LANGUAGE = (
             os.getenv("QURAN_FOUNDATION_DEFAULT_LANGUAGE", "tr").strip().lower() or "tr"
         )
+        self.QURAN_FOUNDATION_DEFAULT_TAFSIR_ID = int(
+            os.getenv("QURAN_FOUNDATION_DEFAULT_TAFSIR_ID", "169")
+        )
+        self.QURAN_FOUNDATION_DEFAULT_TAFSIR_NAME = (
+            os.getenv("QURAN_FOUNDATION_DEFAULT_TAFSIR_NAME", "Ibn Kathir (Abridged)").strip()
+            or "Ibn Kathir (Abridged)"
+        )
 
         self.DIYANET_QURAN_ENABLED = os.getenv("DIYANET_QURAN_ENABLED", "false").strip().lower() == "true"
         self.DIYANET_QURAN_API_KEY = os.getenv("DIYANET_QURAN_API_KEY", "").strip()

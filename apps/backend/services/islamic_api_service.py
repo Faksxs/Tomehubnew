@@ -660,6 +660,53 @@ def _quran_foundation_fetch_verse(verse_key: str) -> Optional[Dict[str, Any]]:
     return verse if isinstance(verse, dict) else None
 
 
+def _quran_foundation_fetch_tafsir(verse_key: str) -> Optional[Dict[str, Any]]:
+    headers = _quran_foundation_headers()
+    if not headers:
+        return None
+    tafsir_id = int(getattr(settings, "QURAN_FOUNDATION_DEFAULT_TAFSIR_ID", 169) or 169)
+    translation_ids = ",".join(getattr(settings, "QURAN_FOUNDATION_DEFAULT_TRANSLATION_IDS", ["77"]) or ["77"])
+    params = {
+        "language": str(getattr(settings, "QURAN_FOUNDATION_DEFAULT_LANGUAGE", "tr") or "tr"),
+        "words": "false",
+        "translations": translation_ids,
+        "tafsirs": str(tafsir_id),
+    }
+    url = (
+        f"{str(getattr(settings, 'QURAN_FOUNDATION_API_BASE_URL', '')).rstrip('/')}"
+        f"/verses/by_key/{verse_key}?{urllib_parse.urlencode(params)}"
+    )
+    response = _http_json(url, headers=headers)
+    verse = (response or {}).get("verse") if isinstance(response, dict) else None
+    if not isinstance(verse, dict):
+        return None
+    tafsirs = verse.get("tafsirs") if isinstance(verse.get("tafsirs"), list) else []
+    if not tafsirs:
+        return None
+    tafsir = tafsirs[0] if isinstance(tafsirs[0], dict) else {}
+    text = _strip_html(tafsir.get("text"))
+    if not text:
+        return None
+    tafsir_name = str(
+        tafsir.get("resource_name")
+        or getattr(settings, "QURAN_FOUNDATION_DEFAULT_TAFSIR_NAME", "Ibn Kathir (Abridged)")
+        or "Ibn Kathir (Abridged)"
+    ).strip()
+    return _build_candidate(
+        provider="QURAN_FOUNDATION",
+        kind="INTERPRETATION",
+        title=f"Quran.Foundation Tefsir - Ayet {verse_key} ({tafsir_name})",
+        content_chunk=text,
+        score=0.89,
+        external_weight=float(getattr(settings, "ISLAMIC_API_QURAN_WEIGHT", 0.22)),
+        reference=f"tafsir:{verse_key}:{tafsir_id}",
+        canonical_reference=verse_key,
+        source_url=f"https://quran.com/{verse_key}",
+        is_exact_match=True,
+        religious_query_kind="TAFSIR_REQUEST",
+    )
+
+
 def _normalize_quran_foundation_search(question: str, rows: List[Dict[str, Any]], limit: int) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     weight = float(getattr(settings, "ISLAMIC_API_QURAN_WEIGHT", 0.22))
@@ -948,6 +995,7 @@ def get_islamic_external_candidates(
     if _looks_quran_query(query):
         quran_used = True
         quran_candidates: List[Dict[str, Any]] = []
+        interpretive_candidates: List[Dict[str, Any]] = []
         if verse_key:
             quranenc_exact = _normalize_quranenc_exact(_quranenc_fetch_verse(verse_key) or {})
             if quranenc_exact:
@@ -955,12 +1003,17 @@ def get_islamic_external_candidates(
             qf_exact = _normalize_quran_foundation_exact(_quran_foundation_fetch_verse(verse_key) or {})
             if qf_exact:
                 quran_candidates.append(qf_exact)
+            if religious_query_kind == "TAFSIR_REQUEST":
+                qf_tafsir = _quran_foundation_fetch_tafsir(verse_key)
+                if qf_tafsir:
+                    interpretive_candidates.append(qf_tafsir)
             diyanet_exact = _diyanet_fetch_verse(verse_key)
             if diyanet_exact:
                 quran_candidates.append(diyanet_exact)
         else:
             quran_candidates.extend(_normalize_quran_foundation_search(query, _quran_foundation_search(query, hard_limit), hard_limit))
         candidates.extend(quran_candidates[:hard_limit])
+        candidates.extend(interpretive_candidates[: max(0, hard_limit - len(candidates))])
 
     should_use_hadith = _looks_hadith_query(query) or ((force_religious or religious_query_detected) and not verse_key)
     if should_use_hadith:
@@ -987,7 +1040,7 @@ def get_islamic_external_candidates(
         candidates.extend(dataset_candidates[:dataset_budget])
 
     interpretive_budget = 0
-    if religious_query_kind in {"EXACT_HADITH", "EXACT_QURAN_VERSE"}:
+    if religious_query_kind in {"EXACT_HADITH", "EXACT_QURAN_VERSE", "TAFSIR_REQUEST"}:
         interpretive_budget = max(0, hard_limit - len(candidates))
     else:
         interpretive_budget = min(2, hard_limit)

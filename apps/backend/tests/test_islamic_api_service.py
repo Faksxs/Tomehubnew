@@ -76,6 +76,7 @@ class IslamicApiServiceTests(unittest.TestCase):
         self.assertEqual(out, ["100"])
 
     @patch("services.islamic_api_service._diyanet_fetch_verse")
+    @patch("services.islamic_api_service._quran_foundation_fetch_tafsir")
     @patch("services.islamic_api_service._quran_foundation_fetch_verse")
     @patch("services.islamic_api_service._quranenc_fetch_verse")
     @patch("services.islamic_api_service.get_religious_dataset_candidates")
@@ -84,9 +85,11 @@ class IslamicApiServiceTests(unittest.TestCase):
         mock_dataset_candidates,
         mock_quranenc_verse,
         mock_qf_verse,
+        mock_qf_tafsir,
         mock_diyanet_verse,
     ):
         mock_dataset_candidates.return_value = ([], {"used": False, "providers": {}, "reason": "skipped"})
+        mock_qf_tafsir.return_value = None
         mock_quranenc_verse.return_value = {
             "sura": "1",
             "aya": "1",
@@ -122,6 +125,59 @@ class IslamicApiServiceTests(unittest.TestCase):
         self.assertIn("QURAN_FOUNDATION", meta["providers"])
         self.assertIn("DIYANET_QURAN", meta["providers"])
         mock_dataset_candidates.assert_not_called()
+
+    @patch("services.islamic_api_service._islamhouse_interpretive_candidates", return_value=[])
+    @patch("services.islamic_api_service._diyanet_fetch_verse", return_value=None)
+    @patch("services.islamic_api_service._quran_foundation_fetch_tafsir")
+    @patch("services.islamic_api_service._quran_foundation_fetch_verse")
+    @patch("services.islamic_api_service._quranenc_fetch_verse")
+    @patch("services.islamic_api_service.get_religious_dataset_candidates")
+    def test_tafsir_request_prefers_exact_quran_foundation_tafsir(
+        self,
+        mock_dataset_candidates,
+        mock_quranenc_verse,
+        mock_qf_verse,
+        mock_qf_tafsir,
+        _mock_diyanet_verse,
+        _mock_islamhouse_candidates,
+    ):
+        mock_dataset_candidates.return_value = ([], {"used": False, "providers": {}, "reason": "skipped"})
+        mock_quranenc_verse.return_value = {
+            "sura": "17",
+            "aya": "12",
+            "arabic_text": "arabic",
+            "translation": "meal",
+            "_translation_key": "turkish_rwwad",
+            "_source_url": "https://quranenc.com/api/v1/translation/aya/turkish_rwwad/17/12",
+        }
+        mock_qf_verse.return_value = {
+            "verse_key": "17:12",
+            "text_uthmani": "arabic",
+            "translations": [{"text": "meal", "resource_name": "Diyanet"}],
+        }
+        mock_qf_tafsir.return_value = {
+            "title": "Quran.Foundation Tefsir - Ayet 17:12 (Ibn Kathir (Abridged))",
+            "content_chunk": "Night and day are among Allah's signs.",
+            "page_number": 0,
+            "source_type": "ISLAMIC_EXTERNAL",
+            "score": 0.89,
+            "external_weight": 0.22,
+            "provider": "QURAN_FOUNDATION",
+            "religious_source_kind": "INTERPRETATION",
+            "reference": "tafsir:17:12:169",
+            "canonical_reference": "17:12",
+            "source_url": "https://quran.com/17:12",
+            "is_exact_match": True,
+            "religious_query_kind": "TAFSIR_REQUEST",
+        }
+
+        candidates, meta = islamic_api_service.get_islamic_external_candidates("17:12 tefsir", limit=4)
+
+        self.assertTrue(meta["used"])
+        self.assertEqual(meta["religious_query_kind"], "TAFSIR_REQUEST")
+        self.assertTrue(any(c["religious_source_kind"] == "INTERPRETATION" for c in candidates))
+        self.assertTrue(any(c["reference"] == "tafsir:17:12:169" for c in candidates))
+        mock_qf_tafsir.assert_called_once_with("17:12")
 
     @patch("services.islamic_api_service._islamhouse_fetch_category_items")
     @patch("services.islamic_api_service._islamhouse_category_tree")
