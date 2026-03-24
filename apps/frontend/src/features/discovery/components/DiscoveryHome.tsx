@@ -16,6 +16,7 @@ import {
 import type { AppTab } from '../../app/types';
 import type { LibraryItem, PersonalNoteCategory } from '../../../types';
 import { getFriendlyApiErrorMessage } from '../../../services/apiClient';
+import { getPersonalNoteCategory } from '../../../lib/personalNotePolicy';
 import {
   getDiscoveryPage,
   type DiscoveryPageResponse,
@@ -87,6 +88,22 @@ interface DiscoveryViewMeta {
   hasCachedSnapshot: boolean;
   hasPartialErrors: boolean;
   boardErrorCount: number;
+}
+
+interface LatestSyncEntry {
+  key: string;
+  label: string;
+  title: string;
+  description: string;
+  item?: LibraryItem;
+}
+
+interface DormantGemEntry {
+  key: string;
+  label: string;
+  title: string;
+  reason: string;
+  item: LibraryItem;
 }
 
 const CARDS: DiscoveryCardData[] = [
@@ -402,6 +419,177 @@ const compactEvidenceValue = (value?: string | null, limit = 260): string | null
   return `${cleaned.slice(0, limit - 3).trimEnd()}...`;
 };
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+const DORMANT_MIN_AGE_MS = 21 * DAY_MS;
+
+const normalizeItemTimestamp = (value?: number): number | null => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
+};
+
+const formatArchiveAge = (value?: number): string => {
+  const timestamp = normalizeItemTimestamp(value);
+  if (!timestamp) return 'recently';
+  const deltaMs = Math.max(0, Date.now() - timestamp);
+  if (deltaMs < DAY_MS) return 'today';
+  if (deltaMs < 7 * DAY_MS) return `${Math.max(1, Math.floor(deltaMs / DAY_MS))}d ago`;
+  if (deltaMs < 30 * DAY_MS) return `${Math.max(1, Math.floor(deltaMs / (7 * DAY_MS)))}w ago`;
+  if (deltaMs < 365 * DAY_MS) return `${Math.max(1, Math.floor(deltaMs / (30 * DAY_MS)))}mo ago`;
+  return `${Math.max(1, Math.floor(deltaMs / (365 * DAY_MS)))}y ago`;
+};
+
+const formatArchiveWindow = (value?: number): string => {
+  const timestamp = normalizeItemTimestamp(value);
+  if (!timestamp) return 'a while';
+  const deltaMs = Math.max(0, Date.now() - timestamp);
+  if (deltaMs < DAY_MS) return 'today';
+  if (deltaMs < 7 * DAY_MS) return `${Math.max(1, Math.floor(deltaMs / DAY_MS))} days`;
+  if (deltaMs < 30 * DAY_MS) return `${Math.max(1, Math.floor(deltaMs / (7 * DAY_MS)))} weeks`;
+  if (deltaMs < 365 * DAY_MS) return `${Math.max(1, Math.floor(deltaMs / (30 * DAY_MS)))} months`;
+  return `${Math.max(1, Math.floor(deltaMs / (365 * DAY_MS)))} years`;
+};
+
+const pickMostRecentItem = (
+  items: LibraryItem[],
+  predicate: (item: LibraryItem) => boolean,
+): LibraryItem | undefined =>
+  items
+    .filter(predicate)
+    .sort((left, right) => (normalizeItemTimestamp(right.addedAt) || 0) - (normalizeItemTimestamp(left.addedAt) || 0))[0];
+
+const buildLatestSyncDescription = (item: LibraryItem | undefined, fallbackLabel: string): string => {
+  if (!item) return `No ${fallbackLabel.toLocaleLowerCase('en-US')} yet.`;
+
+  const summary = compactEvidenceValue(item.summaryText || item.generalNotes, 118);
+  if (summary) return summary;
+
+  const relativeAge = formatArchiveAge(item.addedAt);
+
+  if (item.type === 'BOOK') {
+    return `${item.author || 'Unknown author'} · added ${relativeAge}`;
+  }
+
+  if (item.type === 'ARTICLE') {
+    return `${item.publisher || item.author || 'Saved article'} · added ${relativeAge}`;
+  }
+
+  if (item.type === 'PERSONAL_NOTE') {
+    const noteCategory = getPersonalNoteCategory(item);
+    const noteLabel = noteCategory === 'IDEAS' ? 'Ideas note' : 'Daily note';
+    return `${noteLabel} · added ${relativeAge}`;
+  }
+
+  const cinemaMeta = [item.originalTitle, item.rating ? `${item.rating}/5 rated` : null]
+    .filter(Boolean)
+    .join(' · ');
+
+  return `${cinemaMeta || 'Saved title'} · added ${relativeAge}`;
+};
+
+const buildLatestSyncEntries = (items: LibraryItem[]): LatestSyncEntry[] => {
+  const latestBook = pickMostRecentItem(items, (item) => item.type === 'BOOK');
+  const latestCinema = pickMostRecentItem(items, (item) => item.type === 'MOVIE' || item.type === 'SERIES');
+  const latestArticle = pickMostRecentItem(items, (item) => item.type === 'ARTICLE');
+  const latestPersonalNote = pickMostRecentItem(
+    items,
+    (item) => item.type === 'PERSONAL_NOTE' && ['IDEAS', 'DAILY'].includes(getPersonalNoteCategory(item)),
+  );
+
+  return [
+    {
+      key: 'latest-book',
+      label: 'Latest Book',
+      title: latestBook?.title || 'No recent book',
+      description: buildLatestSyncDescription(latestBook, 'book sync'),
+      item: latestBook,
+    },
+    {
+      key: 'latest-cinema',
+      label: 'Latest Cinema',
+      title: latestCinema?.title || 'No recent cinema',
+      description: buildLatestSyncDescription(latestCinema, 'cinema sync'),
+      item: latestCinema,
+    },
+    {
+      key: 'latest-article',
+      label: 'Latest Article',
+      title: latestArticle?.title || 'No recent article',
+      description: buildLatestSyncDescription(latestArticle, 'article sync'),
+      item: latestArticle,
+    },
+    {
+      key: 'latest-note',
+      label: 'Latest Personal Note',
+      title: latestPersonalNote?.title || 'No recent note',
+      description: buildLatestSyncDescription(latestPersonalNote, 'personal note sync'),
+      item: latestPersonalNote,
+    },
+  ];
+};
+
+const dormantScore = (item: LibraryItem): number => {
+  const timestamp = normalizeItemTimestamp(item.addedAt);
+  if (!timestamp) return -1;
+  const ageMs = Date.now() - timestamp;
+  const summaryBonus = item.summaryText || item.generalNotes ? 5 * DAY_MS : 0;
+  const highlightBonus = (item.highlights?.length || 0) > 0 ? 10 * DAY_MS : 0;
+  const tagBonus = (item.tags?.length || 0) > 0 ? 4 * DAY_MS : 0;
+  const ratingBonus = (item.rating || 0) >= 4 ? 7 * DAY_MS : 0;
+  return ageMs + summaryBonus + highlightBonus + tagBonus + ratingBonus;
+};
+
+const buildDormantReason = (item: LibraryItem): string => {
+  const quietWindow = formatArchiveWindow(item.addedAt);
+  const highlightCount = item.highlights?.length || 0;
+  if (highlightCount > 0) {
+    return `${highlightCount} saved highlight${highlightCount === 1 ? '' : 's'} but it has stayed quiet for ${quietWindow}.`;
+  }
+
+  if (item.summaryText || item.generalNotes) {
+    return `You already captured context for it, but it has stayed buried for ${quietWindow}.`;
+  }
+
+  if ((item.tags?.length || 0) > 0) {
+    return `Tagged around ${item.tags.slice(0, 2).join(' / ')}, but it has not resurfaced for ${quietWindow}.`;
+  }
+
+  if ((item.rating || 0) >= 4) {
+    return `A strong-rated archive pick that has been quiet for ${quietWindow}.`;
+  }
+
+  return `It has been sitting in the archive for ${quietWindow} without resurfacing.`;
+};
+
+const buildDormantGemEntries = (items: LibraryItem[]): DormantGemEntry[] => {
+  const groups: Array<{ key: string; label: string; predicate: (item: LibraryItem) => boolean }> = [
+    { key: 'book', label: 'Book', predicate: (item) => item.type === 'BOOK' },
+    { key: 'cinema', label: 'Cinema', predicate: (item) => item.type === 'MOVIE' || item.type === 'SERIES' },
+    { key: 'article', label: 'Article', predicate: (item) => item.type === 'ARTICLE' },
+  ];
+
+  return groups
+    .map(({ key, label, predicate }) => {
+      const candidate = items
+        .filter((item) => {
+          const timestamp = normalizeItemTimestamp(item.addedAt);
+          return Boolean(timestamp && Date.now() - timestamp >= DORMANT_MIN_AGE_MS && predicate(item));
+        })
+        .sort((left, right) => dormantScore(right) - dormantScore(left))[0];
+
+      if (!candidate) return null;
+
+      return {
+        key,
+        label,
+        title: candidate.title,
+        reason: buildDormantReason(candidate),
+        item: candidate,
+      } satisfies DormantGemEntry;
+    })
+    .filter((entry): entry is DormantGemEntry => Boolean(entry));
+};
+
 const mapBoardCard = (
   category: ExternalCategoryKey,
   card: ExternalDiscoveryCard,
@@ -701,10 +889,13 @@ const CardSurface: React.FC<{
 
 const InnerSpaceMiniCard: React.FC<{
   card: DiscoveryCardData;
+  dormantEntries?: DormantGemEntry[];
   onAsk: (card: DiscoveryCardData) => void;
   onOpen: (card: DiscoveryCardData) => void;
-}> = ({ card, onAsk, onOpen }) => {
+  onOpenItem: (item: LibraryItem) => void;
+}> = ({ card, dormantEntries = [], onAsk, onOpen, onOpenItem }) => {
   const canOpen = canOpenCard(card);
+  const isDormant = card.slot === 'dormant_gem';
 
   return (
     <div className="rounded-2xl border border-white/6 bg-white/[0.025] px-4 py-4">
@@ -713,6 +904,28 @@ const InnerSpaceMiniCard: React.FC<{
           <p className="text-[9px] uppercase tracking-[0.24em] text-cyan-400/70">{card.family}</p>
           <p className="mt-2 text-base font-serif text-white/90">{card.title}</p>
           <p className="mt-2 text-[11px] leading-relaxed text-white/45">{card.summary}</p>
+          {isDormant && dormantEntries.length > 0 ? (
+            <div className="mt-4 space-y-3">
+              {dormantEntries.map((entry) => (
+                <div key={entry.key} className="rounded-xl border border-white/6 bg-black/10 px-3 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[9px] uppercase tracking-[0.22em] text-amber-300/70">{entry.label}</p>
+                      <p className="mt-1 text-sm font-medium text-white/85">{entry.title}</p>
+                      <p className="mt-1 text-[11px] leading-relaxed text-white/45">{entry.reason}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onOpenItem(entry.item)}
+                      className="shrink-0 rounded-full border border-white/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.18em] text-white/60 transition hover:border-cyan-400/30 hover:text-cyan-300"
+                    >
+                      Open
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
           {card.metadata ? (
             <p className="mt-3 text-[9px] uppercase tracking-[0.22em] text-white/25">{card.metadata}</p>
           ) : null}
@@ -734,25 +947,29 @@ const InnerSpaceMiniCard: React.FC<{
 };
 
 const InnerSpaceCluster: React.FC<{
-  continueCard: DiscoveryCardData;
-  latestCard?: DiscoveryCardData;
+  latestCard: DiscoveryCardData;
   dormantCard?: DiscoveryCardData;
   themePulseCard?: DiscoveryCardData;
   topNodes: DiscoveryTopNode[];
+  latestEntries: LatestSyncEntry[];
+  dormantEntries: DormantGemEntry[];
   onAsk: (card: DiscoveryCardData) => void;
   onSave: (card: DiscoveryCardData) => void;
   onOpen: (card: DiscoveryCardData) => void;
+  onOpenItem: (item: LibraryItem) => void;
 }> = ({
-  continueCard,
   latestCard,
   dormantCard,
   themePulseCard,
   topNodes,
+  latestEntries,
+  dormantEntries,
   onAsk,
   onSave,
   onOpen,
+  onOpenItem,
 }) => {
-  const continueCanOpen = canOpenCard(continueCard);
+  const latestCanOpen = canOpenCard(latestCard);
   const pulseBadge = topNodes.length > 0
     ? `${topNodes.length} top node${topNodes.length === 1 ? '' : 's'}`
     : themePulseCard?.syncRate;
@@ -761,58 +978,86 @@ const InnerSpaceCluster: React.FC<{
     <div className="grid grid-cols-1 xl:grid-cols-[1.45fr_0.8fr] gap-4 auto-rows-fr">
       <motion.article
         whileHover={{ scale: 1.005, y: -2 }}
-        className={`relative flex min-h-[420px] flex-col rounded-2xl border p-5 transition-all duration-300 ${cardStyles('cyan')}`}
+        className={`relative flex min-h-[420px] flex-col rounded-2xl border p-5 transition-all duration-300 ${cardStyles('purple')}`}
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-cyan-400/80">{continueCard.family}</p>
-            {continueCard.sources.length > 0 ? (
-              <p className="mt-2 text-[10px] italic text-white/40">{continueCard.sources.join(' // ')}</p>
+            <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-cyan-400/80">{latestCard.family}</p>
+            {latestCard.sources.length > 0 ? (
+              <p className="mt-2 text-[10px] italic text-white/40">{latestCard.sources.join(' // ')}</p>
             ) : null}
           </div>
-          {continueCard.progress !== undefined ? (
+          {latestCard.progress !== undefined ? (
             <div className="flex h-14 w-14 items-center justify-center rounded-full border border-cyan-400/20 bg-cyan-500/5 text-sm font-bold text-cyan-300">
-              {continueCard.progress}%
+              {latestCard.progress}%
             </div>
           ) : null}
         </div>
 
         <div className="mt-6">
           <p className="text-[10px] uppercase tracking-[0.24em] text-white/24">Personal</p>
-          <h3 className="mt-2 font-serif text-3xl leading-tight text-white/92">{continueCard.title}</h3>
-          <p className="mt-4 max-w-[58ch] text-sm leading-relaxed text-white/48">{continueCard.summary}</p>
-          {continueCard.metadata ? (
-            <p className="mt-5 text-[10px] uppercase tracking-[0.24em] text-white/24">{continueCard.metadata}</p>
+          <h3 className="mt-2 font-serif text-3xl leading-tight text-white/92">{latestCard.title}</h3>
+          <p className="mt-4 max-w-[58ch] text-sm leading-relaxed text-white/48">{latestCard.summary}</p>
+          {latestCard.metadata ? (
+            <p className="mt-5 text-[10px] uppercase tracking-[0.24em] text-white/24">{latestCard.metadata}</p>
           ) : null}
         </div>
 
-        {(latestCard || dormantCard) ? (
-          <div className="mt-8 grid grid-cols-1 gap-3 lg:grid-cols-2">
-            {latestCard ? <InnerSpaceMiniCard card={latestCard} onAsk={onAsk} onOpen={onOpen} /> : null}
-            {dormantCard ? <InnerSpaceMiniCard card={dormantCard} onAsk={onAsk} onOpen={onOpen} /> : null}
+        <div className="mt-8 grid grid-cols-1 gap-3 xl:grid-cols-2">
+          {latestEntries.map((entry) => (
+            <div key={entry.key} className="rounded-2xl border border-white/6 bg-white/[0.025] px-4 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[9px] uppercase tracking-[0.24em] text-cyan-400/70">{entry.label}</p>
+                  <p className="mt-2 text-base font-serif text-white/90">{entry.title}</p>
+                  <p className="mt-2 text-[11px] leading-relaxed text-white/45">{entry.description}</p>
+                </div>
+                {entry.item ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenItem(entry.item)}
+                    className="shrink-0 rounded-full border border-white/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.18em] text-white/60 transition hover:border-cyan-400/30 hover:text-cyan-300"
+                  >
+                    Open
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {dormantCard ? (
+          <div className="mt-4">
+            <InnerSpaceMiniCard
+              card={dormantCard}
+              dormantEntries={dormantEntries}
+              onAsk={onAsk}
+              onOpen={onOpen}
+              onOpenItem={onOpenItem}
+            />
           </div>
         ) : null}
 
         <div className="mt-auto flex items-center justify-between border-t border-white/5 pt-4">
           <div className="flex items-center gap-3">
-            <button onClick={() => onAsk(continueCard)} className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest transition-colors hover:text-cyan-400">
+            <button onClick={() => onAsk(latestCard)} className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest transition-colors hover:text-cyan-400">
               <MessageSquareText size={12} />
               Ask
             </button>
-            <button onClick={() => onSave(continueCard)} className="opacity-40 transition-opacity hover:opacity-100">
+            <button onClick={() => onSave(latestCard)} className="opacity-40 transition-opacity hover:opacity-100">
               <BookmarkPlus size={14} />
             </button>
           </div>
           <button
             type="button"
-            onClick={() => (continueCanOpen ? onOpen(continueCard) : onAsk(continueCard))}
+            onClick={() => (latestCanOpen ? onOpen(latestCard) : onAsk(latestCard))}
             className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] transition ${
-              continueCanOpen
+              latestCanOpen
                 ? 'border-cyan-400/25 bg-cyan-500 text-black hover:bg-cyan-400'
                 : 'border-white/8 bg-white/5 text-white/55 hover:bg-white/10'
             }`}
           >
-            {primaryCardActionLabel(continueCard)}
+            {primaryCardActionLabel(latestCard)}
           </button>
         </div>
       </motion.article>
@@ -923,6 +1168,8 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
   const requestInFlightRef = useRef(false);
   const lastAutoRefreshAtRef = useRef(0);
   const topNodes = useMemo(() => buildTopNodesFromLibrary(books), [books]);
+  const latestSyncEntries = useMemo(() => buildLatestSyncEntries(books), [books]);
+  const dormantGemEntries = useMemo(() => buildDormantGemEntries(books), [books]);
 
   const triggerRefresh = (force = false) => {
     if (!userId || requestInFlightRef.current) {
@@ -1115,6 +1362,10 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
     handleAsk(card);
   };
 
+  const handleOpenLibraryItem = (item: LibraryItem) => {
+    onOpenDiscoveryItem(item, 'info');
+  };
+
   const academicCards = pillarCardsByCategory.ACADEMIC;
   const religiousCards = pillarCardsByCategory.RELIGIOUS;
   const literaryCards = pillarCardsByCategory.LITERARY;
@@ -1131,6 +1382,22 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
   const latestSyncCard = innerSpaceCards.find((card) => card.slot === 'latest_sync');
   const dormantGemCard = innerSpaceCards.find((card) => card.slot === 'dormant_gem');
   const themePulseCard = innerSpaceCards.find((card) => card.slot === 'theme_pulse');
+  const primaryInnerSpaceCard = useMemo(() => {
+    const baseCard = latestSyncCard || continueCard;
+    if (!baseCard) return undefined;
+
+    const hasAnyLatestItem = latestSyncEntries.some((entry) => Boolean(entry.item));
+
+    return {
+      ...baseCard,
+      family: 'LATEST SYNC',
+      slot: 'latest_sync' as const,
+      title: hasAnyLatestItem ? 'Latest archive sync' : 'No recent sync yet',
+      summary: hasAnyLatestItem
+        ? 'Fresh signals across book, cinema, article, and personal note lanes.'
+        : 'As soon as new library activity lands, the freshest thread will appear here with direct context.',
+    };
+  }, [continueCard, latestSyncCard, latestSyncEntries]);
   const usedAcademicCount = academicCards.length >= 2 ? 2 : academicCards.length;
   const usedReligiousCount = religiousCards.length >= 2 ? 2 : religiousCards.length;
   const usedLiteraryCount = literaryCards.length > 0 ? 1 : 0;
@@ -1179,16 +1446,18 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
 
             {pageLoading && innerSpaceCards.length === 0 ? (
               <InnerSpaceLoadingGrid />
-            ) : innerSpaceCards.length > 0 && continueCard ? (
+            ) : innerSpaceCards.length > 0 && primaryInnerSpaceCard ? (
               <InnerSpaceCluster
-                continueCard={continueCard}
-                latestCard={latestSyncCard}
+                latestCard={primaryInnerSpaceCard}
                 dormantCard={dormantGemCard}
                 themePulseCard={themePulseCard}
                 topNodes={topNodes}
+                latestEntries={latestSyncEntries}
+                dormantEntries={dormantGemEntries}
                 onAsk={handleAsk}
                 onSave={handleSave}
                 onOpen={handleOpen}
+                onOpenItem={handleOpenLibraryItem}
               />
             ) : (
               <div className="rounded-2xl border border-white/5 bg-white/[0.02] px-5 py-6 text-sm text-white/50">

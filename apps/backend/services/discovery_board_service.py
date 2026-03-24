@@ -1381,12 +1381,12 @@ def _build_verse_hadith_bridge_card(anchors: List[_Anchor], active_provider_name
                     hadith_candidates.append(candidate)
                 elif kind == "INTERPRETATION":
                     interpretive_candidates.append(candidate)
-        if not (verse_candidates and hadith_candidates and interpretive_candidates):
+        if not verse_candidates or not (hadith_candidates or interpretive_candidates):
             continue
 
         verse = verse_candidates[0]
-        hadith = hadith_candidates[0]
-        tafsir = interpretive_candidates[0]
+        hadith = hadith_candidates[0] if hadith_candidates else None
+        tafsir = interpretive_candidates[0] if interpretive_candidates else None
         verse_key = str(verse.get("canonical_reference") or verse.get("reference") or "").strip()
         if ":" not in verse_key:
             continue
@@ -1394,16 +1394,16 @@ def _build_verse_hadith_bridge_card(anchors: List[_Anchor], active_provider_name
         quran_foundation_verse = _safe_fetch_value("QURAN_FOUNDATION_EXACT", islamic_api_service._quran_foundation_fetch_verse, verse_key) or {}
         diyanet_candidate = _safe_fetch_value("DIYANET_EXACT", islamic_api_service._diyanet_fetch_verse, verse_key) or {}
         meal = _extract_quran_meal(quranenc_verse, quran_foundation_verse, diyanet_candidate) or _summary_from_content(str(verse.get("content_chunk") or ""))
-        tafsir_text = _compact_text(str(tafsir.get("content_chunk") or ""), limit=320)
-        hadith_text = _compact_text(str(hadith.get("content_chunk") or ""), limit=320)
-        if not meal or not tafsir_text or not hadith_text:
+        tafsir_text = _compact_text(str(tafsir.get("content_chunk") or ""), limit=320) if tafsir else ""
+        hadith_text = _compact_text(str(hadith.get("content_chunk") or ""), limit=320) if hadith else ""
+        if not meal or not (tafsir_text or hadith_text):
             continue
 
-        hadith_ref = str(hadith.get("canonical_reference") or hadith.get("reference") or "").strip()
+        hadith_ref = str((hadith or {}).get("canonical_reference") or (hadith or {}).get("reference") or "").strip()
         anchor = suggested_anchor or _pick_anchor_for_theme(theme, anchors)
         source_refs = _religious_verse_refs(verse_key)
-        hadith_url = str(hadith.get("source_url") or "").strip()
-        tafsir_url = str(tafsir.get("source_url") or "").strip()
+        hadith_url = str((hadith or {}).get("source_url") or "").strip()
+        tafsir_url = str((tafsir or {}).get("source_url") or "").strip()
         if hadith_url:
             source_refs.append(DiscoverySourceRef(label="HadeethEnc", url=hadith_url, kind="source"))
         if tafsir_url:
@@ -1411,15 +1411,19 @@ def _build_verse_hadith_bridge_card(anchors: List[_Anchor], active_provider_name
         if hadith_ref:
             source_refs.append(DiscoverySourceRef(label=f"Hadis {hadith_ref}", kind="reference"))
 
-        summary = f"{theme.title()} hattinda ayet, tefsir ve hadis ayni kartta toplandi."
-        why_seen = f"'{theme}' temasi son arsiv akisinla eslesti; ayet, tefsir ve hadis ayni baglamda kuruldu."
-        score = 0.88
+        bridge_parts = [part for part in ["ayet", "tefsir" if tafsir_text else "", "hadis" if hadith_text else ""] if part]
+        bridge_label = ", ".join(bridge_parts)
+        summary = f"{theme.title()} hattinda {bridge_label} ayni kartta toplandi."
+        why_seen = f"'{theme}' temasi son arsiv akisinla eslesti; {bridge_label} ayni baglamda kuruldu."
+        score = 0.88 if (tafsir_text and hadith_text) else 0.82
         evidence = [
             DiscoveryEvidence(kind="theme", label="Theme", value=theme),
             DiscoveryEvidence(kind="verse", label="Ayet", value=f"{verse_key} - {meal}"),
-            DiscoveryEvidence(kind="tafsir", label="Tefsir", value=tafsir_text),
-            DiscoveryEvidence(kind="hadith", label="Hadis", value=hadith_text),
         ]
+        if tafsir_text:
+            evidence.append(DiscoveryEvidence(kind="tafsir", label="Tefsir", value=tafsir_text))
+        if hadith_text:
+            evidence.append(DiscoveryEvidence(kind="hadith", label="Hadis", value=hadith_text))
         anchor_refs = [DiscoveryAnchorRef(item_id=anchor.item_id, title=anchor.title, item_type=anchor.item_type)] if anchor else []
         title = f"{theme.title()} bridge"
         return DiscoveryCard(
@@ -1448,12 +1452,66 @@ def _build_verse_hadith_bridge_card(anchors: List[_Anchor], active_provider_name
 
 
 
+def _build_curated_fallback_verse_card(anchors: List[_Anchor]) -> Optional[DiscoveryCard]:
+    """Fallback: pick a curated well-known verse directly when live API queries fail."""
+    verse_key = _curated_random_verse_key()
+    quranenc_verse = _safe_fetch_value("QURANENC_EXACT", islamic_api_service._quranenc_fetch_verse, verse_key) or {}
+    quran_foundation_verse = _safe_fetch_value("QURAN_FOUNDATION_EXACT", islamic_api_service._quran_foundation_fetch_verse, verse_key) or {}
+    diyanet_candidate = _safe_fetch_value("DIYANET_EXACT", islamic_api_service._diyanet_fetch_verse, verse_key) or {}
+    arabic = _extract_quran_arabic(quranenc_verse, quran_foundation_verse, diyanet_candidate)
+    transliteration = _extract_quran_transliteration(quran_foundation_verse)
+    meal = _extract_quran_meal(quranenc_verse, quran_foundation_verse, diyanet_candidate)
+    if not arabic or not meal:
+        return None
+    anchor = anchors[0] if anchors else None
+    source_refs = _religious_verse_refs(verse_key)
+    summary = _compact_text(meal, limit=220)
+    why_seen = "A curated verse card surfaced as a fallback while live discovery sources were unavailable."
+    score = 0.78
+    evidence = [
+        DiscoveryEvidence(kind="theme", label="Theme", value="curated"),
+        DiscoveryEvidence(kind="arabic", label="Arabic", value=arabic),
+        DiscoveryEvidence(kind="transliteration", label="Okunus", value=transliteration or "Okunus verisi alinmadi."),
+        DiscoveryEvidence(kind="translation", label="Meal", value=meal),
+    ]
+    anchor_refs = [DiscoveryAnchorRef(item_id=anchor.item_id, title=anchor.title, item_type=anchor.item_type)] if anchor else []
+    title = f"Ayet {verse_key}"
+    return DiscoveryCard(
+        id=_card_id(DiscoveryCategory.RELIGIOUS, "Ayet Card", "QURAN_STACK", title, verse_key),
+        category=DiscoveryCategory.RELIGIOUS,
+        family="Ayet Card",
+        title=title,
+        summary=summary,
+        why_seen=why_seen,
+        confidence_label=_confidence_label(score),
+        freshness_label=verse_key,
+        primary_source="Quran sources",
+        source_refs=source_refs,
+        anchor_refs=anchor_refs,
+        evidence=evidence,
+        actions=_actions_for_card(
+            title=title,
+            summary=summary,
+            why_seen=why_seen,
+            source_refs=source_refs,
+            anchor=anchor,
+        ),
+        score=score,
+    )
+
+
+
 def _build_religious_cards(anchors: List[_Anchor], active_provider_names: List[str]) -> Dict[str, List[DiscoveryCard]]:
     family_cards: Dict[str, List[DiscoveryCard]] = {"Ayet Card": [], "Ayet + Hadis Bridge": []}
 
     verse_card = _build_random_verse_card(anchors, active_provider_names)
     if verse_card:
         family_cards["Ayet Card"].append(verse_card)
+    else:
+        # Curated fallback: pick a random well-known verse directly
+        fallback_card = _build_curated_fallback_verse_card(anchors)
+        if fallback_card:
+            family_cards["Ayet Card"].append(fallback_card)
 
     bridge_card = _build_verse_hadith_bridge_card(anchors, active_provider_names)
     if bridge_card:

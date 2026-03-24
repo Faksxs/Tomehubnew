@@ -389,3 +389,70 @@ def test_build_religious_cards_creates_bridge_card_with_ayet_tafsir_hadith(monke
     assert "24:35" in (evidence["Ayet"] or "")
     assert "Tefsir metni" in (evidence["Tefsir"] or "")
     assert "Hadis metni" in (evidence["Hadis"] or "")
+
+
+def test_bridge_card_works_with_verse_and_hadith_only(monkeypatch):
+    """Bridge card should succeed when verse + hadith exist but tafsir/interpretation is missing."""
+
+    def _islamic_candidates_no_tafsir(query: str, limit: int):
+        return [
+            {
+                "provider": "QURANENC",
+                "religious_source_kind": "QURAN",
+                "canonical_reference": "24:35",
+                "reference": "24:35",
+                "title": "QuranEnc - Ayet 24:35",
+                "content_chunk": "Allah goklerin ve yerin nurudur.",
+                "source_url": "https://quran.com/24:35",
+            },
+            {
+                "provider": "HADEETHENC",
+                "religious_source_kind": "HADITH",
+                "canonical_reference": "42",
+                "reference": "42",
+                "title": "HadeethEnc - Hadis",
+                "content_chunk": "Hadis metni ve aciklamasi.",
+                "source_url": "https://hadeethenc.com/tr/browse/hadith/42",
+            },
+            # No INTERPRETATION candidate — simulates ISLAMHOUSE timeout
+        ]
+
+    monkeypatch.setattr("services.discovery_board_service._safe_islamic_candidates", _islamic_candidates_no_tafsir)
+    monkeypatch.setattr("services.discovery_board_service.random.choice", lambda seq: seq[0])
+    monkeypatch.setattr("services.discovery_board_service.random.shuffle", lambda seq: None)
+    monkeypatch.setattr(
+        "services.discovery_board_service.islamic_api_service._quranenc_fetch_verse",
+        lambda verse_key: {
+            "sura": "24",
+            "aya": "35",
+            "translation": "Allah goklerin ve yerin nurudur.",
+            "arabic_text": "???? ??? ???????? ??????",
+        },
+    )
+    monkeypatch.setattr(
+        "services.discovery_board_service.islamic_api_service._quran_foundation_fetch_verse",
+        lambda verse_key: {
+            "verse_key": "24:35",
+            "text_uthmani": "???? ??? ???????? ??????",
+            "translations": [{"text": "Allah goklerin ve yerin nurudur."}],
+            "words": [
+                {"transliteration": {"text": "Allahu"}},
+                {"transliteration": {"text": "nuru"}},
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        "services.discovery_board_service.islamic_api_service._diyanet_fetch_verse",
+        lambda verse_key: None,
+    )
+
+    cards = _build_religious_cards([_make_religious_anchor()], ["QURANENC", "HADEETHENC", "ISLAMHOUSE"])
+
+    assert len(cards["Ayet + Hadis Bridge"]) == 1
+    bridge_card = cards["Ayet + Hadis Bridge"][0]
+    evidence = {item.label: item.value for item in bridge_card.evidence}
+
+    assert "24:35" in (evidence["Ayet"] or "")
+    assert "Hadis metni" in (evidence["Hadis"] or "")
+    # Tefsir should NOT be in evidence since no interpretation candidates
+    assert "Tefsir" not in evidence
