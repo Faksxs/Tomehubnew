@@ -1086,28 +1086,8 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
 
       <div className="relative z-10 max-w-[1700px] mx-auto px-6 lg:px-16 py-8">
         <header className="mb-10">
-          <div className="flex flex-col items-center border-b border-white/5 pb-6 text-center">
+          <div className="flex flex-col items-center border-b border-white/5 pb-8 text-center">
             <h1 className="text-4xl md:text-5xl font-serif font-light tracking-wide text-white/90 italic">Discovery</h1>
-            <div className="mt-6 flex items-center gap-4 text-[10px] font-light tracking-[0.3em] uppercase opacity-30">
-              <span>Analytical</span>
-              <div className="w-1.5 h-1.5 rounded-full bg-cyan-500/50" />
-              <span>Synthesis</span>
-              <div className="w-1.5 h-1.5 rounded-full bg-cyan-500/50" />
-              <span>Curated</span>
-            </div>
-            <div className="mt-5 flex flex-wrap items-center justify-center gap-3 text-[10px] uppercase tracking-[0.24em] text-white/35">
-              <span>{formatRelativeUpdateTime(viewMeta.lastUpdatedAt)}</span>
-              {viewMeta.hasCachedSnapshot ? <span>Cached Snapshot</span> : <span>Live</span>}
-              {viewMeta.hasPartialErrors ? <span>{viewMeta.boardErrorCount} Source Issue{viewMeta.boardErrorCount === 1 ? '' : 's'}</span> : null}
-              <button
-                type="button"
-                onClick={() => triggerRefresh(true)}
-                className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1 text-[10px] font-medium tracking-[0.2em] text-white/60 transition hover:border-cyan-400/30 hover:text-cyan-300"
-              >
-                <RotateCw size={12} className={isRefreshing ? 'animate-spin' : ''} />
-                Refresh
-              </button>
-            </div>
           </div>
         </header>
 
