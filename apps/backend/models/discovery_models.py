@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -86,6 +86,10 @@ class DiscoveryBoardMetadata(BaseModel):
     last_updated_at: str
     active_provider_names: List[str] = Field(default_factory=list)
     total_cards: int = 0
+    cache_status: Optional[str] = None
+    cache_generated_at: Optional[str] = None
+    cache_expires_at: Optional[str] = None
+    cache_stale_at: Optional[str] = None
 
 
 class DiscoveryBoardResponse(BaseModel):
@@ -116,6 +120,10 @@ class DiscoveryInnerSpaceMetadata(BaseModel):
     active_theme_count: int = 0
     has_memory_profile: bool = False
     total_items_considered: int = 0
+    cache_status: Optional[str] = None
+    cache_generated_at: Optional[str] = None
+    cache_expires_at: Optional[str] = None
+    cache_stale_at: Optional[str] = None
 
 
 class DiscoveryInnerSpaceResponse(BaseModel):
@@ -134,6 +142,8 @@ class DiscoveryPageMetadata(BaseModel):
     last_updated_at: str
     board_errors: List[str] = Field(default_factory=list)
     used_cached_fallbacks: bool = False
+    cache_status: Optional[str] = None
+    segment_status: Dict[str, str] = Field(default_factory=dict)
 
 
 class DiscoveryPageResponse(BaseModel):

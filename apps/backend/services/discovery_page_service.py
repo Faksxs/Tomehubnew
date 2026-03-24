@@ -13,26 +13,32 @@ from models.discovery_models import (
     DiscoveryPageMetadata,
     DiscoveryPageResponse,
 )
-from services.discovery_board_service import get_discovery_board
-from services.discovery_inner_space_service import get_discovery_inner_space
+from services.discovery_cache_service import get_discovery_board_cached, get_discovery_inner_space_cached
 from utils.logger import get_logger
 
 logger = get_logger("discovery_page_service")
 
 
-def get_discovery_page(firebase_uid: str) -> DiscoveryPageResponse:
+def get_discovery_page(firebase_uid: str, *, force_refresh: bool = False) -> DiscoveryPageResponse:
     board_errors: List[str] = []
     used_cached_fallbacks = False
+    segment_status: dict[str, str] = {}
 
-    inner_space, inner_space_error = _safe_inner_space(firebase_uid)
+    inner_space, inner_space_status, inner_space_error = _safe_inner_space(firebase_uid, force_refresh=force_refresh)
+    segment_status["inner_space"] = inner_space_status
     if inner_space_error:
         board_errors.append(inner_space_error)
         used_cached_fallbacks = True
 
-    academic, academic_error = _safe_board(DiscoveryCategory.ACADEMIC, firebase_uid)
-    religious, religious_error = _safe_board(DiscoveryCategory.RELIGIOUS, firebase_uid)
-    literary, literary_error = _safe_board(DiscoveryCategory.LITERARY, firebase_uid)
-    culture_history, culture_history_error = _safe_board(DiscoveryCategory.CULTURE_HISTORY, firebase_uid)
+    academic, academic_status, academic_error = _safe_board(DiscoveryCategory.ACADEMIC, firebase_uid, force_refresh=force_refresh)
+    religious, religious_status, religious_error = _safe_board(DiscoveryCategory.RELIGIOUS, firebase_uid, force_refresh=force_refresh)
+    literary, literary_status, literary_error = _safe_board(DiscoveryCategory.LITERARY, firebase_uid, force_refresh=force_refresh)
+    culture_history, culture_status, culture_history_error = _safe_board(DiscoveryCategory.CULTURE_HISTORY, firebase_uid, force_refresh=force_refresh)
+
+    segment_status["academic"] = academic_status
+    segment_status["religious"] = religious_status
+    segment_status["literary"] = literary_status
+    segment_status["culture_history"] = culture_status
 
     for error in [academic_error, religious_error, literary_error, culture_history_error]:
         if error:
@@ -51,13 +57,16 @@ def get_discovery_page(firebase_uid: str) -> DiscoveryPageResponse:
             last_updated_at=datetime.now(timezone.utc).isoformat(),
             board_errors=board_errors,
             used_cached_fallbacks=used_cached_fallbacks,
+            cache_status=_aggregate_page_cache_status(segment_status),
+            segment_status=segment_status,
         ),
     )
 
 
-def _safe_inner_space(firebase_uid: str) -> Tuple[DiscoveryInnerSpaceResponse, str | None]:
+def _safe_inner_space(firebase_uid: str, *, force_refresh: bool) -> Tuple[DiscoveryInnerSpaceResponse, str, str | None]:
     try:
-        return get_discovery_inner_space(firebase_uid), None
+        response, cache_status, error = get_discovery_inner_space_cached(firebase_uid, force_refresh=force_refresh)
+        return response, cache_status, error
     except Exception as exc:
         logger.warning("discovery page inner-space fallback uid=%s error=%s", firebase_uid, exc)
         return (
@@ -68,18 +77,26 @@ def _safe_inner_space(firebase_uid: str) -> Tuple[DiscoveryInnerSpaceResponse, s
                     active_theme_count=0,
                     has_memory_profile=False,
                     total_items_considered=0,
+                    cache_status="live",
                 ),
             ),
+            "live",
             f"INNER_SPACE: {exc}",
         )
 
 
-def _safe_board(category: DiscoveryCategory, firebase_uid: str) -> Tuple[DiscoveryBoardResponse, str | None]:
+def _safe_board(
+    category: DiscoveryCategory,
+    firebase_uid: str,
+    *,
+    force_refresh: bool,
+) -> Tuple[DiscoveryBoardResponse, str, str | None]:
     try:
-        return get_discovery_board(category.value, firebase_uid), None
+        response, cache_status, error = get_discovery_board_cached(category, firebase_uid, force_refresh=force_refresh)
+        return response, cache_status, error
     except Exception as exc:
         logger.warning("discovery page board fallback category=%s uid=%s error=%s", category.value, firebase_uid, exc)
-        return _empty_board(category), f"{category.value}: {exc}"
+        return _empty_board(category), "live", f"{category.value}: {exc}"
 
 
 def _empty_board(category: DiscoveryCategory) -> DiscoveryBoardResponse:
@@ -99,5 +116,19 @@ def _empty_board(category: DiscoveryCategory) -> DiscoveryBoardResponse:
             last_updated_at=datetime.now(timezone.utc).isoformat(),
             active_provider_names=[],
             total_cards=0,
+            cache_status="live",
         ),
     )
+
+
+def _aggregate_page_cache_status(segment_status: dict[str, str]) -> str:
+    statuses = [status for status in segment_status.values() if status]
+    if not statuses:
+        return "live"
+    if any(status == "stale_cache" for status in statuses):
+        return "partial_stale"
+    if all(status == "fresh_cache" for status in statuses):
+        return "fresh_cache"
+    if any(status == "fresh_cache" for status in statuses):
+        return "mixed_cache"
+    return "live"

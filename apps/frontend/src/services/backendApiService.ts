@@ -112,6 +112,10 @@ export interface DiscoveryBoardMetadata {
     last_updated_at: string;
     active_provider_names: string[];
     total_cards: number;
+    cache_status?: string | null;
+    cache_generated_at?: string | null;
+    cache_expires_at?: string | null;
+    cache_stale_at?: string | null;
 }
 
 export interface DiscoveryBoardResponse {
@@ -148,6 +152,10 @@ export interface DiscoveryInnerSpaceMetadata {
     active_theme_count: number;
     has_memory_profile: boolean;
     total_items_considered: number;
+    cache_status?: string | null;
+    cache_generated_at?: string | null;
+    cache_expires_at?: string | null;
+    cache_stale_at?: string | null;
 }
 
 export interface DiscoveryInnerSpaceResponse {
@@ -166,6 +174,8 @@ export interface DiscoveryPageMetadata {
     last_updated_at: string;
     board_errors: string[];
     used_cached_fallbacks: boolean;
+    cache_status?: string | null;
+    segment_status?: Record<string, string>;
 }
 
 export interface DiscoveryPageResponse {
@@ -1353,11 +1363,15 @@ export async function updateApiPreferences(firebaseUid: string, preferences: Rec
 
 export async function getDiscoveryBoard(
     firebaseUid: string,
-    category: DiscoveryCategoryName
+    category: DiscoveryCategoryName,
+    forceRefresh = false,
 ): Promise<DiscoveryBoardResponse> {
     if (!firebaseUid) throw new Error('User must be authenticated');
     const url = new URL(`${API_BASE_URL}/api/discovery/board`);
     url.searchParams.set('category', category);
+    if (forceRefresh) {
+        url.searchParams.set('force_refresh', 'true');
+    }
     const response = await fetchWithAuth(url.toString(), {
         method: 'GET',
         cache: 'no-store',
@@ -1374,9 +1388,14 @@ export async function getDiscoveryBoard(
 
 export async function getDiscoveryInnerSpace(
     firebaseUid: string,
+    forceRefresh = false,
 ): Promise<DiscoveryInnerSpaceResponse> {
     if (!firebaseUid) throw new Error('User must be authenticated');
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/discovery/inner-space`, {
+    const url = new URL(`${API_BASE_URL}/api/discovery/inner-space`);
+    if (forceRefresh) {
+        url.searchParams.set('force_refresh', 'true');
+    }
+    const response = await fetchWithAuth(url.toString(), {
         method: 'GET',
         cache: 'no-store',
         headers: {
@@ -1392,9 +1411,14 @@ export async function getDiscoveryInnerSpace(
 
 export async function getDiscoveryPage(
     firebaseUid: string,
+    forceRefresh = false,
 ): Promise<DiscoveryPageResponse> {
     if (!firebaseUid) throw new Error('User must be authenticated');
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/discovery/page`, {
+    const url = new URL(`${API_BASE_URL}/api/discovery/page`);
+    if (forceRefresh) {
+        url.searchParams.set('force_refresh', 'true');
+    }
+    const response = await fetchWithAuth(url.toString(), {
         method: 'GET',
         cache: 'no-store',
         headers: {

@@ -9,8 +9,7 @@ from models.discovery_models import (
     DiscoveryInnerSpaceResponse,
     DiscoveryPageResponse,
 )
-from services.discovery_board_service import get_discovery_board
-from services.discovery_inner_space_service import get_discovery_inner_space
+from services.discovery_cache_service import get_discovery_board_cached, get_discovery_inner_space_cached
 from services.discovery_page_service import get_discovery_page
 
 
@@ -26,11 +25,13 @@ def get_verified_uid(uid_from_jwt: str | None) -> str:
 @router.get("/board", response_model=DiscoveryBoardResponse)
 async def get_discovery_board_endpoint(
     category: DiscoveryCategory = Query(...),
+    force_refresh: bool = Query(False),
     firebase_uid_from_jwt: Annotated[str | None, Depends(verify_firebase_token)] = None,
 ):
     try:
         uid = get_verified_uid(firebase_uid_from_jwt)
-        return get_discovery_board(category.value, uid)
+        response, _status, _error = get_discovery_board_cached(category, uid, force_refresh=force_refresh)
+        return response
     except HTTPException:
         raise
     except ValueError as exc:
@@ -41,11 +42,13 @@ async def get_discovery_board_endpoint(
 
 @router.get("/inner-space", response_model=DiscoveryInnerSpaceResponse)
 async def get_discovery_inner_space_endpoint(
+    force_refresh: bool = Query(False),
     firebase_uid_from_jwt: Annotated[str | None, Depends(verify_firebase_token)] = None,
 ):
     try:
         uid = get_verified_uid(firebase_uid_from_jwt)
-        return get_discovery_inner_space(uid)
+        response, _status, _error = get_discovery_inner_space_cached(uid, force_refresh=force_refresh)
+        return response
     except HTTPException:
         raise
     except Exception as exc:
@@ -54,11 +57,12 @@ async def get_discovery_inner_space_endpoint(
 
 @router.get("/page", response_model=DiscoveryPageResponse)
 async def get_discovery_page_endpoint(
+    force_refresh: bool = Query(False),
     firebase_uid_from_jwt: Annotated[str | None, Depends(verify_firebase_token)] = None,
 ):
     try:
         uid = get_verified_uid(firebase_uid_from_jwt)
-        return get_discovery_page(uid)
+        return get_discovery_page(uid, force_refresh=force_refresh)
     except HTTPException:
         raise
     except Exception as exc:

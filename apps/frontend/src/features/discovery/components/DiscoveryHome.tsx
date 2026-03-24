@@ -296,6 +296,13 @@ const categoryIcons: Record<ExternalCategoryKey, React.ComponentType<{ size?: nu
 const fallbackPillarsByCategory = (category: ExternalCategoryKey): DiscoveryCardData[] =>
   CARDS.filter((card) => card.category === categoryVisuals[category].category);
 
+const createEmptyPillarState = (): Record<ExternalCategoryKey, DiscoveryCardData[]> => ({
+  ACADEMIC: [],
+  RELIGIOUS: [],
+  LITERARY: [],
+  CULTURE_HISTORY: [],
+});
+
 let discoveryPageMemoryCache: DiscoveryPageCacheEntry | null = null;
 
 const readDiscoveryPageCache = (userId: string): DiscoveryPageCacheEntry | null => {
@@ -408,12 +415,7 @@ const mapDiscoveryPagePayload = (payload: DiscoveryPageResponse): {
     innerSpace: Array.isArray(payload.inner_space.cards) && payload.inner_space.cards.length > 0
       ? payload.inner_space.cards.map(mapInnerSpaceCard)
       : buildFallbackInnerSpaceCards(),
-    pillars: {
-      ACADEMIC: pillars.ACADEMIC.length > 0 ? pillars.ACADEMIC : fallbackPillarsByCategory('ACADEMIC'),
-      RELIGIOUS: pillars.RELIGIOUS.length > 0 ? pillars.RELIGIOUS : fallbackPillarsByCategory('RELIGIOUS'),
-      LITERARY: pillars.LITERARY.length > 0 ? pillars.LITERARY : fallbackPillarsByCategory('LITERARY'),
-      CULTURE_HISTORY: pillars.CULTURE_HISTORY.length > 0 ? pillars.CULTURE_HISTORY : fallbackPillarsByCategory('CULTURE_HISTORY'),
-    },
+    pillars,
     warning: payload.metadata.board_errors.length > 0
       ? 'Some discovery sources were temporarily unavailable. Showing the strongest available cards.'
       : null,
@@ -611,13 +613,10 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
   onQuickCreatePersonalNote,
   onOpenDiscoveryItem,
 }) => {
-  const [innerSpaceCards, setInnerSpaceCards] = useState<DiscoveryCardData[]>(() => buildFallbackInnerSpaceCards());
-  const [pillarCardsByCategory, setPillarCardsByCategory] = useState<Record<ExternalCategoryKey, DiscoveryCardData[]>>({
-    ACADEMIC: fallbackPillarsByCategory('ACADEMIC'),
-    RELIGIOUS: fallbackPillarsByCategory('RELIGIOUS'),
-    LITERARY: fallbackPillarsByCategory('LITERARY'),
-    CULTURE_HISTORY: fallbackPillarsByCategory('CULTURE_HISTORY'),
-  });
+  const [innerSpaceCards, setInnerSpaceCards] = useState<DiscoveryCardData[]>([]);
+  const [pillarCardsByCategory, setPillarCardsByCategory] = useState<Record<ExternalCategoryKey, DiscoveryCardData[]>>(
+    () => createEmptyPillarState(),
+  );
   const [pageLoading, setPageLoading] = useState(true);
   const [pageWarning, setPageWarning] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
@@ -633,7 +632,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
   const requestInFlightRef = useRef(false);
   const lastAutoRefreshAtRef = useRef(0);
 
-  const triggerRefresh = (force = true) => {
+  const triggerRefresh = (force = false) => {
     if (!userId || requestInFlightRef.current) {
       return;
     }
@@ -659,6 +658,8 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
           setPageWarning(null);
           setPageError(null);
           setIsRefreshing(false);
+          setInnerSpaceCards([]);
+          setPillarCardsByCategory(createEmptyPillarState());
         }
         requestInFlightRef.current = false;
         return;
@@ -692,7 +693,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
 
       // 3. Live Fetch Cycle
       try {
-        const payload = await getDiscoveryPage(userId);
+        const payload = await getDiscoveryPage(userId, forceRefresh);
         if (!active) return;
 
         writeDiscoveryPageCache({
@@ -721,13 +722,13 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
         } else {
           setPageError(message);
           setPageWarning(null);
-          setPageError(message);
-          setInnerSpaceCards(buildFallbackInnerSpaceCards());
-          setPillarCardsByCategory({
-            ACADEMIC: fallbackPillarsByCategory('ACADEMIC'),
-            RELIGIOUS: fallbackPillarsByCategory('RELIGIOUS'),
-            LITERARY: fallbackPillarsByCategory('LITERARY'),
-            CULTURE_HISTORY: fallbackPillarsByCategory('CULTURE_HISTORY'),
+          setInnerSpaceCards([]);
+          setPillarCardsByCategory(createEmptyPillarState());
+          setViewMeta({
+            lastUpdatedAt: null,
+            hasCachedSnapshot: false,
+            hasPartialErrors: false,
+            boardErrorCount: 0,
           });
         }
       } finally {
@@ -763,7 +764,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
       const now = Date.now();
       if (ageMs >= DISCOVERY_PAGE_CACHE_TTL_MS && (now - lastAutoRefreshAtRef.current) >= 15_000) {
         lastAutoRefreshAtRef.current = now;
-        triggerRefresh(true);
+        triggerRefresh(false);
       }
     };
 
@@ -833,6 +834,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
   const religiousDetail = religiousCards[1];
   const literaryHero = literaryCards[0];
   const cultureHero = cultureCards[0];
+  const hasAnyPillarCards = [academicCards, religiousCards, literaryCards, cultureCards].some((cards) => cards.length > 0);
   const remainingPillarCards = [
     ...academicCards.slice(2),
     ...religiousCards.slice(2),
@@ -844,7 +846,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
     <div className="relative min-h-screen bg-[#020408] text-white overflow-y-auto selection:bg-cyan-500/30">
       <div className="fixed inset-0 pointer-events-none z-0">
         <div className="absolute top-0 right-0 w-full h-[600px] bg-gradient-to-b from-blue-900/10 via-transparent to-transparent" />
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.045)_1px,transparent_0)] bg-[size:24px_24px] opacity-[0.07]" />
       </div>
 
       <div className="relative z-10 max-w-[1700px] mx-auto px-6 lg:px-16 py-8">
@@ -894,13 +896,17 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
               </div>
             )}
 
-            {pageLoading ? (
+            {pageLoading && innerSpaceCards.length === 0 ? (
               <InnerSpaceLoadingGrid />
-            ) : (
+            ) : innerSpaceCards.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 auto-rows-fr">
                 {innerSpaceCards.map((card) => (
                   <CardSurface key={card.id} card={card} onAsk={handleAsk} onSave={handleSave} onOpen={handleOpen} />
                 ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-white/5 bg-white/[0.02] px-5 py-6 text-sm text-white/50">
+                Discovery could not load inner archive signals yet.
               </div>
             )}
           </div>
@@ -912,7 +918,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
               <div className="mt-4 w-32 h-[1px] bg-gradient-to-r from-white/20 to-transparent" />
             </div>
 
-            {pageLoading ? (
+            {pageLoading && !hasAnyPillarCards ? (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <div className="md:col-span-2 min-h-[280px] rounded-2xl border border-white/5 bg-white/[0.02] animate-pulse" />
                 <div className="md:col-span-1 min-h-[280px] rounded-2xl border border-white/5 bg-white/[0.02] animate-pulse" />
@@ -933,17 +939,27 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              {[literaryHero, cultureHero].map((card) => (
-                card ? <CardSurface key={card.id} card={card} onAsk={handleAsk} onSave={handleSave} onOpen={handleOpen} className="md:col-span-1 min-h-[280px]" /> : null
-              ))}
-            </div>
+            {literaryHero || cultureHero ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                {[literaryHero, cultureHero].map((card) => (
+                  card ? <CardSurface key={card.id} card={card} onAsk={handleAsk} onSave={handleSave} onOpen={handleOpen} className="md:col-span-1 min-h-[280px]" /> : null
+                ))}
+              </div>
+            ) : null}
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {remainingPillarCards.map((card) => (
-                <CardSurface key={card.id} card={card} onAsk={handleAsk} onSave={handleSave} onOpen={handleOpen} className="md:col-span-1 min-h-[220px]" />
-              ))}
-            </div>
+            {remainingPillarCards.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {remainingPillarCards.map((card) => (
+                  <CardSurface key={card.id} card={card} onAsk={handleAsk} onSave={handleSave} onOpen={handleOpen} className="md:col-span-1 min-h-[220px]" />
+                ))}
+              </div>
+            ) : null}
+
+            {!pageLoading && !hasAnyPillarCards ? (
+              <div className="rounded-2xl border border-white/5 bg-white/[0.02] px-5 py-6 text-sm text-white/50">
+                Pillars could not load external source cards right now.
+              </div>
+            ) : null}
           </div>
         </main>
       </div>
