@@ -677,7 +677,7 @@ const limitPillarCardsForLayout = (
   pillars: Record<ExternalCategoryKey, DiscoveryCardData[]>,
 ): Record<ExternalCategoryKey, DiscoveryCardData[]> => ({
   ACADEMIC: pillars.ACADEMIC.slice(0, 3),
-  RELIGIOUS: pillars.RELIGIOUS.slice(0, 2),
+  RELIGIOUS: pillars.RELIGIOUS.slice(0, 1),
   LITERARY: pillars.LITERARY.slice(0, 2),
   CULTURE_HISTORY: pillars.CULTURE_HISTORY.slice(0, 2),
 });
@@ -717,9 +717,9 @@ const CardSurface: React.FC<{
   const showHeroMedia = isHero && card.category !== 'Religious';
   const showWhySeen = (card.category === 'Academic' || card.category === 'Literary' || card.category === 'Culture') && !card.slot;
   const whySeen = showWhySeen ? compactWhySeen(card.whySeen) : null;
-  const RELIGIOUS_NO_TRUNCATE = new Set(['Hadis', 'Tefsir', 'Aciklama', 'Meal']);
+  const RELIGIOUS_NO_TRUNCATE = new Set(['Tefsir', 'Meal']);
   const religiousEvidence = card.category === 'Religious'
-    ? ['Arabic', 'Okunus', 'Meal', 'Ayet', 'Tefsir', 'Hadis', 'Kaynak', 'Aciklama']
+    ? ['Arabic', 'Okunus', 'Meal', 'Tefsir']
         .map((label) => ({
           label,
           value: RELIGIOUS_NO_TRUNCATE.has(label)
@@ -792,7 +792,7 @@ const CardSurface: React.FC<{
           <h2 className={`font-serif leading-tight mb-4 ${isHero ? 'text-2xl md:text-3xl font-normal text-slate-900 dark:text-white/90' : 'text-lg font-normal text-slate-900 dark:text-white/80'}`}>
             {card.title}
           </h2>
-          <p className={isHero ? 'text-sm text-slate-600 dark:text-white/50 leading-relaxed max-w-[48ch] mb-6' : 'text-xs text-slate-600 dark:text-white/50 leading-relaxed max-w-[48ch] mb-6'}>
+          <p className={isHero ? 'text-sm text-slate-600 dark:text-white/70 leading-relaxed max-w-[48ch] mb-6' : 'text-xs text-slate-600 dark:text-white/70 leading-relaxed max-w-[48ch] mb-6'}>
             {card.summary}
           </p>
 
@@ -808,17 +808,26 @@ const CardSurface: React.FC<{
           {religiousEvidence.length > 0 && (
             <div className="mb-5 space-y-3">
               {religiousEvidence.map((item) => (
-                <div key={item.label} className="rounded-xl border border-emerald-400/10 bg-emerald-500/[0.04] px-3 py-2">
-                  {!['Hadis', 'Ayet'].includes(item.label) && (
-                    <div className="mb-1 text-[9px] uppercase tracking-[0.18em] text-emerald-800/70 dark:text-emerald-300/70">
-                      {item.label}
-                    </div>
-                  )}
+                <div
+                  key={item.label}
+                  className={`rounded-xl border px-3 py-2 ${
+                    item.label === 'Tefsir'
+                      ? 'border-emerald-300/14 bg-emerald-500/[0.07] md:px-4 md:py-3'
+                      : 'border-emerald-400/10 bg-emerald-500/[0.04]'
+                  }`}
+                >
+                  <div className="mb-1 text-[9px] uppercase tracking-[0.18em] text-emerald-800/70 dark:text-emerald-300/70">
+                    {item.label}
+                  </div>
                   <p
                     dir={item.label === 'Arabic' ? 'rtl' : undefined}
-                    className={item.label === 'Arabic'
-                      ? `${isHero ? 'text-lg md:text-xl leading-10' : 'text-sm leading-8'} text-right text-emerald-900/95 dark:text-emerald-50/95`
-                      : `${isHero ? 'text-sm' : 'text-[11px]'} leading-relaxed text-slate-700 dark:text-white/62`}
+                    className={
+                      item.label === 'Arabic'
+                        ? `${isHero ? 'text-lg md:text-xl leading-10' : 'text-sm leading-8'} text-right text-emerald-900/95 dark:text-emerald-50/95`
+                        : item.label === 'Tefsir'
+                          ? `${isHero ? 'text-sm md:text-[15px]' : 'text-[11px]'} leading-7 text-slate-800 dark:text-white/72`
+                          : `${isHero ? 'text-sm' : 'text-[11px]'} leading-relaxed text-slate-700 dark:text-white/62`
+                    }
                   >
                     {item.value}
                   </p>
@@ -1013,8 +1022,7 @@ const InnerSpaceCluster: React.FC<{
 
         <div className="mt-6">
           <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500 dark:text-white/24">Personal</p>
-          <h3 className="mt-2 font-serif text-3xl leading-tight text-slate-900 dark:text-white/92">{latestCard.title}</h3>
-          <p className="mt-4 max-w-[58ch] text-sm leading-relaxed text-slate-700 dark:text-white/48">{latestCard.summary}</p>
+
           {latestCard.metadata ? (
             <p className="mt-5 text-[10px] uppercase tracking-[0.24em] text-slate-500 dark:text-white/24">{latestCard.metadata}</p>
           ) : null}
@@ -1396,7 +1404,6 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
   const academicHero = academicCards[0];
   const academicDetail = academicCards[1];
   const religiousHero = religiousCards[0];
-  const religiousDetail = religiousCards[1];
   const literaryHero = literaryCards[0];
   const literaryDetail = literaryCards[1];
   const cultureHero = cultureCards[0];
@@ -1423,7 +1430,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
     };
   }, [continueCard, latestSyncCard, latestSyncEntries]);
   const usedAcademicCount = academicCards.length >= 2 ? 2 : academicCards.length;
-  const usedReligiousCount = religiousCards.length >= 2 ? 2 : religiousCards.length;
+  const usedReligiousCount = religiousCards.length >= 1 ? 1 : religiousCards.length;
   const usedLiteraryCount = literaryCards.length >= 2 ? 2 : literaryCards.length;
   const usedCultureCount = cultureCards.length >= 2 ? 2 : cultureCards.length;
 
@@ -1549,23 +1556,14 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
             )}
 
             {religiousHero && (
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
+              <div className="grid grid-cols-1 gap-4 mb-4">
                 <CardSurface
                   card={religiousHero}
                   onAsk={handleAsk}
                   onSave={handleSave}
                   onOpen={handleOpen}
-                  className={`${religiousDetail ? "md:col-span-3" : "md:col-span-full"} min-h-[280px]`}
+                  className="md:col-span-full min-h-[360px]"
                 />
-                {religiousDetail && (
-                  <CardSurface
-                    card={religiousDetail}
-                    onAsk={handleAsk}
-                    onSave={handleSave}
-                    onOpen={handleOpen}
-                    className="md:col-span-2 min-h-[280px]"
-                  />
-                )}
               </div>
             )}
 

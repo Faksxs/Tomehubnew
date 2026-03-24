@@ -457,24 +457,19 @@ def test_build_religious_cards_creates_ayet_card_with_arabic_okunus_meal(monkeyp
     assert evidence["Arabic"] == "???? ??? ???????? ??????"
     assert "Allahu nuru" in (evidence["Okunus"] or "")
     assert "nurudur" in (evidence["Meal"] or "")
+    assert "Tefsir metni burada" in (evidence["Tefsir"] or "")
 
 
-def test_build_religious_cards_creates_hadith_card_with_text_and_explanation(monkeypatch):
+def test_build_religious_cards_only_returns_ayet_family(monkeypatch):
     _patch_religious_sources(monkeypatch)
 
     cards = _build_religious_cards([_make_religious_anchor()], ["QURANENC", "HADEETHENC", "ISLAMHOUSE"])
 
-    assert len(cards["Hadis Card"]) == 1
-    hadith_card = cards["Hadis Card"][0]
-    evidence = {item.label: item.value for item in hadith_card.evidence}
-
-    assert hadith_card.family == "Hadis Card"
-    assert "Hadis metni" in (evidence["Hadis"] or "")
-    assert "aciklama metni" in (evidence["Aciklama"] or "")
+    assert set(cards.keys()) == {"Ayet Card"}
 
 
-def test_hadith_card_works_without_explicit_explanation(monkeypatch):
-    """Hadith card should still succeed when the source returns only hadith text."""
+def test_ayet_card_requires_tafsir(monkeypatch):
+    """Verse cards should not render unless tafsir text is available."""
 
     def _islamic_candidates_no_tafsir(query: str, limit: int):
         return [
@@ -503,14 +498,6 @@ def test_hadith_card_works_without_explicit_explanation(monkeypatch):
     monkeypatch.setattr("services.discovery_board_service.random.choice", lambda seq: seq[0])
     monkeypatch.setattr("services.discovery_board_service.random.shuffle", lambda seq: None)
     monkeypatch.setattr(
-        "services.discovery_board_service.islamic_api_service._hadeethenc_fetch_one",
-        lambda hadith_id: {
-            "title": "Hadis",
-            "hadeeth": "Hadis metni ve aciklamasi.",
-            "explanation": "",
-        },
-    )
-    monkeypatch.setattr(
         "services.discovery_board_service.islamic_api_service._quranenc_fetch_verse",
         lambda verse_key: {
             "sura": "24",
@@ -535,15 +522,14 @@ def test_hadith_card_works_without_explicit_explanation(monkeypatch):
         "services.discovery_board_service.islamic_api_service._diyanet_fetch_verse",
         lambda verse_key: None,
     )
+    monkeypatch.setattr(
+        "services.discovery_board_service.islamic_api_service._quran_foundation_fetch_tafsir",
+        lambda verse_key: None,
+    )
 
     cards = _build_religious_cards([_make_religious_anchor()], ["QURANENC", "HADEETHENC", "ISLAMHOUSE"])
 
-    assert len(cards["Hadis Card"]) == 1
-    hadith_card = cards["Hadis Card"][0]
-    evidence = {item.label: item.value for item in hadith_card.evidence}
-
-    assert "Hadis metni" in (evidence["Hadis"] or "")
-    assert "Aciklama" not in evidence
+    assert cards["Ayet Card"] == []
 
 
 def test_ayet_card_uses_tafsir_title_when_interpretive_text_is_sparse(monkeypatch):
@@ -595,8 +581,8 @@ def test_ayet_card_uses_tafsir_title_when_interpretive_text_is_sparse(monkeypatc
         lambda verse_key: None,
     )
     monkeypatch.setattr(
-        "services.discovery_board_service.islamic_api_service._hadeethenc_fetch_one",
-        lambda hadith_id: {"title": "Hadis", "hadeeth": "Hadis metni"},
+        "services.discovery_board_service.islamic_api_service._quran_foundation_fetch_tafsir",
+        lambda verse_key: None,
     )
 
     cards = _build_religious_cards([_make_religious_anchor()], ["QURANENC", "ISLAMHOUSE"])
