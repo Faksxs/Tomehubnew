@@ -1070,11 +1070,16 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
   const latestSyncCard = innerSpaceCards.find((card) => card.slot === 'latest_sync');
   const dormantGemCard = innerSpaceCards.find((card) => card.slot === 'dormant_gem');
   const themePulseCard = innerSpaceCards.find((card) => card.slot === 'theme_pulse');
+  const usedAcademicCount = academicCards.length >= 2 ? 2 : academicCards.length;
+  const usedReligiousCount = religiousCards.length >= 2 ? 2 : religiousCards.length;
+  const usedLiteraryCount = literaryCards.length > 0 ? 1 : 0;
+  const usedCultureCount = cultureCards.length > 0 ? 1 : 0;
+
   const remainingPillarCards = [
-    ...academicCards.slice(2),
-    ...religiousCards.slice(2),
-    ...literaryCards.slice(1),
-    ...cultureCards.slice(1),
+    ...academicCards.slice(usedAcademicCount),
+    ...religiousCards.slice(usedReligiousCount),
+    ...literaryCards.slice(usedLiteraryCount),
+    ...cultureCards.slice(usedCultureCount),
   ];
 
   return (
@@ -1145,17 +1150,45 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
               </div>
             ) : null}
 
-            {academicHero && academicDetail && (
+            {academicHero && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                <CardSurface card={academicHero} onAsk={handleAsk} onSave={handleSave} onOpen={handleOpen} className="md:col-span-2 min-h-[280px]" />
-                <CardSurface card={academicDetail} onAsk={handleAsk} onSave={handleSave} onOpen={handleOpen} className="md:col-span-1 min-h-[280px]" />
+                <CardSurface
+                  card={academicHero}
+                  onAsk={handleAsk}
+                  onSave={handleSave}
+                  onOpen={handleOpen}
+                  className={`${academicDetail ? "md:col-span-2" : "md:col-span-full"} min-h-[280px]`}
+                />
+                {academicDetail && (
+                  <CardSurface
+                    card={academicDetail}
+                    onAsk={handleAsk}
+                    onSave={handleSave}
+                    onOpen={handleOpen}
+                    className="md:col-span-1 min-h-[280px]"
+                  />
+                )}
               </div>
             )}
 
-            {religiousHero && religiousDetail && (
+            {religiousHero && (
               <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
-                <CardSurface card={religiousHero} onAsk={handleAsk} onSave={handleSave} onOpen={handleOpen} className="md:col-span-3 min-h-[280px]" />
-                <CardSurface card={religiousDetail} onAsk={handleAsk} onSave={handleSave} onOpen={handleOpen} className="md:col-span-2 min-h-[280px]" />
+                <CardSurface
+                  card={religiousHero}
+                  onAsk={handleAsk}
+                  onSave={handleSave}
+                  onOpen={handleOpen}
+                  className={`${religiousDetail ? "md:col-span-3" : "md:col-span-full"} min-h-[280px]`}
+                />
+                {religiousDetail && (
+                  <CardSurface
+                    card={religiousDetail}
+                    onAsk={handleAsk}
+                    onSave={handleSave}
+                    onOpen={handleOpen}
+                    className="md:col-span-2 min-h-[280px]"
+                  />
+                )}
               </div>
             )}
 
