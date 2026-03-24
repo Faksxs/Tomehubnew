@@ -767,10 +767,10 @@ const CardSurface: React.FC<{
       <div className="relative z-10 flex flex-col h-full">
         <div className="flex justify-between items-start mb-6">
           <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-bold tracking-[0.25em] uppercase text-cyan-600 dark:text-cyan-400">
+            <span className="text-[11px] font-bold tracking-[0.25em] uppercase text-cyan-500 dark:text-cyan-300">
               {card.category}
             </span>
-            <span className="text-[10px] font-light italic text-slate-500 dark:text-white/40">
+            <span className="text-[10px] font-light italic text-slate-500 dark:text-white/70">
               {card.family}
             </span>
           </div>
@@ -798,8 +798,8 @@ const CardSurface: React.FC<{
 
           {whySeen && (
             <div className="mb-5 rounded-xl border border-black/5 dark:border-white/6 bg-black/[0.03] dark:bg-white/[0.025] px-3 py-2">
-              <p className="text-[10px] leading-relaxed text-slate-600 dark:text-white/42">
-                <span className="mr-1 uppercase tracking-[0.18em] text-cyan-700 dark:text-cyan-400/70">Why:</span>
+              <p className="text-[10px] leading-relaxed text-slate-600 dark:text-white/75">
+                <span className="mr-1 uppercase tracking-[0.18em] text-cyan-600 dark:text-cyan-400">Why:</span>
                 {whySeen}
               </p>
             </div>
@@ -927,18 +927,18 @@ const InnerSpaceMiniCard: React.FC<{
     <div className="rounded-2xl border border-black/5 dark:border-white/6 bg-white/40 dark:bg-white/[0.025] px-4 py-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[9px] uppercase tracking-[0.24em] text-cyan-700 dark:text-cyan-400/70">{card.family}</p>
+          <p className="text-[9px] uppercase tracking-[0.24em] text-cyan-700 dark:text-cyan-400">{card.family}</p>
           <p className="mt-2 text-base font-serif text-slate-900 dark:text-white/90">{card.title}</p>
-          <p className="mt-2 text-[11px] leading-relaxed text-slate-600 dark:text-white/45">{card.summary}</p>
+          <p className="mt-2 text-[11px] leading-relaxed text-slate-600 dark:text-white/75">{card.summary}</p>
           {isDormant && dormantEntries.length > 0 ? (
             <div className="mt-4 space-y-3">
               {dormantEntries.map((entry) => (
                 <div key={entry.key} className="rounded-xl border border-black/5 dark:border-white/6 bg-black/5 dark:bg-black/10 px-3 py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-[9px] uppercase tracking-[0.22em] text-amber-800 dark:text-amber-300/70">{entry.label}</p>
+                      <p className="text-[9px] uppercase tracking-[0.22em] text-amber-800 dark:text-amber-300">{entry.label}</p>
                       <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white/85">{entry.title}</p>
-                      <p className="mt-1 text-[11px] leading-relaxed text-slate-600 dark:text-white/45">{entry.reason}</p>
+                      <p className="mt-1 text-[11px] leading-relaxed text-slate-600 dark:text-white/75">{entry.reason}</p>
                     </div>
                     <button
                       type="button"
@@ -1008,9 +1008,9 @@ const InnerSpaceCluster: React.FC<{
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-cyan-700 dark:text-cyan-400/80">{latestCard.family}</p>
+            <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-cyan-600 dark:text-cyan-300">{latestCard.family}</p>
             {latestCard.sources.length > 0 ? (
-              <p className="mt-2 text-[10px] italic text-slate-500 dark:text-white/40">{latestCard.sources.join(' // ')}</p>
+              <p className="mt-2 text-[10px] italic text-slate-500 dark:text-white/75">{latestCard.sources.join(' // ')}</p>
             ) : null}
           </div>
           {latestCard.progress !== undefined ? (
@@ -1020,22 +1020,20 @@ const InnerSpaceCluster: React.FC<{
           ) : null}
         </div>
 
-        <div className="mt-6">
-          <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500 dark:text-white/24">Personal</p>
 
-          {latestCard.metadata ? (
-            <p className="mt-5 text-[10px] uppercase tracking-[0.24em] text-slate-500 dark:text-white/24">{latestCard.metadata}</p>
-          ) : null}
-        </div>
+
+
+
+
 
         <div className="mt-8 grid grid-cols-1 gap-3 xl:grid-cols-2">
           {latestEntries.map((entry) => (
             <div key={entry.key} className="rounded-2xl border border-white/6 bg-white/[0.025] px-4 py-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-[9px] uppercase tracking-[0.24em] text-cyan-700 dark:text-cyan-400/70">{entry.label}</p>
+                  <p className="text-[9px] uppercase tracking-[0.24em] text-cyan-600 dark:text-cyan-300">{entry.label}</p>
                   <p className="mt-2 text-base font-serif text-slate-900 dark:text-white/90">{entry.title}</p>
-                  <p className="mt-2 text-[11px] leading-relaxed text-slate-600 dark:text-white/45">{entry.description}</p>
+                  <p className="mt-2 text-[11px] leading-relaxed text-slate-600 dark:text-white/75">{entry.description}</p>
                 </div>
                 {entry.item ? (
                   <button
