@@ -1552,7 +1552,7 @@ def _translate_religious_text_llm(text: str, context: str = "Tafsir") -> str:
             task="discovery_religious_translation",
             model_tier=MODEL_TIER_FLASH,
             temperature=0.1,
-            timeout_s=25.0,
+            timeout_s=60.0,
         )
         translated = result.text.strip()
         return translated if translated else text
@@ -1712,7 +1712,7 @@ def _build_verse_card(
         category=DiscoveryCategory.RELIGIOUS,
         family="Ayet Card",
         title=title,
-        summary=summary,
+        summary="",
         why_seen=why_seen,
         confidence_label=_confidence_label(score),
         freshness_label=verse_key,
@@ -1722,7 +1722,7 @@ def _build_verse_card(
         evidence=evidence,
         actions=_actions_for_card(
             title=title,
-            summary=summary,
+            summary="",
             why_seen=why_seen,
             source_refs=source_refs,
             anchor=anchor,
