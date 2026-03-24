@@ -726,7 +726,7 @@ const cardStyles = (tone: DiscoveryTone) => {
     case 'blue': return 'bg-blue-600/5 dark:bg-blue-600/5 border-blue-500/10 dark:border-blue-500/10 text-slate-900 dark:text-blue-50 shadow-[0_4px_24px_-10px_rgba(59,130,246,0.1)] backdrop-blur-md';
     case 'green': return 'bg-emerald-600/5 dark:bg-emerald-600/5 border-emerald-500/10 dark:border-emerald-500/10 text-slate-900 dark:text-emerald-50 shadow-[0_4px_24px_-10px_rgba(16,185,129,0.1)] backdrop-blur-md';
     case 'purple': return 'bg-purple-600/5 dark:bg-purple-600/5 border-purple-500/10 dark:border-purple-500/10 text-slate-900 dark:text-purple-50 shadow-[0_4px_24px_-10px_rgba(168,85,247,0.1)] backdrop-blur-md';
-    case 'amber': return 'bg-amber-600/5 dark:bg-amber-600/5 border-amber-500/10 dark:border-amber-500/10 text-slate-900 dark:text-amber-50 shadow-[0_4px_24px_-10px_rgba(245,158,11,0.1)] backdrop-blur-md';
+    case 'amber': return 'bg-[#CC561E]/5 dark:bg-[#CC561E]/5 border-[#CC561E]/10 dark:border-[#CC561E]/10 text-slate-900 dark:text-[#CC561E]/90 shadow-[0_4px_24px_-10px_rgba(204,86,30,0.1)] backdrop-blur-md';
     case 'dark': return 'bg-white/40 dark:bg-slate-900/40 border-black/5 dark:border-white/5 text-slate-900 dark:text-slate-100 shadow-xl backdrop-blur-2xl';
     default: return 'bg-white/40 dark:bg-white/[0.03] border-black/5 dark:border-white/5 text-slate-900 dark:text-white backdrop-blur-sm';
   }
@@ -805,7 +805,7 @@ const CardSurface: React.FC<{
       <div className="relative z-10 flex flex-col h-full">
         <div className="flex justify-between items-start mb-6">
           <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-bold tracking-[0.25em] uppercase text-amber-500 dark:text-amber-300">
+            <span className="text-[11px] font-bold tracking-[0.25em] uppercase text-[#CC561E] dark:text-[#CC561E]/90">
               {card.category}
             </span>
             <span className="text-[10px] font-light italic text-slate-500 dark:text-white/70">
@@ -813,7 +813,7 @@ const CardSurface: React.FC<{
             </span>
           </div>
           {card.syncRate && (
-            <div className="px-2 py-0.5 rounded-full bg-amber-600/10 dark:bg-amber-500/10 border border-amber-600/20 dark:border-amber-500/20 text-[9px] font-mono text-amber-700 dark:text-amber-400">
+            <div className="px-2 py-0.5 rounded-full bg-[#CC561E]/10 dark:bg-[#CC561E]/10 border border-[#CC561E]/20 dark:border-[#CC561E]/20 text-[9px] font-mono text-[#CC561E]">
               {card.syncRate}
             </div>
           )}
@@ -837,7 +837,7 @@ const CardSurface: React.FC<{
           {whySeen && (
             <div className="mb-5 rounded-xl border border-black/5 dark:border-white/6 bg-black/[0.03] dark:bg-white/[0.025] px-3 py-2">
               <p className="text-[10px] leading-relaxed text-slate-600 dark:text-white/75">
-                <span className="mr-1 uppercase tracking-[0.18em] text-amber-600 dark:text-amber-400">Why:</span>
+                <span className="mr-1 uppercase tracking-[0.18em] text-[#CC561E] dark:text-[#CC561E]/80">Why:</span>
                 {whySeen}
               </p>
             </div>
@@ -877,8 +877,8 @@ const CardSurface: React.FC<{
           {cultureEvidence.length > 0 && (
             <div className="mb-5 flex flex-wrap gap-2">
               {cultureEvidence.map((item) => (
-                <div key={item.label} className="rounded-full border border-amber-300/12 bg-amber-500/[0.06] px-3 py-1.5">
-                  <span className="mr-2 text-[9px] uppercase tracking-[0.18em] text-amber-800/80 dark:text-amber-200/55">{item.label}</span>
+                <div key={item.label} className="rounded-full border-[#CC561E]/12 bg-[#CC561E]/[0.06] border px-3 py-1.5">
+                  <span className="mr-2 text-[9px] uppercase tracking-[0.18em] text-[#CC561E] dark:text-[#CC561E]/70">{item.label}</span>
                   <span className="text-[11px] text-slate-800 dark:text-white/70">{item.value}</span>
                 </div>
               ))}
@@ -898,7 +898,7 @@ const CardSurface: React.FC<{
                   fill="transparent"
                   strokeDasharray={226.08}
                   strokeDashoffset={226.08 - (226.08 * card.progress) / 100}
-                  className="text-amber-400 transition-all duration-1000"
+                  className="text-[#CC561E] transition-all duration-1000"
                 />
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
@@ -914,7 +914,7 @@ const CardSurface: React.FC<{
  
         <div className="mt-auto pt-4 flex items-center justify-between border-t border-black/5 dark:border-white/5">
           <div className="flex items-center gap-4">
-            <button onClick={() => onAsk(card)} className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest hover:text-amber-400 transition-colors">
+            <button onClick={() => onAsk(card)} className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest hover:text-[#CC561E] transition-colors">
               <MessageSquareText size={12} />
               Ask
             </button>
@@ -924,7 +924,7 @@ const CardSurface: React.FC<{
           </div>
 
           {card.metadata && (
-            <div className="text-[9px] uppercase tracking-[0.2em] font-medium text-amber-700/60 dark:text-amber-400/40 italic">
+            <div className="text-[9px] uppercase tracking-[0.2em] font-medium text-[#CC561E] dark:text-[#CC561E]/70 italic">
               {card.metadata}
             </div>
           )}
@@ -977,7 +977,7 @@ const InnerSpaceMiniCard: React.FC<{
                   <button
                     type="button"
                     onClick={() => onOpenItem(entry.item)}
-                    className="shrink-0 rounded-full border border-black/10 dark:border-white/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-white/60 transition hover:border-amber-500/30 dark:hover:border-amber-400/30 hover:text-amber-600 dark:hover:text-amber-300"
+                    className="shrink-0 rounded-full border border-black/10 dark:border-white/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-white/60 transition hover:border-[#CC561E]/30 dark:hover:border-[#CC561E]/30 hover:text-[#CC561E] dark:hover:text-[#CC561E]"
                   >
                     Open
                   </button>
@@ -1037,7 +1037,7 @@ const InnerSpaceCluster: React.FC<{
         <div className="flex items-start justify-between gap-4">
           <div />
           {latestCard.progress !== undefined ? (
-            <div className="flex h-14 w-14 items-center justify-center rounded-full border border-amber-400/20 bg-amber-500/5 text-sm font-bold text-amber-300">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full border border-[#CC561E]/20 bg-[#CC561E]/5 text-sm font-bold text-[#CC561E]">
               {latestCard.progress}%
             </div>
           ) : null}
@@ -1054,15 +1054,15 @@ const InnerSpaceCluster: React.FC<{
             <div key={entry.key} className="rounded-2xl border border-white/6 bg-white/[0.025] px-4 py-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-[9px] uppercase tracking-[0.24em] text-amber-600 dark:text-amber-300">{entry.label}</p>
+                  <p className="text-[9px] uppercase tracking-[0.24em] text-[#CC561E] dark:text-[#CC561E]/90">{entry.label}</p>
                   <p className="mt-2 text-base font-serif text-slate-900 dark:text-white/90">{entry.title}</p>
-                  <p className="mt-2 text-[11px] leading-relaxed text-slate-600 dark:text-white/75">{entry.description}</p>
+                  <p className="mt-2 text-[11px] leading-relaxed text-slate-600 dark:text-white/75 line-clamp-3">{entry.description}</p>
                 </div>
                 {entry.item ? (
                   <button
                     type="button"
                     onClick={() => onOpenItem(entry.item)}
-                    className="shrink-0 rounded-full border border-black/10 dark:border-white/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-white/60 transition hover:border-amber-500/30 dark:hover:border-amber-400/30 hover:text-amber-600 dark:hover:text-amber-300"
+                    className="shrink-0 rounded-full border border-black/10 dark:border-white/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-white/60 transition hover:border-[#CC561E]/30 dark:hover:border-[#CC561E]/30 hover:text-[#CC561E] dark:hover:text-[#CC561E]"
                   >
                     Open
                   </button>
@@ -1093,11 +1093,9 @@ const InnerSpaceCluster: React.FC<{
         >
           <div className="flex items-start justify-between gap-3">
             <div />
-            {pulseBadge ? (
-              <div className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[9px] font-mono text-amber-400">
+              <div className="rounded-full border border-[#CC561E]/20 bg-[#CC561E]/10 px-2 py-0.5 text-[9px] font-mono text-[#CC561E]">
                 {pulseBadge}
               </div>
-            ) : null}
           </div>
 
           <div className="mt-6">
@@ -1117,7 +1115,7 @@ const InnerSpaceCluster: React.FC<{
                     <motion.div
                       initial={{ width: 0 }}
                       animate={{ width: `${(node.count / topNodes[0].count) * 100}%` }}
-                      className="h-full bg-amber-400/70"
+                      className="h-full bg-slate-700/80"
                     />
                   </div>
                 </div>
@@ -1468,13 +1466,13 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
             </div>
 
             {pageError && (
-              <div className="mb-4 rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-100/80">
+              <div className="mb-4 rounded-2xl border border-[#CC561E]/20 bg-[#CC561E]/5 px-4 py-3 text-sm text-[#CC561E]/90">
                 {pageError}
               </div>
             )}
 
             {pageWarning && (
-              <div className="mb-4 rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-100/80">
+              <div className="mb-4 rounded-2xl border border-[#CC561E]/20 bg-[#CC561E]/5 px-4 py-3 text-sm text-[#CC561E]/90">
                 {pageWarning}
               </div>
             )}
@@ -1502,7 +1500,7 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
           </div>
 
           <div className="mt-12">
-            <div className="mb-8 flex flex-col gap-4 px-4 pl-6 md:flex-row md:items-end md:justify-between md:border-l-2 md:border-amber-500/20">
+            <div className="mb-8 flex flex-col gap-4 px-4 pl-6 md:flex-row md:items-end md:justify-between md:border-l-2 md:border-[#CC561E]/20">
               <div className="flex flex-col items-start">
                 <span className="mb-2 text-[10px] font-sans font-light uppercase tracking-[0.4em] text-slate-500 dark:text-white/30 italic">Fundamental Layer</span>
                 <h2 className="text-3xl font-serif italic tracking-tight text-slate-800 dark:text-white/80">The Pillars</h2>
@@ -1518,8 +1516,8 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
                   disabled={isRefreshing}
                   className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] transition ${
                     isRefreshing
-                      ? 'cursor-wait border-amber-500/15 dark:border-amber-400/15 bg-amber-500/5 dark:bg-amber-500/10 text-amber-600 dark:text-amber-200/60'
-                      : 'border-amber-500/20 dark:border-amber-400/25 bg-amber-500/10 dark:bg-amber-500/15 text-amber-700 dark:text-amber-100 hover:border-amber-500/40 dark:hover:border-amber-300/40 hover:bg-amber-500/20 dark:hover:bg-amber-500/25'
+                      ? 'cursor-wait border-[#CC561E]/15 dark:border-[#CC561E]/15 bg-[#CC561E]/5 dark:bg-[#CC561E]/10 text-[#CC561E]/80 dark:text-[#CC561E]/60'
+                      : 'border-[#CC561E]/20 dark:border-[#CC561E]/25 bg-[#CC561E]/10 dark:bg-[#CC561E]/15 text-[#CC561E] dark:text-[#CC561E]/90 hover:border-[#CC561E]/40 dark:hover:border-[#CC561E]/40 hover:bg-[#CC561E]/20 dark:hover:bg-[#CC561E]/25'
                   }`}
                 >
                   <RotateCw size={12} className={isRefreshing ? 'animate-spin' : ''} />
