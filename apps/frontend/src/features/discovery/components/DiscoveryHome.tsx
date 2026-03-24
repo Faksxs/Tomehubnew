@@ -74,6 +74,7 @@ interface DiscoveryCardData {
   promptSeed?: string;
   focusHint?: 'info' | 'highlights';
   sourceUrl?: string;
+  imageUrl?: string;
   flowAnchorId?: string;
   flowAnchorLabel?: string;
 }
@@ -617,6 +618,7 @@ const mapBoardCard = (
     icon: categoryIcons[category],
     syncRate,
     metadata,
+    imageUrl: card.image_url || undefined,
     itemId: openAnchorAction?.anchor_id || card.anchor_refs[0]?.item_id || undefined,
     itemType: card.anchor_refs[0]?.item_type || undefined,
     promptSeed: askAction?.prompt_seed || undefined,
@@ -711,10 +713,11 @@ const CardSurface: React.FC<{
   const isWide = card.size === 'wide';
   const isDormant = card.family === 'DORMANT GEM';
   const canOpen = canOpenCard(card);
+  const showHeroMedia = isHero && card.category !== 'Religious';
   const showWhySeen = (card.category === 'Academic' || card.category === 'Literary') && !card.slot;
   const whySeen = showWhySeen ? compactWhySeen(card.whySeen) : null;
   const religiousEvidence = card.category === 'Religious' && !card.slot
-    ? ['Arabic', 'Okunus', 'Meal', 'Ayet', 'Tefsir', 'Hadis']
+    ? ['Arabic', 'Okunus', 'Meal', 'Ayet', 'Tefsir', 'Hadis', 'Aciklama']
         .map((label) => ({
           label,
           value: compactEvidenceValue(
@@ -751,14 +754,12 @@ const CardSurface: React.FC<{
       <div className="relative z-10 flex flex-col h-full">
         <div className="flex justify-between items-start mb-6">
           <div className="flex flex-col gap-1">
-            <span className="text-[10px] font-medium tracking-[0.2em] uppercase opacity-40 text-cyan-400">
+            <span className="text-[11px] font-bold tracking-[0.25em] uppercase text-cyan-400">
+              {card.category}
+            </span>
+            <span className="text-[10px] font-light italic opacity-40">
               {card.family}
             </span>
-            <div className="flex items-center gap-2">
-              <span className="text-[9px] font-light opacity-50 italic">
-                {card.sources.join(' // ')}
-              </span>
-            </div>
           </div>
           {card.syncRate && (
             <div className="px-2 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-[9px] font-mono text-cyan-400">
@@ -767,18 +768,15 @@ const CardSurface: React.FC<{
           )}
         </div>
 
-        {isHero && (
-          <div className="w-full aspect-[21/9] rounded-lg overflow-hidden mb-3 bg-white/[0.02] border border-white/5 relative group-hover:border-white/10 transition-colors">
-            <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-transparent opacity-50" />
-            <div className="absolute inset-0 flex items-center justify-center opacity-10 transform scale-110 rotate-3 group-hover:rotate-0 transition-transform duration-700">
-              <card.icon size={40} />
-            </div>
+        {card.imageUrl && (
+          <div className="w-full aspect-[21/9] rounded-lg overflow-hidden mb-5 bg-white/[0.02] border border-white/5 relative group-hover:border-white/10 transition-colors">
+            <img src={card.imageUrl} alt={card.title} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500" />
+            <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
           </div>
         )}
 
         <div className="flex-1">
           <h2 className={`font-serif leading-tight mb-4 ${isHero ? 'text-2xl md:text-3xl font-normal text-white/90' : 'text-lg font-normal text-white/80'}`}>
-            <span className="opacity-30 font-sans text-xs italic font-light tracking-wide block mb-1 uppercase">{card.category}</span>
             {card.title}
           </h2>
           <p className={isHero ? 'text-sm text-white/40 leading-relaxed max-w-[48ch] mb-6' : 'text-xs text-white/40 leading-relaxed max-w-[48ch] mb-6'}>
@@ -836,26 +834,13 @@ const CardSurface: React.FC<{
             </div>
           )}
 
-          {card.metadata && (
-            <div className="mb-6 text-[10px] uppercase tracking-[0.25em] text-white/25">
-              {card.metadata}
-            </div>
-          )}
 
-          {isHero && (
-            <div className="mt-8 flex gap-2">
-              <button
-                onClick={() => (onOpen ? onOpen(card) : onAsk(card))}
-                className={`px-4 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-colors ${canOpen ? 'bg-cyan-500 text-black hover:bg-cyan-400' : 'bg-white/10 text-white/50 hover:bg-white/10'}`}
-              >
-                {primaryCardActionLabel(card)}
-              </button>
-            </div>
-          )}
+
+
         </div>
 
         <div className="mt-auto pt-4 flex items-center justify-between border-t border-white/5">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             <button onClick={() => onAsk(card)} className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest hover:text-cyan-400 transition-colors">
               <MessageSquareText size={12} />
               Ask
@@ -864,6 +849,12 @@ const CardSurface: React.FC<{
               <BookmarkPlus size={14} />
             </button>
           </div>
+
+          {card.metadata && (
+            <div className="text-[9px] uppercase tracking-[0.2em] font-medium text-cyan-400/40 italic">
+              {card.metadata}
+            </div>
+          )}
           <button
             type="button"
             onClick={() => (onOpen ? onOpen(card) : onAsk(card))}

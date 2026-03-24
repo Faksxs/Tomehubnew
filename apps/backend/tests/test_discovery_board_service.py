@@ -331,6 +331,14 @@ def _patch_religious_sources(monkeypatch):
     monkeypatch.setattr("services.discovery_board_service.random.choice", lambda seq: seq[0])
     monkeypatch.setattr("services.discovery_board_service.random.shuffle", lambda seq: None)
     monkeypatch.setattr(
+        "services.discovery_board_service.islamic_api_service._hadeethenc_fetch_one",
+        lambda hadith_id: {
+            "title": "Hadis",
+            "hadeeth": "Hadis metni ve aciklamasi.",
+            "explanation": "Hadisin aciklama metni burada.",
+        },
+    )
+    monkeypatch.setattr(
         "services.discovery_board_service.islamic_api_service._quranenc_fetch_verse",
         lambda verse_key: {
             "sura": "24",
@@ -372,27 +380,28 @@ def test_build_religious_cards_creates_ayet_card_with_arabic_okunus_meal(monkeyp
     evidence = {item.label: item.value for item in verse_card.evidence}
 
     assert verse_card.title == "Ayet 24:35"
+    assert "Tefsir metni burada" in verse_card.summary
     assert evidence["Arabic"] == "???? ??? ???????? ??????"
     assert "Allahu nuru" in (evidence["Okunus"] or "")
     assert "nurudur" in (evidence["Meal"] or "")
 
 
-def test_build_religious_cards_creates_bridge_card_with_ayet_tafsir_hadith(monkeypatch):
+def test_build_religious_cards_creates_hadith_card_with_text_and_explanation(monkeypatch):
     _patch_religious_sources(monkeypatch)
 
     cards = _build_religious_cards([_make_religious_anchor()], ["QURANENC", "HADEETHENC", "ISLAMHOUSE"])
 
-    assert len(cards["Ayet + Hadis Bridge"]) == 1
-    bridge_card = cards["Ayet + Hadis Bridge"][0]
-    evidence = {item.label: item.value for item in bridge_card.evidence}
+    assert len(cards["Hadis Card"]) == 1
+    hadith_card = cards["Hadis Card"][0]
+    evidence = {item.label: item.value for item in hadith_card.evidence}
 
-    assert "24:35" in (evidence["Ayet"] or "")
-    assert "Tefsir metni" in (evidence["Tefsir"] or "")
+    assert hadith_card.family == "Hadis Card"
     assert "Hadis metni" in (evidence["Hadis"] or "")
+    assert "aciklama metni" in (evidence["Aciklama"] or "")
 
 
-def test_bridge_card_works_with_verse_and_hadith_only(monkeypatch):
-    """Bridge card should succeed when verse + hadith exist but tafsir/interpretation is missing."""
+def test_hadith_card_works_without_explicit_explanation(monkeypatch):
+    """Hadith card should still succeed when the source returns only hadith text."""
 
     def _islamic_candidates_no_tafsir(query: str, limit: int):
         return [
@@ -421,6 +430,14 @@ def test_bridge_card_works_with_verse_and_hadith_only(monkeypatch):
     monkeypatch.setattr("services.discovery_board_service.random.choice", lambda seq: seq[0])
     monkeypatch.setattr("services.discovery_board_service.random.shuffle", lambda seq: None)
     monkeypatch.setattr(
+        "services.discovery_board_service.islamic_api_service._hadeethenc_fetch_one",
+        lambda hadith_id: {
+            "title": "Hadis",
+            "hadeeth": "Hadis metni ve aciklamasi.",
+            "explanation": "",
+        },
+    )
+    monkeypatch.setattr(
         "services.discovery_board_service.islamic_api_service._quranenc_fetch_verse",
         lambda verse_key: {
             "sura": "24",
@@ -448,11 +465,9 @@ def test_bridge_card_works_with_verse_and_hadith_only(monkeypatch):
 
     cards = _build_religious_cards([_make_religious_anchor()], ["QURANENC", "HADEETHENC", "ISLAMHOUSE"])
 
-    assert len(cards["Ayet + Hadis Bridge"]) == 1
-    bridge_card = cards["Ayet + Hadis Bridge"][0]
-    evidence = {item.label: item.value for item in bridge_card.evidence}
+    assert len(cards["Hadis Card"]) == 1
+    hadith_card = cards["Hadis Card"][0]
+    evidence = {item.label: item.value for item in hadith_card.evidence}
 
-    assert "24:35" in (evidence["Ayet"] or "")
     assert "Hadis metni" in (evidence["Hadis"] or "")
-    # Tefsir should NOT be in evidence since no interpretation candidates
-    assert "Tefsir" not in evidence
+    assert "Aciklama" not in evidence
