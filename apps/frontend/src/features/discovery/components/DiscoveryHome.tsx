@@ -1462,7 +1462,22 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
               <Menu size={24} />
             </button>
 
-            <h1 className="text-4xl md:text-5xl font-serif font-light tracking-wide text-slate-900 dark:text-white/90 italic">Discovery</h1>
+            <div className="flex items-center gap-6">
+              <h1 className="text-4xl md:text-5xl font-serif font-light tracking-wide text-slate-900 dark:text-white/90 italic">Discovery</h1>
+              <button
+                type="button"
+                onClick={() => triggerRefresh(true)}
+                disabled={isRefreshing}
+                className={`flex h-10 w-10 items-center justify-center rounded-full border transition-all ${
+                  isRefreshing
+                    ? 'cursor-wait border-[#CC561E]/15 bg-[#CC561E]/5 text-[#CC561E]/80'
+                    : 'border-[#CC561E]/20 bg-[#CC561E]/10 text-[#CC561E] hover:border-[#CC561E]/40 hover:bg-[#CC561E]/20 active:scale-95'
+                }`}
+                title="Bütün Discovery içeriğini yenile ve önbelleği temizle"
+              >
+                <RotateCw size={18} className={isRefreshing ? 'animate-spin' : ''} />
+              </button>
+            </div>
           </div>
         </header>
 
@@ -1515,23 +1530,8 @@ export const DiscoveryHome: React.FC<DiscoveryHomeProps> = ({
                 <h2 className="text-3xl font-serif italic tracking-tight text-slate-800 dark:text-white/80">The Pillars</h2>
                 <div className="mt-4 h-[1px] w-32 bg-gradient-to-r from-slate-400/20 dark:from-white/20 to-transparent" />
               </div>
-              <div className="flex items-center gap-3">
-                <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500 dark:text-white/30">
-                  {formatRelativeUpdateTime(viewMeta.lastUpdatedAt)}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => triggerRefresh(true)}
-                  disabled={isRefreshing}
-                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] transition ${
-                    isRefreshing
-                      ? 'cursor-wait border-[#CC561E]/15 dark:border-[#CC561E]/15 bg-[#CC561E]/5 dark:bg-[#CC561E]/10 text-[#CC561E]/80 dark:text-[#CC561E]/60'
-                      : 'border-[#CC561E]/20 dark:border-[#CC561E]/25 bg-[#CC561E]/10 dark:bg-[#CC561E]/15 text-[#CC561E] dark:text-[#CC561E]/90 hover:border-[#CC561E]/40 dark:hover:border-[#CC561E]/40 hover:bg-[#CC561E]/20 dark:hover:bg-[#CC561E]/25'
-                  }`}
-                >
-                  <RotateCw size={12} className={isRefreshing ? 'animate-spin' : ''} />
-                  {isRefreshing ? 'Refreshing' : 'Refresh Pillars'}
-                </button>
+              <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500 dark:text-white/30">
+                {formatRelativeUpdateTime(viewMeta.lastUpdatedAt)}
               </div>
             </div>
 
