@@ -26,6 +26,23 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 const popupSafeHosts = new Set(["localhost", "127.0.0.1", "::1"]);
 
+const shouldPreferRedirectAuth = (): boolean => {
+    if (typeof window === "undefined" || typeof navigator === "undefined") {
+        return false;
+    }
+
+    const hostname = window.location.hostname.toLowerCase();
+    if (popupSafeHosts.has(hostname)) {
+        return false;
+    }
+
+    const userAgent = navigator.userAgent || "";
+    const isMobileDevice = /android|iphone|ipad|ipod/i.test(userAgent);
+    const isInAppBrowser = /FBAN|FBAV|Instagram|Line|Twitter|WebView/i.test(userAgent);
+
+    return isMobileDevice || isInAppBrowser;
+};
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     children,
 }) => {
@@ -58,11 +75,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
 
     const loginWithGoogle = async () => {
         try {
-            const useRedirect =
-                typeof window !== "undefined" &&
-                !popupSafeHosts.has(window.location.hostname.toLowerCase());
-
-            if (useRedirect) {
+            if (shouldPreferRedirectAuth()) {
                 await signInWithRedirect(auth, googleProvider);
                 return;
             }
@@ -70,13 +83,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
             await signInWithPopup(auth, googleProvider);
         } catch (error: any) {
             console.error("Login with Google failed:", error);
-            if (error.code === 'auth/popup-blocked') {
+            if (
+                error?.code === 'auth/popup-blocked' ||
+                error?.code === 'auth/operation-not-supported-in-this-environment'
+            ) {
                 showToast({
-                    title: "Giris penceresi engellendi",
-                    description: "Lutfen Safari veya Chrome gibi bir tarayicida acin ya da pop-up izni verin.",
+                    title: "Yedek giris akisi kullaniliyor",
+                    description: "Popup tamamlanamadi. Google girisi yonlendirme ile devam edecek.",
                     tone: "warning",
                 });
-            } else if (error.code === 'auth/cancelled-popup-request') {
+                await signInWithRedirect(auth, googleProvider);
+                return;
+            }
+            if (error.code === 'auth/popup-closed-by-user') {
+                return;
+            }
+            if (error.code === 'auth/cancelled-popup-request') {
                 // Ignore user cancellation
             } else {
                 showToast({
