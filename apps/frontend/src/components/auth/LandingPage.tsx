@@ -44,7 +44,7 @@ const FloatingBlob = ({ color, size, initialPos, duration }: { color: string, si
 );
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
-    const brandOrange = "#CC561E";
+    const brandOrange = "#BD4C18";
 
     const features = [
         {
@@ -129,9 +129,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                 >
                     <div className="mb-6 flex justify-center">
                         <motion.div
-                            initial={{ scale: 0.9, opacity: 0 }}
+                            initial={{ scale: 0.95, opacity: 1 }}
                             animate={{ scale: 1, opacity: 1 }}
-                            transition={{ delay: 0.2, type: "spring", stiffness: 60 }}
+                            transition={{ type: "spring", stiffness: 60 }}
                             className="relative"
                         >
                             {/* Diffused Premium Halo Glow */}
@@ -139,6 +139,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                             <img
                                 src={logo}
                                 alt="TomeHub Logo"
+                                fetchPriority="high"
                                 className="h-32 md:h-40 w-auto object-contain drop-shadow-[0_20px_60px_rgba(204,86,30,0.3)] brightness-110 relative z-10"
                             />
                         </motion.div>
@@ -146,7 +147,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
 
                     <h1 className="text-3xl md:text-5xl font-black tracking-tight mb-4 leading-[1.1] text-white">
                         From Information to<br />
-                        <span className="relative inline-block bg-clip-text text-transparent bg-gradient-to-r from-[#CC561E] via-[#ff8a50] to-[#CC561E] animate-gradient-x">
+                        <span className="relative inline-block bg-clip-text text-transparent bg-gradient-to-r from-[#BD4C18] via-[#ff8a50] to-[#BD4C18] animate-gradient-x">
                             Justified Knowledge
                         </span>
                     </h1>
@@ -211,7 +212,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                                     </div>
 
                                     <div className="flex-1">
-                                        <h3 className="text-xl md:text-2xl font-black mb-3 text-white leading-tight">
+                                        <h2 className="text-xl md:text-2xl font-black mb-3 text-white leading-tight">
                                             {feature.title}
                                         </h3>
                                         <p className="text-[14px] md:text-[15px] text-slate-400 leading-relaxed font-normal">
