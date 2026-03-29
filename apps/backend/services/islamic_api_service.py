@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from urllib import parse as urllib_parse
 from urllib import request as urllib_request
 from urllib.error import HTTPError
+import concurrent.futures
 
 from config import settings
 from services.religious_dataset_search_service import get_religious_dataset_candidates
@@ -132,7 +133,8 @@ def _http_json(
     if headers:
         req_headers.update({str(k): str(v) for k, v in headers.items()})
     req = urllib_request.Request(url=url, data=data, headers=req_headers, method=method)
-    effective_timeout = float(timeout_sec or getattr(settings, "ISLAMIC_API_HTTP_TIMEOUT_SEC", 6.0))
+    # Optimized timeout: 3 seconds
+    effective_timeout = float(timeout_sec or getattr(settings, "ISLAMIC_API_HTTP_TIMEOUT_SEC", 3.0))
     for idx in range(retries + 1):
         try:
             with urllib_request.urlopen(req, timeout=effective_timeout) as resp:
@@ -148,7 +150,7 @@ def _http_json(
             return None
         except Exception as exc:
             if idx < retries:
-                time.sleep(0.2 * (idx + 1))
+                time.sleep(0.1 * (idx + 1))
                 continue
             logger.warning("Islamic API HTTP error url=%s error=%s", url, exc)
             return None
@@ -290,7 +292,7 @@ def _normalize_quranenc_exact(verse: Dict[str, Any]) -> Optional[Dict[str, Any]]
         for part in [
             translation,
             arabic,
-            f"Kaynak: {str(verse.get('translation_key') or verse.get('_translation_key') or '').strip()}" if str(verse.get("translation_key") or verse.get("_translation_key") or "").strip() else "",
+            f"Kaynak: {str(verse.get('translation_key') or verse.get('_translation_key') or '').strip()}" if str(verse.get("translation_key") or verse.get('_translation_key') or '').strip() else "",
         ]
         if part
     )
@@ -409,8 +411,20 @@ def _islamhouse_fetch_category_items(
 
 def _islamhouse_fetch_item_detail(item_url: str) -> Optional[Dict[str, Any]]:
     url = str(item_url or "").strip()
-    if not url or "islamhouse.com" not in url.lower():
+    if not url:
         return None
+    
+    # Strict SSRF Validation
+    try:
+        parsed = urllib_parse.urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return None
+        hostname = (parsed.hostname or "").lower()
+        if hostname != "islamhouse.com" and not hostname.endswith(".islamhouse.com"):
+            return None
+    except ValueError:
+        return None
+        
     response = _http_json(url)
     return response if isinstance(response, dict) else None
 
@@ -648,6 +662,7 @@ def _quran_foundation_fetch_verse(verse_key: str) -> Optional[Dict[str, Any]]:
     params = {
         "language": str(getattr(settings, "QURAN_FOUNDATION_DEFAULT_LANGUAGE", "tr") or "tr"),
         "words": "true",
+        "word_fields": "text_uthmani,transliteration",
         "fields": "text_uthmani",
         "translations": ",".join(getattr(settings, "QURAN_FOUNDATION_DEFAULT_TRANSLATION_IDS", ["77"]) or ["77"]),
     }
@@ -797,59 +812,6 @@ def _normalize_quran_foundation_exact(verse: Dict[str, Any]) -> Optional[Dict[st
     )
 
 
-def _diyanet_fetch_chapter(surah_id: int) -> Optional[List[Dict[str, Any]]]:
-    if not bool(getattr(settings, "DIYANET_QURAN_ENABLED", False)):
-        return None
-    api_key = str(getattr(settings, "DIYANET_QURAN_API_KEY", "") or "").strip()
-    base_url = str(getattr(settings, "DIYANET_QURAN_BASE_URL", "") or "").strip().rstrip("/")
-    if not api_key or not base_url:
-        return None
-    url = f"{base_url}/api/v1/chapters/{surah_id}"
-    response = _http_json(
-        url,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-    )
-    rows = (response or {}).get("data") if isinstance(response, dict) else None
-    return rows if isinstance(rows, list) else None
-
-
-def _diyanet_fetch_verse(verse_key: str) -> Optional[Dict[str, Any]]:
-    parts = verse_key.split(":", 1)
-    if len(parts) != 2:
-        return None
-    try:
-        surah_id = int(parts[0])
-        ayah_id = int(parts[1])
-    except ValueError:
-        return None
-    rows = _diyanet_fetch_chapter(surah_id)
-    if not rows:
-        return None
-    for row in rows:
-        if int(row.get("verse_id_in_surah") or 0) != ayah_id:
-            continue
-        arabic = str(((row.get("arabic_script") or {}).get("text")) or "").strip()
-        translation = str(((row.get("translation") or {}).get("text")) or "").strip()
-        content = "\n".join(part for part in [translation, arabic, "Kaynak: Diyanet"] if part)
-        return _build_candidate(
-            provider="DIYANET_QURAN",
-            kind="QURAN",
-            title=f"Diyanet - Ayet {verse_key}",
-            content_chunk=content,
-            score=0.80,
-            external_weight=float(getattr(settings, "ISLAMIC_API_QURAN_WEIGHT", 0.22)),
-            reference=verse_key,
-            canonical_reference=verse_key,
-            source_url=f"{str(getattr(settings, 'DIYANET_QURAN_BASE_URL', '')).rstrip('/')}/api/v1/chapters/{surah_id}",
-            is_exact_match=True,
-            religious_query_kind="EXACT_QURAN_VERSE",
-        )
-    return None
-
-
 def _get_hadeethenc_categories(language: str) -> List[Dict[str, Any]]:
     lang = str(language or "tr").strip().lower() or "tr"
     now = time.time()
@@ -988,39 +950,59 @@ def get_islamic_external_candidates(
     provider_counts: Dict[str, int] = {}
 
     verse_key = _extract_verse_key(query)
-    quran_used = False
-    hadith_used = False
     religious_query_kind = _infer_religious_query_kind(query)
 
-    if _looks_quran_query(query):
-        quran_used = True
-        quran_candidates: List[Dict[str, Any]] = []
-        interpretive_candidates: List[Dict[str, Any]] = []
-        if verse_key:
-            quranenc_exact = _normalize_quranenc_exact(_quranenc_fetch_verse(verse_key) or {})
-            if quranenc_exact:
-                quran_candidates.append(quranenc_exact)
-            qf_exact = _normalize_quran_foundation_exact(_quran_foundation_fetch_verse(verse_key) or {})
-            if qf_exact:
-                quran_candidates.append(qf_exact)
-            if religious_query_kind == "TAFSIR_REQUEST":
-                qf_tafsir = _quran_foundation_fetch_tafsir(verse_key)
-                if qf_tafsir:
-                    interpretive_candidates.append(qf_tafsir)
-            diyanet_exact = _diyanet_fetch_verse(verse_key)
-            if diyanet_exact:
-                quran_candidates.append(diyanet_exact)
-        else:
-            quran_candidates.extend(_normalize_quran_foundation_search(query, _quran_foundation_search(query, hard_limit), hard_limit))
-        candidates.extend(quran_candidates[:hard_limit])
-        candidates.extend(interpretive_candidates[: max(0, hard_limit - len(candidates))])
+    max_workers = int(getattr(settings, "ISLAMIC_API_CONCURRENCY_LIMIT", 4) or 4)
+    
+    tasks = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # 1. Quran Providers
+        if _looks_quran_query(query):
+            if verse_key:
+                # Exact verse lookups
+                tasks.append(executor.submit(_quranenc_fetch_verse, verse_key))
+                tasks.append(executor.submit(_quran_foundation_fetch_verse, verse_key))
+                if religious_query_kind == "TAFSIR_REQUEST":
+                    tasks.append(executor.submit(_quran_foundation_fetch_tafsir, verse_key))
+            else:
+                # Topical search
+                tasks.append(executor.submit(_quran_foundation_search, query, hard_limit))
 
-    should_use_hadith = _looks_hadith_query(query) or ((force_religious or religious_query_detected) and not verse_key)
-    if should_use_hadith:
-        hadith_used = True
-        hadith_candidates = _hadeethenc_candidates(query, hard_limit)
-        candidates.extend(hadith_candidates[:hard_limit])
+        # 2. Hadith Providers
+        should_use_hadith = _looks_hadith_query(query) or ((force_religious or religious_query_detected) and not verse_key)
+        if should_use_hadith:
+            tasks.append(executor.submit(_hadeethenc_candidates, query, hard_limit))
 
+        # 3. Interpretive Context
+        tasks.append(executor.submit(_islamhouse_interpretive_candidates, query, hard_limit))
+
+        # Collect results
+        for future in concurrent.futures.as_completed(tasks):
+            try:
+                res = future.result()
+                if not res:
+                    continue
+                if isinstance(res, list):
+                    if res and str(res[0].get("provider")) == "QURAN_FOUNDATION" and not verse_key:
+                        normalized = _normalize_quran_foundation_search(query, res, hard_limit)
+                        candidates.extend(normalized)
+                    else:
+                        candidates.extend(res)
+                elif isinstance(res, dict):
+                    norm = None
+                    if "_translation_key" in res:
+                        norm = _normalize_quranenc_exact(res)
+                    elif "verse_key" in res or "canonical_reference" in res:
+                        if res.get("kind") == "INTERPRETATION" or res.get("religious_source_kind") == "INTERPRETATION":
+                            norm = res 
+                        else:
+                            norm = _normalize_quran_foundation_exact(res)
+                    if norm:
+                        candidates.append(norm)
+            except Exception as e:
+                logger.warning("Islamic API parallel task failed: %s", e)
+
+    # 4. Dataset Search (Non-parallel for now)
     exact_primary_hit = bool(
         religious_query_kind == "EXACT_QURAN_VERSE"
         and any(bool(c.get("is_exact_match")) for c in candidates)
@@ -1031,21 +1013,16 @@ def get_islamic_external_candidates(
     elif not exact_primary_hit:
         dataset_budget = max(0, min(2, hard_limit - len(candidates)))
     if dataset_budget > 0:
-        dataset_candidates, _dataset_diag = get_religious_dataset_candidates(
-            query,
-            query_kind=religious_query_kind,
-            limit=dataset_budget,
-            skip_exact=exact_primary_hit,
-        )
-        candidates.extend(dataset_candidates[:dataset_budget])
-
-    interpretive_budget = 0
-    if religious_query_kind in {"EXACT_HADITH", "EXACT_QURAN_VERSE", "TAFSIR_REQUEST"}:
-        interpretive_budget = max(0, hard_limit - len(candidates))
-    else:
-        interpretive_budget = min(2, hard_limit)
-    if interpretive_budget > 0:
-        candidates.extend(_islamhouse_interpretive_candidates(query, interpretive_budget))
+        try:
+            dataset_candidates, _dataset_diag = get_religious_dataset_candidates(
+                query,
+                query_kind=religious_query_kind,
+                limit=dataset_budget,
+                skip_exact=exact_primary_hit,
+            )
+            candidates.extend(dataset_candidates[:dataset_budget])
+        except Exception as e:
+            logger.warning("Religious dataset search failed: %s", e)
 
     deduped: List[Dict[str, Any]] = []
     seen = set()

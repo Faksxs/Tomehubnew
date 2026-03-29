@@ -1,24 +1,64 @@
-import os
+
 import sys
-from dotenv import load_dotenv
+import os
+import json
 
-# Add apps/backend and apps/backend/services to path
-backend_dir = os.path.join(os.getcwd(), 'apps', 'backend')
-sys.path.append(backend_dir)
-sys.path.append(os.path.join(backend_dir, 'services'))
+# Add backend to path
+sys.path.append(os.path.join(os.getcwd(), 'apps', 'backend'))
 
-from services.ingestion_service import ingest_book
+from infrastructure.db_manager import DatabaseManager
 
-# Mock temp file (even if it's empty, it should fail at extraction, but not 500 unless code is wrong)
-temp_file = "test.pdf"
-with open(temp_file, "w") as f:
-    f.write("%PDF-1.4 test")
+def check_ingestion_failures():
+    print("→ Investigating ingestion and embedding lifecycle...")
+    
+    try:
+        with DatabaseManager.get_read_connection() as conn:
+            with conn.cursor() as cursor:
+                # 1. Hürriyet Üstüne kitabının eklenme zamanını bulalım
+                cursor.execute("""
+                    SELECT item_id, created_at 
+                    FROM TOMEHUB_LIBRARY_ITEMS 
+                    WHERE title LIKE '%Hürriyet Üstüne%'
+                """)
+                item_data = cursor.fetchone()
+                if not item_data:
+                    print("Kitap bulunamadı.")
+                    return
+                
+                item_id, created_at = item_data
+                print(f"Kitap ID: {item_id}, Eklenme Zamanı: {created_at}")
 
-try:
-    print("Testing ingest_book...")
-    # Using Orwell's 1984 as in the user's error
-    result = ingest_book(temp_file, "1984", "George Orwell", "vpq1p0UzcCSLAh1d18WgZZWPBE63")
-    print(f"Result: {result}")
-finally:
-    if os.path.exists(temp_file):
-        os.remove(temp_file)
+                # 2. Bu ITEM_ID ile ilgili hata loglarını (INGESTION_EVENTS) sorgulayalım
+                # Not: Tablo ismini ve kolonları tahmin ediyoruz, önce bir hata olursa düzelteceğiz
+                print("\n→ Checking Ingestion Events for errors...")
+                cursor.execute("""
+                    SELECT event_type, status, error_message, created_at 
+                    FROM TOMEHUB_INGESTION_EVENTS 
+                    WHERE item_id = :iid
+                    ORDER BY created_at DESC
+                """, {"iid": item_id})
+                logs = cursor.fetchall()
+                if logs:
+                    for l in logs:
+                        print(f"[{l[3]}] Tip: {l[0]}, Statü: {l[1]}, Hata: {l[2]}")
+                else:
+                    print("Bu kitap için özel bir hata kaydı bulunamadı.")
+
+                # 3. Genel olarak son 24 saatteki EMBEDDING hatalarını tarayalım
+                print("\n→ Checking overall EMBEDDING failures in the last 48 hours...")
+                cursor.execute("""
+                    SELECT error_message, COUNT(*) 
+                    FROM TOMEHUB_INGESTION_EVENTS 
+                    WHERE (event_type LIKE '%EMBEDDING%' OR event_type LIKE '%VECTOR%')
+                      AND status = 'FAILED'
+                    GROUP BY error_message
+                """)
+                fail_stats = cursor.fetchall()
+                for f in fail_stats:
+                    print(f"Hata: {f[0]} | Adet: {f[1]}")
+
+    except Exception as e:
+        print(f"\n❌ Fail Investigation Failed: {e}")
+
+if __name__ == "__main__":
+    check_ingestion_failures()

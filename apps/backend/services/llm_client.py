@@ -142,24 +142,39 @@ class GeminiProvider:
         if http_options is not None:
             config["http_options"] = http_options
 
-        with AI_SERVICE_LATENCY.labels(service="gemini_flash", operation="generate").time():
-            response = self._get_client().models.generate_content(
-                model=model,
-                contents=prompt,
-                config=config or None,
-            )
-
-        text = getattr(response, "text", None) or ""
-        usage = getattr(response, "usage_metadata", None)
-        usage_metadata = usage.model_dump() if usage is not None else None
-        return GenerateResult(
-            text=text,
-            model_used=model,
-            model_tier=MODEL_TIER_FLASH,
-            fallback_applied=False,
-            usage_metadata=usage_metadata,
-            provider_name=self.name,
-        )
+        max_retries = 3
+        last_exc = None
+        for attempt in range(max_retries + 1):
+            try:
+                with AI_SERVICE_LATENCY.labels(service="gemini_flash", operation="generate").time():
+                    response = self._get_client().models.generate_content(
+                        model=model,
+                        contents=prompt,
+                        config=config or None,
+                    )
+                
+                text = getattr(response, "text", None) or ""
+                usage = getattr(response, "usage_metadata", None)
+                usage_metadata = usage.model_dump() if usage is not None else None
+                return GenerateResult(
+                    text=text,
+                    model_used=model,
+                    model_tier=MODEL_TIER_FLASH,
+                    fallback_applied=False,
+                    usage_metadata=usage_metadata,
+                    provider_name=self.name,
+                )
+            except Exception as exc:
+                last_exc = exc
+                if is_retryable_llm_error(exc) and attempt < max_retries:
+                    wait_time = (2 ** attempt) + 0.1
+                    logger.warning(f"Gemini call failed (attempt {attempt+1}/{max_retries+1}): {exc}. Retrying in {wait_time:.1f}s...")
+                    time.sleep(wait_time)
+                    continue
+                raise last_exc
+        
+        # Should not reach here due to raise in except
+        raise last_exc if last_exc else RuntimeError("LLM call failed after retries")
 
     def embed_contents(
         self,

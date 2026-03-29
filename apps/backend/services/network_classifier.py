@@ -58,15 +58,18 @@ def classify_network_status(
     
     # Criteria for IN_NETWORK:
     # - High epistemic score (>4.0) indicating good definition/context
-    # - OR High keyword coverage (>80%) with moderate score
+    # - OR High keyword coverage (>80%) with moderate/low score (e.g. philosophical comparisons)
     
     if has_primary_religious_evidence and coverage_ratio >= 0.5:
         status = "IN_NETWORK"
     elif avg_score >= 5.0 and coverage_ratio >= 0.5:
         status = "IN_NETWORK"
-    elif avg_score >= 3.5 and coverage_ratio >= 0.8:
+    elif avg_score >= 3.5 and coverage_ratio >= 0.7:
         status = "IN_NETWORK"
-    elif avg_score < 2.0:
+    elif avg_score >= 1.0 and coverage_ratio >= 0.8:
+        # Felsefi/Karşılaştırmalı notlar genelde net tanım içermez ama keyword kapsayıcılığı yüksektir.
+        status = "IN_NETWORK"
+    elif avg_score < 2.0 and coverage_ratio < 0.8:
         status = "OUT_OF_NETWORK"
         
     return {

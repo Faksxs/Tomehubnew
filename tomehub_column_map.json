@@ -1,367 +1,3586 @@
 {
-  "TOMEHUB_CONTENT_V2": [
-    "ID",
-    "FIREBASE_UID",
-    "ITEM_ID",
-    "CONTENT_TYPE",
-    "TITLE",
-    "CONTENT_CHUNK",
-    "NORMALIZED_CONTENT",
-    "PAGE_NUMBER",
-    "PARAGRAPH_NUMBER",
-    "CHAPTER_NAME",
-    "COMMENT_TEXT",
-    "TAGS_JSON",
-    "NOTE_DATE",
-    "AI_ELIGIBLE",
-    "RAG_WEIGHT",
-    "CHUNK_INDEX",
-    "VEC_EMBEDDING",
-    "CREATED_AT",
-    "UPDATED_AT",
-    "PARTITION_MONTH",
-    "LEMMA_TOKENS",
-    "TOKEN_FREQ"
-  ],
-  "TOMEHUB_BOOKS_ARCHIVED": [
-    "ID",
-    "TITLE",
-    "AUTHOR",
-    "FIREBASE_UID",
-    "CREATED_AT",
-    "TOTAL_CHUNKS",
-    "LAST_UPDATED"
-  ],
-  "TOMEHUB_BOOK_EPISTEMIC_METRICS": [
-    "UPDATED_AT",
-    "LEVEL_C",
-    "TOTAL_CHUNKS",
-    "LEVEL_B",
-    "FIREBASE_UID",
-    "LEVEL_A",
-    "ID",
-    "BOOK_ID"
-  ],
-  "TOMEHUB_CHANGE_EVENTS": [
-    "LAST_ERROR_MESSAGE",
-    "SOURCE_SERVICE",
-    "CREATED_AT",
-    "PUBLISHED_AT",
-    "EVENT_ID",
-    "FIREBASE_UID",
-    "ITEM_ID",
-    "ENTITY_TYPE",
-    "EVENT_TYPE",
-    "STATUS",
-    "PAYLOAD_JSON",
-    "RETRY_COUNT",
-    "LAST_ERROR_CODE"
-  ],
-  "TOMEHUB_CHAT_MESSAGES": [
-    "ID",
-    "SESSION_ID",
-    "ROLE",
-    "CONTENT",
-    "CITATIONS",
-    "CREATED_AT"
-  ],
-  "TOMEHUB_CHAT_SESSIONS": [
-    "TITLE_LOCKED",
-    "TAGS",
-    "CONVERSATION_STATE_JSON",
-    "ID",
-    "FIREBASE_UID",
-    "TITLE",
-    "RUNNING_SUMMARY",
-    "CREATED_AT",
-    "UPDATED_AT"
-  ],
-  "TOMEHUB_CONCEPTS": [
-    "ID",
-    "NAME",
-    "CONCEPT_TYPE",
-    "DESCRIPTION",
-    "DESCRIPTION_EMBEDDING"
-  ],
-  "TOMEHUB_CONCEPT_ALIASES": [
-    "ID",
-    "CONCEPT_ID",
-    "ALIAS",
-    "CREATED_AT"
-  ],
-  "TOMEHUB_CONCEPT_CHUNKS": [
-    "CONCEPT_ID",
-    "CONTENT_ID",
-    "STRENGTH",
-    "JUSTIFICATION"
-  ],
-  "TOMEHUB_CONTENT_ARCHIVED": [
-    "CONTENT_TYPE",
-    "CONTENT_HASH",
-    "SEARCH_VISIBILITY",
-    "ORIGIN_SYSTEM",
-    "ORIGIN_COLLECTION",
-    "ORIGIN_DOC_ID",
-    "ORIGIN_SUBDOC_ID",
-    "ORIGIN_UPDATED_AT",
-    "CATEGORIES",
-    "INGESTION_TYPE",
-    "SYNC_RUN_ID",
-    "IS_DELETED",
-    "TOKEN_FREQ",
-    "TAGS",
-    "SUMMARY",
-    "NORMALIZED_STATUS",
-    "BOOK_ID",
-    "NORMALIZED_CONTENT",
-    "IS_NOTE",
-    "TEXT_DEACCENTED",
-    "LEMMA_TOKENS",
-    "COMMENT",
-    "ROW_VERSION",
-    "ID",
-    "FIREBASE_UID",
-    "SOURCE_TYPE",
-    "TITLE",
-    "CONTENT_CHUNK",
-    "CHUNK_TYPE",
-    "PAGE_NUMBER",
-    "CHUNK_INDEX",
-    "VEC_EMBEDDING",
-    "CREATED_AT",
-    "UPDATED_AT",
-    "DELETED_AT",
-    "DELETION_SOURCE"
-  ],
-  "TOMEHUB_CONTENT_ODL_SHADOW": [
-    "ID",
-    "FIREBASE_UID",
-    "ITEM_ID",
-    "TITLE",
-    "CONTENT_CHUNK",
-    "PAGE_NUMBER",
-    "CHUNK_INDEX",
-    "NORMALIZED_CONTENT",
-    "LEMMA_TOKENS",
-    "TOKEN_FREQ",
-    "CONTENT_HASH",
-    "ODL_VERSION",
-    "POSTPROCESS_VERSION",
-    "QUALITY_METRICS_JSON",
-    "CREATED_AT"
-  ],
-  "TOMEHUB_CONTENT_TAGS": [
-    "CONTENT_ID",
-    "TAG",
-    "TAG_NORM",
-    "CREATED_AT",
-    "ID"
-  ],
-  "TOMEHUB_EXTERNAL_BOOK_META": [
-    "UPDATED_AT",
-    "WIKIDATA_STATUS",
-    "OPENALEX_STATUS",
-    "BOOK_ID",
-    "FIREBASE_UID",
-    "ACADEMIC_SCOPE",
-    "WIKIDATA_QID",
-    "OPENALEX_ID",
-    "DOI",
-    "EXTERNAL_JSON",
-    "LAST_SYNC_AT",
-    "SYNC_STATUS",
-    "WIKIDATA_SYNC_AT",
-    "OPENALEX_SYNC_AT"
-  ],
-  "TOMEHUB_EXTERNAL_EDGES": [
-    "ID",
-    "SRC_ENTITY_ID",
-    "DST_ENTITY_ID",
-    "REL_TYPE",
-    "WEIGHT",
-    "PROVIDER",
-    "BOOK_ID",
-    "FIREBASE_UID",
-    "UPDATED_AT"
-  ],
-  "TOMEHUB_EXTERNAL_ENTITIES": [
-    "ID",
-    "PROVIDER",
-    "EXTERNAL_ID",
-    "ENTITY_TYPE",
-    "LABEL",
-    "PAYLOAD_JSON",
-    "UPDATED_AT"
-  ],
-  "TOMEHUB_FEEDBACK": [
-    "ID",
-    "FIREBASE_UID",
-    "QUERY_TEXT",
-    "GENERATED_ANSWER",
-    "RATING",
-    "FEEDBACK_TEXT",
-    "CONTEXT_BOOK_ID",
-    "CREATED_AT",
-    "SEARCH_LOG_ID"
-  ],
-  "TOMEHUB_FILE_REPORTS": [
-    "ID",
-    "BOOK_ID",
-    "FIREBASE_UID",
-    "SUMMARY_TEXT",
-    "KEY_TOPICS",
-    "ENTITIES",
-    "CREATED_AT",
-    "UPDATED_AT"
-  ],
-  "TOMEHUB_FLOW_SEEN": [
-    "ID",
-    "FIREBASE_UID",
-    "SESSION_ID",
-    "SEEN_AT",
-    "CHUNK_ID",
-    "REACTION_TYPE",
-    "STAY_DURATION_MS",
-    "DISCOVERED_VIA"
-  ],
-  "TOMEHUB_INGESTED_FILES": [
-    "ID",
-    "BOOK_ID",
-    "UPDATED_AT",
-    "STATUS",
-    "CHUNK_COUNT",
-    "EMBEDDING_COUNT",
-    "CREATED_AT",
-    "SOURCE_FILE_NAME",
-    "FIREBASE_UID"
-  ],
-  "TOMEHUB_INGESTION_EVENTS": [
-    "STATUS",
-    "DETAILS_JSON",
-    "ERROR_CODE",
-    "ERROR_MESSAGE",
-    "FIREBASE_UID",
-    "ITEM_ID",
-    "ENTITY_TYPE",
-    "EVENT_TYPE",
-    "RUN_ID",
-    "EVENT_ID",
-    "CREATED_AT"
-  ],
-  "TOMEHUB_INGESTION_RUNS": [
-    "STARTED_AT",
-    "FINISHED_AT",
-    "PROCESSED_ITEMS",
-    "SUCCESS_COUNT",
-    "FAILED_COUNT",
-    "RUN_TYPE",
-    "STATUS",
-    "FIREBASE_UID",
-    "TOTAL_ITEMS",
-    "ERROR_SUMMARY",
-    "RUN_ID",
-    "QUARANTINE_COUNT",
-    "METADATA_JSON"
-  ],
-  "TOMEHUB_ITEM_INDEX_STATE": [
-    "ITEM_ID",
-    "LAST_CHECKED_AT",
-    "SOURCE_UPDATED_AT",
-    "EMBEDDED_CHUNKS",
-    "GRAPH_LINKED_CHUNKS",
-    "VECTOR_READY",
-    "FIREBASE_UID",
-    "UPDATED_AT",
-    "TOTAL_CHUNKS",
-    "GRAPH_READY",
-    "FULLY_READY",
-    "VECTOR_COVERAGE_RATIO",
-    "GRAPH_COVERAGE_RATIO",
-    "INDEX_FRESHNESS_STATE"
-  ],
-  "TOMEHUB_LIBRARY_ITEMS": [
-    "TOTAL_CHUNKS",
-    "CONTENT_LANGUAGE_MODE",
-    "CONTENT_LANGUAGE_RESOLVED",
-    "SOURCE_LANGUAGE_HINT",
-    "LANGUAGE_DECISION_REASON",
-    "LANGUAGE_DECISION_CONFIDENCE",
-    "PERSONAL_FOLDER_ID",
-    "FOLDER_PATH",
-    "IS_PLACEHOLDER",
-    "AUTHOR",
-    "PUBLISHER",
-    "TRANSLATOR",
-    "PUBLICATION_YEAR",
-    "ISBN",
-    "SOURCE_URL",
-    "PAGE_COUNT",
-    "COVER_URL",
-    "SUMMARY_TEXT",
-    "TAGS_JSON",
-    "CATEGORY_JSON",
-    "INVENTORY_STATUS",
-    "READING_STATUS",
-    "PERSONAL_NOTE_CATEGORY",
-    "SEARCH_VISIBILITY",
-    "IS_FAVORITE",
-    "ORIGIN_SYSTEM",
-    "ORIGIN_COLLECTION",
-    "ORIGIN_DOC_ID",
-    "ORIGIN_SUBDOC_ID",
-    "ITEM_ID",
-    "FIREBASE_UID",
-    "ITEM_TYPE",
-    "TITLE",
-    "ORIGIN_UPDATED_AT",
-    "SYNC_RUN_ID",
-    "IS_DELETED",
-    "DELETED_AT",
-    "DELETION_SOURCE",
-    "ROW_VERSION",
-    "CREATED_AT",
-    "UPDATED_AT"
-  ],
-  "TOMEHUB_ODL_SHADOW_STATUS": [
-    "FIREBASE_UID",
-    "ITEM_ID",
-    "PDF_CHECKSUM",
-    "ODL_VERSION",
-    "STATUS",
-    "CHUNK_COUNT",
-    "ERROR_TEXT",
-    "UPDATED_AT"
-  ],
-  "TOMEHUB_PERSONAL_NOTE_FOLDERS": [
-    "ID",
-    "FIREBASE_UID",
-    "CATEGORY",
-    "NAME",
-    "DISPLAY_ORDER",
-    "CREATED_AT",
-    "UPDATED_AT",
-    "IS_DELETED",
-    "DELETED_AT"
-  ],
-  "TOMEHUB_RELATIONS": [
-    "ID",
-    "SRC_ID",
-    "DST_ID",
-    "REL_TYPE",
-    "WEIGHT"
-  ],
-  "TOMEHUB_SEARCH_LOGS": [
-    "MODEL_NAME",
-    "ID",
-    "FIREBASE_UID",
-    "SESSION_ID",
-    "QUERY_TEXT",
-    "INTENT",
-    "RRF_WEIGHTS",
-    "TOP_RESULT_ID",
-    "TOP_RESULT_SCORE",
-    "EXECUTION_TIME_MS",
-    "TIMESTAMP",
-    "STRATEGY_DETAILS"
-  ]
+  "DBTOOLS$EXECUTION_HISTORY": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "HASH",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "CREATED_BY",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 255
+      },
+      {
+        "name": "CREATED_ON",
+        "type": "TIMESTAMP(6) WITH TIME ZONE",
+        "nullable": "Y",
+        "length": 13
+      },
+      {
+        "name": "UPDATED_BY",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 255
+      },
+      {
+        "name": "UPDATED_ON",
+        "type": "TIMESTAMP(6) WITH TIME ZONE",
+        "nullable": "Y",
+        "length": 13
+      },
+      {
+        "name": "STATEMENT",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "TIMES",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      }
+    ],
+    "row_count": 0
+  },
+  "DR$IDX_CHAT_TAGS_JSON$B": {
+    "columns": [
+      {
+        "name": "MIN_DOCID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "MAX_DOCID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "STATUS",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      }
+    ],
+    "row_count": 3
+  },
+  "DR$IDX_CHAT_TAGS_JSON$C": {
+    "columns": [
+      {
+        "name": "DML_SCN",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DML_ID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DML_OP",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DML_RID",
+        "type": "ROWID",
+        "nullable": "Y",
+        "length": 10
+      }
+    ],
+    "row_count": 0
+  },
+  "DR$IDX_CHAT_TAGS_JSON$G": {
+    "columns": [
+      {
+        "name": "TOKEN_TEXT",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "TOKEN_TYPE",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TOKEN_FIRST",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TOKEN_LAST",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TOKEN_COUNT",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TOKEN_INFO",
+        "type": "BLOB",
+        "nullable": "Y",
+        "length": 4000
+      }
+    ],
+    "row_count": 1105
+  },
+  "DR$IDX_CHAT_TAGS_JSON$I": {
+    "columns": [
+      {
+        "name": "TOKEN_TEXT",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "TOKEN_TYPE",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TOKEN_FIRST",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TOKEN_LAST",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TOKEN_COUNT",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TOKEN_INFO",
+        "type": "BLOB",
+        "nullable": "Y",
+        "length": 4000
+      }
+    ],
+    "row_count": 8
+  },
+  "DR$IDX_CHAT_TAGS_JSON$K": {
+    "columns": [
+      {
+        "name": "DOCID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "TEXTKEY",
+        "type": "ROWID",
+        "nullable": "Y",
+        "length": 10
+      }
+    ],
+    "row_count": 171
+  },
+  "DR$IDX_CHAT_TAGS_JSON$N": {
+    "columns": [
+      {
+        "name": "NLT_DOCID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "NLT_MARK",
+        "type": "CHAR",
+        "nullable": "N",
+        "length": 1
+      }
+    ],
+    "row_count": 87
+  },
+  "DR$IDX_CHAT_TAGS_JSON$Q": {
+    "columns": [
+      {
+        "name": "DML_ID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DML_OP",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DML_RID",
+        "type": "ROWID",
+        "nullable": "Y",
+        "length": 10
+      }
+    ],
+    "row_count": 0
+  },
+  "DR$IDX_CHAT_TAGS_JSON$SN": {
+    "columns": [
+      {
+        "name": "SEC_ID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "VAL_MIN",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "VAL_MAX",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DOCID_FIRST",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DOCID_LAST",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DOCID_COUNT",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "VAL_INFO",
+        "type": "BLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "FLAG",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "PATH_HASH",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      }
+    ],
+    "row_count": 0
+  },
+  "DR$IDX_CHAT_TAGS_JSON$ST": {
+    "columns": [
+      {
+        "name": "SEC_ID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "VAL_MIN",
+        "type": "TIMESTAMP(9)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "VAL_MAX",
+        "type": "TIMESTAMP(9)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "DOCID_FIRST",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DOCID_LAST",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DOCID_COUNT",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "VAL_INFO",
+        "type": "BLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "FLAG",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "PATH_HASH",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      }
+    ],
+    "row_count": 0
+  },
+  "DR$IDX_CHAT_TAGS_JSON$U": {
+    "columns": [
+      {
+        "name": "RID",
+        "type": "ROWID",
+        "nullable": "Y",
+        "length": 10
+      }
+    ],
+    "row_count": 0
+  },
+  "DR$IDX_FILE_REPORTS_KEY_TOPICS_JSON$B": {
+    "columns": [
+      {
+        "name": "MIN_DOCID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "MAX_DOCID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "STATUS",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      }
+    ],
+    "row_count": 1
+  },
+  "DR$IDX_FILE_REPORTS_KEY_TOPICS_JSON$C": {
+    "columns": [
+      {
+        "name": "DML_SCN",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DML_ID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DML_OP",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DML_RID",
+        "type": "ROWID",
+        "nullable": "Y",
+        "length": 10
+      }
+    ],
+    "row_count": 0
+  },
+  "DR$IDX_FILE_REPORTS_KEY_TOPICS_JSON$G": {
+    "columns": [
+      {
+        "name": "TOKEN_TEXT",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "TOKEN_TYPE",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TOKEN_FIRST",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TOKEN_LAST",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TOKEN_COUNT",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TOKEN_INFO",
+        "type": "BLOB",
+        "nullable": "Y",
+        "length": 4000
+      }
+    ],
+    "row_count": 96
+  },
+  "DR$IDX_FILE_REPORTS_KEY_TOPICS_JSON$I": {
+    "columns": [
+      {
+        "name": "TOKEN_TEXT",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "TOKEN_TYPE",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TOKEN_FIRST",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TOKEN_LAST",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TOKEN_COUNT",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TOKEN_INFO",
+        "type": "BLOB",
+        "nullable": "Y",
+        "length": 4000
+      }
+    ],
+    "row_count": 61
+  },
+  "DR$IDX_FILE_REPORTS_KEY_TOPICS_JSON$K": {
+    "columns": [
+      {
+        "name": "DOCID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "TEXTKEY",
+        "type": "ROWID",
+        "nullable": "Y",
+        "length": 10
+      }
+    ],
+    "row_count": 2
+  },
+  "DR$IDX_FILE_REPORTS_KEY_TOPICS_JSON$N": {
+    "columns": [
+      {
+        "name": "NLT_DOCID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "NLT_MARK",
+        "type": "CHAR",
+        "nullable": "N",
+        "length": 1
+      }
+    ],
+    "row_count": 2
+  },
+  "DR$IDX_FILE_REPORTS_KEY_TOPICS_JSON$Q": {
+    "columns": [
+      {
+        "name": "DML_ID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DML_OP",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DML_RID",
+        "type": "ROWID",
+        "nullable": "Y",
+        "length": 10
+      }
+    ],
+    "row_count": 0
+  },
+  "DR$IDX_FILE_REPORTS_KEY_TOPICS_JSON$SN": {
+    "columns": [
+      {
+        "name": "SEC_ID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "VAL_MIN",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "VAL_MAX",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DOCID_FIRST",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DOCID_LAST",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DOCID_COUNT",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "VAL_INFO",
+        "type": "BLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "FLAG",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "PATH_HASH",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      }
+    ],
+    "row_count": 0
+  },
+  "DR$IDX_FILE_REPORTS_KEY_TOPICS_JSON$ST": {
+    "columns": [
+      {
+        "name": "SEC_ID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "VAL_MIN",
+        "type": "TIMESTAMP(9)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "VAL_MAX",
+        "type": "TIMESTAMP(9)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "DOCID_FIRST",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DOCID_LAST",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DOCID_COUNT",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "VAL_INFO",
+        "type": "BLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "FLAG",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "PATH_HASH",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      }
+    ],
+    "row_count": 0
+  },
+  "DR$IDX_FILE_REPORTS_KEY_TOPICS_JSON$U": {
+    "columns": [
+      {
+        "name": "RID",
+        "type": "ROWID",
+        "nullable": "Y",
+        "length": 10
+      }
+    ],
+    "row_count": 0
+  },
+  "DR$IDX_NORM_CONTENT$B": {
+    "columns": [
+      {
+        "name": "MIN_DOCID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "MAX_DOCID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "STATUS",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      }
+    ],
+    "row_count": 21
+  },
+  "DR$IDX_NORM_CONTENT$C": {
+    "columns": [
+      {
+        "name": "DML_SCN",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DML_ID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DML_OP",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DML_RID",
+        "type": "ROWID",
+        "nullable": "Y",
+        "length": 10
+      }
+    ],
+    "row_count": 0
+  },
+  "DR$IDX_NORM_CONTENT$I": {
+    "columns": [
+      {
+        "name": "TOKEN_TEXT",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "TOKEN_TYPE",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TOKEN_FIRST",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TOKEN_LAST",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TOKEN_COUNT",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TOKEN_INFO",
+        "type": "BLOB",
+        "nullable": "Y",
+        "length": 4000
+      }
+    ],
+    "row_count": 428677
+  },
+  "DR$IDX_NORM_CONTENT$K": {
+    "columns": [
+      {
+        "name": "DOCID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "TEXTKEY",
+        "type": "ROWID",
+        "nullable": "Y",
+        "length": 10
+      }
+    ],
+    "row_count": 4079
+  },
+  "DR$IDX_NORM_CONTENT$N": {
+    "columns": [
+      {
+        "name": "NLT_DOCID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "NLT_MARK",
+        "type": "CHAR",
+        "nullable": "N",
+        "length": 1
+      }
+    ],
+    "row_count": 8792
+  },
+  "DR$IDX_NORM_CONTENT$Q": {
+    "columns": [
+      {
+        "name": "DML_ID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DML_OP",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DML_RID",
+        "type": "ROWID",
+        "nullable": "Y",
+        "length": 10
+      }
+    ],
+    "row_count": 0
+  },
+  "DR$IDX_NORM_CONTENT$U": {
+    "columns": [
+      {
+        "name": "RID",
+        "type": "ROWID",
+        "nullable": "N",
+        "length": 10
+      }
+    ],
+    "row_count": 0
+  },
+  "DR$IDX_TH_CONTENT_CTX_V2$B": {
+    "columns": [
+      {
+        "name": "MIN_DOCID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "MAX_DOCID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "STATUS",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      }
+    ],
+    "row_count": 5
+  },
+  "DR$IDX_TH_CONTENT_CTX_V2$C": {
+    "columns": [
+      {
+        "name": "DML_SCN",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DML_ID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DML_OP",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DML_RID",
+        "type": "ROWID",
+        "nullable": "Y",
+        "length": 10
+      }
+    ],
+    "row_count": 0
+  },
+  "DR$IDX_TH_CONTENT_CTX_V2$I": {
+    "columns": [
+      {
+        "name": "TOKEN_TEXT",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "TOKEN_TYPE",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TOKEN_FIRST",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TOKEN_LAST",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TOKEN_COUNT",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TOKEN_INFO",
+        "type": "BLOB",
+        "nullable": "Y",
+        "length": 4000
+      }
+    ],
+    "row_count": 922088
+  },
+  "DR$IDX_TH_CONTENT_CTX_V2$K": {
+    "columns": [
+      {
+        "name": "DOCID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "TEXTKEY",
+        "type": "ROWID",
+        "nullable": "Y",
+        "length": 10
+      }
+    ],
+    "row_count": 5863
+  },
+  "DR$IDX_TH_CONTENT_CTX_V2$N": {
+    "columns": [
+      {
+        "name": "NLT_DOCID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "NLT_MARK",
+        "type": "CHAR",
+        "nullable": "N",
+        "length": 1
+      }
+    ],
+    "row_count": 22993
+  },
+  "DR$IDX_TH_CONTENT_CTX_V2$Q": {
+    "columns": [
+      {
+        "name": "DML_ID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DML_OP",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DML_RID",
+        "type": "ROWID",
+        "nullable": "Y",
+        "length": 10
+      }
+    ],
+    "row_count": 0
+  },
+  "DR$IDX_TH_CONTENT_CTX_V2$U": {
+    "columns": [
+      {
+        "name": "RID",
+        "type": "ROWID",
+        "nullable": "N",
+        "length": 10
+      }
+    ],
+    "row_count": 0
+  },
+  "TH_BKP_CTAGS_20260228": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "CONTENT_ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TAG",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "TAG_NORM",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "CREATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      }
+    ],
+    "row_count": 581
+  },
+  "TH_BKP_FSEEN_20260228": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "FIREBASE_UID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "SESSION_ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "SEEN_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "CHUNK_ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "REACTION_TYPE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 20
+      },
+      {
+        "name": "STAY_DURATION_MS",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DISCOVERED_VIA",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 50
+      }
+    ],
+    "row_count": 0
+  },
+  "TOMEHUB_BOOKS_ARCHIVED": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "TITLE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 1000
+      },
+      {
+        "name": "AUTHOR",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 500
+      },
+      {
+        "name": "FIREBASE_UID",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 255
+      },
+      {
+        "name": "CREATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "TOTAL_CHUNKS",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "LAST_UPDATED",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      }
+    ],
+    "row_count": 223
+  },
+  "TOMEHUB_BOOK_EPISTEMIC_METRICS": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "BOOK_ID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "FIREBASE_UID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "LEVEL_A",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "LEVEL_B",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "LEVEL_C",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TOTAL_CHUNKS",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "UPDATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      }
+    ],
+    "row_count": 840
+  },
+  "TOMEHUB_CHANGE_EVENTS": {
+    "columns": [
+      {
+        "name": "EVENT_ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "FIREBASE_UID",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 255
+      },
+      {
+        "name": "ITEM_ID",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 255
+      },
+      {
+        "name": "ENTITY_TYPE",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 50
+      },
+      {
+        "name": "EVENT_TYPE",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 100
+      },
+      {
+        "name": "STATUS",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 30
+      },
+      {
+        "name": "PAYLOAD_JSON",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "RETRY_COUNT",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "LAST_ERROR_CODE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 100
+      },
+      {
+        "name": "LAST_ERROR_MESSAGE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 1000
+      },
+      {
+        "name": "SOURCE_SERVICE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 100
+      },
+      {
+        "name": "CREATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "PUBLISHED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      }
+    ],
+    "row_count": 2674
+  },
+  "TOMEHUB_CHAT_MESSAGES": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "SESSION_ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "ROLE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 20
+      },
+      {
+        "name": "CONTENT",
+        "type": "CLOB",
+        "nullable": "N",
+        "length": 4000
+      },
+      {
+        "name": "CITATIONS",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "CREATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      }
+    ],
+    "row_count": 394
+  },
+  "TOMEHUB_CHAT_SESSIONS": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "FIREBASE_UID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "TITLE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 255
+      },
+      {
+        "name": "RUNNING_SUMMARY",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "CREATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "UPDATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "TITLE_LOCKED",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "TAGS",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "CONVERSATION_STATE_JSON",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      }
+    ],
+    "row_count": 171
+  },
+  "TOMEHUB_CONCEPTS": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "NAME",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "CONCEPT_TYPE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 50
+      },
+      {
+        "name": "DESCRIPTION",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "DESCRIPTION_EMBEDDING",
+        "type": "VECTOR",
+        "nullable": "Y",
+        "length": 8200
+      }
+    ],
+    "row_count": 777
+  },
+  "TOMEHUB_CONCEPTS_EMB_BAK_PRE_GEM2": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "DESCRIPTION_EMBEDDING",
+        "type": "VECTOR",
+        "nullable": "Y",
+        "length": 8200
+      },
+      {
+        "name": "BACKED_UP_AT",
+        "type": "TIMESTAMP(6) WITH TIME ZONE",
+        "nullable": "Y",
+        "length": 13
+      }
+    ],
+    "row_count": 777
+  },
+  "TOMEHUB_CONCEPT_ALIASES": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "CONCEPT_ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "ALIAS",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "CREATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      }
+    ],
+    "row_count": 77
+  },
+  "TOMEHUB_CONCEPT_CHUNKS": {
+    "columns": [
+      {
+        "name": "CONCEPT_ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "CONTENT_ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "STRENGTH",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "JUSTIFICATION",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      }
+    ],
+    "row_count": 691
+  },
+  "TOMEHUB_CONTENT_ARCHIVED": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "FIREBASE_UID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 128
+      },
+      {
+        "name": "SOURCE_TYPE",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 20
+      },
+      {
+        "name": "TITLE",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 500
+      },
+      {
+        "name": "CONTENT_CHUNK",
+        "type": "CLOB",
+        "nullable": "N",
+        "length": 4000
+      },
+      {
+        "name": "CHUNK_TYPE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 50
+      },
+      {
+        "name": "PAGE_NUMBER",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "CHUNK_INDEX",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "VEC_EMBEDDING",
+        "type": "VECTOR",
+        "nullable": "Y",
+        "length": 8200
+      },
+      {
+        "name": "CREATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "UPDATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "BOOK_ID",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 255
+      },
+      {
+        "name": "NORMALIZED_CONTENT",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "IS_NOTE",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "TEXT_DEACCENTED",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "LEMMA_TOKENS",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "COMMENT",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "TAGS",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "SUMMARY",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "NORMALIZED_STATUS",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 20
+      },
+      {
+        "name": "CATEGORIES",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 500
+      },
+      {
+        "name": "TOKEN_FREQ",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "INGESTION_TYPE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 50
+      },
+      {
+        "name": "CONTENT_TYPE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 50
+      },
+      {
+        "name": "CONTENT_HASH",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 64
+      },
+      {
+        "name": "SEARCH_VISIBILITY",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 50
+      },
+      {
+        "name": "ORIGIN_SYSTEM",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 50
+      },
+      {
+        "name": "ORIGIN_COLLECTION",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 100
+      },
+      {
+        "name": "ORIGIN_DOC_ID",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 255
+      },
+      {
+        "name": "ORIGIN_SUBDOC_ID",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 255
+      },
+      {
+        "name": "ORIGIN_UPDATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "SYNC_RUN_ID",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 100
+      },
+      {
+        "name": "IS_DELETED",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DELETED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "DELETION_SOURCE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 100
+      },
+      {
+        "name": "ROW_VERSION",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      }
+    ],
+    "row_count": 4079
+  },
+  "TOMEHUB_CONTENT_ODL_SHADOW": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "FIREBASE_UID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 512
+      },
+      {
+        "name": "ITEM_ID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 512
+      },
+      {
+        "name": "TITLE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "CONTENT_CHUNK",
+        "type": "CLOB",
+        "nullable": "N",
+        "length": 4000
+      },
+      {
+        "name": "PAGE_NUMBER",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "CHUNK_INDEX",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "NORMALIZED_CONTENT",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "LEMMA_TOKENS",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "TOKEN_FREQ",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "CONTENT_HASH",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 256
+      },
+      {
+        "name": "ODL_VERSION",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 512
+      },
+      {
+        "name": "POSTPROCESS_VERSION",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 256
+      },
+      {
+        "name": "QUALITY_METRICS_JSON",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "CREATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      }
+    ],
+    "row_count": 0
+  },
+  "TOMEHUB_CONTENT_TAGS": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "CONTENT_ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "TAG",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "TAG_NORM",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "CREATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      }
+    ],
+    "row_count": 4244
+  },
+  "TOMEHUB_CONTENT_V2": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "FIREBASE_UID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "ITEM_ID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "CONTENT_TYPE",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 50
+      },
+      {
+        "name": "TITLE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 1000
+      },
+      {
+        "name": "CONTENT_CHUNK",
+        "type": "CLOB",
+        "nullable": "N",
+        "length": 4000
+      },
+      {
+        "name": "NORMALIZED_CONTENT",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "PAGE_NUMBER",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "PARAGRAPH_NUMBER",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "CHAPTER_NAME",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 500
+      },
+      {
+        "name": "COMMENT_TEXT",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "TAGS_JSON",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "NOTE_DATE",
+        "type": "DATE",
+        "nullable": "Y",
+        "length": 7
+      },
+      {
+        "name": "AI_ELIGIBLE",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "RAG_WEIGHT",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "CHUNK_INDEX",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "VEC_EMBEDDING",
+        "type": "VECTOR",
+        "nullable": "Y",
+        "length": 8200
+      },
+      {
+        "name": "CREATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "N",
+        "length": 11
+      },
+      {
+        "name": "UPDATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "PARTITION_MONTH",
+        "type": "DATE",
+        "nullable": "Y",
+        "length": 7
+      },
+      {
+        "name": "LEMMA_TOKENS",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "TOKEN_FREQ",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      }
+    ],
+    "row_count": 5863
+  },
+  "TOMEHUB_CONTENT_V2_EMB_BAK_PRE_GEM2": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "VEC_EMBEDDING",
+        "type": "VECTOR",
+        "nullable": "Y",
+        "length": 8200
+      },
+      {
+        "name": "BACKED_UP_AT",
+        "type": "TIMESTAMP(6) WITH TIME ZONE",
+        "nullable": "Y",
+        "length": 13
+      }
+    ],
+    "row_count": 5597
+  },
+  "TOMEHUB_EXTERNAL_API_KEYS": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "OWNER_FIREBASE_UID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 512
+      },
+      {
+        "name": "KEY_PREFIX",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 80
+      },
+      {
+        "name": "KEY_HASH",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 256
+      },
+      {
+        "name": "LABEL",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 1020
+      },
+      {
+        "name": "SCOPES_JSON",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "STATUS",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 80
+      },
+      {
+        "name": "EXPIRES_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "LAST_USED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "LAST_IP",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 512
+      },
+      {
+        "name": "CREATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "N",
+        "length": 11
+      },
+      {
+        "name": "REVOKED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      }
+    ],
+    "row_count": 2
+  },
+  "TOMEHUB_EXTERNAL_BOOK_META": {
+    "columns": [
+      {
+        "name": "BOOK_ID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 256
+      },
+      {
+        "name": "FIREBASE_UID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 128
+      },
+      {
+        "name": "ACADEMIC_SCOPE",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "WIKIDATA_QID",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 64
+      },
+      {
+        "name": "OPENALEX_ID",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 256
+      },
+      {
+        "name": "DOI",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 256
+      },
+      {
+        "name": "EXTERNAL_JSON",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "LAST_SYNC_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "SYNC_STATUS",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 32
+      },
+      {
+        "name": "WIKIDATA_SYNC_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "OPENALEX_SYNC_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "WIKIDATA_STATUS",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 32
+      },
+      {
+        "name": "OPENALEX_STATUS",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 32
+      },
+      {
+        "name": "UPDATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      }
+    ],
+    "row_count": 1006
+  },
+  "TOMEHUB_EXTERNAL_EDGES": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "SRC_ENTITY_ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "DST_ENTITY_ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "REL_TYPE",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 64
+      },
+      {
+        "name": "WEIGHT",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "PROVIDER",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 32
+      },
+      {
+        "name": "BOOK_ID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 256
+      },
+      {
+        "name": "FIREBASE_UID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 128
+      },
+      {
+        "name": "UPDATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      }
+    ],
+    "row_count": 1467
+  },
+  "TOMEHUB_EXTERNAL_ENTITIES": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "PROVIDER",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 32
+      },
+      {
+        "name": "EXTERNAL_ID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 256
+      },
+      {
+        "name": "ENTITY_TYPE",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 64
+      },
+      {
+        "name": "LABEL",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 512
+      },
+      {
+        "name": "PAYLOAD_JSON",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "UPDATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      }
+    ],
+    "row_count": 1176
+  },
+  "TOMEHUB_FEEDBACK": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "FIREBASE_UID",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 255
+      },
+      {
+        "name": "QUERY_TEXT",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "GENERATED_ANSWER",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "RATING",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "FEEDBACK_TEXT",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "CONTEXT_BOOK_ID",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 255
+      },
+      {
+        "name": "CREATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "SEARCH_LOG_ID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      }
+    ],
+    "row_count": 15
+  },
+  "TOMEHUB_FILE_REPORTS": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "BOOK_ID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "FIREBASE_UID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "SUMMARY_TEXT",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "KEY_TOPICS",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "ENTITIES",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "CREATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "UPDATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      }
+    ],
+    "row_count": 2
+  },
+  "TOMEHUB_FLOW_SEEN": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "FIREBASE_UID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "SESSION_ID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 128
+      },
+      {
+        "name": "SEEN_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "CHUNK_ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "REACTION_TYPE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 20
+      },
+      {
+        "name": "STAY_DURATION_MS",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DISCOVERED_VIA",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 50
+      }
+    ],
+    "row_count": 14391
+  },
+  "TOMEHUB_INGESTED_FILES": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "BOOK_ID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "FIREBASE_UID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "SOURCE_FILE_NAME",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 512
+      },
+      {
+        "name": "STATUS",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 20
+      },
+      {
+        "name": "CHUNK_COUNT",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "EMBEDDING_COUNT",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "CREATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "UPDATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "CLASSIFICATION_ROUTE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 40
+      },
+      {
+        "name": "PARSE_ENGINE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 40
+      },
+      {
+        "name": "FALLBACK_ENGINE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 40
+      },
+      {
+        "name": "CLASSIFIER_METRICS_JSON",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "QUALITY_METRICS_JSON",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "ROUTING_METRICS_JSON",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "PARSE_TIME_MS",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "PAGES",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "CHARS_EXTRACTED",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "GARBLED_RATIO",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "AVG_CHUNK_TOKENS",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "FALLBACK_TRIGGERED",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "SHARD_COUNT",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "SHARD_FAILED_COUNT",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      }
+    ],
+    "row_count": 15
+  },
+  "TOMEHUB_INGESTION_EVENTS": {
+    "columns": [
+      {
+        "name": "EVENT_ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "RUN_ID",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 100
+      },
+      {
+        "name": "FIREBASE_UID",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 255
+      },
+      {
+        "name": "ITEM_ID",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 255
+      },
+      {
+        "name": "ENTITY_TYPE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 50
+      },
+      {
+        "name": "EVENT_TYPE",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 100
+      },
+      {
+        "name": "STATUS",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 30
+      },
+      {
+        "name": "DETAILS_JSON",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "ERROR_CODE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 100
+      },
+      {
+        "name": "ERROR_MESSAGE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 1000
+      },
+      {
+        "name": "CREATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      }
+    ],
+    "row_count": 0
+  },
+  "TOMEHUB_INGESTION_RUNS": {
+    "columns": [
+      {
+        "name": "RUN_ID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 100
+      },
+      {
+        "name": "RUN_TYPE",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 50
+      },
+      {
+        "name": "STATUS",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 30
+      },
+      {
+        "name": "FIREBASE_UID",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 255
+      },
+      {
+        "name": "STARTED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "FINISHED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "TOTAL_ITEMS",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "PROCESSED_ITEMS",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "SUCCESS_COUNT",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "FAILED_COUNT",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "QUARANTINE_COUNT",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "METADATA_JSON",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "ERROR_SUMMARY",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      }
+    ],
+    "row_count": 3
+  },
+  "TOMEHUB_ITEM_INDEX_STATE": {
+    "columns": [
+      {
+        "name": "FIREBASE_UID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "ITEM_ID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "INDEX_FRESHNESS_STATE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 50
+      },
+      {
+        "name": "TOTAL_CHUNKS",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "EMBEDDED_CHUNKS",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "GRAPH_LINKED_CHUNKS",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "VECTOR_READY",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "GRAPH_READY",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "FULLY_READY",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "VECTOR_COVERAGE_RATIO",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "GRAPH_COVERAGE_RATIO",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "LAST_CHECKED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "SOURCE_UPDATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "UPDATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      }
+    ],
+    "row_count": 60
+  },
+  "TOMEHUB_LIBRARY_ITEMS": {
+    "columns": [
+      {
+        "name": "ITEM_ID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "FIREBASE_UID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "ITEM_TYPE",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 50
+      },
+      {
+        "name": "TITLE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 1000
+      },
+      {
+        "name": "AUTHOR",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 500
+      },
+      {
+        "name": "PUBLISHER",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 500
+      },
+      {
+        "name": "TRANSLATOR",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 500
+      },
+      {
+        "name": "PUBLICATION_YEAR",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "ISBN",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 64
+      },
+      {
+        "name": "SOURCE_URL",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 2000
+      },
+      {
+        "name": "PAGE_COUNT",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "COVER_URL",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 2000
+      },
+      {
+        "name": "SUMMARY_TEXT",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "TAGS_JSON",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "CATEGORY_JSON",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "INVENTORY_STATUS",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 100
+      },
+      {
+        "name": "READING_STATUS",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 100
+      },
+      {
+        "name": "PERSONAL_NOTE_CATEGORY",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 100
+      },
+      {
+        "name": "SEARCH_VISIBILITY",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 50
+      },
+      {
+        "name": "IS_FAVORITE",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "ORIGIN_SYSTEM",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 50
+      },
+      {
+        "name": "ORIGIN_COLLECTION",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 100
+      },
+      {
+        "name": "ORIGIN_DOC_ID",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 255
+      },
+      {
+        "name": "ORIGIN_SUBDOC_ID",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 255
+      },
+      {
+        "name": "ORIGIN_UPDATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "SYNC_RUN_ID",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 100
+      },
+      {
+        "name": "IS_DELETED",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "DELETED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "DELETION_SOURCE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 100
+      },
+      {
+        "name": "ROW_VERSION",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "CREATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "UPDATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "TOTAL_CHUNKS",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "CONTENT_LANGUAGE_MODE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 50
+      },
+      {
+        "name": "CONTENT_LANGUAGE_RESOLVED",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 50
+      },
+      {
+        "name": "SOURCE_LANGUAGE_HINT",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 50
+      },
+      {
+        "name": "LANGUAGE_DECISION_REASON",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 255
+      },
+      {
+        "name": "LANGUAGE_DECISION_CONFIDENCE",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "PERSONAL_FOLDER_ID",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 255
+      },
+      {
+        "name": "FOLDER_PATH",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "IS_PLACEHOLDER",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "CAST_TOP_JSON",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "RATING",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "ORIGINAL_TITLE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 1024
+      }
+    ],
+    "row_count": 1026
+  },
+  "TOMEHUB_ODL_SHADOW_STATUS": {
+    "columns": [
+      {
+        "name": "FIREBASE_UID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 512
+      },
+      {
+        "name": "ITEM_ID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 512
+      },
+      {
+        "name": "PDF_CHECKSUM",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 256
+      },
+      {
+        "name": "ODL_VERSION",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 512
+      },
+      {
+        "name": "STATUS",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 96
+      },
+      {
+        "name": "CHUNK_COUNT",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "ERROR_TEXT",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "UPDATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      }
+    ],
+    "row_count": 1
+  },
+  "TOMEHUB_PERSONAL_NOTE_FOLDERS": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "FIREBASE_UID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "CATEGORY",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 50
+      },
+      {
+        "name": "NAME",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "DISPLAY_ORDER",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "CREATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "N",
+        "length": 11
+      },
+      {
+        "name": "UPDATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "N",
+        "length": 11
+      },
+      {
+        "name": "IS_DELETED",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "DELETED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      }
+    ],
+    "row_count": 24
+  },
+  "TOMEHUB_RELATIONS": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "SRC_ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "DST_ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "REL_TYPE",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 100
+      },
+      {
+        "name": "WEIGHT",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      }
+    ],
+    "row_count": 555
+  },
+  "TOMEHUB_SEARCH_LOGS": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "FIREBASE_UID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 100
+      },
+      {
+        "name": "SESSION_ID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "QUERY_TEXT",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "INTENT",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 50
+      },
+      {
+        "name": "RRF_WEIGHTS",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 100
+      },
+      {
+        "name": "TOP_RESULT_ID",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "TOP_RESULT_SCORE",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "EXECUTION_TIME_MS",
+        "type": "NUMBER",
+        "nullable": "Y",
+        "length": 22
+      },
+      {
+        "name": "TIMESTAMP",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "STRATEGY_DETAILS",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "MODEL_NAME",
+        "type": "VARCHAR2",
+        "nullable": "Y",
+        "length": 100
+      }
+    ],
+    "row_count": 1617
+  },
+  "TOMEHUB_TRANSLATIONS": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "CONTENT_ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "FIREBASE_UID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "LANG_EN",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "LANG_NL",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "ETYMOLOGY_JSON",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "CREATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      }
+    ],
+    "row_count": 299
+  },
+  "TOMEHUB_USER_MEMORY_PROFILES": {
+    "columns": [
+      {
+        "name": "ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "FIREBASE_UID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 255
+      },
+      {
+        "name": "PROFILE_SUMMARY",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "ACTIVE_THEMES",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "RECURRING_SOURCES",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "OPEN_QUESTIONS",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "EVIDENCE_COUNTS",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "LAST_REFRESHED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "CREATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      },
+      {
+        "name": "UPDATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      }
+    ],
+    "row_count": 1
+  },
+  "TOMEHUB_USER_PREFERENCES": {
+    "columns": [
+      {
+        "name": "USER_ID",
+        "type": "VARCHAR2",
+        "nullable": "N",
+        "length": 100
+      },
+      {
+        "name": "PREFERENCES_JSON",
+        "type": "CLOB",
+        "nullable": "Y",
+        "length": 4000
+      },
+      {
+        "name": "UPDATED_AT",
+        "type": "TIMESTAMP(6)",
+        "nullable": "Y",
+        "length": 11
+      }
+    ],
+    "row_count": 1
+  },
+  "VECTOR$IDX_CNT_VEC_V2$139023_139171_0$IVF_FLAT_CENTROIDS": {
+    "columns": [
+      {
+        "name": "CENTROID_ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "CENTROID_VECTOR",
+        "type": "VECTOR",
+        "nullable": "Y",
+        "length": 8200
+      }
+    ],
+    "row_count": 112
+  },
+  "VECTOR$IDX_CNT_VEC_V2$139023_139171_0$IVF_FLAT_CENTROID_PARTITIONS": {
+    "columns": [
+      {
+        "name": "BASE_TABLE_ROWID",
+        "type": "ROWID",
+        "nullable": "N",
+        "length": 10
+      },
+      {
+        "name": "CENTROID_ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "DATA_VECTOR",
+        "type": "VECTOR",
+        "nullable": "Y",
+        "length": 8200
+      }
+    ],
+    "row_count": 5682
+  },
+  "VECTOR$IDX_CONCEPTS_DESC_VEC$128702_134263_0$IVF_FLAT_CENTROIDS": {
+    "columns": [
+      {
+        "name": "CENTROID_ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "CENTROID_VECTOR",
+        "type": "VECTOR",
+        "nullable": "Y",
+        "length": 8200
+      }
+    ],
+    "row_count": 1
+  },
+  "VECTOR$IDX_CONCEPTS_DESC_VEC$128702_134263_0$IVF_FLAT_CENTROID_PARTITIONS": {
+    "columns": [
+      {
+        "name": "BASE_TABLE_ROWID",
+        "type": "ROWID",
+        "nullable": "N",
+        "length": 10
+      },
+      {
+        "name": "CENTROID_ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "DATA_VECTOR",
+        "type": "VECTOR",
+        "nullable": "Y",
+        "length": 8200
+      }
+    ],
+    "row_count": 777
+  },
+  "VECTOR$IDX_TOMEHUB_VEC_EMBEDDING$126913_126923_0$IVF_FLAT_CENTROIDS": {
+    "columns": [
+      {
+        "name": "CENTROID_ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "CENTROID_VECTOR",
+        "type": "VECTOR",
+        "nullable": "Y",
+        "length": 8200
+      }
+    ],
+    "row_count": 1
+  },
+  "VECTOR$IDX_TOMEHUB_VEC_EMBEDDING$126913_126923_0$IVF_FLAT_CENTROID_PARTITIONS": {
+    "columns": [
+      {
+        "name": "BASE_TABLE_ROWID",
+        "type": "ROWID",
+        "nullable": "N",
+        "length": 10
+      },
+      {
+        "name": "CENTROID_ID",
+        "type": "NUMBER",
+        "nullable": "N",
+        "length": 22
+      },
+      {
+        "name": "DATA_VECTOR",
+        "type": "VECTOR",
+        "nullable": "Y",
+        "length": 8200
+      }
+    ],
+    "row_count": 4079
+  }
 }

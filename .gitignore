@@ -96,3 +96,21 @@ diff_app.txt
 tmp/
 postman/
 .postman/
+
+# --- Tomehub Temporary Exclusion ---
+*.png
+*.jpg
+*.jpeg
+tmp_*.py
+apps/backend/*_out.txt
+apps/backend/pip_out.txt
+server_info.json
+scripts/test_*.py
+scripts/inspect_*.py
+scripts/*_fixed.py
+scripts/map_all_columns.py
+scripts/patient_backfill.py
+scripts/debug_*.py
+# scripts/check_*.py (Not strictly core, but maintenance. I'll exclude for now to keep history clean)
+scripts/check_*.py
+*.local

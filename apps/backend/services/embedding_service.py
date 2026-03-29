@@ -111,7 +111,7 @@ def get_query_embedding(text: str) -> Optional[array.array]:
 
 def batch_get_embeddings(texts: List[str], task_type: str = "retrieval_document") -> List[Optional[array.array]]:
     """
-    Generate embeddings for multiple texts with circuit breaker + retry.
+    Generate embeddings for multiple texts with circuit breaker + retry + internal chunking.
     """
     if not texts:
         return []
@@ -120,28 +120,34 @@ def batch_get_embeddings(texts: List[str], task_type: str = "retrieval_document"
         logger.error("GEMINI_API_KEY not configured")
         return [None] * len(texts)
 
-    try:
-        logger.info("Generating batch embeddings for %s texts (type=%s)...", len(texts), task_type)
-        vectors = CIRCUIT_BREAKER.call(
-            retry_with_backoff,
-            _call_embedding_api,
-            RETRY_CONFIG,
-            texts,
-            task_type=task_type,
-        )
-        if not vectors:
-            logger.error("Batch embedding returned no vectors")
-            return [None] * len(texts)
-        embeddings = [array.array("f", v) for v in vectors]
-        logger.info("Batch embedding generated %s embeddings", len(embeddings))
-        return embeddings
-    except CircuitBreakerOpenException as exc:
-        logger.error("Batch embedding circuit breaker OPEN: %s", exc)
-        return [None] * len(texts)
-    except Exception as exc:
-        logger.error("Batch embedding failed: %s: %s", type(exc).__name__, exc)
-        logger.info("Falling back to sequential embedding generation")
-        return [get_embedding(t) for t in texts]
+    # Internal batching to stay within API limits (typically 100, we use 50 for safety)
+    INTERNAL_BATCH_SIZE = 50
+    all_embeddings: List[Optional[array.array]] = []
+    
+    for i in range(0, len(texts), INTERNAL_BATCH_SIZE):
+        batch = texts[i : i + INTERNAL_BATCH_SIZE]
+        try:
+            logger.info("Generating batch embeddings for %s texts (offset=%s, type=%s)...", len(batch), i, task_type)
+            vectors = CIRCUIT_BREAKER.call(
+                retry_with_backoff,
+                _call_embedding_api,
+                RETRY_CONFIG,
+                batch,
+                task_type=task_type,
+            )
+            if not vectors:
+                logger.error("Batch embedding returned no vectors for offset %s", i)
+                all_embeddings.extend([None] * len(batch))
+            else:
+                all_embeddings.extend([array.array("f", v) for v in vectors])
+        except Exception as exc:
+            logger.error("Batch embedding segment failed at offset %s: %s", i, exc)
+            # Fallback to sequential for just THIS failed batch
+            logger.info("Falling back to sequential for batch segment")
+            for t in batch:
+                all_embeddings.append(get_embedding(t))
+                
+    return all_embeddings
 
 
 def get_circuit_breaker_status() -> dict:

@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
     Book,
     BookOpen,
@@ -70,15 +70,28 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
     const [showLevelC, setShowLevelC] = useState(false);
     const normalizeTextKey = (value: string) => value.trim().toLocaleLowerCase('tr-TR');
     const normalizeAddedAt = (value: unknown): number => {
+        if (value === null || value === undefined) return Date.now();
+        
         if (typeof value === 'number' && Number.isFinite(value)) {
-            // Support both millisecond and second epoch values.
-            return value > 0 && value < 1_000_000_000_000 ? value * 1000 : value;
+            // Rule of thumb: If it's less than 10,000,000,000, it's likely seconds (Unix epoch)
+            // 10^10 seconds is the year 2286. 10^12 ms is the year 2001.
+            return value < 10_000_000_000 ? value * 1000 : value;
         }
+        
         if (typeof value === 'string') {
             const parsed = Date.parse(value);
-            return Number.isFinite(parsed) ? parsed : 0;
+            // If native parsing fails, try to see if it's a numeric string
+            if (!Number.isFinite(parsed)) {
+                const numeric = Number(value);
+                if (Number.isFinite(numeric)) {
+                    return numeric < 10_000_000_000 ? numeric * 1000 : numeric;
+                }
+                return Date.now(); // Fallback to now for truly invalid strings
+            }
+            return parsed;
         }
-        return 0;
+        
+        return Date.now();
     };
 
     // --- DATA PROCESSING (LEVEL A) ---
@@ -249,6 +262,11 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
         return counts;
     }, [books, categoryLookup]);
 
+    const maxCategoryCount = useMemo(() => {
+        if (categoryCounts.size === 0) return 0;
+        return Math.max(...Array.from(categoryCounts.values()));
+    }, [categoryCounts]);
+
     return (
         <div className="min-h-full w-full space-y-5 md:space-y-8 animate-in fade-in duration-700 relative">
 
@@ -345,23 +363,30 @@ export const KnowledgeDashboard: React.FC<KnowledgeDashboardProps> = ({
                                     {CATEGORIES.map(category => {
                                         const count = categoryCounts.get(category) || 0;
                                         if (count < MIN_CATEGORY_BOOKS_VISIBLE) return null;
-                                        const percentage = books.length > 0 ? (count / books.length) * 100 : 0;
+                                        
+                                        // Calculate percentage relative to the largest category instead of total books.
+                                        // This turns the visual from a "progress bar" into a "relative distribution bar chart",
+                                        // meaning the most popular category will always be 100% full.
+                                        const percentage = maxCategoryCount > 0 ? Math.max((count / maxCategoryCount) * 100, 3) : 0;
+                                        
                                         return (
                                             <div
                                                 key={category}
                                                 onClick={() => onCategorySelect?.(category)}
-                                                className="group cursor-pointer p-1 md:p-2.5 rounded-lg md:rounded-xl transition-all duration-200"
+                                                className="group cursor-pointer py-1.5 md:py-2.5 px-2 md:px-3 rounded-xl hover:bg-slate-800/40 dark:hover:bg-white/5 border border-transparent hover:border-slate-700/50 dark:hover:border-white/5 transition-all duration-300 flex flex-col gap-1.5 md:gap-2"
                                             >
-                                                <div className="flex items-center justify-between mb-0.5 md:mb-2 px-0.5 md:px-1">
-                                                    <span className="text-xs md:text-sm font-semibold text-white transition-all duration-200 inline-block group-hover:scale-[1.04] group-hover:font-bold truncate pr-2">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-xs md:text-sm font-medium text-slate-400 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors truncate pr-2">
                                                         {category}
                                                     </span>
-                                                    <span className="text-xs md:text-sm font-black text-white shrink-0">{count}</span>
+                                                    <span className="text-xs md:text-sm font-black text-slate-700 dark:text-white/80 group-hover:text-primary transition-colors shrink-0">
+                                                        {count}
+                                                    </span>
                                                 </div>
-                                                <div className="w-full h-1 md:h-2 bg-slate-200 dark:bg-slate-700/30 rounded-full overflow-hidden shadow-inner">
+                                                <div className="w-full h-1 md:h-1.5 bg-slate-200 dark:bg-slate-800/60 rounded-full overflow-hidden shadow-inner">
                                                     <div
                                                         style={{ width: `${percentage}%` }}
-                                                        className="h-full bg-primary group-hover:bg-primary transition-colors"
+                                                        className="h-full bg-gradient-to-r from-primary/50 to-primary rounded-full group-hover:shadow-[0_0_8px_rgba(204,86,30,0.6)] transition-all duration-500 ease-out"
                                                     />
                                                 </div>
                                             </div>

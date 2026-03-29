@@ -254,10 +254,9 @@ class Phase4SmokeEndpointsTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 200, resp.text)
         data = resp.json()
         self.assertEqual(data["answer"], "ok")
-        # Positional tail added in app.py partial(generate_answer, ...)
-        self.assertEqual(captured["args"][-3], "all")   # visibility_scope
-        self.assertEqual(captured["args"][-2], "NOTE")  # content_type
-        self.assertEqual(captured["args"][-1], "SYNC")  # ingestion_type
+        self.assertEqual(captured["kwargs"]["visibility_scope"], "all")
+        self.assertEqual(captured["kwargs"]["content_type"], "NOTE")
+        self.assertEqual(captured["kwargs"]["ingestion_type"], "SYNC")
         self.assertEqual(data["metadata"]["visibility_scope"], "all")
         self.assertEqual(data["metadata"]["content_type_filter"], "NOTE")
         self.assertEqual(data["metadata"]["ingestion_type_filter"], "SYNC")

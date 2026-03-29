@@ -1,30 +1,49 @@
+
 import sys
 import os
+import json
 
-# Add apps/backend to path
-sys.path.insert(0, os.path.join(os.getcwd(), 'apps', 'backend'))
+# Add backend to path
+sys.path.append(os.path.join(os.getcwd(), 'apps', 'backend'))
 
-from services.ingestion_service import get_database_connection
+from infrastructure.db_manager import DatabaseManager
 
-def inspect():
-    uid = 'vpq1p0UzcCSLAh1d18WgZZWPBE63'
+def inspect_missing_vectors():
+    print("→ Inspecting 181 items with missing vectors...")
+    
     try:
-        conn = get_database_connection()
-        cursor = conn.cursor()
-        
-        sql = "SELECT DISTINCT title FROM TOMEHUB_CONTENT WHERE firebase_uid = :p_uid AND title LIKE '%Hayat%'"
-        cursor.execute(sql, {'p_uid': uid})
-        rows = cursor.fetchall()
-        
-        for row in rows:
-            title = row[0]
-            print(f"Title: {title}")
-            print(f"Codes: {[ord(c) for c in title]}")
-            
-        cursor.close()
-        conn.close()
+        with DatabaseManager.get_read_connection() as conn:
+            with conn.cursor() as cursor:
+                # 1. Kaynak Tipi ve Kategori Dağılımı
+                # Not: PERSONAL_NOTE olanların kategorisini de kontrol ediyoruz
+                cursor.execute("""
+                    SELECT c.content_type, l.item_type, COUNT(*) 
+                    FROM TOMEHUB_CONTENT_V2 c
+                    LEFT JOIN TOMEHUB_LIBRARY_ITEMS l ON c.item_id = l.item_id AND c.firebase_uid = l.firebase_uid
+                    WHERE c.vec_embedding IS NULL AND c.AI_ELIGIBLE = 1
+                    GROUP BY c.content_type, l.item_type
+                """)
+                distribution = cursor.fetchall()
+                print("\n--- DAĞILIM (Eksik Vektörler) ---")
+                for row in distribution:
+                    print(f"İçerik: {row[0]}, Kütüphane Tipi: {row[1]}, Adet: {row[2]}")
+
+                # 2. Rastgele Örnekler (Başlık ve İçerik Özeti)
+                cursor.execute("""
+                    SELECT c.title, c.content_chunk, c.content_type, l.item_type
+                    FROM TOMEHUB_CONTENT_V2 c
+                    LEFT JOIN TOMEHUB_LIBRARY_ITEMS l ON c.item_id = l.item_id AND c.firebase_uid = l.firebase_uid
+                    WHERE c.vec_embedding IS NULL AND c.AI_ELIGIBLE = 1
+                    FETCH FIRST 5 ROWS ONLY
+                """)
+                samples = cursor.fetchall()
+                print("\n--- RASTGELE ÖRNEKLER ---")
+                for s in samples:
+                    content_preview = s[1][:80].replace('\n', ' ') if s[1] else "BOŞ"
+                    print(f"📌 [{s[2]}/{s[3]}] Başlık: {s[0]} \n   Özet: {content_preview}...\n")
+
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"\n❌ Inspection Failed: {e}")
 
 if __name__ == "__main__":
-    inspect()
+    inspect_missing_vectors()

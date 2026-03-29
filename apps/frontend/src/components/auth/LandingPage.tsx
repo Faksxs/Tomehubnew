@@ -214,7 +214,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                                     <div className="flex-1">
                                         <h2 className="text-xl md:text-2xl font-black mb-3 text-white leading-tight">
                                             {feature.title}
-                                        </h3>
+                                        </h2>
                                         <p className="text-[14px] md:text-[15px] text-slate-400 leading-relaxed font-normal">
                                             {feature.description}
                                         </p>

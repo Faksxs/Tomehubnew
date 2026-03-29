@@ -68,26 +68,7 @@ class SemanticRouter:
         tokens = [t for t in re.findall(r"[^\W_]+", q_norm, flags=re.UNICODE) if t]
         token_set: Set[str] = set(tokens)
 
-        # Intent-led fast path
-        if intent in {"DIRECT", "CITATION_SEEKING", "FOLLOW_UP"}:
-            retrieval_mode = "fast_exact"
-            return RouterDecision(
-                mode="rule_based",
-                selected_buckets=self.buckets_for_mode(retrieval_mode),
-                reason=f"intent={intent}",
-                retrieval_mode=retrieval_mode,
-            )
-
-        if re.search(self.QUOTED_PHRASE_PATTERN, q_raw):
-            retrieval_mode = "fast_exact"
-            return RouterDecision(
-                mode="rule_based",
-                selected_buckets=self.buckets_for_mode(retrieval_mode),
-                reason="pattern:quoted_phrase",
-                retrieval_mode=retrieval_mode,
-            )
-
-        # Pattern-led direct lookup style
+        # 1. Pattern-led direct lookup style (High precision keywords)
         for pat in self.DIRECT_PATTERNS:
             if re.search(pat, q_norm):
                 retrieval_mode = "fast_exact"
@@ -98,8 +79,19 @@ class SemanticRouter:
                     retrieval_mode=retrieval_mode,
                 )
 
-        # Conceptual question: semantic should be dominant but keep lexical safety
-        if token_set.intersection(self.CONCEPTUAL_HINTS) and len(tokens) > 1:
+        if re.search(self.QUOTED_PHRASE_PATTERN, q_raw):
+            retrieval_mode = "fast_exact"
+            return RouterDecision(
+                mode="rule_based",
+                selected_buckets=self.buckets_for_mode(retrieval_mode),
+                reason="pattern:quoted_phrase",
+                retrieval_mode=retrieval_mode,
+            )
+
+        # 2. Conceptual question: semantic should be dominant even if intent is DIRECT
+        # This handles "What is X?" for philosophical terms X.
+        is_conceptual = bool(token_set.intersection(self.CONCEPTUAL_HINTS))
+        if is_conceptual and len(tokens) > 1:
             retrieval_mode = "semantic_focus"
             return RouterDecision(
                 mode="rule_based",
@@ -108,8 +100,17 @@ class SemanticRouter:
                 retrieval_mode=retrieval_mode,
             )
 
-        # Very short queries still need semantic coverage so Layer-2 can show
-        # epistemic tail after direct matches.
+        # 3. Intent-led fast path (only for non-conceptual queries)
+        if intent in {"DIRECT", "CITATION_SEEKING", "FOLLOW_UP"}:
+            retrieval_mode = "fast_exact"
+            return RouterDecision(
+                mode="rule_based",
+                selected_buckets=self.buckets_for_mode(retrieval_mode),
+                reason=f"intent={intent}",
+                retrieval_mode=retrieval_mode,
+            )
+
+        # 4. Very short queries still need semantic coverage
         if len(tokens) <= 2:
             retrieval_mode = "balanced"
             return RouterDecision(

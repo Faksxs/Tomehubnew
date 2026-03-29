@@ -33,47 +33,24 @@ def get_discovery_page(
     if force_refresh:
         invalidate_discovery_cache(firebase_uid)
 
-    board_errors: List[str] = []
-    used_cached_fallbacks = False
-    segment_status: dict[str, str] = {}
-    with ThreadPoolExecutor(max_workers=5, thread_name_prefix="discovery-page") as executor:
-        inner_space_future = executor.submit(_safe_inner_space, firebase_uid, force_refresh=force_refresh)
-        academic_future = executor.submit(_safe_board, DiscoveryCategory.ACADEMIC, firebase_uid, force_refresh=force_refresh, refresh_token=refresh_token)
-        religious_future = executor.submit(_safe_board, DiscoveryCategory.RELIGIOUS, firebase_uid, force_refresh=force_refresh, refresh_token=refresh_token)
-        literary_future = executor.submit(_safe_board, DiscoveryCategory.LITERARY, firebase_uid, force_refresh=force_refresh, refresh_token=refresh_token)
-        culture_future = executor.submit(_safe_board, DiscoveryCategory.CULTURE_HISTORY, firebase_uid, force_refresh=force_refresh, refresh_token=refresh_token)
+    # 1. Fetch only Inner Space immediately (Fastest)
+    inner_space, inner_space_status, inner_space_error = _safe_inner_space(firebase_uid, force_refresh=force_refresh)
 
-        inner_space, inner_space_status, inner_space_error = inner_space_future.result()
-        academic, academic_status, academic_error = academic_future.result()
-        religious, religious_status, religious_error = religious_future.result()
-        literary, literary_status, literary_error = literary_future.result()
-        culture_history, culture_status, culture_history_error = culture_future.result()
-
-    segment_status["inner_space"] = inner_space_status
-    segment_status["academic"] = academic_status
-    segment_status["religious"] = religious_status
-    segment_status["literary"] = literary_status
-    segment_status["culture_history"] = culture_status
-
-    for error in [inner_space_error, academic_error, religious_error, literary_error, culture_history_error]:
-        if error:
-            board_errors.append(error)
-            used_cached_fallbacks = True
-
+    # 2. Return empty placeholders for boards. Frontend will fetch them via /api/discovery/board?category=X
     return DiscoveryPageResponse(
         inner_space=inner_space,
         boards=DiscoveryPageBoards(
-            academic=academic,
-            religious=religious,
-            literary=literary,
-            culture_history=culture_history,
+            academic=_empty_board(DiscoveryCategory.ACADEMIC),
+            religious=_empty_board(DiscoveryCategory.RELIGIOUS),
+            literary=_empty_board(DiscoveryCategory.LITERARY),
+            culture_history=_empty_board(DiscoveryCategory.CULTURE_HISTORY),
         ),
         metadata=DiscoveryPageMetadata(
             last_updated_at=datetime.now(timezone.utc).isoformat(),
-            board_errors=board_errors,
-            used_cached_fallbacks=used_cached_fallbacks,
-            cache_status=_aggregate_page_cache_status(segment_status),
-            segment_status=segment_status,
+            board_errors=[inner_space_error] if inner_space_error else [],
+            used_cached_fallbacks=False,
+            cache_status=inner_space_status,
+            segment_status={"inner_space": inner_space_status},
         ),
     )
 

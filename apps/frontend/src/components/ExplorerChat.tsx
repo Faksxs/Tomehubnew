@@ -305,7 +305,7 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack, onSa
             const trimmed = line.trim();
 
             // Detect Exploration Paths section
-            if (trimmed.toLowerCase().includes('keşif önerileri') || trimmed.toLowerCase().includes('exploration paths')) {
+            if (trimmed.toLowerCase().includes('kesif onerileri') || trimmed.toLowerCase().includes('exploration paths')) {
                 inExplorationPaths = true;
                 return (
                     <h4 key={i} className="text-sm font-bold text-slate-800 dark:text-slate-200 mt-6 mb-3 flex items-center gap-2">
@@ -394,8 +394,8 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack, onSa
                                 className="w-3 h-3 md:w-3.5 md:h-3.5 rounded border-slate-300 text-[#CC561E] focus:ring-[#CC561E]/40"
                                 aria-label="Limit to book"
                             />
-                            <span className="hidden sm:inline">Bu kitapla sınırla</span>
-                            <span className="sm:hidden">Sınırla</span>
+                            <span className="hidden sm:inline">Bu kitapla sinirla</span>
+                            <span className="sm:hidden">Sinirla</span>
                         </label>
                         <button
                             onClick={startNewConversation}
@@ -620,7 +620,7 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack, onSa
                                                     {internal.length > 0 && (
                                                         <div>
                                                             <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                                                                İç Kaynaklar
+                                                                Ic Kaynaklar
                                                             </div>
                                                             <div className="space-y-1">
                                                                 {internal.map(renderSourceRow)}
@@ -630,7 +630,7 @@ export const ExplorerChat: React.FC<ExplorerChatProps> = ({ userId, onBack, onSa
                                                     {external.length > 0 && (
                                                         <div>
                                                             <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-[#CC561E] dark:text-[#f3a47b]">
-                                                                Dış Kaynaklar
+                                                                Dis Kaynaklar
                                                             </div>
                                                             <div className="space-y-1">
                                                                 {external.map(renderSourceRow)}

@@ -152,9 +152,8 @@ NOISE_SOURCE_ALLOWLIST = {
     "PDF", "EPUB", "PDF_CHUNK", "BOOK",
     "HIGHLIGHT", "INSIGHT", "PERSONAL_NOTE",
     "ARTICLE", "MOVIE", "SERIES", "GRAPH_RELATION",
-    "UNKNOWN", "OTHER" 
+    "UNKNOWN", "OTHER"
 }
-
 
 def _resolve_user_book_ids(firebase_uid: str) -> set[str]:
     """

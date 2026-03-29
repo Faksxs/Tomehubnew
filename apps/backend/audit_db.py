@@ -1,102 +1,79 @@
-import os, sys
-CURRENT_DIR = os.getcwd()
-sys.path.insert(0, CURRENT_DIR)
+
+import sys
+import os
+import json
+
+# Add backend to path
+sys.path.append(os.path.join(os.getcwd(), 'apps', 'backend'))
+
 from infrastructure.db_manager import DatabaseManager
 
-def scan_db():
-    DatabaseManager.init_pool()
+def efficiency_audit():
+    print("→ Auditing Database Efficiency and Legacy Structures...")
+    results = {
+        "orphaned_content_count": 0,
+        "legacy_tables": [],
+        "backup_tables": [],
+        "null_vectors_count": 0,
+        "index_stats": []
+    }
+    
     try:
         with DatabaseManager.get_read_connection() as conn:
-            with conn.cursor() as cur:
-                print("==============================")
-                print("TOMEHUB DATABASE SCHEMA AUDIT")
-                print("==============================\\n")
-                
-                # 1. Get all relevant tables
-                cur.execute("""
-                SELECT table_name 
-                FROM user_tables 
-                WHERE table_name LIKE 'TOMEHUB_%' 
-                ORDER BY table_name
+            with conn.cursor() as cursor:
+                # 1. Yetim İçerik Kontrolü (Orphaned Chunks)
+                # LIBRARY_ITEMS'da olmayan ITEM_ID'ler CONTENT_V2'yi yoruyor mu?
+                cursor.execute("""
+                    SELECT COUNT(*) FROM TOMEHUB_CONTENT_V2 c
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM TOMEHUB_LIBRARY_ITEMS l 
+                        WHERE l.item_id = c.item_id
+                    ) AND c.content_type NOT IN ('PERSONAL_NOTE', 'NOTES')
                 """)
-                tables = [r[0] for r in cur.fetchall()]
+                results["orphaned_content_count"] = cursor.fetchone()[0]
                 
-                print(f"Total Tables Found: {len(tables)}\\n")
+                # 2. Boş Vektör Kontrolü (Null Vectors)
+                # Aramada hesaba katılan ama vektörü olmayan satırlar latency yaratır
+                cursor.execute("SELECT COUNT(*) FROM TOMEHUB_CONTENT_V2 WHERE vec_embedding IS NULL AND AI_ELIGIBLE = 1")
+                results["null_vectors_count"] = cursor.fetchone()[0]
                 
-                for t in tables:
-                    print(f"--- TABLE: {t} ---")
-                    
-                    # Columns and Data Types
-                    cur.execute(f"""
-                    SELECT column_name, data_type, data_length, nullable 
-                    FROM user_tab_cols 
-                    WHERE table_name = '{t}'
-                    ORDER BY column_id
-                    """)
-                    cols = cur.fetchall()
-                    
-                    # Missing indices
-                    cur.execute(f"""
-                    SELECT index_name, column_name 
-                    FROM user_ind_columns 
-                    WHERE table_name = '{t}'
-                    ORDER BY index_name, column_position
-                    """)
-                    inds = cur.fetchall()
-                    
-                    if not inds:
-                        print("  [WARNING] NO INDICES FOUND! This will cause Full Table Scans.")
-                    else:
-                        print(f"  Indices: {len(set(i[0] for i in inds))} found")
-                            
-                    # Partitioning checks
-                    cur.execute(f"""
-                    SELECT partitioning_type, partition_count 
-                    FROM user_part_tables 
-                    WHERE table_name = '{t}'
-                    """)
-                    parts = cur.fetchall()
-                    if parts:
-                        print(f"  Partitioning: {parts[0][0]} ({parts[0][1]} partitions)")
-                    else:
-                        # Recommend partitioning for large tables
-                        if t in ['TOMEHUB_CONTENT', 'TOMEHUB_CONTENT_V2', 'TOMEHUB_SEARCH_LOGS', 'TOMEHUB_CHAT_MESSAGES']:
-                            print("  [RECOMMENDATION] Large table should be partitioned (Interval-Range or Hash)!")
-                        else:
-                            print("  Partitioning: None (Acceptable depending on data size)")
-                        
-                    # primary keys / foreign keys checks
-                    cur.execute(f"""
-                    SELECT constraint_type, constraint_name 
-                    FROM user_constraints 
-                    WHERE table_name = '{t}' AND constraint_type IN ('P', 'R')
-                    """)
-                    cons = cur.fetchall()
-                    has_pk = any(c[0] == 'P' for c in cons)
-                    has_fk = any(c[0] == 'R' for c in cons)
-                    
-                    if not has_pk:
-                        print("  [CRITICAL] NO PRIMARY KEY DEFINED!")
-                    if not has_fk and t == 'TOMEHUB_CONTENT_V2':
-                        print("  [RECOMMENDATION] CONSIDER ADDING COMPOSITE FOREIGN KEY TO TOMEHUB_LIBRARY_ITEMS(FIREBASE_UID, ITEM_ID) FOR ACTIVE V2 INTEGRITY.")
-                    if not has_fk and t == 'TOMEHUB_CHANGE_EVENTS':
-                        print("  [RECOMMENDATION] REVIEW WHETHER CHANGE_EVENTS SHOULD REMAIN LOOSELY COUPLED OR REFERENCE LIBRARY ITEMS EXPLICITLY.")
-                        
-                    # VEC_EMBEDDING checks
-                    has_vector = any(c[0] == 'VEC_EMBEDDING' for c in cols)
-                    if has_vector:
-                        cur.execute(f"""
-                        SELECT index_type FROM user_indexes 
-                        WHERE table_name = '{t}' AND index_type LIKE '%VECTOR%'
-                        """)
-                        v_inds = cur.fetchall()
-                        if not v_inds:
-                            print("  [CRITICAL] HAS VECTOR COLUMN BUT NO VECTOR INDEX (HNSW/IVF)! Vector searches will be extremely slow.")
-                            
-                    print("")
-                        
-    finally:
-        DatabaseManager.close_pool()
+                # 3. Hiç Kullanılmayan (0 Satırlı) Tablolar
+                cursor.execute("SELECT table_name FROM user_tables WHERE num_rows = 0 OR num_rows IS NULL")
+                results["legacy_tables"] = [r[0] for r in cursor.fetchall() if not r[0].startswith(('DR$', 'VECTOR$'))]
+                
+                # 4. Yedekleme Tabloları
+                cursor.execute("SELECT table_name, num_rows FROM user_tables WHERE table_name LIKE 'TH_BKP_%'")
+                results["backup_tables"] = [{"name": r[0], "rows": r[1]} for r in cursor.fetchall()]
+                
+                # 5. İndeks Kontrolü (Gürültü Yaratan İndeksler)
+                cursor.execute("SELECT index_name, index_type, status FROM user_indexes WHERE status != 'VALID'")
+                results["invalid_indexes"] = [{"name": r[0], "type": r[1]} for r in cursor.fetchall()]
+
+        # Analizi yazdır
+        print_audit_report(results)
+
+    except Exception as e:
+        print(f"\n❌ Efficiency Audit Failed: {e}")
+
+def print_audit_report(res):
+    print("\n=== VERİTABANI VERİMLİLİK DENETİMİ ===")
+    print(f"❌ Yetim İçerik (Silinmiş Kaynak Kalıntısı): {res['orphaned_content_count']} satır")
+    print(f"⚠️ Vektörü Olmayan AI İçeriği: {res['null_vectors_count']} satır")
+    print(f"🧹 Temizlenebilir Yedek Tablo Sayısı: {len(res['backup_tables'])}")
+    print(f"📉 Hiç Kullanılmayan (Legacy) Tablo Sayısı: {len(res['legacy_tables'])}")
+    
+    # Detaylı Rapor Dosyası
+    with open("apps/backend/audit_report_db.md", "w", encoding="utf-8") as f:
+        f.write("# Veritabanı Temizlik ve Optimizasyon Raporu\n\n")
+        f.write(f"## 1. Kritik Sorunlar\n")
+        f.write(f"*   **Yetim Kayıtlar:** {res['orphaned_content_count']} adet içerik parçası kütüphanede karşılığı olmadığı halde veritabanında yer kaplıyor. Bu, arama sırasında sistemin boş yere bu satırları taramasına neden olur.\n")
+        f.write(f"*   **Eksik Vektörler:** {res['null_vectors_count']} satır 'AI_ELIGIBLE' olarak işaretlenmiş ama anlamsal karşılığı (embedding) yok. Bu, arama kalitesini düşürür.\n\n")
+        f.write(f"## 2. Gereksiz Tablolar (Silinebilir)\n")
+        for t in res['legacy_tables']:
+            f.write(f"*   `{t}` (0 satır)\n")
+        f.write("\n## 3. Yedekleme Yükü\n")
+        for b in res['backup_tables']:
+            f.write(f"*   `{b['name']}` ({b['rows']} satır)\n")
 
 if __name__ == "__main__":
-    scan_db()
+    efficiency_audit()
