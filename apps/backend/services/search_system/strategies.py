@@ -749,23 +749,48 @@ class SemanticMatchStrategy(SearchStrategy):
                     else:
                         rows.extend(run_query(limit))
                     
-                    # FALLBACK: If no results found and no resource_type filter, search including PDF content
+                    # IMPROVED: Proportional PDF Backfill (Information Gap Filling)
+                    core_rows = list(rows)
+                    core_count = len(core_rows)
+                    pdf_backfill_limit = 0
+                    
                     if (
-                        not rows
-                        and not resource_type
-                        and not book_id
+                        not resource_type 
+                        and not book_id 
                         and _allow_pdf_fallback(search_surface)
                     ):
-                        logger.info(f"SemanticMatchStrategy: No results without PDF content, trying with PDF fallback")
-                        if intent == 'DIRECT' or intent == 'FOLLOW_UP':
-                            sweep_limit = max(5, limit // 2)
-                            rows.extend(run_query(sweep_limit, exclude_pdf=False))
-                            rows.extend(run_query(sweep_limit, length_filter='SHORT', exclude_pdf=False))
-                        elif intent == 'NARRATIVE':
-                            rows.extend(run_query(15, exclude_pdf=False))
-                            rows.extend(run_query(10, length_filter='LONG', exclude_pdf=False))
-                        else:
-                            rows.extend(run_query(limit, exclude_pdf=False))
+                        if core_count == 0:
+                            pdf_backfill_limit = limit # Full fallback
+                        elif core_count < 35:
+                            # Proportional logic: <10 -> 3, <20 -> 2, <30 -> 1
+                            pdf_backfill_limit = max(1, 4 - (core_count // 10))
+                    
+                    if pdf_backfill_limit > 0:
+                        logger.info(f"SemanticMatchStrategy: Backfilling with up to {pdf_backfill_limit} PDF chunks (Core count: {core_count})")
+                        # Fetch chunks specifically from PDF sources
+                        def run_pdf_only_query(p_limit):
+                            sql = """
+                                SELECT c.id, c.content_chunk, c.title, c.content_type as source_type, c.page_number,
+                                       c.tags_json as tags, l.summary_text as summary, c.comment_text as "COMMENT", c.item_id as book_id,
+                                       (VECTOR_DISTANCE(c.vec_embedding, :vec, COSINE) / NULLIF(c.rag_weight, 0.0001)) as dist
+                                FROM TOMEHUB_CONTENT_V2 c
+                                LEFT JOIN TOMEHUB_LIBRARY_ITEMS l ON c.item_id = l.item_id AND c.firebase_uid = l.firebase_uid
+                                WHERE c.firebase_uid = :p_uid
+                                  AND c.AI_ELIGIBLE = 1
+                                  AND c.content_type IN ('PDF', 'EPUB', 'PDF_CHUNK', 'BOOK_CHUNK')
+                            """
+                            p = {"p_uid": firebase_uid, "vec": emb, "p_limit": p_limit}
+                            sql += " ORDER BY dist ASC FETCH FIRST :p_limit ROWS ONLY "
+                            cursor.execute(sql, p)
+                            return cursor.fetchall()
+                        
+                        pdf_rows = run_pdf_only_query(pdf_backfill_limit)
+                        for r in pdf_rows:
+                            dist = r[9]
+                            score = max(0, (1 - dist) * 100) if dist is not None else 0.0
+                            # Only include "GOOD" PDF chunks (score > 45)
+                            if score > 45:
+                                rows.append(r)
                         
                     seen_ids = set()
                     unique_rows = []

@@ -844,6 +844,7 @@ class Settings:
         self.ISLAMIC_API_HADITH_WEIGHT = float(os.getenv("ISLAMIC_API_HADITH_WEIGHT", "0.18"))
         self.ISLAMIC_API_HTTP_TIMEOUT_SEC = float(os.getenv("ISLAMIC_API_HTTP_TIMEOUT_SEC", "6.0"))
         self.ISLAMIC_API_HTTP_MAX_RETRY = int(os.getenv("ISLAMIC_API_HTTP_MAX_RETRY", "1"))
+        self.ISLAMIC_API_CONCURRENCY_LIMIT = int(os.getenv("ISLAMIC_API_CONCURRENCY_LIMIT", "4"))
 
         self.QURANENC_ENABLED = os.getenv("QURANENC_ENABLED", "true").strip().lower() == "true"
         self.QURANENC_API_BASE_URL = (
@@ -863,7 +864,7 @@ class Settings:
         self.ISLAMHOUSE_API_BASE_URL = (
             os.getenv("ISLAMHOUSE_API_BASE_URL", "https://api3.islamhouse.com/v3").strip().rstrip("/")
         )
-        self.ISLAMHOUSE_API_KEY = os.getenv("ISLAMHOUSE_API_KEY", "paV29H2gm56kvLPy").strip()
+        self.ISLAMHOUSE_API_KEY = os.getenv("ISLAMHOUSE_API_KEY", "").strip()
         self.ISLAMHOUSE_DEFAULT_LANGUAGE = (
             os.getenv("ISLAMHOUSE_DEFAULT_LANGUAGE", "tr").strip().lower() or "tr"
         )

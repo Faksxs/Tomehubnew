@@ -67,25 +67,17 @@ def _clean_layer2_preview_text(raw: Any) -> str:
 
 
 def _is_layer2_report_noise(item: Dict[str, Any]) -> bool:
-    source_type = str(item.get("source_type", "") or "").strip().upper()
-    if source_type != "PERSONAL_NOTE":
-        return False
-
-    title_lc = str(item.get("title", "") or "").strip().lower()
-    content_lc = str(item.get("content_chunk", "") or "").strip().lower()
-    tags_lc = str(item.get("tags", "") or "").strip().lower()
-
-    if "<h1>research report" in content_lc:
-        return True
-    if "<h2>research question" in content_lc or "<h2>final answer" in content_lc:
-        return True
-    if ("layer 3" in title_lc or "layer3" in title_lc) and "report" in tags_lc:
-        return True
+    """
+    Refined: No longer drops research reports. 
+    We want past AI analysis to be discoverable but with lower priority.
+    """
     return False
 
 
 def _layer2_source_priority(item: Dict[str, Any]) -> float:
     source_type = str(item.get("source_type", "") or "").strip().upper()
+    content_lc = str(item.get("content_chunk", "") or "").strip().lower()
+    
     if source_type == "BOOK":
         return 1.0
     if source_type == "ARTICLE":
@@ -94,8 +86,13 @@ def _layer2_source_priority(item: Dict[str, Any]) -> float:
         return 3.0
     if source_type == "INSIGHT":
         return 4.0
+    
     if source_type == "PERSONAL_NOTE":
-        return 5.0
+        # Distinguish between human-written IDEAS and AI-generated RESEARCH REPORTS
+        if "<h1>research report" in content_lc or "<h2>final answer" in content_lc:
+            return 5.8  # AI Report (Lower priority than human notes)
+        return 5.0      # Standard Idea/Note
+        
     if item.get("comment") or item.get("personal_comment"):
         return 5.5
     if source_type in {"WEBSITE", "MOVIE", "SERIES"}:
@@ -1125,13 +1122,20 @@ class SearchOrchestrator:
 
                 allowed_source_types = {
                     "PDF", "EPUB", "PDF_CHUNK", "BOOK",
-                    "HIGHLIGHT", "INSIGHT",
+                    "HIGHLIGHT", "INSIGHT", "NOTES",
                     "PERSONAL_NOTE", "ARTICLE", "WEBSITE", "MOVIE", "SERIES", "GRAPH_RELATION"
                 }
                 if source_type and source_type not in allowed_source_types:
                     return False
 
-                if len(content) < 60:
+                # Human-curated notes can be short and highly dense. Don't drop them.
+                if source_type in {"PERSONAL_NOTE", "HIGHLIGHT", "INSIGHT", "NOTES"}:
+                    if len(content) < 15:
+                        return False
+                elif source_type in {"PDF", "PDF_CHUNK", "EPUB", "BOOK_CHUNK"}:
+                    if len(content) < 60:
+                        return False
+                elif len(content) < 60:
                     return False
 
                 if "website deneme" in content_lc:
@@ -1739,28 +1743,29 @@ class SearchOrchestrator:
                     
                     # id_var.getvalue() returns a list for returning into
                     vals = id_var.getvalue()
+                    log_id = None
                     if vals:
-                        log_id = vals[0]
+                        log_id = int(vals[0])
+                        
+                    try:
                         cleanup_enabled = bool(getattr(settings, "SEARCH_LOG_RETENTION_CLEANUP_ENABLED", False))
                         if cleanup_enabled and (time.time() - _LAST_SEARCH_LOG_CLEANUP_TS) > 3600:
-                            try:
-                                cursor.execute(
-                                    """
-                                    DELETE FROM TOMEHUB_SEARCH_LOGS
-                                    WHERE TIMESTAMP < (CURRENT_TIMESTAMP - NUMTODSINTERVAL(:p_days, 'DAY'))
-                                    """,
-                                    {"p_days": int(getattr(settings, "SEARCH_LOG_RETENTION_DAYS", 90))},
-                                )
-                                _LAST_SEARCH_LOG_CLEANUP_TS = time.time()
-                            except Exception:
-                                pass
+                            cursor.execute(
+                                """
+                                DELETE FROM TOMEHUB_SEARCH_LOGS
+                                WHERE TIMESTAMP < (CURRENT_TIMESTAMP - NUMTODSINTERVAL(:p_days, 'DAY'))
+                                """,
+                                {"p_days": int(getattr(settings, "SEARCH_LOG_RETENTION_DAYS", 90))},
+                            )
+                            _LAST_SEARCH_LOG_CLEANUP_TS = time.time()
+                        
                         conn.commit()
-                        return int(log_id)
-                    else:
-                        print(f"[ERROR] LOGGING FAILED: No ID returned. Vals={vals}")
-                        return None
+                    except Exception as commit_err:
+                        logger.warning(f"Failed to commit search log or cleanup: {commit_err}")
+                        # Don't raise, we want the search to proceed
+                    
+                    return log_id
         except Exception as e:
-            logger.error(f"Failed to log search analytics: {e}")
-            print(f"[ERROR] LOGGING FAILED: {e}")
+            logger.error(f"Failed to log search analytics: {e}", exc_info=True)
             return None
 

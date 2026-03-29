@@ -1,0 +1,170 @@
+{
+  "staticCards": [
+    {
+      "id": "acad-hero",
+      "category": "Academic",
+      "family": "THESIS RECON",
+      "title": "Architectural Semiotics in High-Density Urbanism",
+      "summary": "A deep dive into the subliminal messaging of Brutalist facades in neo-Tokyo environments...",
+      "sources": ["ArXiv", "Oxford"],
+      "size": "hero",
+      "tone": "blue",
+      "iconName": "GraduationCap",
+      "metadata": "LEVEL: ALPHA",
+      "sourceUrl": "https://arxiv.org/search/?query=architectural+semiotics+urbanism&searchtype=all"
+    },
+    {
+      "id": "acad-det-1",
+      "category": "Academic",
+      "family": "BRIDGE",
+      "title": "Neural Mapping of the Void",
+      "summary": "Connecting LLM attention maps with traditional cognitive psychology.",
+      "sources": ["Nature", "MIT"],
+      "size": "detail",
+      "tone": "blue",
+      "iconName": "Activity",
+      "metadata": "SYNC: 0.882",
+      "sourceUrl": "https://scholar.google.com/scholar?q=LLM+attention+maps+cognitive+psychology"
+    },
+    {
+      "id": "acad-det-2",
+      "category": "Academic",
+      "family": "LIT_SCAN",
+      "title": "VERSE_X4",
+      "summary": "01001100 01001111 01010110 01000101",
+      "sources": ["Project Gutenberg"],
+      "size": "detail",
+      "tone": "purple",
+      "iconName": "ScrollText",
+      "sourceUrl": "https://www.gutenberg.org/"
+    },
+    {
+      "id": "rel-hero",
+      "category": "Religious",
+      "family": "DIGITAL SANCTUM",
+      "title": "Interlocking Textual Traditions",
+      "summary": "Analyzing the thematic continuity between early manuscript fragments and modern scholarship.",
+      "sources": ["QuranEnc", "Diyanet"],
+      "size": "hero",
+      "tone": "green",
+      "iconName": "ScrollText",
+      "metadata": "SIGIL_LEVEL: ALPHA",
+      "sourceUrl": "https://quranenc.com/en/browse/turkish_rshd"
+    },
+    {
+      "id": "rel-det-1",
+      "category": "Religious",
+      "family": "AYET_RECON",
+      "title": "The Syntax of Light",
+      "summary": "A deep dive into the linguistic structure of Surah An-Nur.",
+      "sources": ["HadeethEnc"],
+      "size": "detail",
+      "tone": "green",
+      "iconName": "ScrollText",
+      "sourceUrl": "https://hadeethenc.com/tr/browse/hadith"
+    },
+    {
+      "id": "lit-hero",
+      "category": "Literary",
+      "family": "NEUROMANCER_REVISITED",
+      "title": "The Sky Above The Port",
+      "summary": "Tracing the influence of Gibsonian cyberpunk on modern urban semiotics.",
+      "sources": ["Library", "Archive"],
+      "size": "hero",
+      "tone": "purple",
+      "iconName": "FlaskConical",
+      "sourceUrl": "https://archive.org/search?query=neuromancer+cyberpunk"
+    },
+    {
+      "id": "lit-det-1",
+      "category": "Literary",
+      "family": "AUTHOR_FEED",
+      "title": "Dostoevsky & The Machine",
+      "summary": "How existential dread translates to algorithmic uncertainty.",
+      "sources": ["Local Archive"],
+      "size": "detail",
+      "tone": "purple",
+      "iconName": "Library",
+      "sourceUrl": "https://www.gutenberg.org/ebooks/author/314"
+    },
+    {
+      "id": "cul-hero",
+      "category": "Culture",
+      "family": "TRAFFIC_VOL",
+      "title": "Mosaic Feed Sync: Silk Road",
+      "summary": "Visualizing the migration of motifs from Persia to East Asia over 3 centuries.",
+      "sources": ["British Museum", "UNESCO"],
+      "size": "hero",
+      "tone": "amber",
+      "iconName": "Activity",
+      "syncRate": "+12.4%",
+      "sourceUrl": "https://www.britishmuseum.org/collection/search?keyword=silk+road+mosaic"
+    },
+    {
+      "id": "cul-det-1",
+      "category": "Culture",
+      "family": "ARCHIVE_SYNC",
+      "title": "Lost Tones of the Mediterranean",
+      "summary": "Recovered audio artifacts from 19th-century folk music collections.",
+      "sources": ["Europeana"],
+      "size": "detail",
+      "tone": "amber",
+      "iconName": "Sparkles",
+      "sourceUrl": "https://www.europeana.eu/en/search?query=mediterranean+folk+music"
+    }
+  ],
+  "fallbackInnerSpaceCards": [
+    {
+      "id": "fallback-continue",
+      "category": "Personal",
+      "family": "CONTINUE THIS",
+      "slot": "continue_this",
+      "title": "Your archive is ready for a first thread",
+      "summary": "Add a book, article, note, or film to start building an active continuation lane here.",
+      "sources": ["Local Library"],
+      "size": "tall",
+      "tone": "amber",
+      "iconName": "Activity",
+      "promptSeed": "Suggest the best next item to add to my archive so Discovery can start connecting themes."
+    },
+    {
+      "id": "fallback-latest",
+      "category": "Personal",
+      "family": "LATEST SYNC",
+      "slot": "latest_sync",
+      "title": "No recent sync yet",
+      "summary": "As soon as new library activity lands, the freshest thread will appear here with direct context.",
+      "sources": ["Recent Activity"],
+      "size": "hero",
+      "tone": "purple",
+      "iconName": "Sparkles",
+      "promptSeed": "Show me the most recent meaningful changes in my archive."
+    },
+    {
+      "id": "fallback-dormant",
+      "category": "Personal",
+      "family": "DORMANT GEM",
+      "slot": "dormant_gem",
+      "title": "Dormant links will surface here",
+      "summary": "Once older material accumulates, Discovery will recover overlooked items that still fit your current themes.",
+      "sources": ["Archive Vault"],
+      "size": "detail",
+      "tone": "dark",
+      "iconName": "FlaskConical",
+      "promptSeed": "Find an older item in my archive that is still worth resurfacing."
+    },
+    {
+      "id": "fallback-pulse",
+      "category": "Personal",
+      "family": "THEME PULSE",
+      "slot": "theme_pulse",
+      "title": "THEME_PULSE",
+      "summary": "Theme pulse will strengthen as more tagged material and memory profile signals accumulate.",
+      "sources": ["Recent Archive"],
+      "size": "detail",
+      "tone": "amber",
+      "iconName": "Zap",
+      "promptSeed": "Map the strongest active themes in my recent archive and show the best next connections."
+    }
+  ]
+}

@@ -93,6 +93,31 @@ Usage notes:
 
 </skills_system>
 
+### Data & Content Nomenclature
+
+To prevent ambiguity, the term **"Notes"** must be used with caution. The following hierarchy defines how data is categorized and used across the system:
+
+#### 1. The Active Corpus (General Search / RAG / LLM / Layers 2-4)
+This is the primary text source for vector search, graph relations, and all AI-driven synthesis.
+- **Sources:** Books, Articles, Cinemas (Movies/Series), and PDF/EPUB Chunks.
+- **Primary Types:**
+    - `HIGHLIGHT`: User-curated excerpts from Books/Articles/Cinemas.
+    - `INSIGHT`: AI-generated or system-processed observations.
+    - `BOOK_CHUNK` / `PDF_CHUNK`: Raw text segments from ingested documents.
+- **Special Case - Personal Notes:**
+    - Only `PERSONAL_NOTE` items with the category **`IDEAS`** are included here. These are treated as part of the global thought network.
+
+#### 2. Isolated Personal Content (Local-Only)
+This content exists only for the user's private organization and is **excluded** from general RAG, LLM synthesis, and global search.
+- **Type:** `PERSONAL_NOTE`
+- **Excluded Categories:** `PRIVATE`, `DAILY`, `BOOKMARK`.
+- **Visibility:** Only visible within the specific "Personal Notes" UI surface via basic keyword search.
+
+#### 3. "All Notes" Page (UI Context)
+In the UI, the **"All Notes"** page refers specifically to the collection of `HIGHLIGHT` and `INSIGHT` items from Books, Articles, and Cinemas. It serves as a library of extracted wisdom, distinct from the private scratchpad of Personal Notes.
+
+---
+
 ## Repo Operating Notes
 
 ### Current Architecture
